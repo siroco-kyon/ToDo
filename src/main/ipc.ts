@@ -1,5 +1,5 @@
-import { ipcMain, dialog } from 'electron'
-import type { BrowserWindow, NativeImage } from 'electron'
+import { ipcMain, dialog, BrowserWindow } from 'electron'
+import type { NativeImage } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import {
@@ -21,7 +21,16 @@ import {
   getWorkLogsByTodo,
   getWorkLogsByDate,
   getWorkLogsSummary,
+  getOverviewData,
+  getDailyPlanItems,
+  addDailyPlanItem,
+  updateDailyPlanItem,
+  shiftDailyPlanItem,
+  deleteDailyPlanItem,
+  reorderDailyPlanItems,
   getSubTasksByTodo,
+  getAllSubTasks,
+  getSubTasksForCalendar,
   createSubTask,
   updateSubTask,
   deleteSubTask,
@@ -29,6 +38,7 @@ import {
   setSetting,
   initDb
 } from './db'
+import type { CreateSubTaskInput, UpdateDailyPlanItemInput, UpdateSubTaskInput } from './db'
 import { exportMarkdown } from './markdown'
 import { pickAndSetIcon, resetIcon, getIconDataUrl } from './icon'
 import { getDataDir, setDataDir, isFirstLaunch, getDefaultDataDir } from './config'
@@ -37,33 +47,48 @@ import { runArchiveCleanup } from './archive'
 
 export function registerIpcHandlers(
   mainWindow: BrowserWindow,
-  updateTray: (img: NativeImage) => void
+  updateTray: (img: NativeImage) => void,
+  openGanttWindow: () => void,
+  openTodoInMainWindow: (todoId: string) => void
 ): void {
+  const broadcastDataChange = (scope: 'category' | 'todo' | 'subtask' | 'plan'): void => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('data:changed', scope)
+    }
+  }
+
+  const handleMutation = <TArgs extends unknown[], TResult>(
+    scope: 'category' | 'todo' | 'subtask' | 'plan',
+    action: (...args: TArgs) => TResult
+  ) => (_event: Electron.IpcMainInvokeEvent, ...args: TArgs): TResult => {
+    const result = action(...args)
+    broadcastDataChange(scope)
+    return result
+  }
+
   // Categories
   ipcMain.handle('category:getAll', () => getAllCategories())
-  ipcMain.handle('category:create', (_, name: string, color: string) =>
-    createCategory(name, color)
-  )
-  ipcMain.handle('category:update', (_, id: string, name: string, color: string, description: string) =>
-    updateCategory(id, name, color, description)
-  )
-  ipcMain.handle('category:delete', (_, id: string) => deleteCategory(id))
-  ipcMain.handle('category:reorder', (_, orderedIds: string[]) => reorderCategories(orderedIds))
+  ipcMain.handle('category:create', handleMutation('category', (name: string, color: string) => createCategory(name, color)))
+  ipcMain.handle('category:update', handleMutation('category', (id: string, name: string, color: string, description: string) => updateCategory(id, name, color, description)))
+  ipcMain.handle('category:delete', handleMutation('category', (id: string) => deleteCategory(id)))
+  ipcMain.handle('category:reorder', handleMutation('category', (orderedIds: string[]) => reorderCategories(orderedIds)))
 
   // Todos
   ipcMain.handle('todo:getAll', () => getAllTodos())
-  ipcMain.handle('todo:create', (_, data) => createTodo(data))
-  ipcMain.handle('todo:update', (_, id: string, data) => updateTodo(id, data))
-  ipcMain.handle('todo:archive', (_, id: string) => archiveTodo(id))
-  ipcMain.handle('todo:unarchive', (_, id: string) => unarchiveTodo(id))
-  ipcMain.handle('todo:delete', (_, id: string) => deleteTodo(id))
-  ipcMain.handle('todo:reorder', (_, orderedIds: string[]) => reorderTodos(orderedIds))
+  ipcMain.handle('todo:create', handleMutation('todo', (data) => createTodo(data)))
+  ipcMain.handle('todo:update', handleMutation('todo', (id: string, data) => updateTodo(id, data)))
+  ipcMain.handle('todo:archive', handleMutation('todo', (id: string) => archiveTodo(id)))
+  ipcMain.handle('todo:unarchive', handleMutation('todo', (id: string) => unarchiveTodo(id)))
+  ipcMain.handle('todo:delete', handleMutation('todo', (id: string) => deleteTodo(id)))
+  ipcMain.handle('todo:reorder', handleMutation('todo', (orderedIds: string[]) => reorderTodos(orderedIds)))
 
   // SubTasks
   ipcMain.handle('subtask:getByTodo', (_, todoId: string) => getSubTasksByTodo(todoId))
-  ipcMain.handle('subtask:create', (_, todoId: string, title: string) => createSubTask(todoId, title))
-  ipcMain.handle('subtask:update', (_, id: string, data: { title?: string; done?: boolean }) => updateSubTask(id, data))
-  ipcMain.handle('subtask:delete', (_, id: string) => deleteSubTask(id))
+  ipcMain.handle('subtask:getAll', () => getAllSubTasks())
+  ipcMain.handle('subtask:getForCalendar', () => getSubTasksForCalendar())
+  ipcMain.handle('subtask:create', handleMutation('subtask', (todoId: string, data: CreateSubTaskInput) => createSubTask(todoId, data)))
+  ipcMain.handle('subtask:update', handleMutation('subtask', (id: string, data: UpdateSubTaskInput) => updateSubTask(id, data)))
+  ipcMain.handle('subtask:delete', handleMutation('subtask', (id: string) => deleteSubTask(id)))
 
   // Timer
   ipcMain.handle('timer:start', (_, todoId: string) => startTimer(todoId))
@@ -74,6 +99,15 @@ export function registerIpcHandlers(
   ipcMain.handle('worklog:getByTodo', (_, todoId: string) => getWorkLogsByTodo(todoId))
   ipcMain.handle('worklog:getByDate', (_, dateStr: string) => getWorkLogsByDate(dateStr))
   ipcMain.handle('worklog:getSummary', (_, days: number) => getWorkLogsSummary(days))
+  ipcMain.handle('overview:getData', () => getOverviewData())
+
+  // Daily plan
+  ipcMain.handle('dailyPlan:getByDate', (_, dateStr: string) => getDailyPlanItems(dateStr))
+  ipcMain.handle('dailyPlan:add', handleMutation('plan', (dateStr: string, todoId: string) => addDailyPlanItem(dateStr, todoId)))
+  ipcMain.handle('dailyPlan:update', handleMutation('plan', (id: string, data: UpdateDailyPlanItemInput) => updateDailyPlanItem(id, data)))
+  ipcMain.handle('dailyPlan:shift', handleMutation('plan', (id: string, deltaMinutes: number) => shiftDailyPlanItem(id, deltaMinutes)))
+  ipcMain.handle('dailyPlan:delete', handleMutation('plan', (id: string) => deleteDailyPlanItem(id)))
+  ipcMain.handle('dailyPlan:reorder', handleMutation('plan', (dateStr: string, orderedIds: string[]) => reorderDailyPlanItems(dateStr, orderedIds)))
 
   // Markdown export
   ipcMain.handle('markdown:export', (_, mode: 'clipboard' | 'file') => exportMarkdown(mode))
@@ -147,5 +181,13 @@ export function registerIpcHandlers(
 
     setDataDir(newDir)
     return { moved: true }
+  })
+
+  // Window navigation
+  ipcMain.handle('window:openGantt', () => {
+    openGanttWindow()
+  })
+  ipcMain.handle('window:openTodo', (_, todoId: string) => {
+    openTodoInMainWindow(todoId)
   })
 }

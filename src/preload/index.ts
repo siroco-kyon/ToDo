@@ -3,14 +3,35 @@ import type {
   Category,
   Todo,
   SubTask,
+  CalendarSubTask,
   CreateTodoInput,
+  CreateSubTaskInput,
   UpdateTodoInput,
+  UpdateSubTaskInput,
   WorkLog,
   RunningState,
-  WorkLogSummaryRow
+  WorkLogSummaryRow,
+  OverviewData,
+  DailyPlanItem,
+  UpdateDailyPlanItemInput
 } from '../main/db'
 
-export type { Category, Todo, SubTask, CreateTodoInput, UpdateTodoInput, WorkLog, RunningState, WorkLogSummaryRow }
+export type {
+  Category,
+  Todo,
+  SubTask,
+  CalendarSubTask,
+  CreateTodoInput,
+  CreateSubTaskInput,
+  UpdateTodoInput,
+  UpdateSubTaskInput,
+  WorkLog,
+  RunningState,
+  WorkLogSummaryRow,
+  OverviewData,
+  DailyPlanItem,
+  UpdateDailyPlanItemInput
+}
 
 export interface ExportResult {
   success: boolean
@@ -44,8 +65,12 @@ const api = {
 
   // SubTasks
   subtaskGetByTodo: (todoId: string): Promise<SubTask[]> => ipcRenderer.invoke('subtask:getByTodo', todoId),
-  subtaskCreate: (todoId: string, title: string): Promise<SubTask> => ipcRenderer.invoke('subtask:create', todoId, title),
-  subtaskUpdate: (id: string, data: { title?: string; done?: boolean }): Promise<SubTask> => ipcRenderer.invoke('subtask:update', id, data),
+  subtaskGetAll: (): Promise<SubTask[]> => ipcRenderer.invoke('subtask:getAll'),
+  subtaskGetForCalendar: (): Promise<CalendarSubTask[]> => ipcRenderer.invoke('subtask:getForCalendar'),
+  subtaskCreate: (todoId: string, data: CreateSubTaskInput): Promise<SubTask> =>
+    ipcRenderer.invoke('subtask:create', todoId, data),
+  subtaskUpdate: (id: string, data: UpdateSubTaskInput): Promise<SubTask> =>
+    ipcRenderer.invoke('subtask:update', id, data),
   subtaskDelete: (id: string): Promise<void> => ipcRenderer.invoke('subtask:delete', id),
 
   // Timer
@@ -61,6 +86,20 @@ const api = {
     ipcRenderer.invoke('worklog:getByDate', dateStr),
   worklogGetSummary: (days: number): Promise<WorkLogSummaryRow[]> =>
     ipcRenderer.invoke('worklog:getSummary', days),
+  overviewGetData: (): Promise<OverviewData> => ipcRenderer.invoke('overview:getData'),
+
+  // Daily plan
+  dailyPlanGetByDate: (dateStr: string): Promise<DailyPlanItem[]> =>
+    ipcRenderer.invoke('dailyPlan:getByDate', dateStr),
+  dailyPlanAdd: (dateStr: string, todoId: string): Promise<DailyPlanItem> =>
+    ipcRenderer.invoke('dailyPlan:add', dateStr, todoId),
+  dailyPlanUpdate: (id: string, data: UpdateDailyPlanItemInput): Promise<DailyPlanItem> =>
+    ipcRenderer.invoke('dailyPlan:update', id, data),
+  dailyPlanShift: (id: string, deltaMinutes: number): Promise<DailyPlanItem> =>
+    ipcRenderer.invoke('dailyPlan:shift', id, deltaMinutes),
+  dailyPlanDelete: (id: string): Promise<void> => ipcRenderer.invoke('dailyPlan:delete', id),
+  dailyPlanReorder: (dateStr: string, orderedIds: string[]): Promise<void> =>
+    ipcRenderer.invoke('dailyPlan:reorder', dateStr, orderedIds),
 
   // Markdown
   markdownExport: (mode: 'clipboard' | 'file'): Promise<ExportResult> =>
@@ -90,6 +129,8 @@ const api = {
   appGetDefaultDataDir: (): Promise<string> => ipcRenderer.invoke('app:getDefaultDataDir'),
   appCompleteSetup: (newDir: string | null): Promise<void> =>
     ipcRenderer.invoke('app:completeSetup', newDir),
+  windowOpenGantt: (): Promise<void> => ipcRenderer.invoke('window:openGantt'),
+  windowOpenTodo: (todoId: string): Promise<void> => ipcRenderer.invoke('window:openTodo', todoId),
 
   // イベントリスナー
   onShortcutQuickAdd: (cb: () => void): (() => void) => {
@@ -101,6 +142,16 @@ const api = {
     const handler = (): void => cb()
     ipcRenderer.on('shortcut:export', handler)
     return () => ipcRenderer.removeListener('shortcut:export', handler)
+  },
+  onNavigateTodo: (cb: (todoId: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, todoId: string): void => cb(todoId)
+    ipcRenderer.on('navigation:openTodo', handler)
+    return () => ipcRenderer.removeListener('navigation:openTodo', handler)
+  },
+  onDataChanged: (cb: (scope: 'category' | 'todo' | 'subtask' | 'plan') => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, scope: 'category' | 'todo' | 'subtask' | 'plan'): void => cb(scope)
+    ipcRenderer.on('data:changed', handler)
+    return () => ipcRenderer.removeListener('data:changed', handler)
   }
 }
 

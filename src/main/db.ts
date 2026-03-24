@@ -38,6 +38,7 @@ function createTables(): void {
       status TEXT NOT NULL DEFAULT 'active',
       priority INTEGER DEFAULT 2,
       progress INTEGER DEFAULT 0,
+      start_date TEXT,
       due_date TEXT,
       sort_order INTEGER DEFAULT 0,
       recurrence TEXT DEFAULT NULL,
@@ -51,7 +52,11 @@ function createTables(): void {
       id TEXT PRIMARY KEY,
       todo_id TEXT NOT NULL,
       title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      start_date TEXT,
+      due_date TEXT,
       done INTEGER DEFAULT 0,
+      completed_at TEXT,
       sort_order INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       FOREIGN KEY (todo_id) REFERENCES Todos(id)
@@ -75,6 +80,20 @@ function createTables(): void {
       FOREIGN KEY (todo_id) REFERENCES Todos(id)
     );
 
+    CREATE TABLE IF NOT EXISTS DailyPlanItems (
+      id TEXT PRIMARY KEY,
+      plan_date TEXT NOT NULL,
+      todo_id TEXT NOT NULL,
+      scheduled_start TEXT,
+      estimated_minutes INTEGER,
+      lane INTEGER DEFAULT 0,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(plan_date, todo_id),
+      FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS Settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -84,6 +103,8 @@ function createTables(): void {
 
 function migrateDb(): void {
   const todoColumns = db.prepare('PRAGMA table_info(Todos)').all() as { name: string }[]
+  const subTaskColumns = db.prepare('PRAGMA table_info(SubTasks)').all() as { name: string }[]
+  const dailyPlanColumns = db.prepare('PRAGMA table_info(DailyPlanItems)').all() as { name: string }[]
 
   // Todos.progress 追加
   if (!todoColumns.some((c) => c.name === 'progress')) {
@@ -129,8 +150,31 @@ function migrateDb(): void {
   }
 
   // Todos.recurrence 追加
+  if (!todoColumns.some((c) => c.name === 'start_date')) {
+    db.prepare('ALTER TABLE Todos ADD COLUMN start_date TEXT').run()
+  }
+
   if (!todoColumns.some((c) => c.name === 'recurrence')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN recurrence TEXT DEFAULT NULL').run()
+  }
+
+  // SubTasks.description 追加
+  if (!subTaskColumns.some((c) => c.name === 'description')) {
+    db.prepare("ALTER TABLE SubTasks ADD COLUMN description TEXT DEFAULT ''").run()
+  }
+  if (!subTaskColumns.some((c) => c.name === 'start_date')) {
+    db.prepare('ALTER TABLE SubTasks ADD COLUMN start_date TEXT').run()
+  }
+  if (!subTaskColumns.some((c) => c.name === 'due_date')) {
+    db.prepare('ALTER TABLE SubTasks ADD COLUMN due_date TEXT').run()
+  }
+  if (!subTaskColumns.some((c) => c.name === 'completed_at')) {
+    db.prepare('ALTER TABLE SubTasks ADD COLUMN completed_at TEXT').run()
+  }
+
+  if (!dailyPlanColumns.some((c) => c.name === 'lane')) {
+    db.prepare('ALTER TABLE DailyPlanItems ADD COLUMN lane INTEGER DEFAULT 0').run()
+    db.prepare('UPDATE DailyPlanItems SET lane = 0 WHERE lane IS NULL').run()
   }
 }
 
@@ -146,6 +190,81 @@ function insertDefaultSettings(): void {
   stmt.run('mdTaskTpl', '## {{title}}{{category}}\n\n**合計: {{task_min}}分**')
   stmt.run('mdEntryTpl', '- {{start}} ～ {{end}} ({{min}}分){{note}}')
   stmt.run('mdFooterTpl', '**本日合計: {{total_min}}分**')
+}
+
+function getTodayKey(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+function parseDateKey(dateStr: string): Date {
+  const [year, month, day] = dateStr.slice(0, 10).split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+function diffCalendarDays(dateStr: string, baseDateStr: string): number {
+  const diffMs = parseDateKey(dateStr).getTime() - parseDateKey(baseDateStr).getTime()
+  return Math.round(diffMs / 86400000)
+}
+
+function normalizeDateKey(value: string | null | undefined): string | null {
+  if (!value) return null
+  const trimmed = value.trim().slice(0, 10)
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const parsed = new Date(year, month - 1, day)
+
+  if (
+    parsed.getFullYear() !== year
+    || parsed.getMonth() !== month - 1
+    || parsed.getDate() !== day
+  ) {
+    return null
+  }
+
+  return trimmed
+}
+
+function normalizeTimeKey(value: string | null | undefined): string | null {
+  if (!value) return null
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/)
+  if (!match) return null
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+function shiftTimeKey(value: string, deltaMinutes: number): string {
+  const normalized = normalizeTimeKey(value)
+  if (!normalized) return value
+
+  const [hours, minutes] = normalized.split(':').map(Number)
+  const totalMinutes = Math.min(23 * 60 + 59, Math.max(0, hours * 60 + minutes + deltaMinutes))
+  const nextHours = Math.floor(totalMinutes / 60)
+  const nextMinutes = totalMinutes % 60
+  return `${String(nextHours).padStart(2, '0')}:${String(nextMinutes).padStart(2, '0')}`
+}
+
+function clampRunningSeconds(startTime: string, windowStart: Date, now: Date): number {
+  const startMs = new Date(startTime).getTime()
+  const fromMs = Math.max(startMs, windowStart.getTime())
+  const toMs = now.getTime()
+  if (toMs <= fromMs) return 0
+  return Math.floor((toMs - fromMs) / 1000)
+}
+
+function average(values: number[]): number {
+  if (values.length === 0) return 0
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
+}
+
+function toMinutes(seconds: number): number {
+  return Math.round(seconds / 60)
 }
 
 // ─── Categories ───────────────────────────────────────────────
@@ -200,12 +319,27 @@ export function getAllTodos(): Todo[] {
 export function createTodo(data: CreateTodoInput): Todo {
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
+  const startDate = normalizeDateKey(data.start_date)
+  const dueDate = normalizeDateKey(data.due_date)
   // 新規タスクはsort_orderを最小値-1にして先頭に表示
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) as m FROM Todos').get() as { m: number }).m
   db.prepare(
-    `INSERT INTO Todos (id, title, description, category_id, status, priority, progress, due_date, sort_order, recurrence, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, data.title, data.description ?? '', data.category_id ?? null, data.priority ?? 3, data.progress ?? 0, data.due_date ?? null, minOrder - 1, data.recurrence ?? null, now, now)
+    `INSERT INTO Todos (id, title, description, category_id, status, priority, progress, start_date, due_date, sort_order, recurrence, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    data.title,
+    data.description ?? '',
+    data.category_id ?? null,
+    data.priority ?? 3,
+    data.progress ?? 0,
+    startDate,
+    dueDate,
+    minOrder - 1,
+    data.recurrence ?? null,
+    now,
+    now
+  )
   return db
     .prepare(
       `SELECT t.*, c.name as category_name, c.color as category_color
@@ -233,7 +367,8 @@ export function updateTodo(id: string, data: UpdateTodoInput): Todo {
   if (data.status !== undefined) { fields.push('status = ?'); values.push(data.status) }
   if (data.priority !== undefined) { fields.push('priority = ?'); values.push(data.priority) }
   if (data.progress !== undefined) { fields.push('progress = ?'); values.push(data.progress) }
-  if (data.due_date !== undefined) { fields.push('due_date = ?'); values.push(data.due_date) }
+  if (data.start_date !== undefined) { fields.push('start_date = ?'); values.push(normalizeDateKey(data.start_date)) }
+  if (data.due_date !== undefined) { fields.push('due_date = ?'); values.push(normalizeDateKey(data.due_date)) }
   if (data.recurrence !== undefined) { fields.push('recurrence = ?'); values.push(data.recurrence) }
 
   values.push(id)
@@ -269,24 +404,198 @@ export function deleteTodo(id: string): void {
 
 // ─── SubTasks ─────────────────────────────────────────────────
 
+export function getDailyPlanItems(planDate: string): DailyPlanItem[] {
+  return db.prepare(
+    `SELECT
+        dpi.*,
+        t.title,
+        t.description,
+        t.category_id,
+        t.status,
+        t.priority,
+        t.progress,
+        t.start_date,
+        t.due_date,
+        c.name AS category_name,
+        c.color AS category_color
+     FROM DailyPlanItems dpi
+     JOIN Todos t ON dpi.todo_id = t.id
+     LEFT JOIN Categories c ON t.category_id = c.id
+     WHERE dpi.plan_date = ?
+     ORDER BY
+       CASE WHEN dpi.scheduled_start IS NULL OR dpi.scheduled_start = '' THEN 1 ELSE 0 END ASC,
+       dpi.scheduled_start ASC,
+       dpi.lane ASC,
+       dpi.sort_order ASC,
+       dpi.created_at ASC`
+  ).all(planDate) as DailyPlanItem[]
+}
+
+export function addDailyPlanItem(planDate: string, todoId: string): DailyPlanItem {
+  const existing = db.prepare(
+    `SELECT
+        dpi.*,
+        t.title,
+        t.description,
+        t.category_id,
+        t.status,
+        t.priority,
+        t.progress,
+        t.start_date,
+        t.due_date,
+        c.name AS category_name,
+        c.color AS category_color
+     FROM DailyPlanItems dpi
+     JOIN Todos t ON dpi.todo_id = t.id
+     LEFT JOIN Categories c ON t.category_id = c.id
+     WHERE dpi.plan_date = ? AND dpi.todo_id = ?`
+  ).get(planDate, todoId) as DailyPlanItem | undefined
+
+  if (existing) return existing
+
+  const id = crypto.randomUUID()
+  const now = new Date().toISOString()
+  const maxOrder = (
+    db.prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM DailyPlanItems WHERE plan_date = ?').get(planDate) as { m: number }
+  ).m
+
+  db.prepare(
+    `INSERT INTO DailyPlanItems (id, plan_date, todo_id, scheduled_start, estimated_minutes, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, NULL, 60, ?, ?, ?)`
+  ).run(id, planDate, todoId, maxOrder + 1, now, now)
+
+  return db.prepare(
+    `SELECT
+        dpi.*,
+        t.title,
+        t.description,
+        t.category_id,
+        t.status,
+        t.priority,
+        t.progress,
+        t.start_date,
+        t.due_date,
+        c.name AS category_name,
+        c.color AS category_color
+     FROM DailyPlanItems dpi
+     JOIN Todos t ON dpi.todo_id = t.id
+     LEFT JOIN Categories c ON t.category_id = c.id
+     WHERE dpi.id = ?`
+  ).get(id) as DailyPlanItem
+}
+
+export function updateDailyPlanItem(id: string, data: UpdateDailyPlanItemInput): DailyPlanItem {
+  const now = new Date().toISOString()
+  const fields: string[] = ['updated_at = ?']
+  const values: unknown[] = [now]
+
+  if (data.scheduled_start !== undefined) {
+    fields.push('scheduled_start = ?')
+    values.push(normalizeTimeKey(data.scheduled_start))
+  }
+  if (data.estimated_minutes !== undefined) {
+    const value = data.estimated_minutes == null ? null : Math.max(15, Math.min(480, Math.round(data.estimated_minutes / 15) * 15))
+    fields.push('estimated_minutes = ?')
+    values.push(value)
+  }
+  if (data.lane !== undefined) {
+    fields.push('lane = ?')
+    values.push(Math.max(0, Math.min(2, data.lane)))
+  }
+
+  values.push(id)
+  db.prepare(`UPDATE DailyPlanItems SET ${fields.join(', ')} WHERE id = ?`).run(...values)
+
+  return db.prepare(
+    `SELECT
+        dpi.*,
+        t.title,
+        t.description,
+        t.category_id,
+        t.status,
+        t.priority,
+        t.progress,
+        t.start_date,
+        t.due_date,
+        c.name AS category_name,
+        c.color AS category_color
+     FROM DailyPlanItems dpi
+     JOIN Todos t ON dpi.todo_id = t.id
+     LEFT JOIN Categories c ON t.category_id = c.id
+     WHERE dpi.id = ?`
+  ).get(id) as DailyPlanItem
+}
+
+export function shiftDailyPlanItem(id: string, deltaMinutes: number): DailyPlanItem {
+  const current = db.prepare('SELECT scheduled_start FROM DailyPlanItems WHERE id = ?').get(id) as { scheduled_start: string | null } | undefined
+  const nextTime = current?.scheduled_start ? shiftTimeKey(current.scheduled_start, deltaMinutes) : null
+  return updateDailyPlanItem(id, { scheduled_start: nextTime })
+}
+
+export function deleteDailyPlanItem(id: string): void {
+  db.prepare('DELETE FROM DailyPlanItems WHERE id = ?').run(id)
+}
+
+export function reorderDailyPlanItems(planDate: string, orderedIds: string[]): void {
+  const update = db.prepare('UPDATE DailyPlanItems SET sort_order = ?, updated_at = ? WHERE id = ? AND plan_date = ?')
+  const now = new Date().toISOString()
+  db.transaction(() => {
+    orderedIds.forEach((id, index) => update.run(index, now, id, planDate))
+  })()
+}
+
 export function getSubTasksByTodo(todoId: string): SubTask[] {
   return db.prepare('SELECT * FROM SubTasks WHERE todo_id = ? ORDER BY sort_order ASC, created_at ASC').all(todoId) as SubTask[]
 }
 
-export function createSubTask(todoId: string, title: string): SubTask {
+export function getAllSubTasks(): SubTask[] {
+  return db.prepare('SELECT * FROM SubTasks ORDER BY todo_id ASC, sort_order ASC, created_at ASC').all() as SubTask[]
+}
+
+export function getSubTasksForCalendar(): CalendarSubTask[] {
+  return db.prepare(
+    `SELECT st.*, t.title AS todo_title, t.status AS todo_status, c.color AS category_color
+     FROM SubTasks st
+     JOIN Todos t ON st.todo_id = t.id
+     LEFT JOIN Categories c ON t.category_id = c.id
+     WHERE st.due_date IS NOT NULL AND t.status != 'archived'
+     ORDER BY st.due_date ASC, st.sort_order ASC, st.created_at ASC`
+  ).all() as CalendarSubTask[]
+}
+
+export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask {
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
   const maxOrder = (db.prepare('SELECT COALESCE(MAX(sort_order), -1) as m FROM SubTasks WHERE todo_id = ?').get(todoId) as { m: number }).m
-  db.prepare('INSERT INTO SubTasks (id, todo_id, title, done, sort_order, created_at) VALUES (?, ?, ?, 0, ?, ?)').run(id, todoId, title, maxOrder + 1, now)
+  const startDate = normalizeDateKey(data.start_date)
+  const dueDate = normalizeDateKey(data.due_date)
+  db.prepare(
+    'INSERT INTO SubTasks (id, todo_id, title, description, start_date, due_date, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)'
+  ).run(id, todoId, data.title, data.description ?? '', startDate, dueDate, maxOrder + 1, now)
   return db.prepare('SELECT * FROM SubTasks WHERE id = ?').get(id) as SubTask
 }
 
-export function updateSubTask(id: string, data: { title?: string; done?: boolean }): SubTask {
+export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
+  const current = db.prepare('SELECT done FROM SubTasks WHERE id = ?').get(id) as { done: number } | undefined
+
   if (data.title !== undefined) {
     db.prepare('UPDATE SubTasks SET title = ? WHERE id = ?').run(data.title, id)
   }
-  if (data.done !== undefined) {
-    db.prepare('UPDATE SubTasks SET done = ? WHERE id = ?').run(data.done ? 1 : 0, id)
+  if (data.description !== undefined) {
+    db.prepare('UPDATE SubTasks SET description = ? WHERE id = ?').run(data.description, id)
+  }
+  if (data.start_date !== undefined) {
+    db.prepare('UPDATE SubTasks SET start_date = ? WHERE id = ?').run(normalizeDateKey(data.start_date), id)
+  }
+  if (data.due_date !== undefined) {
+    db.prepare('UPDATE SubTasks SET due_date = ? WHERE id = ?').run(normalizeDateKey(data.due_date), id)
+  }
+  if (data.done !== undefined && current) {
+    if (data.done && current.done === 0) {
+      db.prepare('UPDATE SubTasks SET done = 1, completed_at = ? WHERE id = ?').run(new Date().toISOString(), id)
+    } else if (!data.done && current.done === 1) {
+      db.prepare('UPDATE SubTasks SET done = 0, completed_at = NULL WHERE id = ?').run(id)
+    }
   }
   return db.prepare('SELECT * FROM SubTasks WHERE id = ?').get(id) as SubTask
 }
@@ -393,6 +702,253 @@ export function getWorkLogsSummary(days: number): WorkLogSummaryRow[] {
     .all(from.toISOString()) as WorkLogSummaryRow[]
 }
 
+interface OverviewSubTaskRollup {
+  total: number
+  done: number
+}
+
+function getCurrentWeekStart(): Date {
+  const start = new Date()
+  const day = start.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  start.setDate(start.getDate() + diff)
+  start.setHours(0, 0, 0, 0)
+  return start
+}
+
+function buildOverviewTask(
+  todo: Todo,
+  reason: OverviewTaskReason,
+  subTaskRollups: Map<string, OverviewSubTaskRollup>
+): OverviewTaskItem {
+  const subTask = subTaskRollups.get(todo.id) ?? { total: 0, done: 0 }
+  return {
+    todoId: todo.id,
+    title: todo.title,
+    categoryName: todo.category_name,
+    categoryColor: todo.category_color,
+    priority: todo.priority,
+    progress: todo.status === 'done' ? 100 : todo.progress,
+    dueDate: todo.due_date,
+    updatedAt: todo.updated_at,
+    reason,
+    subTaskDone: subTask.done,
+    subTaskTotal: subTask.total
+  }
+}
+
+export function getOverviewData(): OverviewData {
+  const todos = getAllTodos().filter((todo) => todo.status !== 'archived')
+  const categories = getAllCategories()
+  const todayKey = getTodayKey()
+  const currentWeekStart = getCurrentWeekStart()
+  const activeTodos = todos.filter((todo) => todo.status !== 'done')
+  const doneTodos = todos.filter((todo) => todo.status === 'done')
+
+  const subTaskRows = db.prepare(`
+    SELECT
+      todo_id,
+      COUNT(*) AS total,
+      COALESCE(SUM(CASE WHEN done = 1 THEN 1 ELSE 0 END), 0) AS done
+    FROM SubTasks
+    GROUP BY todo_id
+  `).all() as { todo_id: string; total: number; done: number }[]
+
+  const subTaskRollups = new Map<string, OverviewSubTaskRollup>()
+  subTaskRows.forEach((row) => {
+    subTaskRollups.set(row.todo_id, { total: row.total, done: row.done })
+  })
+
+  const overdueTodos = activeTodos.filter((todo) => todo.due_date && diffCalendarDays(todo.due_date, todayKey) < 0)
+  const dueSoonTodos = activeTodos.filter((todo) => {
+    if (!todo.due_date) return false
+    const diffDays = diffCalendarDays(todo.due_date, todayKey)
+    return diffDays >= 0 && diffDays <= 3
+  })
+
+  const dueToday = activeTodos
+    .filter((todo) => todo.due_date === todayKey)
+    .sort((a, b) => b.priority - a.priority || a.title.localeCompare(b.title, 'ja'))
+    .slice(0, 6)
+    .map((todo) => buildOverviewTask(todo, 'dueToday', subTaskRollups))
+
+  const highPriority = activeTodos
+    .filter((todo) => todo.priority >= 4 && todo.progress < 100)
+    .sort((a, b) => {
+      if (b.priority !== a.priority) return b.priority - a.priority
+      if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date)
+      if (a.due_date) return -1
+      if (b.due_date) return 1
+      return a.progress - b.progress
+    })
+    .slice(0, 6)
+    .map((todo) => buildOverviewTask(todo, 'highPriority', subTaskRollups))
+
+  const nearlyDone = activeTodos
+    .filter((todo) => todo.progress >= 75 && todo.progress < 100)
+    .sort((a, b) => b.progress - a.progress || b.priority - a.priority)
+    .slice(0, 6)
+    .map((todo) => buildOverviewTask(todo, 'nearlyDone', subTaskRollups))
+
+  const staleThresholdMs = 7 * 86400000
+  const stale = activeTodos
+    .filter((todo) => Date.now() - new Date(todo.updated_at).getTime() >= staleThresholdMs)
+    .sort((a, b) => a.updated_at.localeCompare(b.updated_at))
+    .slice(0, 6)
+    .map((todo) => buildOverviewTask(todo, 'stale', subTaskRollups))
+
+  const riskCandidates = [
+    ...overdueTodos
+      .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? '') || b.priority - a.priority)
+      .map((todo) => buildOverviewTask(todo, 'overdue', subTaskRollups)),
+    ...dueSoonTodos
+      .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? '') || b.priority - a.priority)
+      .map((todo) => buildOverviewTask(todo, 'dueSoon', subTaskRollups)),
+    ...activeTodos
+      .filter((todo) => todo.priority >= 4 && todo.progress <= 40)
+      .sort((a, b) => b.priority - a.priority || a.progress - b.progress)
+      .map((todo) => buildOverviewTask(todo, 'highPriority', subTaskRollups)),
+    ...activeTodos
+      .filter((todo) => Date.now() - new Date(todo.updated_at).getTime() >= staleThresholdMs)
+      .sort((a, b) => a.updated_at.localeCompare(b.updated_at))
+      .map((todo) => buildOverviewTask(todo, 'stale', subTaskRollups))
+  ]
+
+  const riskMap = new Map<string, OverviewTaskItem>()
+  riskCandidates.forEach((item) => {
+    if (!riskMap.has(item.todoId)) {
+      riskMap.set(item.todoId, item)
+    }
+  })
+  const risks = [...riskMap.values()].slice(0, 8)
+
+  const categoryBuckets = new Map<string, OverviewCategoryStat>()
+  categories.forEach((category) => {
+    categoryBuckets.set(category.id, {
+      categoryId: category.id,
+      categoryName: category.name,
+      categoryColor: category.color,
+      totalTasks: 0,
+      activeTasks: 0,
+      doneTasks: 0,
+      overdueTasks: 0,
+      completionRate: 0,
+      completionScore: 0,
+      avgActiveProgress: 0
+    })
+  })
+
+  todos.forEach((todo) => {
+    const bucketKey = todo.category_id ?? '__uncategorized__'
+    if (!categoryBuckets.has(bucketKey)) {
+      categoryBuckets.set(bucketKey, {
+        categoryId: null,
+        categoryName: '未分類',
+        categoryColor: '#64748b',
+        totalTasks: 0,
+        activeTasks: 0,
+        doneTasks: 0,
+        overdueTasks: 0,
+        completionRate: 0,
+        completionScore: 0,
+        avgActiveProgress: 0
+      })
+    }
+
+    const bucket = categoryBuckets.get(bucketKey)!
+    bucket.totalTasks += 1
+    if (todo.status === 'done') bucket.doneTasks += 1
+    else bucket.activeTasks += 1
+    if (todo.status !== 'done' && todo.due_date && diffCalendarDays(todo.due_date, todayKey) < 0) {
+      bucket.overdueTasks += 1
+    }
+    bucket.completionScore += todo.status === 'done' ? 100 : todo.progress
+    if (todo.status !== 'done') {
+      bucket.avgActiveProgress += todo.progress
+    }
+  })
+
+  const overviewCategories = [...categoryBuckets.values()]
+    .filter((bucket) => bucket.totalTasks > 0)
+    .map((bucket) => ({
+      ...bucket,
+      completionRate: Math.round((bucket.doneTasks / bucket.totalTasks) * 100),
+      completionScore: Math.round(bucket.completionScore / bucket.totalTasks),
+      avgActiveProgress: bucket.activeTasks > 0
+        ? Math.round(bucket.avgActiveProgress / bucket.activeTasks)
+        : 100
+    }))
+    .sort((a, b) => b.overdueTasks - a.overdueTasks || a.completionScore - b.completionScore || b.totalTasks - a.totalTasks)
+
+  const todayStart = new Date()
+  todayStart.setHours(0, 0, 0, 0)
+  const weekStart = new Date()
+  weekStart.setDate(weekStart.getDate() - 6)
+  weekStart.setHours(0, 0, 0, 0)
+
+  const todaySecondsRow = db.prepare(`
+    SELECT COALESCE(SUM(duration_seconds), 0) AS total
+    FROM WorkLogs
+    WHERE start_time >= ?
+  `).get(todayStart.toISOString()) as { total: number }
+
+  const weekSecondsRow = db.prepare(`
+    SELECT COALESCE(SUM(duration_seconds), 0) AS total
+    FROM WorkLogs
+    WHERE start_time >= ?
+  `).get(weekStart.toISOString()) as { total: number }
+
+  const running = getRunningState()
+  const now = new Date()
+  const runningToday = running ? clampRunningSeconds(running.start_time, todayStart, now) : 0
+  const runningWeek = running ? clampRunningSeconds(running.start_time, weekStart, now) : 0
+  const completedSubTasks = db.prepare(
+    `SELECT
+        st.id,
+        st.todo_id,
+        st.title,
+        st.completed_at,
+        t.title AS todo_title,
+        c.name AS category_name,
+        c.color AS category_color
+     FROM SubTasks st
+     JOIN Todos t ON st.todo_id = t.id
+     LEFT JOIN Categories c ON t.category_id = c.id
+     WHERE st.done = 1
+       AND st.completed_at IS NOT NULL
+       AND st.completed_at >= ?
+       AND t.status != 'archived'
+     ORDER BY st.completed_at DESC`
+  ).all(currentWeekStart.toISOString()) as OverviewCompletedSubTaskItem[]
+
+  const summary: OverviewSummary = {
+    totalTasks: todos.length,
+    activeTasks: activeTodos.length,
+    doneTasks: doneTodos.length,
+    completionRate: todos.length > 0 ? Math.round((doneTodos.length / todos.length) * 100) : 0,
+    completionScore: todos.length > 0
+      ? Math.round(todos.reduce((sum, todo) => sum + (todo.status === 'done' ? 100 : todo.progress), 0) / todos.length)
+      : 0,
+    avgActiveProgress: average(activeTodos.map((todo) => todo.progress)),
+    overdueTasks: overdueTodos.length,
+    dueSoonTasks: dueSoonTodos.length,
+    todayMinutes: toMinutes(todaySecondsRow.total + runningToday),
+    weekMinutes: toMinutes(weekSecondsRow.total + runningWeek),
+    completedSubTasksThisWeek: completedSubTasks.length
+  }
+
+  return {
+    summary,
+    categories: overviewCategories,
+    risks,
+    dueToday,
+    highPriority,
+    nearlyDone,
+    stale,
+    completedSubTasks: completedSubTasks.slice(0, 10)
+  }
+}
+
 // ─── Settings ─────────────────────────────────────────────────
 
 export function getSetting(key: string): string | undefined {
@@ -427,6 +983,7 @@ export interface Todo {
   status: 'active' | 'done' | 'archived'
   priority: number
   progress: number
+  start_date: string | null
   due_date: string | null
   sort_order: number
   recurrence: 'daily' | 'weekly' | 'monthly' | null
@@ -439,9 +996,34 @@ export interface SubTask {
   id: string
   todo_id: string
   title: string
+  description: string
+  start_date: string | null
+  due_date: string | null
   done: number  // SQLite INTEGER (0 or 1)
+  completed_at: string | null
   sort_order: number
   created_at: string
+}
+
+export interface CalendarSubTask extends SubTask {
+  todo_title: string
+  todo_status: 'active' | 'done' | 'archived'
+  category_color: string | null
+}
+
+export interface CreateSubTaskInput {
+  title: string
+  description?: string
+  start_date?: string | null
+  due_date?: string | null
+}
+
+export interface UpdateSubTaskInput {
+  title?: string
+  description?: string
+  start_date?: string | null
+  due_date?: string | null
+  done?: boolean
 }
 
 export interface CreateTodoInput {
@@ -450,6 +1032,7 @@ export interface CreateTodoInput {
   category_id?: string | null
   priority?: number
   progress?: number
+  start_date?: string | null
   due_date?: string | null
   recurrence?: 'daily' | 'weekly' | 'monthly' | null
 }
@@ -461,6 +1044,7 @@ export interface UpdateTodoInput {
   status?: 'active' | 'done' | 'archived'
   priority?: number
   progress?: number
+  start_date?: string | null
   due_date?: string | null
   recurrence?: 'daily' | 'weekly' | 'monthly' | null
 }
@@ -495,4 +1079,96 @@ export interface WorkLogSummaryRow {
   end_time: string
   duration_seconds: number
   note: string
+}
+
+export interface DailyPlanItem {
+  id: string
+  plan_date: string
+  todo_id: string
+  scheduled_start: string | null
+  estimated_minutes: number | null
+  lane: number
+  sort_order: number
+  created_at: string
+  updated_at: string
+  title: string
+  description: string
+  category_id: string | null
+  category_name: string | null
+  category_color: string | null
+  status: 'active' | 'done' | 'archived'
+  priority: number
+  progress: number
+  start_date: string | null
+  due_date: string | null
+}
+
+export interface UpdateDailyPlanItemInput {
+  scheduled_start?: string | null
+  estimated_minutes?: number | null
+  lane?: number
+}
+
+export type OverviewTaskReason = 'overdue' | 'dueSoon' | 'highPriority' | 'stale' | 'dueToday' | 'nearlyDone'
+
+export interface OverviewSummary {
+  totalTasks: number
+  activeTasks: number
+  doneTasks: number
+  completionRate: number
+  completionScore: number
+  avgActiveProgress: number
+  overdueTasks: number
+  dueSoonTasks: number
+  todayMinutes: number
+  weekMinutes: number
+  completedSubTasksThisWeek: number
+}
+
+export interface OverviewCategoryStat {
+  categoryId: string | null
+  categoryName: string
+  categoryColor: string | null
+  totalTasks: number
+  activeTasks: number
+  doneTasks: number
+  overdueTasks: number
+  completionRate: number
+  completionScore: number
+  avgActiveProgress: number
+}
+
+export interface OverviewTaskItem {
+  todoId: string
+  title: string
+  categoryName: string | null
+  categoryColor: string | null
+  priority: number
+  progress: number
+  dueDate: string | null
+  updatedAt: string
+  reason: OverviewTaskReason
+  subTaskDone: number
+  subTaskTotal: number
+}
+
+export interface OverviewCompletedSubTaskItem {
+  id: string
+  todo_id: string
+  title: string
+  completed_at: string
+  todo_title: string
+  category_name: string | null
+  category_color: string | null
+}
+
+export interface OverviewData {
+  summary: OverviewSummary
+  categories: OverviewCategoryStat[]
+  risks: OverviewTaskItem[]
+  dueToday: OverviewTaskItem[]
+  highPriority: OverviewTaskItem[]
+  nearlyDone: OverviewTaskItem[]
+  stale: OverviewTaskItem[]
+  completedSubTasks: OverviewCompletedSubTaskItem[]
 }

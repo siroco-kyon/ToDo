@@ -1,29 +1,41 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import type { Todo, WorkLog, SubTask, UpdateTodoInput, Category } from '../types'
+import type { Todo, WorkLog, SubTask, UpdateTodoInput, Category, CreateSubTaskInput, DailyPlanItem } from '../types'
 import { TimerDisplay } from './TimerDisplay'
 
 interface Props {
   todo: Todo | null
   categories: Category[]
+  todayPlanItems: DailyPlanItem[]
   runningTodoId: string | null
   elapsedSeconds: number
   onUpdate: (id: string, data: UpdateTodoInput) => Promise<void>
   onStartTimer: (todoId: string) => Promise<void>
   onStopTimer: (note?: string) => Promise<void>
+  onAddToTodayPlan: (todoId: string) => Promise<DailyPlanItem>
   onShowToast: (message: string, type?: 'success' | 'error') => void
 }
 
+interface EditableSubTask {
+  id: string
+  title: string
+  description: string
+  start_date: string | null
+  due_date: string | null
+  done: boolean
+}
+
 export function TodoDetail({
-  todo, categories, runningTodoId, elapsedSeconds,
-  onUpdate, onStartTimer, onStopTimer, onShowToast
+  todo, categories, todayPlanItems, runningTodoId, elapsedSeconds,
+  onUpdate, onStartTimer, onStopTimer, onAddToTodayPlan, onShowToast
 }: Props): React.JSX.Element {
   const [logs, setLogs] = useState<WorkLog[]>([])
   const [subTasks, setSubTasks] = useState<SubTask[]>([])
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState<UpdateTodoInput>({})
+  const [editableSubTasks, setEditableSubTasks] = useState<EditableSubTask[]>([])
   const [stopNote, setStopNote] = useState('')
   const [localProgress, setLocalProgress] = useState<number | null>(null)
-  const [newSubTaskTitle, setNewSubTaskTitle] = useState('')
+  const [newSubTask, setNewSubTask] = useState<CreateSubTaskInput>({ title: '', description: '', start_date: null, due_date: null })
   const isDragging = useRef(false)
   const progBarRef = useRef<HTMLDivElement>(null)
 
@@ -38,24 +50,55 @@ export function TodoDetail({
 
   const todoId = todo?.id
 
+  const createEditData = useCallback((source: Todo): UpdateTodoInput => ({
+    title: source.title,
+    description: source.description,
+    category_id: source.category_id,
+    status: source.status,
+    priority: source.priority,
+    progress: source.progress,
+    start_date: source.start_date ?? undefined,
+    due_date: source.due_date ?? undefined,
+    recurrence: source.recurrence ?? undefined
+  }), [])
+
+  const createEditableSubTasks = useCallback((items: SubTask[]): EditableSubTask[] => (
+    items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      description: item.description ?? '',
+      start_date: item.start_date ?? null,
+      due_date: item.due_date ?? null,
+      done: Boolean(item.done)
+    }))
+  ), [])
+
   // todo が切り替わったときだけ編集状態をリセット
   useEffect(() => {
     if (!todoId || !todo) { setSubTasks([]); setLogs([]); return }
     setEditing(false)
-    setEditData({
-      title: todo.title,
-      description: todo.description,
-      category_id: todo.category_id,
-      status: todo.status,
-      priority: todo.priority,
-      progress: todo.progress,
-      due_date: todo.due_date ?? undefined,
-      recurrence: todo.recurrence ?? undefined
-    })
+    setEditData(createEditData(todo))
     window.api.worklogGetByTodo(todoId).then(setLogs).catch(console.error)
     loadSubTasks(todoId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todoId, loadSubTasks])
+  }, [todoId, loadSubTasks, createEditData])
+
+  useEffect(() => {
+    if (!editing) {
+      setEditableSubTasks(createEditableSubTasks(subTasks))
+    }
+  }, [subTasks, editing, createEditableSubTasks])
+
+  useEffect(() => {
+    if (!todoId) return
+
+    const unsubscribe = window.api.onDataChanged((scope) => {
+      if (scope !== 'subtask') return
+      void loadSubTasks(todoId)
+    })
+
+    return () => unsubscribe()
+  }, [loadSubTasks, todoId])
 
   // ─── 進捗バードラッグ ─────────────────────────────────────────
   // ※ Rules of Hooks: useCallback は条件分岐の前に定義する
@@ -94,12 +137,63 @@ export function TodoDetail({
   }
 
   const isRunning = runningTodoId === todo.id
+  const isInTodayPlan = todayPlanItems.some((item) => item.todo_id === todo.id)
   const totalSecs = logs.reduce((s, l) => s + l.duration_seconds, 0) + (isRunning ? elapsedSeconds : 0)
   const totalMins = Math.round(totalSecs / 60)
+  const startEditing = (): void => {
+    setEditData(createEditData(todo))
+    setEditableSubTasks(createEditableSubTasks(subTasks))
+    setEditing(true)
+  }
+
+  const cancelEditing = (): void => {
+    setEditData(createEditData(todo))
+    setEditableSubTasks(createEditableSubTasks(subTasks))
+    setEditing(false)
+  }
 
   // ─── 編集保存 ────────────────────────────────────────────────
   const handleSave = async (): Promise<void> => {
+    const invalidSubTask = editableSubTasks.some((subTask) => !subTask.title.trim())
+    if (invalidSubTask) {
+      onShowToast('サブタスク名は空にできません', 'error')
+      return
+    }
+
+    const invalidSubTaskRange = editableSubTasks.some((subTask) => (
+      subTask.start_date && subTask.due_date && subTask.start_date > subTask.due_date
+    ))
+    if (invalidSubTaskRange) {
+      onShowToast('サブタスクの開始日は期限以前に設定してください', 'error')
+      return
+    }
+
+    if (editData.start_date && editData.due_date && editData.start_date > editData.due_date) {
+      onShowToast('開始日は期限以前に設定してください', 'error')
+      return
+    }
+
+    const changedSubTasks = editableSubTasks.filter((draft) => {
+      const current = subTasks.find((subTask) => subTask.id === draft.id)
+      if (!current) return false
+      return current.title !== draft.title.trim()
+        || (current.description ?? '') !== draft.description.trim()
+        || (current.start_date ?? null) !== (draft.start_date ?? null)
+        || (current.due_date ?? null) !== (draft.due_date ?? null)
+        || Boolean(current.done) !== draft.done
+    })
+
     await onUpdate(todo.id, editData)
+    await Promise.all(
+      changedSubTasks.map((subTask) => window.api.subtaskUpdate(subTask.id, {
+        title: subTask.title.trim(),
+        description: subTask.description.trim(),
+        start_date: subTask.start_date ?? null,
+        due_date: subTask.due_date ?? null,
+        done: subTask.done
+      }))
+    )
+    await loadSubTasks(todo.id)
     setEditing(false)
     onShowToast('保存しました')
   }
@@ -116,20 +210,47 @@ export function TodoDetail({
   // ─── サブタスク ──────────────────────────────────────────────
   const handleAddSubTask = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
-    if (!newSubTaskTitle.trim()) return
-    await window.api.subtaskCreate(todo.id, newSubTaskTitle.trim())
-    setNewSubTaskTitle('')
-    await loadSubTasks(todo.id)
+    const title = newSubTask.title.trim()
+    if (!title) return
+    if (newSubTask.start_date && newSubTask.due_date && newSubTask.start_date > newSubTask.due_date) {
+      onShowToast('サブタスクの開始日は期限以前に設定してください', 'error')
+      return
+    }
+    const created = await window.api.subtaskCreate(todo.id, {
+      title,
+      description: newSubTask.description?.trim() ?? '',
+      start_date: newSubTask.start_date ?? null,
+      due_date: newSubTask.due_date ?? null
+    })
+    setNewSubTask({ title: '', description: '', start_date: null, due_date: null })
+    setSubTasks((prev) => [...prev, created])
+    if (editing) {
+      setEditableSubTasks((prev) => [...prev, {
+        id: created.id,
+        title: created.title,
+        description: created.description ?? '',
+        start_date: created.start_date ?? null,
+        due_date: created.due_date ?? null,
+        done: Boolean(created.done)
+      }])
+    }
   }
 
   const handleToggleSubTask = async (st: SubTask): Promise<void> => {
-    await window.api.subtaskUpdate(st.id, { done: !st.done })
-    await loadSubTasks(todo.id)
+    const updated = await window.api.subtaskUpdate(st.id, { done: !st.done })
+    setSubTasks((prev) => prev.map((subTask) => subTask.id === updated.id ? updated : subTask))
   }
 
   const handleDeleteSubTask = async (id: string): Promise<void> => {
     await window.api.subtaskDelete(id)
-    await loadSubTasks(todo.id)
+    setSubTasks((prev) => prev.filter((subTask) => subTask.id !== id))
+    setEditableSubTasks((prev) => prev.filter((subTask) => subTask.id !== id))
+  }
+
+  const handleEditSubTask = (id: string, data: Partial<EditableSubTask>): void => {
+    setEditableSubTasks((prev) => prev.map((subTask) => (
+      subTask.id === id ? { ...subTask, ...data } : subTask
+    )))
   }
 
   const doneCount = subTasks.filter((s) => s.done).length
@@ -154,12 +275,36 @@ export function TodoDetail({
             </h2>
           )}
         </div>
-        <button onClick={() => setEditing(!editing)} style={smallBtnStyle('#334155')}>
+        {!editing && todo.status === 'active' && (
+          <button
+            onClick={() => onAddToTodayPlan(todo.id)}
+            disabled={isInTodayPlan}
+            style={smallBtnStyle(isInTodayPlan ? '#1e293b' : '#2563eb', isInTodayPlan ? '#64748b' : '#dbeafe')}
+          >
+            {isInTodayPlan ? '計画追加済み' : '今日の計画に追加'}
+          </button>
+        )}
+        <button onClick={editing ? cancelEditing : startEditing} style={smallBtnStyle('#334155')}>
           {editing ? '×' : '編集'}
         </button>
       </div>
 
       {/* タイマー */}
+      {!editing && (todo.start_date || todo.due_date) && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {todo.start_date && (
+            <div style={dateBadgeStyle('#0f172a', '#93c5fd')}>
+              開始 {todo.start_date}
+            </div>
+          )}
+          {todo.due_date && (
+            <div style={dateBadgeStyle('#0f172a', '#fbbf24')}>
+              期限 {todo.due_date}
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ background: '#1e293b', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 4 }}>経過時間</div>
@@ -186,6 +331,15 @@ export function TodoDetail({
             <label style={labelStyle}>説明</label>
             <textarea value={editData.description ?? ''} onChange={(e) => setEditData((d) => ({ ...d, description: e.target.value }))}
               rows={4} style={{ ...inputStyle, resize: 'vertical' }} />
+          </div>
+          <div>
+            <label style={labelStyle}>開始日</label>
+            <input
+              type="date"
+              value={editData.start_date?.slice(0, 10) ?? ''}
+              onChange={(e) => setEditData((d) => ({ ...d, start_date: e.target.value || null }))}
+              style={inputStyle}
+            />
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <div style={{ flex: 1 }}>
@@ -270,17 +424,55 @@ export function TodoDetail({
           サブタスク {subTasks.length > 0 && `(${doneCount}/${subTasks.length})`}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 8 }}>
-          {subTasks.map((st) => (
-            <SubTaskRow key={st.id} subTask={st} onToggle={() => handleToggleSubTask(st)} onDelete={() => handleDeleteSubTask(st.id)} />
-          ))}
+          {editing ? (
+            editableSubTasks.map((st) => (
+              <EditableSubTaskRow
+                key={st.id}
+                subTask={st}
+                onChange={(data) => handleEditSubTask(st.id, data)}
+                onDelete={() => handleDeleteSubTask(st.id)}
+              />
+            ))
+          ) : (
+            subTasks.map((st) => (
+              <SubTaskRow key={st.id} subTask={st} onToggle={() => handleToggleSubTask(st)} onDelete={() => handleDeleteSubTask(st.id)} />
+            ))
+          )}
         </div>
-        <form onSubmit={handleAddSubTask} style={{ display: 'flex', gap: 6 }}>
+        <form onSubmit={handleAddSubTask} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <input
-            value={newSubTaskTitle}
-            onChange={(e) => setNewSubTaskTitle(e.target.value)}
+            value={newSubTask.title}
+            onChange={(e) => setNewSubTask((prev) => ({ ...prev, title: e.target.value }))}
             placeholder="＋ サブタスクを追加..."
             style={{ ...inputStyle, fontSize: '0.82rem', padding: '6px 8px' }}
           />
+          <textarea
+            value={newSubTask.description ?? ''}
+            onChange={(e) => setNewSubTask((prev) => ({ ...prev, description: e.target.value }))}
+            placeholder="説明文..."
+            rows={2}
+            style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }}
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            <div>
+              <div style={subTaskDateLabelStyle}>開始日</div>
+              <input
+                type="date"
+                value={newSubTask.start_date ?? ''}
+                onChange={(e) => setNewSubTask((prev) => ({ ...prev, start_date: e.target.value || null }))}
+                style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }}
+              />
+            </div>
+            <div>
+              <div style={subTaskDateLabelStyle}>期限</div>
+              <input
+                type="date"
+                value={newSubTask.due_date ?? ''}
+                onChange={(e) => setNewSubTask((prev) => ({ ...prev, due_date: e.target.value || null }))}
+                style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }}
+              />
+            </div>
+          </div>
           <button type="submit" style={{ ...smallBtnStyle('#6366f1'), padding: '6px 12px', fontSize: '0.8rem' }}>追加</button>
         </form>
       </div>
@@ -320,6 +512,68 @@ export function TodoDetail({
   )
 }
 
+function EditableSubTaskRow({
+  subTask,
+  onChange,
+  onDelete
+}: {
+  subTask: EditableSubTask
+  onChange: (data: Partial<EditableSubTask>) => void
+  onDelete: () => void
+}): React.JSX.Element {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, background: '#1e293b' }}>
+      <button
+        onClick={() => onChange({ done: !subTask.done })}
+        style={{
+          width: 16, height: 16, borderRadius: 3, flexShrink: 0, marginTop: 8,
+          border: `2px solid ${subTask.done ? '#4ade80' : '#475569'}`,
+          background: subTask.done ? '#4ade80' : 'transparent',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}
+      >
+        {subTask.done ? <span style={{ fontSize: 9, color: '#0f172a', fontWeight: 'bold' }}>✓</span> : null}
+      </button>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <input
+          value={subTask.title}
+          onChange={(e) => onChange({ title: e.target.value })}
+          placeholder="サブタスク名"
+          style={{ ...inputStyle, fontSize: '0.82rem', padding: '6px 8px' }}
+        />
+        <textarea
+          value={subTask.description}
+          onChange={(e) => onChange({ description: e.target.value })}
+          placeholder="説明文..."
+          rows={2}
+          style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }}
+        />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          <div>
+            <div style={subTaskDateLabelStyle}>開始日</div>
+            <input
+              type="date"
+              value={subTask.start_date ?? ''}
+              onChange={(e) => onChange({ start_date: e.target.value || null })}
+              style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }}
+            />
+          </div>
+          <div>
+            <div style={subTaskDateLabelStyle}>期限</div>
+            <input
+              type="date"
+              value={subTask.due_date ?? ''}
+              onChange={(e) => onChange({ due_date: e.target.value || null })}
+              style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }}
+            />
+          </div>
+        </div>
+      </div>
+      <button onClick={onDelete} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.75rem', padding: '6px 2px' }}>✕</button>
+    </div>
+  )
+}
+
 function SubTaskRow({ subTask, onToggle, onDelete }: { subTask: SubTask; onToggle: () => void; onDelete: () => void }): React.JSX.Element {
   const [hovered, setHovered] = useState(false)
   return (
@@ -339,14 +593,65 @@ function SubTaskRow({ subTask, onToggle, onDelete }: { subTask: SubTask; onToggl
       >
         {subTask.done ? <span style={{ fontSize: 9, color: '#0f172a', fontWeight: 'bold' }}>✓</span> : null}
       </button>
-      <span style={{ flex: 1, fontSize: '0.85rem', color: subTask.done ? '#475569' : '#cbd5e1', textDecoration: subTask.done ? 'line-through' : 'none' }}>
-        {subTask.title}
-      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '0.85rem', color: subTask.done ? '#475569' : '#cbd5e1', textDecoration: subTask.done ? 'line-through' : 'none' }}>
+          {subTask.title}
+        </div>
+        {(subTask.start_date || subTask.due_date) && (
+          <div style={{
+            marginTop: 4,
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '2px 6px',
+            borderRadius: 999,
+            fontSize: '0.68rem',
+            color: dueDateColor(subTask.due_date ?? subTask.start_date!, Boolean(subTask.done)),
+            background: dueDateBg(subTask.due_date ?? subTask.start_date!, Boolean(subTask.done))
+          }}>
+            {formatSubTaskDateRange(subTask.start_date, subTask.due_date)}
+          </div>
+        )}
+        {subTask.done && subTask.completed_at && (
+          <div style={{
+            marginTop: 4,
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '2px 6px',
+            borderRadius: 999,
+            fontSize: '0.68rem',
+            color: '#86efac',
+            background: '#052e16'
+          }}>
+            完了 {formatDateTime(subTask.completed_at)}
+          </div>
+        )}
+        {subTask.description && (
+          <div style={{ marginTop: 2, fontSize: '0.75rem', color: subTask.done ? '#334155' : '#64748b', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+            {subTask.description}
+          </div>
+        )}
+      </div>
       {hovered && (
         <button onClick={onDelete} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '0.75rem', padding: '0 2px' }}>✕</button>
       )}
     </div>
   )
+}
+
+function dueDateColor(dueDate: string, done: boolean): string {
+  if (done) return '#475569'
+  return isOverdue(dueDate) ? '#fca5a5' : '#cbd5e1'
+}
+
+function dueDateBg(dueDate: string, done: boolean): string {
+  if (done) return '#1e293b'
+  return isOverdue(dueDate) ? '#7f1d1d' : '#1e293b'
+}
+
+function isOverdue(dueDate: string): boolean {
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return dueDate < today
 }
 
 function progressColor(p: number): string {
@@ -360,6 +665,20 @@ function formatTime(date: Date): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
+function formatDateTime(isoStr: string): string {
+  const date = new Date(isoStr)
+  return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${formatTime(date)}`
+}
+
+function formatSubTaskDateRange(startDate: string | null, dueDate: string | null): string {
+  if (startDate && dueDate) {
+    return startDate === dueDate ? `1日予定 ${startDate}` : `${startDate} - ${dueDate}`
+  }
+  if (startDate) return `開始 ${startDate}`
+  if (dueDate) return `期限 ${dueDate}`
+  return ''
+}
+
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', background: '#0f172a',
   border: '1px solid #334155', borderRadius: 6, color: '#e2e8f0',
@@ -368,6 +687,25 @@ const inputStyle: React.CSSProperties = {
 
 const labelStyle: React.CSSProperties = {
   display: 'block', fontSize: '0.75rem', color: '#64748b', marginBottom: 4
+}
+
+const subTaskDateLabelStyle: React.CSSProperties = {
+  fontSize: '0.68rem',
+  color: '#64748b',
+  marginBottom: 4
+}
+
+function dateBadgeStyle(background: string, color: string): React.CSSProperties {
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '4px 10px',
+    borderRadius: 999,
+    background,
+    color,
+    fontSize: '0.74rem',
+    fontWeight: 600
+  }
 }
 
 function smallBtnStyle(bg: string, color = '#fff'): React.CSSProperties {

@@ -2,8 +2,10 @@ import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 
-// bootstrap設定はAppDataに最小限だけ置く
-const BOOTSTRAP_FILE = path.join(app.getPath('userData'), 'config.json')
+function getBootstrapFile(): string {
+  // userData is resolved lazily so dev mode can override it before first use.
+  return path.join(app.getPath('userData'), 'config.json')
+}
 
 function defaultDataDir(): string {
   if (app.isPackaged) {
@@ -19,18 +21,20 @@ interface BootstrapConfig {
 }
 
 function readConfig(): BootstrapConfig {
+  const bootstrapFile = getBootstrapFile()
   try {
-    if (fs.existsSync(BOOTSTRAP_FILE)) {
-      return JSON.parse(fs.readFileSync(BOOTSTRAP_FILE, 'utf-8')) as BootstrapConfig
+    if (fs.existsSync(bootstrapFile)) {
+      return JSON.parse(fs.readFileSync(bootstrapFile, 'utf-8')) as BootstrapConfig
     }
   } catch { /* ignore */ }
   return {}
 }
 
 function writeConfig(config: BootstrapConfig): void {
-  const dir = path.dirname(BOOTSTRAP_FILE)
+  const bootstrapFile = getBootstrapFile()
+  const dir = path.dirname(bootstrapFile)
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-  fs.writeFileSync(BOOTSTRAP_FILE, JSON.stringify(config, null, 2))
+  fs.writeFileSync(bootstrapFile, JSON.stringify(config, null, 2))
 }
 
 export function getDataDir(): string {
@@ -45,7 +49,7 @@ export function setDataDir(newDir: string): void {
 }
 
 export function isFirstLaunch(): boolean {
-  return !fs.existsSync(BOOTSTRAP_FILE)
+  return !fs.existsSync(getBootstrapFile())
 }
 
 export function getDefaultDataDir(): string {
