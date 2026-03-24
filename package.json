@@ -9,7 +9,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "dist": "npm run build && electron-builder",
+    "generate:icons": "node scripts/generate-build-icons.cjs",
+    "dist": "npm run generate:icons && npm run build && electron-builder",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
