@@ -6,6 +6,7 @@ interface Props {
   categories: Category[]
   onSelectTodo: (id: string) => void
   onUpdateTodo: (id: string, data: UpdateTodoInput) => Promise<void>
+  onReorderTodos?: (orderedIds: string[]) => Promise<void>
   onOpenSeparateWindow?: () => void
   standalone?: boolean
 }
@@ -615,6 +616,7 @@ export function GanttView({
   categories,
   onSelectTodo,
   onUpdateTodo,
+  onReorderTodos,
   onOpenSeparateWindow,
   standalone = false
 }: Props): React.JSX.Element {
@@ -646,6 +648,10 @@ export function GanttView({
   const [dependencyFeedback, setDependencyFeedback] = useState<string | null>(null)
   const [lastUndoEntry, setLastUndoEntry] = useState<UndoEntry | null>(null)
   const [undoPending, setUndoPending] = useState(false)
+  const [isReorderMode, setIsReorderMode] = useState(false)
+  const [draggingTodoId, setDraggingTodoId] = useState<string | null>(null)
+  const [dragOverTodoId, setDragOverTodoId] = useState<string | null>(null)
+  const [reorderPending, setReorderPending] = useState(false)
   const [dependencyLayoutVersion, setDependencyLayoutVersion] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
   const chartCanvasRef = useRef<HTMLDivElement>(null)
@@ -768,7 +774,7 @@ export function GanttView({
 
   const todayKey = getTodayKey()
   const unitWidth = UNIT_WIDTH[timeScale][zoom]
-  const isTimelineEditable = true
+  const isTimelineEditable = !isReorderMode
   const normalizedTaskQuery = taskQuery.trim().toLowerCase()
 
   const applyManualPreset = useCallback((preset: Exclude<RangePreset, null>) => {
@@ -779,6 +785,31 @@ export function GanttView({
     setManualStart(addDays(todayKey, config.startOffset))
     setManualEnd(addDays(todayKey, config.endOffset))
   }, [todayKey])
+
+  useEffect(() => {
+    if (!isReorderMode) return
+    setInteraction(null)
+    setDependencyDrag(null)
+  }, [isReorderMode])
+
+  useEffect(() => {
+    if (isReorderMode) return
+    setDraggingTodoId(null)
+    setDragOverTodoId(null)
+  }, [isReorderMode])
+
+  useEffect(() => {
+    if (!isReorderMode) return
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setIsReorderMode(false)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isReorderMode])
 
   const categoryOptions = useMemo(() => {
     const usedCategoryIds = new Set(todos.map((todo) => todo.category_id).filter((value): value is string => Boolean(value)))
@@ -878,6 +909,9 @@ export function GanttView({
     filteredGroups
       .filter((group) => group.todoBar || group.datedSubTasks.length > 0)
       .sort((a, b) => {
+        const aOrder = a.todo.sort_order ?? 0
+        const bOrder = b.todo.sort_order ?? 0
+        if (aOrder !== bOrder) return aOrder - bOrder
         const aAnchor = a.anchorDate ?? '9999-12-31'
         const bAnchor = b.anchorDate ?? '9999-12-31'
         if (aAnchor !== bAnchor) return aAnchor.localeCompare(bAnchor)
@@ -889,7 +923,12 @@ export function GanttView({
   const unscheduledGroups = useMemo(() => (
     filteredGroups
       .filter((group) => !group.todoBar && group.datedSubTasks.length === 0)
-      .sort((a, b) => b.todo.priority - a.todo.priority || a.todo.title.localeCompare(b.todo.title, 'ja'))
+      .sort((a, b) => {
+        const aOrder = a.todo.sort_order ?? 0
+        const bOrder = b.todo.sort_order ?? 0
+        if (aOrder !== bOrder) return aOrder - bOrder
+        return b.todo.priority - a.todo.priority || a.todo.title.localeCompare(b.todo.title, 'ja')
+      })
   ), [filteredGroups])
 
   const autoStart = scheduledGroups[0]?.anchorDate ?? addDays(todayKey, -7)
@@ -944,6 +983,53 @@ export function GanttView({
         return todoVisible || subTaskVisible
       })
   ), [normalizedRange.end, normalizedRange.start, scheduledGroups, showSubtasks])
+
+  const canStartReorderMode = Boolean(onReorderTodos) && chartGroups.length > 1
+
+  const handleReorderDragStart = useCallback((todoId: string, event: React.DragEvent<HTMLDivElement>): void => {
+    if (!isReorderMode || reorderPending || !onReorderTodos) return
+    setDraggingTodoId(todoId)
+    setDragOverTodoId(null)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', todoId)
+  }, [isReorderMode, onReorderTodos, reorderPending])
+
+  const handleReorderDragOver = useCallback((todoId: string, event: React.DragEvent<HTMLDivElement>): void => {
+    if (!isReorderMode || reorderPending || !draggingTodoId || draggingTodoId === todoId) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    setDragOverTodoId(todoId)
+  }, [draggingTodoId, isReorderMode, reorderPending])
+
+  const handleReorderDrop = useCallback(async (targetTodoId: string, event: React.DragEvent<HTMLDivElement>): Promise<void> => {
+    event.preventDefault()
+    if (!isReorderMode || reorderPending || !onReorderTodos || !draggingTodoId || draggingTodoId === targetTodoId) {
+      setDragOverTodoId(null)
+      return
+    }
+
+    const orderedIds = chartGroups.map((group) => group.todo.id)
+    const fromIndex = orderedIds.indexOf(draggingTodoId)
+    const toIndex = orderedIds.indexOf(targetTodoId)
+    if (fromIndex < 0 || toIndex < 0) {
+      setDraggingTodoId(null)
+      setDragOverTodoId(null)
+      return
+    }
+
+    const nextOrderedIds = [...orderedIds]
+    nextOrderedIds.splice(fromIndex, 1)
+    nextOrderedIds.splice(toIndex, 0, draggingTodoId)
+
+    setReorderPending(true)
+    try {
+      await onReorderTodos(nextOrderedIds)
+    } finally {
+      setReorderPending(false)
+      setDraggingTodoId(null)
+      setDragOverTodoId(null)
+    }
+  }, [chartGroups, draggingTodoId, isReorderMode, onReorderTodos, reorderPending])
 
   const collectDependentTodoIds = useCallback((rootTodoIds: string[]): string[] => {
     const queue = [...rootTodoIds]
@@ -1707,11 +1793,28 @@ export function GanttView({
             {standalone
               ? '別ウィンドウでタイムラインを編集できます。'
               : 'メイン画面で日付調整や依存関係の管理ができます。'}
-            {' バーや端のハンドルをドラッグして日程を調整できます。'}
+            {isReorderMode
+              ? ' 並び替えモード中です。左列のドラッグハンドルでタスク順を変更できます。'
+              : ' バーや端のハンドルをドラッグして日程を調整できます。'}
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            onClick={() => setIsReorderMode((previous) => !previous)}
+            disabled={reorderPending || (!isReorderMode && !canStartReorderMode)}
+            style={{
+              ...headerActionButtonStyle,
+              border: `1px solid ${isReorderMode ? '#16a34a' : '#2563eb'}`,
+              background: isReorderMode ? '#14532d' : '#172554',
+              color: isReorderMode ? '#dcfce7' : '#dbeafe',
+              cursor: reorderPending || (!isReorderMode && !canStartReorderMode) ? 'not-allowed' : 'pointer',
+              opacity: reorderPending || (!isReorderMode && !canStartReorderMode) ? 0.55 : 1
+            }}
+            title={!isReorderMode && !canStartReorderMode ? '並び替え対象のタスクが2件以上あるときに有効です。' : undefined}
+          >
+            {reorderPending ? '並び替えを保存中...' : isReorderMode ? '並び替え完了' : '並び替え'}
+          </button>
           <button
             onClick={() => void performUndo()}
             disabled={!lastUndoEntry || undoPending}
@@ -1743,6 +1846,7 @@ export function GanttView({
         <span style={collapsedSummaryChipStyle}>表示単位 {SCALE_LABELS[timeScale]}</span>
         <span style={collapsedSummaryChipStyle}>ズーム {ZOOM_LABELS[zoom]}</span>
         <span style={collapsedSummaryChipStyle}>表示 {chartGroups.length}件</span>
+        {isReorderMode && <span style={healthSummaryChipStyle('#14532d', '#16a34a', '#dcfce7')}>並び替えモード</span>}
         <span style={collapsedSummaryChipStyle}>サブタスク {visibleSubTaskCount}/{datedSubTaskCount}</span>
         {expandableTodoIds.length > 0 && (
           <span style={collapsedSummaryChipStyle}>展開 {expandedTodoCount}/{expandableTodoIds.length}</span>
@@ -2127,6 +2231,8 @@ export function GanttView({
                 const dependencyGeometry = dependencyGeometryByTodoId.get(group.todo.id) ?? null
                 const isDependencySource = dependencyDrag?.predecessorTodoId === group.todo.id
                 const isDependencyTarget = dependencyDrag?.hoverSuccessorTodoId === group.todo.id
+                const isReorderDragSource = isReorderMode && draggingTodoId === group.todo.id
+                const isReorderDragTarget = isReorderMode && dragOverTodoId === group.todo.id && draggingTodoId !== group.todo.id
                 const displayedTodoBar = todoBar
                   ? normalizeBar(
                     activeState ? activeState.previewStartDate : todoBar.startDate,
@@ -2150,9 +2256,32 @@ export function GanttView({
 
                 return (
                   <div key={group.todo.id}>
-                    <div style={{ display: 'flex', minHeight: PARENT_ROW_HEIGHT, borderTop: '1px solid #111827' }}>
+                    <div
+                      onDragOver={(event) => { void handleReorderDragOver(group.todo.id, event) }}
+                      onDrop={(event) => { void handleReorderDrop(group.todo.id, event) }}
+                      onDragEnd={() => {
+                        setDraggingTodoId(null)
+                        setDragOverTodoId(null)
+                      }}
+                      style={{
+                        display: 'flex',
+                        minHeight: PARENT_ROW_HEIGHT,
+                        borderTop: isReorderDragTarget ? '2px solid #38bdf8' : '1px solid #111827',
+                        opacity: isReorderDragSource ? 0.7 : 1
+                      }}
+                    >
                       <div style={{ position: 'sticky', left: 0, zIndex: 4, width: LEFT_COLUMN_WIDTH, minWidth: LEFT_COLUMN_WIDTH, background: '#0f172a', borderRight: '1px solid #1e293b', padding: '9px 12px' }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                          {isReorderMode && (
+                            <div
+                              draggable={!reorderPending}
+                              onDragStart={(event) => handleReorderDragStart(group.todo.id, event)}
+                              style={reorderHandleStyle(reorderPending, isReorderDragSource)}
+                              title="ドラッグして並び替え"
+                            >
+                              ⋮⋮
+                            </div>
+                          )}
                           <button
                             onClick={() => {
                               if (!canToggleSubtasks) return
@@ -2725,6 +2854,28 @@ function expandToggleButtonStyle(active: boolean, expanded: boolean): React.CSSP
     justifyContent: 'center',
     flexShrink: 0,
     marginTop: 1
+  }
+}
+
+function reorderHandleStyle(disabled: boolean, dragging: boolean): React.CSSProperties {
+  return {
+    width: 20,
+    height: 22,
+    borderRadius: 6,
+    border: `1px solid ${dragging ? '#38bdf8' : '#334155'}`,
+    background: dragging ? '#082f49' : '#111827',
+    color: dragging ? '#e0f2fe' : '#94a3b8',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '0.76rem',
+    lineHeight: 1,
+    letterSpacing: '-0.1em',
+    userSelect: 'none',
+    cursor: disabled ? 'not-allowed' : 'grab',
+    flexShrink: 0,
+    marginTop: 1,
+    opacity: disabled ? 0.5 : 1
   }
 }
 

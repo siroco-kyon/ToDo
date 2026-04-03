@@ -464,6 +464,7 @@ export function App(): React.JSX.Element {
             void window.api.windowOpenTodo(id)
           }}
           onUpdateTodo={handleUpdate}
+          onReorderTodos={handleReorder}
           standalone
         />
         <Toast toasts={toasts} onRemove={removeToast} />
@@ -608,6 +609,7 @@ export function App(): React.JSX.Element {
               todos={filteredTodos}
               onSelectTodo={openTodoDetail}
               onUpdateTodo={handleUpdate}
+              onReorderTodos={handleReorder}
               onOpenSeparateWindow={handleOpenGanttWindow}
             />
           ) : activeView === 'plan' ? (
