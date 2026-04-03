@@ -139,6 +139,8 @@ export function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    if (isFirstLaunch !== false) return
+
     let disposed = false
     window.api.settingsGet('themeMode').then((value) => {
       if (disposed) return
@@ -147,7 +149,7 @@ export function App(): React.JSX.Element {
     return () => {
       disposed = true
     }
-  }, [])
+  }, [isFirstLaunch])
 
   useEffect(() => {
     const unsubscribe = window.api.onNavigateTodo((todoId) => {

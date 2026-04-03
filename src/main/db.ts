@@ -1160,6 +1160,8 @@ export function getOverviewData(): OverviewData {
 // ─── Settings ─────────────────────────────────────────────────
 
 export function getSetting(key: string): string | undefined {
+  if (!db) return undefined
+
   const row = db.prepare('SELECT value FROM Settings WHERE key = ?').get(key) as
     | { value: string }
     | undefined
@@ -1167,6 +1169,7 @@ export function getSetting(key: string): string | undefined {
 }
 
 export function setSetting(key: string, value: string): void {
+  if (!db) return
   db.prepare('INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)').run(key, value)
 }
 
