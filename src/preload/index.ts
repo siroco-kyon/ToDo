@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   Category,
   Todo,
+  TodoDependency,
   SubTask,
   CalendarSubTask,
   CreateTodoInput,
@@ -19,6 +20,7 @@ import type {
 export type {
   Category,
   Todo,
+  TodoDependency,
   SubTask,
   CalendarSubTask,
   CreateTodoInput,
@@ -62,6 +64,12 @@ const api = {
   todoUnarchive: (id: string): Promise<void> => ipcRenderer.invoke('todo:unarchive', id),
   todoDelete: (id: string): Promise<void> => ipcRenderer.invoke('todo:delete', id),
   todoReorder: (orderedIds: string[]): Promise<void> => ipcRenderer.invoke('todo:reorder', orderedIds),
+  todoDependencyGetAll: (): Promise<TodoDependency[]> => ipcRenderer.invoke('todoDependency:getAll'),
+  todoDependencyCreate: (predecessorTodoId: string, successorTodoId: string, lagDays: number): Promise<TodoDependency> =>
+    ipcRenderer.invoke('todoDependency:create', predecessorTodoId, successorTodoId, lagDays),
+  todoDependencyUpdate: (id: string, lagDays: number): Promise<TodoDependency> =>
+    ipcRenderer.invoke('todoDependency:update', id, lagDays),
+  todoDependencyDelete: (id: string): Promise<void> => ipcRenderer.invoke('todoDependency:delete', id),
 
   // SubTasks
   subtaskGetByTodo: (todoId: string): Promise<SubTask[]> => ipcRenderer.invoke('subtask:getByTodo', todoId),

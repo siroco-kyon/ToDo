@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Category, SubTask, Todo, UpdateTodoInput } from '../types'
+﻿import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { Category, SubTask, Todo, TodoDependency, UpdateTodoInput } from '../types'
 
 interface Props {
   todos: Todo[]
@@ -35,11 +35,17 @@ interface InteractionState {
   ownerTodoId: string
   mode: 'move' | 'resizeStart' | 'resizeEnd'
   originClientX: number
-  originalStartIndex: number
-  originalEndIndex: number
-  previewStartIndex: number
-  previewEndIndex: number
+  originalStartDate: string
+  originalEndDate: string
+  previewStartDate: string
+  previewEndDate: string
   moved: boolean
+}
+
+interface GanttBaselineSnapshot {
+  capturedAt: string
+  todos: Record<string, TodoBar>
+  subTasks: Record<string, TodoBar>
 }
 
 interface TimelineUnit {
@@ -52,18 +58,65 @@ interface TimelineUnit {
   background: string
 }
 
+interface DependencyPath {
+  id: string
+  path: string
+}
+
+interface DependencyDragState {
+  predecessorTodoId: string
+  originX: number
+  originY: number
+  pointerX: number
+  pointerY: number
+  hoverSuccessorTodoId: string | null
+}
+
+interface TodoScheduleSnapshot {
+  id: string
+  startDate: string | null
+  dueDate: string | null
+}
+
+interface SubTaskScheduleSnapshot {
+  id: string
+  startDate: string | null
+  dueDate: string | null
+}
+
+interface UndoEntry {
+  label: string
+  run: () => Promise<void>
+}
+
 type ZoomMode = 'compact' | 'normal' | 'detail' | 'focus'
 type StatusFilter = 'active' | 'done' | 'all'
 type TimeScale = 'day' | 'month' | 'year'
 type RangePreset = '14d' | '30d' | '90d' | null
 type CategoryFilterKey = string | '__uncategorized__'
+type ScheduleHealthStatus = 'done' | 'future' | 'ahead' | 'onTrack' | 'behind' | 'overdue'
+
+interface ScheduleHealthInfo {
+  status: ScheduleHealthStatus
+  expectedProgress: number
+  delta: number
+  label: string
+  accent: string
+  background: string
+  text: string
+}
 
 const NO_CATEGORY_KEY = '__uncategorized__'
+const GANTT_VIEW_SETTINGS_STORAGE_KEY = 'gantt-view-settings'
+const COLLAPSED_TODO_STORAGE_KEY = 'gantt-collapsed-todo-ids'
+const GANTT_BASELINE_STORAGE_KEY = 'gantt-baseline-snapshot'
 const LEFT_COLUMN_WIDTH = 252
 const PARENT_ROW_HEIGHT = 60
 const SUBTASK_ROW_HEIGHT = 42
 const PARENT_BAR_HEIGHT = 34
 const SUBTASK_BAR_HEIGHT = 22
+const DEPENDENCY_HANDLE_SIZE = 14
+const DEPENDENCY_TARGET_HANDLE_SIZE = 18
 const RANGE_PADDING_DAYS = 5
 const UNIT_WIDTH: Record<TimeScale, Record<ZoomMode, number>> = {
   day: { compact: 28, normal: 40, detail: 56, focus: 84 },
@@ -71,7 +124,7 @@ const UNIT_WIDTH: Record<TimeScale, Record<ZoomMode, number>> = {
   year: { compact: 96, normal: 128, detail: 168, focus: 216 }
 }
 const ZOOM_LABELS: Record<ZoomMode, string> = {
-  compact: '圧縮',
+  compact: 'コンパクト',
   normal: '標準',
   detail: '詳細',
   focus: '集中'
@@ -183,6 +236,134 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+interface PersistedGanttViewSettings {
+  zoom: ZoomMode
+  timeScale: TimeScale
+  statusFilter: StatusFilter
+  showSubtasks: boolean
+  showUnscheduled: boolean
+  showScheduleSignals: boolean
+  showBaseline: boolean
+  rangeMode: 'auto' | 'manual'
+  manualStart: string
+  manualEnd: string
+  manualPreset: RangePreset
+  controlsCollapsed: boolean
+  selectedCategoryKeys: CategoryFilterKey[]
+}
+
+function defaultGanttViewSettings(): PersistedGanttViewSettings {
+  return {
+    zoom: 'detail',
+    timeScale: 'day',
+    statusFilter: 'active',
+    showSubtasks: true,
+    showUnscheduled: true,
+    showScheduleSignals: true,
+    showBaseline: true,
+    rangeMode: 'auto',
+    manualStart: '',
+    manualEnd: '',
+    manualPreset: null,
+    controlsCollapsed: true,
+    selectedCategoryKeys: []
+  }
+}
+
+function loadGanttViewSettings(): PersistedGanttViewSettings {
+  const defaults = defaultGanttViewSettings()
+
+  try {
+    const raw = window.localStorage.getItem(GANTT_VIEW_SETTINGS_STORAGE_KEY)
+    if (!raw) return defaults
+
+    const parsed = JSON.parse(raw) as Partial<PersistedGanttViewSettings>
+    return {
+      zoom: parsed.zoom === 'compact' || parsed.zoom === 'normal' || parsed.zoom === 'detail' || parsed.zoom === 'focus'
+        ? parsed.zoom
+        : defaults.zoom,
+      timeScale: parsed.timeScale === 'day' || parsed.timeScale === 'month' || parsed.timeScale === 'year'
+        ? parsed.timeScale
+        : defaults.timeScale,
+      statusFilter: parsed.statusFilter === 'active' || parsed.statusFilter === 'done' || parsed.statusFilter === 'all'
+        ? parsed.statusFilter
+        : defaults.statusFilter,
+      showSubtasks: typeof parsed.showSubtasks === 'boolean' ? parsed.showSubtasks : defaults.showSubtasks,
+      showUnscheduled: typeof parsed.showUnscheduled === 'boolean' ? parsed.showUnscheduled : defaults.showUnscheduled,
+      showScheduleSignals: typeof parsed.showScheduleSignals === 'boolean'
+        ? parsed.showScheduleSignals
+        : defaults.showScheduleSignals,
+      showBaseline: typeof parsed.showBaseline === 'boolean' ? parsed.showBaseline : defaults.showBaseline,
+      rangeMode: parsed.rangeMode === 'manual' ? 'manual' : 'auto',
+      manualStart: typeof parsed.manualStart === 'string' ? parsed.manualStart : defaults.manualStart,
+      manualEnd: typeof parsed.manualEnd === 'string' ? parsed.manualEnd : defaults.manualEnd,
+      manualPreset: parsed.manualPreset === '14d' || parsed.manualPreset === '30d' || parsed.manualPreset === '90d'
+        ? parsed.manualPreset
+        : null,
+      controlsCollapsed: typeof parsed.controlsCollapsed === 'boolean' ? parsed.controlsCollapsed : defaults.controlsCollapsed,
+      selectedCategoryKeys: Array.isArray(parsed.selectedCategoryKeys)
+        ? parsed.selectedCategoryKeys.filter((value): value is CategoryFilterKey => typeof value === 'string')
+        : defaults.selectedCategoryKeys
+    }
+  } catch {
+    return defaults
+  }
+}
+
+function loadCollapsedTodoIds(): string[] {
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_TODO_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((value): value is string => typeof value === 'string')
+  } catch {
+    return []
+  }
+}
+
+function normalizeBar(startDate: string, endDate: string): TodoBar {
+  return startDate <= endDate ? { startDate, endDate } : { startDate: endDate, endDate: startDate }
+}
+
+function shiftDateByScale(dateStr: string, scale: TimeScale, amount: number): string {
+  const date = parseDateKey(dateStr)
+
+  if (scale === 'year') date.setFullYear(date.getFullYear() + amount)
+  else if (scale === 'month') date.setMonth(date.getMonth() + amount)
+  else date.setDate(date.getDate() + amount)
+
+  return formatDateKey(date)
+}
+
+function isTodoBar(value: unknown): value is TodoBar {
+  if (!value || typeof value !== 'object') return false
+
+  const candidate = value as Partial<TodoBar>
+  return typeof candidate.startDate === 'string' && typeof candidate.endDate === 'string'
+}
+
+function loadBaselineSnapshot(): GanttBaselineSnapshot | null {
+  try {
+    const raw = window.localStorage.getItem(GANTT_BASELINE_STORAGE_KEY)
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw) as Partial<GanttBaselineSnapshot>
+    if (typeof parsed.capturedAt !== 'string') return null
+
+    const todos = Object.fromEntries(
+      Object.entries(parsed.todos ?? {}).filter((entry): entry is [string, TodoBar] => isTodoBar(entry[1]))
+    )
+    const subTasks = Object.fromEntries(
+      Object.entries(parsed.subTasks ?? {}).filter((entry): entry is [string, TodoBar] => isTodoBar(entry[1]))
+    )
+
+    return { capturedAt: parsed.capturedAt, todos, subTasks }
+  } catch {
+    return null
+  }
+}
+
 function shortDateLabel(dateStr: string): string {
   const date = parseDateKey(dateStr)
   return `${date.getMonth() + 1}/${date.getDate()}`
@@ -190,7 +371,7 @@ function shortDateLabel(dateStr: string): string {
 
 function formatUnitLabels(unitStart: string, scale: TimeScale): Pick<TimelineUnit, 'primaryLabel' | 'secondaryLabel'> {
   const date = parseDateKey(unitStart)
-  if (scale === 'month') return { primaryLabel: String(date.getFullYear()), secondaryLabel: `${date.getMonth() + 1}月` }
+  if (scale === 'month') return { primaryLabel: String(date.getFullYear()), secondaryLabel: String(date.getMonth() + 1) }
   if (scale === 'year') return { primaryLabel: String(date.getFullYear()), secondaryLabel: '年' }
   return { primaryLabel: WEEKDAY_LABELS[date.getDay()], secondaryLabel: shortDateLabel(unitStart) }
 }
@@ -238,16 +419,154 @@ function isDateInsideRange(dateStr: string, rangeStart: string, rangeEnd: string
   return dateStr >= rangeStart && dateStr <= rangeEnd
 }
 
+function calculateExpectedProgress(bar: TodoBar, todayKey: string): number {
+  if (todayKey < bar.startDate) return 0
+  if (todayKey > bar.endDate) return 100
+
+  const totalDays = Math.max(diffCalendarDays(bar.endDate, bar.startDate), 0) + 1
+  const elapsedDays = clamp(diffCalendarDays(todayKey, bar.startDate), 0, totalDays - 1)
+
+  return clamp(Math.round(((elapsedDays + 0.5) / totalDays) * 100), 0, 100)
+}
+
+function getScheduleHealth(todo: Todo, todoBar: TodoBar | null, todayKey: string): ScheduleHealthInfo | null {
+  if (!todoBar) return null
+
+  const progress = clamp(todo.status === 'done' ? 100 : todo.progress, 0, 100)
+  const expectedProgress = calculateExpectedProgress(todoBar, todayKey)
+  const delta = Math.round(progress - expectedProgress)
+  const daysOverdue = todo.status === 'done' || todayKey <= todoBar.endDate
+    ? 0
+    : diffCalendarDays(todayKey, todoBar.endDate)
+
+  if (todo.status === 'done') {
+    return {
+      status: 'done',
+      expectedProgress: 100,
+      delta: 0,
+      label: '完了',
+      accent: '#22c55e',
+      background: '#052e16',
+      text: '#dcfce7'
+    }
+  }
+
+  if (daysOverdue > 0 && progress < 100) {
+    return {
+      status: 'overdue',
+      expectedProgress,
+      delta,
+      label: daysOverdue + '日超過',
+      accent: '#ef4444',
+      background: '#450a0a',
+      text: '#fecaca'
+    }
+  }
+
+  if (todayKey < todoBar.startDate && progress === 0) {
+    return {
+      status: 'future',
+      expectedProgress,
+      delta,
+      label: '開始前',
+      accent: '#64748b',
+      background: '#0f172a',
+      text: '#cbd5e1'
+    }
+  }
+
+  if (delta <= -12) {
+    return {
+      status: 'behind',
+      expectedProgress,
+      delta,
+      label: Math.abs(delta) + 'pt遅れ',
+      accent: '#f59e0b',
+      background: '#451a03',
+      text: '#fde68a'
+    }
+  }
+
+  if (delta >= 12) {
+    return {
+      status: 'ahead',
+      expectedProgress,
+      delta,
+      label: delta + 'pt先行',
+      accent: '#22c55e',
+      background: '#052e16',
+      text: '#dcfce7'
+    }
+  }
+
+  return {
+    status: 'onTrack',
+    expectedProgress,
+    delta,
+    label: '順調',
+    accent: '#38bdf8',
+    background: '#082f49',
+    text: '#e0f2fe'
+  }
+}
+
 function parentTone(todo: Todo): { background: string; border: string; text: string; fill: string } {
   if (todo.status === 'done') return { background: '#16a34a22', border: '#22c55e', text: '#dcfce7', fill: '#22c55e' }
   const base = todo.category_color ?? '#6366f1'
   return { background: `${base}22`, border: `${base}cc`, text: '#e2e8f0', fill: base }
 }
 
-function subTaskTone(subTask: SubTask): { background: string; border: string; text: string } {
-  return Boolean(subTask.done)
-    ? { background: '#14532d33', border: '#22c55e', text: '#bbf7d0' }
-    : { background: '#0f172a', border: '#60a5fa', text: '#dbeafe' }
+function subTaskTone(subTask: SubTask, todayKey: string): {
+  background: string
+  border: string
+  text: string
+  rowBackground: string
+  metaText: string
+  statusBackground: string
+  statusText: string
+  statusLabel: string
+  borderStyle: 'solid' | 'dashed'
+} {
+  if (Boolean(subTask.done)) {
+    return {
+      background: 'linear-gradient(90deg, #166534, #15803d)',
+      border: '#86efac',
+      text: '#f0fdf4',
+      rowBackground: '#102016',
+      metaText: '#bbf7d0',
+      statusBackground: '#14532d',
+      statusText: '#dcfce7',
+      statusLabel: '完了',
+      borderStyle: 'solid'
+    }
+  }
+
+  const subTaskBar = getSubTaskBar(subTask)
+  const overdue = Boolean(subTaskBar) && subTaskBar.endDate < todayKey
+
+  return overdue
+    ? {
+      background: 'linear-gradient(90deg, #7f1d1d, #991b1b)',
+      border: '#fca5a5',
+      text: '#fef2f2',
+      rowBackground: '#1f1315',
+      metaText: '#fecaca',
+      statusBackground: '#450a0a',
+      statusText: '#fecaca',
+      statusLabel: '期限超過',
+      borderStyle: 'solid'
+    }
+    : {
+      background: '#0f172a',
+      border: '#60a5fa',
+      text: '#dbeafe',
+      rowBackground: '#0c1322',
+      metaText: '#64748b',
+      statusBackground: '#0f172a',
+      statusText: '#93c5fd',
+      statusLabel: '進行中',
+      borderStyle: 'dashed'
+    }
 }
 
 function rowTimelineStyle(height: number, unitWidth: number, timelineWidth: number): React.CSSProperties {
@@ -268,9 +587,27 @@ function todoMatchesQuery(todo: Todo, normalizedQuery: string): boolean {
 }
 
 function barStartLabel(dateStr: string, scale: TimeScale): string {
-  if (scale === 'month') return `${parseDateKey(dateStr).getMonth() + 1}月`
-  if (scale === 'year') return `${parseDateKey(dateStr).getFullYear()}年`
+  if (scale === 'month') return String(parseDateKey(dateStr).getMonth() + 1)
+  if (scale === 'year') return String(parseDateKey(dateStr).getFullYear())
   return shortDateLabel(dateStr)
+}
+
+function buildDependencyPath(startX: number, startY: number, endX: number, endY: number): string {
+  const horizontalGap = endX - startX
+  if (horizontalGap >= 36) {
+    const elbowX = Math.max(startX + 22, endX - 18, startX + 22 + Math.abs(endY - startY) * 0.12)
+    return `M ${startX} ${startY} H ${elbowX} V ${endY} H ${endX}`
+  }
+
+  const topLaneY = Math.max(Math.min(startY, endY) - 28, 6)
+  const startLeadX = startX + 10
+  const targetApproachX = Math.max(endX - 16, startLeadX + 10)
+  return `M ${startX} ${startY} H ${startLeadX} V ${topLaneY} H ${targetApproachX} V ${endY} H ${endX}`
+}
+
+function areDependencyPathsEqual(previous: DependencyPath[], next: DependencyPath[]): boolean {
+  if (previous.length !== next.length) return false
+  return previous.every((path, index) => path.id === next[index]?.id && path.path === next[index]?.path)
 }
 
 export function GanttView({
@@ -281,54 +618,137 @@ export function GanttView({
   onOpenSeparateWindow,
   standalone = false
 }: Props): React.JSX.Element {
-  const [zoom, setZoom] = useState<ZoomMode>('detail')
-  const [timeScale, setTimeScale] = useState<TimeScale>('day')
+  const initialSettings = useMemo(() => loadGanttViewSettings(), [])
+  const [zoom, setZoom] = useState<ZoomMode>(initialSettings.zoom)
+  const [timeScale, setTimeScale] = useState<TimeScale>(initialSettings.timeScale)
   const [subTasks, setSubTasks] = useState<SubTask[]>([])
+  const [dependencies, setDependencies] = useState<TodoDependency[]>([])
   const [interaction, setInteraction] = useState<InteractionState | null>(null)
+  const [dependencyDrag, setDependencyDrag] = useState<DependencyDragState | null>(null)
+  const [dependencyPaths, setDependencyPaths] = useState<DependencyPath[]>([])
   const [loading, setLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
-  const [showSubtasks, setShowSubtasks] = useState(true)
-  const [showUnscheduled, setShowUnscheduled] = useState(true)
-  const [rangeMode, setRangeMode] = useState<'auto' | 'manual'>('auto')
-  const [manualStart, setManualStart] = useState('')
-  const [manualEnd, setManualEnd] = useState('')
-  const [manualPreset, setManualPreset] = useState<RangePreset>(null)
-  const [controlsCollapsed, setControlsCollapsed] = useState(true)
-  const [selectedCategoryKeys, setSelectedCategoryKeys] = useState<CategoryFilterKey[]>([])
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialSettings.statusFilter)
+  const [showSubtasks, setShowSubtasks] = useState(initialSettings.showSubtasks)
+  const [showUnscheduled, setShowUnscheduled] = useState(initialSettings.showUnscheduled)
+  const [showScheduleSignals, setShowScheduleSignals] = useState(initialSettings.showScheduleSignals)
+  const [showBaseline, setShowBaseline] = useState(initialSettings.showBaseline)
+  const [rangeMode, setRangeMode] = useState<'auto' | 'manual'>(initialSettings.rangeMode)
+  const [manualStart, setManualStart] = useState(initialSettings.manualStart)
+  const [manualEnd, setManualEnd] = useState(initialSettings.manualEnd)
+  const [manualPreset, setManualPreset] = useState<RangePreset>(initialSettings.manualPreset)
+  const [controlsCollapsed, setControlsCollapsed] = useState(initialSettings.controlsCollapsed)
+  const [selectedCategoryKeys, setSelectedCategoryKeys] = useState<CategoryFilterKey[]>(initialSettings.selectedCategoryKeys)
   const [taskQuery, setTaskQuery] = useState('')
   const [selectedTodoIds, setSelectedTodoIds] = useState<string[]>([])
+  const [collapsedTodoIds, setCollapsedTodoIds] = useState<string[]>(() => loadCollapsedTodoIds())
+  const [baselineSnapshot, setBaselineSnapshot] = useState<GanttBaselineSnapshot | null>(() => loadBaselineSnapshot())
+  const [dependencyDraft, setDependencyDraft] = useState<{ predecessorTodoId: string; successorTodoId: string; lagDays: string }>({ predecessorTodoId: '', successorTodoId: '', lagDays: '0' })
+  const [dependencyFeedback, setDependencyFeedback] = useState<string | null>(null)
+  const [lastUndoEntry, setLastUndoEntry] = useState<UndoEntry | null>(null)
+  const [undoPending, setUndoPending] = useState(false)
+  const [dependencyLayoutVersion, setDependencyLayoutVersion] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const chartCanvasRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<InteractionState | null>(null)
+  const dependencyDragRef = useRef<DependencyDragState | null>(null)
+  const dependencySourceHandleRefs = useRef(new Map<string, HTMLDivElement>())
+  const dependencyTargetBarRefs = useRef(new Map<string, HTMLDivElement>())
   const suppressSelectionRef = useRef(false)
+  const lastAutoScrollKeyRef = useRef<string | null>(null)
 
   interactionRef.current = interaction
+  dependencyDragRef.current = dependencyDrag
 
-  const loadSubTasks = useCallback(async (): Promise<void> => {
+  const loadGanttData = useCallback(async (): Promise<void> => {
     setLoading(true)
     try {
-      const next = await window.api.subtaskGetAll()
-      setSubTasks(next)
+      const [nextSubTasks, nextDependencies] = await Promise.all([
+        window.api.subtaskGetAll(),
+        window.api.todoDependencyGetAll()
+      ])
+      setSubTasks(nextSubTasks)
+      setDependencies(nextDependencies)
     } catch {
       setSubTasks([])
+      setDependencies([])
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    void loadSubTasks()
-  }, [loadSubTasks])
+    void loadGanttData()
+  }, [loadGanttData])
 
   useEffect(() => {
     const unsubscribe = window.api.onDataChanged(() => {
-      void loadSubTasks()
+      void loadGanttData()
     })
     return () => unsubscribe()
-  }, [loadSubTasks])
+  }, [loadGanttData])
 
   useEffect(() => {
     setSelectedTodoIds((previous) => previous.filter((id) => todos.some((todo) => todo.id === id)))
   }, [todos])
+
+  useEffect(() => {
+    setDependencyDraft((previous) => ({
+      predecessorTodoId: todos.some((todo) => todo.id === previous.predecessorTodoId) ? previous.predecessorTodoId : '',
+      successorTodoId: todos.some((todo) => todo.id === previous.successorTodoId) ? previous.successorTodoId : '',
+      lagDays: previous.lagDays
+    }))
+  }, [todos])
+
+  useEffect(() => {
+    setCollapsedTodoIds((previous) => previous.filter((id) => todos.some((todo) => todo.id === id)))
+  }, [todos])
+
+  useEffect(() => {
+    window.localStorage.setItem(COLLAPSED_TODO_STORAGE_KEY, JSON.stringify(collapsedTodoIds))
+  }, [collapsedTodoIds])
+
+  useEffect(() => {
+    if (!baselineSnapshot) {
+      window.localStorage.removeItem(GANTT_BASELINE_STORAGE_KEY)
+      return
+    }
+
+    window.localStorage.setItem(GANTT_BASELINE_STORAGE_KEY, JSON.stringify(baselineSnapshot))
+  }, [baselineSnapshot])
+
+  useEffect(() => {
+    const nextSettings: PersistedGanttViewSettings = {
+      zoom,
+      timeScale,
+      statusFilter,
+      showSubtasks,
+      showUnscheduled,
+      showScheduleSignals,
+      showBaseline,
+      rangeMode,
+      manualStart,
+      manualEnd,
+      manualPreset,
+      controlsCollapsed,
+      selectedCategoryKeys
+    }
+
+    window.localStorage.setItem(GANTT_VIEW_SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings))
+  }, [
+    controlsCollapsed,
+    manualEnd,
+    manualPreset,
+    manualStart,
+    rangeMode,
+    selectedCategoryKeys,
+    showBaseline,
+    showScheduleSignals,
+    showSubtasks,
+    showUnscheduled,
+    statusFilter,
+    timeScale,
+    zoom
+  ])
 
   useEffect(() => {
     setSelectedCategoryKeys((previous) => previous.filter((key) => {
@@ -337,9 +757,18 @@ export function GanttView({
     }))
   }, [categories, todos])
 
+  useEffect(() => {
+    const handleResize = (): void => {
+      setDependencyLayoutVersion((previous) => previous + 1)
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   const todayKey = getTodayKey()
   const unitWidth = UNIT_WIDTH[timeScale][zoom]
-  const isTimelineEditable = timeScale === 'day'
+  const isTimelineEditable = true
   const normalizedTaskQuery = taskQuery.trim().toLowerCase()
 
   const applyManualPreset = useCallback((preset: Exclude<RangePreset, null>) => {
@@ -363,7 +792,7 @@ export function GanttView({
       }))
 
     if (todos.some((todo) => !todo.category_id)) {
-      next.push({ key: NO_CATEGORY_KEY, label: 'カテゴリなし', color: '#64748b' })
+      next.push({ key: NO_CATEGORY_KEY, label: '未分類', color: '#64748b' })
     }
 
     return next
@@ -382,6 +811,8 @@ export function GanttView({
       .filter((todo) => todoMatchesQuery(todo, normalizedTaskQuery))
       .sort((a, b) => a.title.localeCompare(b.title, 'ja'))
   ), [categoryFilteredTodos, normalizedTaskQuery])
+  const todoById = useMemo(() => new Map(todos.map((todo) => [todo.id, todo])), [todos])
+  const subTaskById = useMemo(() => new Map(subTasks.map((subTask) => [subTask.id, subTask])), [subTasks])
 
   const ganttTodos = useMemo(() => (
     todoSelectionCandidates.filter((todo) => selectedTodoIds.length === 0 || selectedTodoIds.includes(todo.id))
@@ -514,6 +945,127 @@ export function GanttView({
       })
   ), [normalizedRange.end, normalizedRange.start, scheduledGroups, showSubtasks])
 
+  const collectDependentTodoIds = useCallback((rootTodoIds: string[]): string[] => {
+    const queue = [...rootTodoIds]
+    const visited = new Set<string>()
+
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      if (visited.has(current)) continue
+      visited.add(current)
+
+      for (const dependency of dependencies) {
+        if (dependency.predecessor_todo_id === current) {
+          queue.push(dependency.successor_todo_id)
+        }
+      }
+    }
+
+    return Array.from(visited)
+  }, [dependencies])
+
+  const ensureRangeIncludesTodos = useCallback((todoIds: string[], sourceTodos: Todo[]): void => {
+    if (rangeMode !== 'manual' || todoIds.length === 0) return
+
+    const bars = todoIds
+      .map((todoId) => {
+        const todo = sourceTodos.find((candidate) => candidate.id === todoId)
+        return todo ? getTodoBar(todo) : null
+      })
+      .filter((bar): bar is TodoBar => Boolean(bar))
+
+    if (bars.length === 0) return
+
+    const minStart = bars.reduce((earliest, bar) => bar.startDate < earliest ? bar.startDate : earliest, bars[0].startDate)
+    const maxEnd = bars.reduce((latest, bar) => bar.endDate > latest ? bar.endDate : latest, bars[0].endDate)
+    const nextStart = minStart < normalizedRange.start ? addDays(minStart, -RANGE_PADDING_DAYS) : normalizedRange.start
+    const nextEnd = maxEnd > normalizedRange.end ? addDays(maxEnd, RANGE_PADDING_DAYS) : normalizedRange.end
+
+    setManualStart(nextStart)
+    setManualEnd(nextEnd)
+  }, [normalizedRange.end, normalizedRange.start, rangeMode])
+
+  const snapshotTodoSchedules = useCallback((todoIds: string[]): TodoScheduleSnapshot[] => (
+    todoIds
+      .map((todoId) => todoById.get(todoId))
+      .filter((todo): todo is Todo => Boolean(todo))
+      .map((todo) => ({
+        id: todo.id,
+        startDate: todo.start_date?.slice(0, 10) ?? null,
+        dueDate: todo.due_date?.slice(0, 10) ?? null
+      }))
+  ), [todoById])
+
+  const snapshotSubTaskSchedule = useCallback((subTaskId: string): SubTaskScheduleSnapshot | null => {
+    const subTask = subTaskById.get(subTaskId)
+    if (!subTask) return null
+
+    return {
+      id: subTask.id,
+      startDate: subTask.start_date?.slice(0, 10) ?? null,
+      dueDate: subTask.due_date?.slice(0, 10) ?? null
+    }
+  }, [subTaskById])
+
+  const restoreTodoSchedules = useCallback(async (snapshots: TodoScheduleSnapshot[]): Promise<void> => {
+    if (snapshots.length === 0) return
+
+    for (const snapshot of snapshots) {
+      await window.api.todoUpdate(snapshot.id, {
+        start_date: snapshot.startDate,
+        due_date: snapshot.dueDate
+      })
+    }
+
+    const latestTodos = await window.api.todoGetAll()
+    ensureRangeIncludesTodos(snapshots.map((snapshot) => snapshot.id), latestTodos)
+  }, [ensureRangeIncludesTodos])
+
+  const restoreSubTaskSchedule = useCallback(async (snapshot: SubTaskScheduleSnapshot): Promise<void> => {
+    await window.api.subtaskUpdate(snapshot.id, {
+      start_date: snapshot.startDate,
+      due_date: snapshot.dueDate
+    })
+  }, [])
+
+  const performUndo = useCallback(async (): Promise<void> => {
+    if (!lastUndoEntry || undoPending) return
+
+    setUndoPending(true)
+    try {
+      await lastUndoEntry.run()
+      setLastUndoEntry(null)
+      setDependencyFeedback(`元に戻しました: ${lastUndoEntry.label}`)
+    } catch (error) {
+      setDependencyFeedback(error instanceof Error ? error.message : '元に戻せませんでした。')
+    } finally {
+      setUndoPending(false)
+    }
+  }, [lastUndoEntry, undoPending])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'z') return
+      if (!lastUndoEntry || undoPending) return
+
+      const target = event.target
+      if (
+        target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      void performUndo()
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [lastUndoEntry, performUndo, undoPending])
+
   const timelineStart = startOfUnit(normalizedRange.start, timeScale)
   const timelineEnd = startOfUnit(normalizedRange.end, timeScale)
   const totalUnits = diffUnits(timelineEnd, timelineStart, timeScale) + 1
@@ -533,13 +1085,14 @@ export function GanttView({
       }
     })
   ), [timeScale, timelineStart, todayKey, totalUnits])
-  const timelineKeys = timelineUnits.map((unit) => unit.startDate)
   const timelineWidth = totalUnits * unitWidth
   const todayIndex = diffUnits(todayKey, timelineStart, timeScale)
+  const autoScrollKey = `${normalizedRange.start}:${normalizedRange.end}:${timeScale}:${zoom}:${totalUnits}:${todayIndex}`
 
   useEffect(() => {
     const container = scrollRef.current
     if (!container) return
+    if (lastAutoScrollKeyRef.current === autoScrollKey) return
 
     const focusDate = todayIndex >= 0 && todayIndex < totalUnits
       ? todayKey
@@ -547,7 +1100,8 @@ export function GanttView({
     const targetIndex = clamp(diffUnits(focusDate, timelineStart, timeScale) - 1, 0, Math.max(totalUnits - 1, 0))
 
     container.scrollLeft = targetIndex * unitWidth
-  }, [chartGroups, normalizedRange.start, timeScale, timelineStart, todayIndex, todayKey, totalUnits, unitWidth])
+    lastAutoScrollKeyRef.current = autoScrollKey
+  }, [autoScrollKey, chartGroups, normalizedRange.start, timeScale, timelineStart, todayIndex, todayKey, totalUnits, unitWidth])
 
   useEffect(() => {
     if (!interaction || !isTimelineEditable) return
@@ -556,33 +1110,35 @@ export function GanttView({
       const current = interactionRef.current
       if (!current) return
 
-      const deltaDays = Math.round((event.clientX - current.originClientX) / unitWidth)
+      const deltaUnits = Math.round((event.clientX - current.originClientX) / unitWidth)
       setInteraction((previous) => {
         if (!previous) return null
 
         if (previous.mode === 'move') {
-          const span = previous.originalEndIndex - previous.originalStartIndex
-          const nextStartIndex = clamp(previous.originalStartIndex + deltaDays, 0, totalUnits - 1 - span)
+          const nextStartDate = shiftDateByScale(previous.originalStartDate, timeScale, deltaUnits)
+          const nextEndDate = shiftDateByScale(previous.originalEndDate, timeScale, deltaUnits)
           return {
             ...previous,
-            previewStartIndex: nextStartIndex,
-            previewEndIndex: nextStartIndex + span,
-            moved: previous.moved || deltaDays !== 0
+            previewStartDate: nextStartDate,
+            previewEndDate: nextEndDate,
+            moved: previous.moved || deltaUnits !== 0
           }
         }
 
         if (previous.mode === 'resizeStart') {
+          const nextStartDate = shiftDateByScale(previous.originalStartDate, timeScale, deltaUnits)
           return {
             ...previous,
-            previewStartIndex: clamp(previous.originalStartIndex + deltaDays, 0, previous.originalEndIndex),
-            moved: previous.moved || deltaDays !== 0
+            previewStartDate: nextStartDate <= previous.originalEndDate ? nextStartDate : previous.originalEndDate,
+            moved: previous.moved || deltaUnits !== 0
           }
         }
 
+        const nextEndDate = shiftDateByScale(previous.originalEndDate, timeScale, deltaUnits)
         return {
           ...previous,
-          previewEndIndex: clamp(previous.originalEndIndex + deltaDays, previous.originalStartIndex, totalUnits - 1),
-          moved: previous.moved || deltaDays !== 0
+          previewEndDate: nextEndDate >= previous.originalStartDate ? nextEndDate : previous.originalStartDate,
+          moved: previous.moved || deltaUnits !== 0
         }
       })
     }
@@ -597,18 +1153,41 @@ export function GanttView({
           suppressSelectionRef.current = false
         }, 0)
       }
-      if (current.previewStartIndex === current.originalStartIndex && current.previewEndIndex === current.originalEndIndex) return
+      if (current.previewStartDate === current.originalStartDate && current.previewEndDate === current.originalEndDate) return
       if (current.targetType === 'todo') {
+        const affectedTodoIds = collectDependentTodoIds([current.targetId])
+        const previousSnapshots = snapshotTodoSchedules(affectedTodoIds)
+        const todoTitle = todoById.get(current.targetId)?.title ?? 'タスク'
         void onUpdateTodo(current.targetId, {
-          start_date: timelineKeys[current.previewStartIndex],
-          due_date: timelineKeys[current.previewEndIndex]
+          start_date: current.previewStartDate,
+          due_date: current.previewEndDate
+        }).then(async () => {
+          const latestTodos = await window.api.todoGetAll()
+          ensureRangeIncludesTodos(affectedTodoIds, latestTodos)
+          if (previousSnapshots.length > 0) {
+            setLastUndoEntry({
+              label: `タスク移動: ${todoTitle}`,
+              run: async () => {
+                await restoreTodoSchedules(previousSnapshots)
+              }
+            })
+          }
         })
         return
       }
 
+      const previousSubTaskSnapshot = snapshotSubTaskSchedule(current.targetId)
       void window.api.subtaskUpdate(current.targetId, {
-        start_date: timelineKeys[current.previewStartIndex],
-        due_date: timelineKeys[current.previewEndIndex]
+        start_date: current.previewStartDate,
+        due_date: current.previewEndDate
+      }).then(() => {
+        if (!previousSubTaskSnapshot) return
+        setLastUndoEntry({
+          label: 'サブタスク移動',
+          run: async () => {
+            await restoreSubTaskSchedule(previousSubTaskSnapshot)
+          }
+        })
       })
     }
 
@@ -620,7 +1199,20 @@ export function GanttView({
       window.removeEventListener('pointerup', handlePointerUp)
       window.removeEventListener('pointercancel', handlePointerUp)
     }
-  }, [interaction, isTimelineEditable, onUpdateTodo, timelineKeys, totalUnits, unitWidth])
+  }, [
+    collectDependentTodoIds,
+    ensureRangeIncludesTodos,
+    interaction,
+    isTimelineEditable,
+    onUpdateTodo,
+    restoreSubTaskSchedule,
+    restoreTodoSchedules,
+    snapshotSubTaskSchedule,
+    snapshotTodoSchedules,
+    timeScale,
+    todoById,
+    unitWidth
+  ])
 
   const handleChartItemSelect = useCallback((todoId: string): void => {
     if (suppressSelectionRef.current) return
@@ -643,10 +1235,10 @@ export function GanttView({
       ownerTodoId,
       mode,
       originClientX: clientX,
-      originalStartIndex: diffUnits(startDate, timelineStart, 'day'),
-      originalEndIndex: diffUnits(endDate, timelineStart, 'day'),
-      previewStartIndex: diffUnits(startDate, timelineStart, 'day'),
-      previewEndIndex: diffUnits(endDate, timelineStart, 'day'),
+      originalStartDate: startDate,
+      originalEndDate: endDate,
+      previewStartDate: startDate,
+      previewEndDate: endDate,
       moved: false
     })
   }
@@ -667,6 +1259,355 @@ export function GanttView({
     })
   }
 
+  const toggleTodoExpansion = useCallback((todoId: string): void => {
+    setCollapsedTodoIds((previous) => (
+      previous.includes(todoId)
+        ? previous.filter((current) => current !== todoId)
+        : [...previous, todoId]
+    ))
+  }, [])
+
+  const captureBaseline = useCallback((): void => {
+    const todoEntries = todos
+      .map((todo) => {
+        const bar = getTodoBar(todo)
+        return bar ? [todo.id, bar] as const : null
+      })
+      .filter((entry): entry is readonly [string, TodoBar] => Boolean(entry))
+    const subTaskEntries = subTasks
+      .map((subTask) => {
+        const bar = getSubTaskBar(subTask)
+        return bar ? [subTask.id, bar] as const : null
+      })
+      .filter((entry): entry is readonly [string, TodoBar] => Boolean(entry))
+
+    setBaselineSnapshot({
+      capturedAt: new Date().toISOString(),
+      todos: Object.fromEntries(todoEntries),
+      subTasks: Object.fromEntries(subTaskEntries)
+    })
+    setShowBaseline(true)
+  }, [subTasks, todos])
+
+  const createDependency = useCallback(async (
+    predecessorTodoId = dependencyDraft.predecessorTodoId,
+    successorTodoId = dependencyDraft.successorTodoId,
+    lagDaysInput: string | number = dependencyDraft.lagDays
+  ): Promise<boolean> => {
+    if (!predecessorTodoId || !successorTodoId) {
+      setDependencyFeedback('前タスクと後タスクの両方を選択してください。')
+      return false
+    }
+
+    try {
+      const rawLagDays = Number(lagDaysInput || '0')
+      const lagDays = Number.isFinite(rawLagDays) ? clamp(rawLagDays, 0, 60) : 0
+      const affectedTodoIds = collectDependentTodoIds([successorTodoId])
+      const previousSnapshots = snapshotTodoSchedules(affectedTodoIds)
+      const predecessorTitle = todoById.get(predecessorTodoId)?.title ?? '前タスク'
+      const successorTitle = todoById.get(successorTodoId)?.title ?? '後タスク'
+      const createdDependency = await window.api.todoDependencyCreate(predecessorTodoId, successorTodoId, lagDays)
+      const latestTodos = await window.api.todoGetAll()
+      ensureRangeIncludesTodos(
+        [predecessorTodoId, ...affectedTodoIds],
+        latestTodos
+      )
+      setDependencyFeedback('依存関係を追加しました。')
+      setLastUndoEntry({
+        label: `依存関係追加: ${predecessorTitle} → ${successorTitle}`,
+        run: async () => {
+          await window.api.todoDependencyDelete(createdDependency.id)
+          await restoreTodoSchedules(previousSnapshots)
+        }
+      })
+      setDependencyDraft((previous) => ({
+        ...previous,
+        predecessorTodoId,
+        successorTodoId: '',
+        lagDays: String(lagDays)
+      }))
+      return true
+    } catch (error) {
+      setDependencyFeedback(error instanceof Error ? error.message : '依存関係を追加できませんでした。')
+      return false
+    }
+  }, [
+    collectDependentTodoIds,
+    dependencyDraft.lagDays,
+    dependencyDraft.predecessorTodoId,
+    dependencyDraft.successorTodoId,
+    ensureRangeIncludesTodos,
+    restoreTodoSchedules,
+    snapshotTodoSchedules,
+    todoById
+  ])
+
+  const getSuggestedDependencyLagDays = useCallback((predecessorTodoId: string, successorTodoId: string): number => {
+    const predecessor = todoById.get(predecessorTodoId)
+    const successor = todoById.get(successorTodoId)
+    if (!predecessor || !successor) return 0
+
+    const predecessorBar = getTodoBar(predecessor)
+    const successorBar = getTodoBar(successor)
+    if (!predecessorBar || !successorBar) return 0
+
+    return clamp(diffCalendarDays(successorBar.startDate, predecessorBar.endDate) - 1, 0, 60)
+  }, [todoById])
+
+  const updateDependencyLag = useCallback(async (dependencyId: string, lagDays: number, predecessorTodoId: string, successorTodoId: string): Promise<void> => {
+    try {
+      const affectedTodoIds = collectDependentTodoIds([successorTodoId])
+      const previousSnapshots = snapshotTodoSchedules(affectedTodoIds)
+      const previousLagDays = dependencies.find((dependency) => dependency.id === dependencyId)?.lag_days ?? lagDays
+      await window.api.todoDependencyUpdate(dependencyId, lagDays)
+      const latestTodos = await window.api.todoGetAll()
+      ensureRangeIncludesTodos([predecessorTodoId, ...affectedTodoIds], latestTodos)
+      setLastUndoEntry({
+        label: '待機日数変更',
+        run: async () => {
+          await window.api.todoDependencyUpdate(dependencyId, previousLagDays)
+          await restoreTodoSchedules(previousSnapshots)
+        }
+      })
+      setDependencyFeedback('待機日数を更新しました。')
+    } catch (error) {
+      setDependencyFeedback(error instanceof Error ? error.message : '待機日数を更新できませんでした。')
+    }
+  }, [collectDependentTodoIds, dependencies, ensureRangeIncludesTodos, restoreTodoSchedules, snapshotTodoSchedules])
+
+  const removeDependency = useCallback(async (dependencyId: string): Promise<void> => {
+    try {
+      const dependency = dependencies.find((entry) => entry.id === dependencyId)
+      if (!dependency) {
+        setDependencyFeedback('依存関係が見つかりません。')
+        return
+      }
+
+      const affectedTodoIds = collectDependentTodoIds([dependency.successor_todo_id])
+      const previousSnapshots = snapshotTodoSchedules(affectedTodoIds)
+      const predecessorTitle = todoById.get(dependency.predecessor_todo_id)?.title ?? '前タスク'
+      const successorTitle = todoById.get(dependency.successor_todo_id)?.title ?? '後タスク'
+      await window.api.todoDependencyDelete(dependencyId)
+      setLastUndoEntry({
+        label: `依存関係削除: ${predecessorTitle} → ${successorTitle}`,
+        run: async () => {
+          await window.api.todoDependencyCreate(
+            dependency.predecessor_todo_id,
+            dependency.successor_todo_id,
+            dependency.lag_days
+          )
+          await restoreTodoSchedules(previousSnapshots)
+        }
+      })
+      setDependencyFeedback('依存関係を削除しました。')
+    } catch (error) {
+      setDependencyFeedback(error instanceof Error ? error.message : '依存関係を削除できませんでした。')
+    }
+  }, [collectDependentTodoIds, dependencies, restoreTodoSchedules, snapshotTodoSchedules, todoById])
+
+  const expandableTodoIds = chartGroups
+    .filter((group) => group.datedSubTasks.length > 0)
+    .map((group) => group.todo.id)
+  const expandedTodoCount = expandableTodoIds.filter((todoId) => !collapsedTodoIds.includes(todoId)).length
+  const visibleSubTaskCount = chartGroups.reduce((sum, group) => (
+    sum + (showSubtasks && !collapsedTodoIds.includes(group.todo.id) ? group.datedSubTasks.length : 0)
+  ), 0)
+  const scheduleHealthEntries = useMemo(() => (
+    chartGroups
+      .map((group) => {
+        const health = getScheduleHealth(group.todo, group.todoBar, todayKey)
+        return health ? { todoId: group.todo.id, health } : null
+      })
+      .filter((entry): entry is { todoId: string; health: ScheduleHealthInfo } => Boolean(entry))
+  ), [chartGroups, todayKey])
+  const scheduleHealthByTodoId = useMemo(() => (
+    new Map(scheduleHealthEntries.map((entry) => [entry.todoId, entry.health]))
+  ), [scheduleHealthEntries])
+  const scheduleHealthSummary = useMemo(() => (
+    scheduleHealthEntries.reduce((summary, entry) => {
+      if (entry.health.status === 'overdue') summary.overdue += 1
+      else if (entry.health.status === 'behind') summary.behind += 1
+      else if (entry.health.status === 'ahead' || entry.health.status === 'onTrack') summary.healthy += 1
+      else if (entry.health.status === 'future') summary.future += 1
+      return summary
+    }, { overdue: 0, behind: 0, healthy: 0, future: 0 })
+  ), [scheduleHealthEntries])
+  const baselineCapturedLabel = baselineSnapshot ? shortDateLabel(baselineSnapshot.capturedAt.slice(0, 10)) : null
+  const dependencyOptions = todoSelectionCandidates
+  const visibleTodoIdSet = useMemo(() => new Set(chartGroups.map((group) => group.todo.id)), [chartGroups])
+  const displayedTodoBarsById = useMemo(() => {
+    const next = new Map<string, TodoBar>()
+
+    for (const group of chartGroups) {
+      if (!group.todoBar) continue
+      const activeState = interaction?.targetType === 'todo' && interaction.targetId === group.todo.id ? interaction : null
+      next.set(
+        group.todo.id,
+        normalizeBar(
+          activeState ? activeState.previewStartDate : group.todoBar.startDate,
+          activeState ? activeState.previewEndDate : group.todoBar.endDate
+        )
+      )
+    }
+
+    return next
+  }, [chartGroups, interaction])
+  const rowLayout = useMemo(() => {
+    const positions = new Map<string, { centerY: number }>()
+    let top = 0
+
+    for (const group of chartGroups) {
+      positions.set(group.todo.id, { centerY: top + PARENT_ROW_HEIGHT / 2 })
+      top += PARENT_ROW_HEIGHT
+      if (showSubtasks && !collapsedTodoIds.includes(group.todo.id)) {
+        top += group.datedSubTasks.length * SUBTASK_ROW_HEIGHT
+      }
+    }
+
+    return { positions, totalHeight: top }
+  }, [chartGroups, collapsedTodoIds, showSubtasks])
+  const dependencyGeometryByTodoId = useMemo(() => {
+    const next = new Map<string, { sourceX: number; targetX: number; centerY: number }>()
+
+    for (const group of chartGroups) {
+      const displayedTodoBar = displayedTodoBarsById.get(group.todo.id)
+      const row = rowLayout.positions.get(group.todo.id)
+      if (!displayedTodoBar || !row) continue
+      if (!intersectsRange(displayedTodoBar.startDate, displayedTodoBar.endDate, normalizedRange.start, normalizedRange.end)) continue
+
+      const startIndex = clamp(diffUnits(displayedTodoBar.startDate, timelineStart, timeScale), 0, totalUnits - 1)
+      const endIndex = clamp(diffUnits(displayedTodoBar.endDate, timelineStart, timeScale), 0, totalUnits - 1)
+
+      next.set(group.todo.id, {
+        sourceX: endIndex * unitWidth + unitWidth - 6,
+        targetX: startIndex * unitWidth + 6,
+        centerY: row.centerY
+      })
+    }
+
+    return next
+  }, [chartGroups, displayedTodoBarsById, normalizedRange.end, normalizedRange.start, rowLayout, timeScale, timelineStart, totalUnits, unitWidth])
+  const visibleDependencies = useMemo(() => (
+    dependencies.filter((dependency) => todoById.has(dependency.predecessor_todo_id) && todoById.has(dependency.successor_todo_id))
+  ), [dependencies, todoById])
+  const setDependencySourceHandleRef = useCallback((todoId: string, node: HTMLDivElement | null): void => {
+    if (node) dependencySourceHandleRefs.current.set(todoId, node)
+    else dependencySourceHandleRefs.current.delete(todoId)
+  }, [])
+  const setDependencyTargetBarRef = useCallback((todoId: string, node: HTMLDivElement | null): void => {
+    if (node) dependencyTargetBarRefs.current.set(todoId, node)
+    else dependencyTargetBarRefs.current.delete(todoId)
+  }, [])
+  const getDependencyPointInCanvas = useCallback((
+    element: HTMLDivElement,
+    edge: 'start' | 'center' | 'end' = 'center',
+    inset = edge === 'center' ? 0 : 6
+  ): { x: number; y: number } | null => {
+    const canvasRect = chartCanvasRef.current?.getBoundingClientRect()
+    if (!canvasRect) return null
+
+    const rect = element.getBoundingClientRect()
+    const x = edge === 'start'
+      ? rect.left - canvasRect.left - LEFT_COLUMN_WIDTH + inset
+      : edge === 'end'
+        ? rect.right - canvasRect.left - LEFT_COLUMN_WIDTH - inset
+        : rect.left - canvasRect.left - LEFT_COLUMN_WIDTH + rect.width / 2
+
+    return {
+      x,
+      y: rect.top - canvasRect.top + rect.height / 2
+    }
+  }, [])
+  const getHoveredDependencyTargetId = useCallback((clientX: number, clientY: number, predecessorTodoId: string): string | null => {
+    for (const [todoId, element] of dependencyTargetBarRefs.current.entries()) {
+      if (todoId === predecessorTodoId) continue
+      const rect = element.getBoundingClientRect()
+      if (
+        clientX >= rect.left - 14
+        && clientX <= rect.right + 14
+        && clientY >= rect.top - 10
+        && clientY <= rect.bottom + 10
+      ) {
+        return todoId
+      }
+    }
+
+    return null
+  }, [])
+  useLayoutEffect(() => {
+    let frameId = 0
+
+    const measureDependencyPaths = (): void => {
+      if (visibleDependencies.length === 0) {
+        setDependencyPaths((previous) => previous.length === 0 ? previous : [])
+        return
+      }
+
+      const nextPaths: DependencyPath[] = []
+
+      for (const dependency of visibleDependencies) {
+        if (!visibleTodoIdSet.has(dependency.predecessor_todo_id) || !visibleTodoIdSet.has(dependency.successor_todo_id)) continue
+
+        const sourceElement = dependencySourceHandleRefs.current.get(dependency.predecessor_todo_id)
+        const targetElement = dependencyTargetBarRefs.current.get(dependency.successor_todo_id)
+        if (!sourceElement || !targetElement) continue
+
+        const sourcePoint = getDependencyPointInCanvas(sourceElement, 'end', 0)
+        const targetPoint = getDependencyPointInCanvas(targetElement, 'start', 6)
+        if (!sourcePoint || !targetPoint) continue
+
+        nextPaths.push({
+          id: dependency.id,
+          path: buildDependencyPath(sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y)
+        })
+      }
+
+      setDependencyPaths((previous) => areDependencyPathsEqual(previous, nextPaths) ? previous : nextPaths)
+    }
+
+    frameId = window.requestAnimationFrame(measureDependencyPaths)
+    return () => window.cancelAnimationFrame(frameId)
+  }, [
+    chartGroups,
+    collapsedTodoIds,
+    dependencyGeometryByTodoId,
+    dependencyLayoutVersion,
+    getDependencyPointInCanvas,
+    interaction,
+    normalizedRange.end,
+    normalizedRange.start,
+    showSubtasks,
+    timeScale,
+    unitWidth,
+    visibleDependencies,
+    visibleTodoIdSet,
+    zoom
+  ])
+  const dependencyPreviewPath = useMemo(() => {
+    if (!dependencyDrag) return null
+
+    const hoveredTargetElement = dependencyDrag.hoverSuccessorTodoId
+      ? dependencyTargetBarRefs.current.get(dependencyDrag.hoverSuccessorTodoId) ?? null
+      : null
+    const hoveredPoint = hoveredTargetElement ? getDependencyPointInCanvas(hoveredTargetElement, 'start', 6) : null
+    const endX = hoveredPoint ? hoveredPoint.x : dependencyDrag.pointerX
+    const endY = hoveredPoint ? hoveredPoint.y : dependencyDrag.pointerY
+
+    return buildDependencyPath(dependencyDrag.originX, dependencyDrag.originY, endX, endY)
+  }, [dependencyDrag, getDependencyPointInCanvas])
+  const dependencyList = useMemo(() => (
+    visibleDependencies
+      .slice()
+      .sort((a, b) => {
+        const predecessorTitleA = todoById.get(a.predecessor_todo_id)?.title ?? ''
+        const predecessorTitleB = todoById.get(b.predecessor_todo_id)?.title ?? ''
+        if (predecessorTitleA !== predecessorTitleB) return predecessorTitleA.localeCompare(predecessorTitleB, 'ja')
+        const successorTitleA = todoById.get(a.successor_todo_id)?.title ?? ''
+        const successorTitleB = todoById.get(b.successor_todo_id)?.title ?? ''
+        return successorTitleA.localeCompare(successorTitleB, 'ja')
+      })
+  ), [todoById, visibleDependencies])
+
   const renderTodayOverlay = (height: number): React.JSX.Element | null => {
     if (todayIndex < 0 || todayIndex >= totalUnits) return null
     return (
@@ -686,7 +1627,76 @@ export function GanttView({
   }
 
   const datedSubTaskCount = chartGroups.reduce((sum, group) => sum + group.datedSubTasks.length, 0)
-  const taskSelectionSummary = selectedTodoIds.length === 0 ? `${todoSelectionCandidates.length}件が対象` : `${selectedTodoIds.length}件を固定表示`
+  const taskSelectionSummary = selectedTodoIds.length === 0
+    ? `${todoSelectionCandidates.length}件を表示中`
+    : `${selectedTodoIds.length}件を選択中`
+
+  const setDependencyDragState = useCallback((
+    next: DependencyDragState | null | ((previous: DependencyDragState | null) => DependencyDragState | null)
+  ): void => {
+    const resolved = typeof next === 'function'
+      ? next(dependencyDragRef.current)
+      : next
+    dependencyDragRef.current = resolved
+    setDependencyDrag(resolved)
+  }, [])
+
+  const beginDependencyDrag = useCallback((todoId: string, event: React.PointerEvent<HTMLDivElement>): void => {
+    if (event.button !== 0 || !isTimelineEditable) return
+
+    const origin = getDependencyPointInCanvas(event.currentTarget, 'end', 0)
+    if (!origin) return
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    setDependencyFeedback(null)
+    setDependencyDragState({
+      predecessorTodoId: todoId,
+      originX: origin.x,
+      originY: origin.y,
+      pointerX: origin.x,
+      pointerY: origin.y,
+      hoverSuccessorTodoId: null
+    })
+  }, [getDependencyPointInCanvas, isTimelineEditable, setDependencyDragState])
+
+  useEffect(() => {
+    if (!dependencyDrag || !isTimelineEditable) return
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      const current = dependencyDragRef.current
+      const canvasRect = chartCanvasRef.current?.getBoundingClientRect()
+      if (!current || !canvasRect) return
+
+      const pointerX = event.clientX - canvasRect.left - LEFT_COLUMN_WIDTH
+      const pointerY = event.clientY - canvasRect.top
+      const hoverSuccessorTodoId = getHoveredDependencyTargetId(event.clientX, event.clientY, current.predecessorTodoId)
+
+      setDependencyDragState((previous) => (
+        previous
+          ? { ...previous, pointerX, pointerY, hoverSuccessorTodoId }
+          : null
+      ))
+    }
+
+    const handlePointerUp = (): void => {
+      const current = dependencyDragRef.current
+      setDependencyDragState(null)
+      if (!current?.hoverSuccessorTodoId) return
+      const suggestedLagDays = getSuggestedDependencyLagDays(current.predecessorTodoId, current.hoverSuccessorTodoId)
+      void createDependency(current.predecessorTodoId, current.hoverSuccessorTodoId, suggestedLagDays)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+  }, [createDependency, dependencyDrag, getHoveredDependencyTargetId, getSuggestedDependencyLagDays, isTimelineEditable, setDependencyDragState])
 
   return (
     <div style={{ height: '100%', overflow: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 12, position: 'relative' }}>
@@ -694,14 +1704,30 @@ export function GanttView({
         <div>
           <div style={{ fontSize: '1rem', color: '#f8fafc', fontWeight: 700 }}>ガントチャート</div>
           <div style={{ marginTop: 4, fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.5 }}>
-            {standalone ? '左の項目を押すと、メイン画面の詳細を開きます。' : '設定をたたんだままでも主要な情報は確認できます。'}
-            {!isTimelineEditable && ' 月表示・年表示は閲覧用です。バー編集は日表示で行ってください。'}
+            {standalone
+              ? '別ウィンドウでタイムラインを編集できます。'
+              : 'メイン画面で日付調整や依存関係の管理ができます。'}
+            {' バーや端のハンドルをドラッグして日程を調整できます。'}
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            onClick={() => void performUndo()}
+            disabled={!lastUndoEntry || undoPending}
+            title={lastUndoEntry?.label ?? '直前の変更を元に戻す'}
+            style={{
+              ...headerActionButtonStyle,
+              border: `1px solid ${lastUndoEntry && !undoPending ? '#16a34a' : '#334155'}`,
+              background: lastUndoEntry && !undoPending ? '#14532d' : '#0f172a',
+              color: lastUndoEntry && !undoPending ? '#dcfce7' : '#64748b',
+              cursor: lastUndoEntry && !undoPending ? 'pointer' : 'not-allowed'
+            }}
+          >
+            {undoPending ? '戻しています...' : '1つ戻る'}
+          </button>
           <button onClick={() => setControlsCollapsed((previous) => !previous)} style={headerActionButtonStyle}>
-            {controlsCollapsed ? '表示設定' : '設定を閉じる'}
+            {controlsCollapsed ? '表示設定を開く' : '表示設定を閉じる'}
           </button>
           {!standalone && onOpenSeparateWindow && (
             <button onClick={onOpenSeparateWindow} style={headerActionButtonStyle}>
@@ -714,10 +1740,31 @@ export function GanttView({
 
       <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 14, padding: '8px 12px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={collapsedSummaryChipStyle}>期間 {shortDateLabel(normalizedRange.start)} - {shortDateLabel(normalizedRange.end)}</span>
-        <span style={collapsedSummaryChipStyle}>粒度 {SCALE_LABELS[timeScale]}</span>
+        <span style={collapsedSummaryChipStyle}>表示単位 {SCALE_LABELS[timeScale]}</span>
         <span style={collapsedSummaryChipStyle}>ズーム {ZOOM_LABELS[zoom]}</span>
         <span style={collapsedSummaryChipStyle}>表示 {chartGroups.length}件</span>
-        <span style={collapsedSummaryChipStyle}>サブタスク {datedSubTaskCount}件</span>
+        <span style={collapsedSummaryChipStyle}>サブタスク {visibleSubTaskCount}/{datedSubTaskCount}</span>
+        {expandableTodoIds.length > 0 && (
+          <span style={collapsedSummaryChipStyle}>展開 {expandedTodoCount}/{expandableTodoIds.length}</span>
+        )}
+        {showBaseline && baselineCapturedLabel && (
+          <span style={collapsedSummaryChipStyle}>基準線 {baselineCapturedLabel}</span>
+        )}
+        {showScheduleSignals && scheduleHealthSummary.overdue > 0 && (
+          <span style={healthSummaryChipStyle('#450a0a', '#ef4444', '#fecaca')}>期限超過 {scheduleHealthSummary.overdue}</span>
+        )}
+        {showScheduleSignals && scheduleHealthSummary.behind > 0 && (
+          <span style={healthSummaryChipStyle('#451a03', '#f59e0b', '#fde68a')}>遅れ {scheduleHealthSummary.behind}</span>
+        )}
+        {showScheduleSignals && scheduleHealthSummary.healthy > 0 && (
+          <span style={healthSummaryChipStyle('#082f49', '#38bdf8', '#e0f2fe')}>順調 {scheduleHealthSummary.healthy}</span>
+        )}
+        {showScheduleSignals && scheduleHealthSummary.future > 0 && (
+          <span style={healthSummaryChipStyle('#0f172a', '#64748b', '#cbd5e1')}>開始前 {scheduleHealthSummary.future}</span>
+        )}
+        {lastUndoEntry && (
+          <span style={collapsedSummaryChipStyle}>戻す: {lastUndoEntry.label}</span>
+        )}
       </div>
 
       {!controlsCollapsed && (
@@ -729,7 +1776,7 @@ export function GanttView({
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
             <div style={settingsSectionStyle}>
-              <label style={controlLabelStyle}>期間設定</label>
+              <label style={controlLabelStyle}>期間</label>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button onClick={() => setRangeMode('auto')} style={chipStyle(rangeMode === 'auto')}>自動</button>
                 <button
@@ -741,7 +1788,7 @@ export function GanttView({
                   }}
                   style={chipStyle(rangeMode === 'manual' && manualPreset === null)}
                 >
-                  手動
+                  カスタム
                 </button>
                 {RANGE_PRESETS.map((preset) => (
                   <button
@@ -777,13 +1824,13 @@ export function GanttView({
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button onClick={() => shiftVisibleRange(-1)} style={chipStyle(false)}>前へ</button>
-                <button onClick={centerRangeOnToday} style={chipStyle(false)}>今日中心</button>
+                <button onClick={centerRangeOnToday} style={chipStyle(false)}>今日</button>
                 <button onClick={() => shiftVisibleRange(1)} style={chipStyle(false)}>次へ</button>
               </div>
             </div>
 
             <div style={settingsSectionStyle}>
-              <label style={controlLabelStyle}>粒度とズーム</label>
+              <label style={controlLabelStyle}>表示単位とズーム</label>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {(['day', 'month', 'year'] as const).map((scale) => (
                   <button key={scale} onClick={() => setTimeScale(scale)} style={chipStyle(timeScale === scale)}>
@@ -801,7 +1848,7 @@ export function GanttView({
             </div>
 
             <div style={settingsSectionStyle}>
-              <label style={controlLabelStyle}>絞り込み</label>
+              <label style={controlLabelStyle}>フィルター</label>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button onClick={() => setStatusFilter('active')} style={chipStyle(statusFilter === 'active')}>進行中</button>
                 <button onClick={() => setStatusFilter('done')} style={chipStyle(statusFilter === 'done')}>完了</button>
@@ -810,7 +1857,7 @@ export function GanttView({
               <input
                 value={taskQuery}
                 onChange={(event) => setTaskQuery(event.target.value)}
-                placeholder="タイトル・説明・カテゴリで絞り込み"
+                placeholder="タイトル・メモ・カテゴリで絞り込み"
                 style={{ ...inputStyle, width: '100%' }}
               />
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -820,9 +1867,29 @@ export function GanttView({
                 </label>
                 <label style={toggleLabelStyle}>
                   <input type="checkbox" checked={showUnscheduled} onChange={(event) => setShowUnscheduled(event.target.checked)} />
-                  <span>未配置タスクを表示</span>
+                  <span>未配置を表示</span>
                 </label>
+                <label style={toggleLabelStyle}>
+                  <input type="checkbox" checked={showScheduleSignals} onChange={(event) => setShowScheduleSignals(event.target.checked)} />
+                  <span>進捗シグナルを表示</span>
+                </label>
+                {baselineSnapshot && (
+                  <label style={toggleLabelStyle}>
+                    <input type="checkbox" checked={showBaseline} onChange={(event) => setShowBaseline(event.target.checked)} />
+                    <span>基準線を表示</span>
+                  </label>
+                )}
               </div>
+              {showSubtasks && expandableTodoIds.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button onClick={() => setCollapsedTodoIds([])} style={chipStyle(collapsedTodoIds.length === 0)}>
+                    すべて展開
+                  </button>
+                  <button onClick={() => setCollapsedTodoIds(expandableTodoIds)} style={chipStyle(expandedTodoCount === 0)}>
+                    すべて折りたたむ
+                  </button>
+                </div>
+              )}
             </div>
 
             {categoryOptions.length > 0 && (
@@ -849,14 +1916,14 @@ export function GanttView({
                 <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{taskSelectionSummary}</div>
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <button onClick={() => setSelectedTodoIds([])} style={chipStyle(selectedTodoIds.length === 0)}>全件</button>
+                <button onClick={() => setSelectedTodoIds([])} style={chipStyle(selectedTodoIds.length === 0)}>すべて</button>
                 {selectedTodoIds.length > 0 && (
-                  <button onClick={() => setSelectedTodoIds([])} style={chipStyle(false)}>選択解除</button>
+                  <button onClick={() => setSelectedTodoIds([])} style={chipStyle(false)}>解除</button>
                 )}
               </div>
               <div style={taskSelectionPanelStyle}>
                 {todoSelectionCandidates.length === 0 ? (
-                  <div style={selectionEmptyStyle}>条件に合う候補がありません。</div>
+                  <div style={selectionEmptyStyle}>該当するタスクはありません。</div>
                 ) : (
                   todoSelectionCandidates.map((todo) => (
                     <button
@@ -870,22 +1937,117 @@ export function GanttView({
                 )}
               </div>
             </div>
+
+            <div style={settingsSectionStyle}>
+              <label style={controlLabelStyle}>依存関係</label>
+              <div style={{ fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.5 }}>
+                前タスクの完了後に後タスクを開始する関係です。待機日数を入れると、その分だけ開始を後ろへずらします。
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
+                <select
+                  value={dependencyDraft.predecessorTodoId}
+                  onChange={(event) => setDependencyDraft((previous) => ({ ...previous, predecessorTodoId: event.target.value }))}
+                  style={inputStyle}
+                >
+                  <option value="">前タスクを選択</option>
+                  {dependencyOptions.map((todo) => (
+                    <option key={`pred-${todo.id}`} value={todo.id}>{todo.title}</option>
+                  ))}
+                </select>
+                <select
+                  value={dependencyDraft.successorTodoId}
+                  onChange={(event) => setDependencyDraft((previous) => ({ ...previous, successorTodoId: event.target.value }))}
+                  style={inputStyle}
+                >
+                  <option value="">後タスクを選択</option>
+                  {dependencyOptions.map((todo) => (
+                    <option key={`succ-${todo.id}`} value={todo.id}>{todo.title}</option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  max={60}
+                  value={dependencyDraft.lagDays}
+                  onChange={(event) => setDependencyDraft((previous) => ({ ...previous, lagDays: event.target.value }))}
+                  style={inputStyle}
+                  placeholder="待機日数"
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button onClick={() => void createDependency()} style={chipStyle(false)}>依存関係を追加</button>
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>タスクバー右端の丸をドラッグしても依存関係を追加できます。</div>
+              {dependencyFeedback && <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{dependencyFeedback}</div>}
+              {dependencyList.length === 0 ? (
+                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>依存関係はまだありません。</div>
+              ) : (
+                <div style={dependencyListStyle}>
+                  {dependencyList.map((dependency) => (
+                    <div key={dependency.id} style={dependencyRowStyle}>
+                      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
+                          {todoById.get(dependency.predecessor_todo_id)?.title ?? '不明なタスク'}
+                        </span>
+                        <span style={{ color: '#64748b', fontSize: '0.72rem' }}>-&gt;</span>
+                        <span style={{ color: '#cbd5e1', fontSize: '0.76rem' }}>
+                          {todoById.get(dependency.successor_todo_id)?.title ?? '不明なタスク'}
+                        </span>
+                        <span style={dependencyLagBadgeStyle}>
+                          待機 {dependency.lag_days}日
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <button onClick={() => void updateDependencyLag(dependency.id, Math.max(0, dependency.lag_days - 1), dependency.predecessor_todo_id, dependency.successor_todo_id)} style={dependencyLagButtonStyle}>-1日</button>
+                        <button onClick={() => void updateDependencyLag(dependency.id, dependency.lag_days + 1, dependency.predecessor_todo_id, dependency.successor_todo_id)} style={dependencyLagButtonStyle}>+1日</button>
+                        <button onClick={() => void removeDependency(dependency.id)} style={dependencyDeleteButtonStyle}>削除</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={settingsSectionStyle}>
+              <label style={controlLabelStyle}>基準線</label>
+              <div style={{ fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.5 }}>
+                現在の予定を保存し、あとから実際の計画と見比べられます。
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button onClick={captureBaseline} style={chipStyle(false)}>現在の予定を保存</button>
+                {baselineSnapshot && (
+                  <button onClick={() => setShowBaseline((previous) => !previous)} style={chipStyle(showBaseline)}>
+                    {showBaseline ? '基準線を隠す' : '基準線を表示'}
+                  </button>
+                )}
+                {baselineSnapshot && (
+                  <button onClick={() => setBaselineSnapshot(null)} style={secondaryActionChipStyle}>
+                    基準線を削除
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                {baselineSnapshot
+                  ? `保存日時 ${baselineSnapshot.capturedAt.slice(0, 10)} ${baselineSnapshot.capturedAt.slice(11, 16)}`
+                  : '保存済みの基準線はありません。'}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       <div style={{ flex: '0 0 auto', minHeight: controlsCollapsed ? 540 : 460, height: controlsCollapsed ? '72vh' : '58vh', border: '1px solid #1e293b', borderRadius: 18, background: '#0b1220', overflow: 'hidden' }}>
         {loading ? (
-          <div style={centerEmptyStyle}>サブタスクを読み込み中...</div>
+          <div style={centerEmptyStyle}>タスクを読み込み中...</div>
         ) : chartGroups.length === 0 ? (
-          <div style={centerEmptyStyle}>条件に合うタスクがありません。</div>
+          <div style={centerEmptyStyle}>この期間に表示できる予定タスクはありません。</div>
         ) : (
           <div ref={scrollRef} style={{ height: '100%', overflow: 'auto' }}>
             <div style={{ minWidth: LEFT_COLUMN_WIDTH + timelineWidth }}>
               <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 6 }}>
                 <div style={{ position: 'sticky', left: 0, width: LEFT_COLUMN_WIDTH, minWidth: LEFT_COLUMN_WIDTH, background: '#0f172a', borderRight: '1px solid #1e293b', borderBottom: '1px solid #1e293b', padding: '10px 12px' }}>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>項目</div>
-                  <div style={{ marginTop: 6, fontSize: '0.85rem', color: '#cbd5e1' }}>期間 / 進捗 / 階層</div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Task</div>
+                  <div style={{ marginTop: 6, fontSize: '0.85rem', color: '#cbd5e1' }}>Date / Status / Expansion</div>
                 </div>
 
                 <div style={{ width: timelineWidth, display: 'flex', background: '#0f172a', borderBottom: '1px solid #1e293b' }}>
@@ -908,96 +2070,317 @@ export function GanttView({
                 </div>
               </div>
 
-              {chartGroups.map((group) => {
+              <div ref={chartCanvasRef} style={{ position: 'relative' }}>
+                {(dependencyPaths.length > 0 || dependencyPreviewPath) && (
+                  <svg
+                    width={timelineWidth}
+                    height={rowLayout.totalHeight}
+                    style={{ position: 'absolute', top: 0, left: LEFT_COLUMN_WIDTH, overflow: 'visible', pointerEvents: 'none', zIndex: 1 }}
+                    aria-hidden="true"
+                  >
+                    <defs>
+                      <marker id="ganttDependencyArrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+                        <path d="M 0 0 L 8 4 L 0 8 z" fill="#f59e0b" />
+                      </marker>
+                      <marker id="ganttDependencyPreviewArrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+                        <path d="M 0 0 L 8 4 L 0 8 z" fill="#38bdf8" />
+                      </marker>
+                    </defs>
+                    {dependencyPaths.map((dependency) => (
+                      <path
+                        key={dependency.id}
+                        d={dependency.path}
+                        fill="none"
+                        stroke="#f59e0b"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        markerEnd="url(#ganttDependencyArrow)"
+                        opacity="0.92"
+                      />
+                    ))}
+                    {dependencyPreviewPath && (
+                      <path
+                        d={dependencyPreviewPath}
+                        fill="none"
+                        stroke={dependencyDrag?.hoverSuccessorTodoId ? '#38bdf8' : '#94a3b8'}
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeDasharray="7 5"
+                        markerEnd="url(#ganttDependencyPreviewArrow)"
+                        opacity="0.96"
+                      />
+                    )}
+                  </svg>
+                )}
+
+                {chartGroups.map((group) => {
                 const tone = parentTone(group.todo)
-                const progress = group.todo.status === 'done' ? 100 : group.todo.progress
+                const progress = clamp(group.todo.status === 'done' ? 100 : group.todo.progress, 0, 100)
                 const todoBar = group.todoBar
-                const todoVisible = todoBar ? intersectsRange(todoBar.startDate, todoBar.endDate, normalizedRange.start, normalizedRange.end) : false
-                const actualStartIndex = todoBar ? diffUnits(todoBar.startDate, timelineStart, timeScale) : 0
-                const actualEndIndex = todoBar ? diffUnits(todoBar.endDate, timelineStart, timeScale) : 0
-                const clipped = todoBar ? actualStartIndex < 0 || actualEndIndex > totalUnits - 1 : false
+                const baselineBar = showBaseline ? baselineSnapshot?.todos[group.todo.id] ?? null : null
+                const scheduleHealth = scheduleHealthByTodoId.get(group.todo.id) ?? null
+                const canToggleSubtasks = showSubtasks && group.datedSubTasks.length > 0
+                const isExpanded = !collapsedTodoIds.includes(group.todo.id)
                 const activeState = interaction?.targetType === 'todo' && interaction.targetId === group.todo.id ? interaction : null
-                const displayStartIndex = todoBar ? clamp(activeState ? activeState.previewStartIndex : actualStartIndex, 0, totalUnits - 1) : 0
-                const displayEndIndex = todoBar ? clamp(activeState ? activeState.previewEndIndex : actualEndIndex, 0, totalUnits - 1) : 0
+                const dependencyGeometry = dependencyGeometryByTodoId.get(group.todo.id) ?? null
+                const isDependencySource = dependencyDrag?.predecessorTodoId === group.todo.id
+                const isDependencyTarget = dependencyDrag?.hoverSuccessorTodoId === group.todo.id
+                const displayedTodoBar = todoBar
+                  ? normalizeBar(
+                    activeState ? activeState.previewStartDate : todoBar.startDate,
+                    activeState ? activeState.previewEndDate : todoBar.endDate
+                  )
+                  : null
+                const todoVisible = displayedTodoBar
+                  ? intersectsRange(displayedTodoBar.startDate, displayedTodoBar.endDate, normalizedRange.start, normalizedRange.end)
+                  : false
+                const actualStartIndex = displayedTodoBar ? diffUnits(displayedTodoBar.startDate, timelineStart, timeScale) : 0
+                const actualEndIndex = displayedTodoBar ? diffUnits(displayedTodoBar.endDate, timelineStart, timeScale) : 0
+                const clipped = displayedTodoBar ? actualStartIndex < 0 || actualEndIndex > totalUnits - 1 : false
+                const displayStartIndex = displayedTodoBar ? clamp(actualStartIndex, 0, totalUnits - 1) : 0
+                const displayEndIndex = displayedTodoBar ? clamp(actualEndIndex, 0, totalUnits - 1) : 0
+                const barWidth = displayedTodoBar ? Math.max((displayEndIndex - displayStartIndex + 1) * unitWidth - 8, 24) : 0
+                const baselineVisible = baselineBar
+                  ? intersectsRange(baselineBar.startDate, baselineBar.endDate, normalizedRange.start, normalizedRange.end)
+                  : false
+                const baselineStartIndex = baselineBar ? clamp(diffUnits(baselineBar.startDate, timelineStart, timeScale), 0, totalUnits - 1) : 0
+                const baselineEndIndex = baselineBar ? clamp(diffUnits(baselineBar.endDate, timelineStart, timeScale), 0, totalUnits - 1) : 0
 
                 return (
                   <div key={group.todo.id}>
                     <div style={{ display: 'flex', minHeight: PARENT_ROW_HEIGHT, borderTop: '1px solid #111827' }}>
                       <div style={{ position: 'sticky', left: 0, zIndex: 4, width: LEFT_COLUMN_WIDTH, minWidth: LEFT_COLUMN_WIDTH, background: '#0f172a', borderRight: '1px solid #1e293b', padding: '9px 12px' }}>
-                        <button onClick={() => handleChartItemSelect(group.todo.id)} style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: '#f8fafc', fontSize: '0.8rem', fontWeight: 700, textAlign: 'left', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.todo.title}</button>
-                        <div style={{ marginTop: 5, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.66rem', color: '#94a3b8' }}>
-                          <span>{todoBar ? `${todoBar.startDate}${todoBar.startDate === todoBar.endDate ? '' : ` - ${todoBar.endDate}`}` : '親タスク期間なし'}</span>
-                          <span>{todoBar ? `${diffCalendarDays(todoBar.endDate, todoBar.startDate) + 1}日` : 'サブタスクのみ'}</span>
-                          <span>{progress}%</span>
-                        </div>
-                        <div style={{ marginTop: 5, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.66rem' }}>
-                          {group.todo.category_name && <span style={{ color: group.todo.category_color ?? '#a5b4fc' }}>{group.todo.category_name}</span>}
-                          {clipped && <span style={{ color: '#fbbf24' }}>表示範囲で省略</span>}
-                          {group.undatedSubTaskCount > 0 && <span style={{ color: '#94a3b8' }}>日付なしサブタスク {group.undatedSubTaskCount}件</span>}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                          <button
+                            onClick={() => {
+                              if (!canToggleSubtasks) return
+                              toggleTodoExpansion(group.todo.id)
+                            }}
+                            disabled={!canToggleSubtasks}
+                            aria-label={isExpanded ? 'サブタスクを折りたたむ' : 'サブタスクを展開する'}
+                            style={expandToggleButtonStyle(canToggleSubtasks, isExpanded)}
+                          >
+                            {canToggleSubtasks ? (isExpanded ? '-' : '+') : '.'}
+                          </button>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <button
+                              onClick={() => {
+                                if (canToggleSubtasks) {
+                                  toggleTodoExpansion(group.todo.id)
+                                  return
+                                }
+                                handleChartItemSelect(group.todo.id)
+                              }}
+                              style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: '#f8fafc', fontSize: '0.8rem', fontWeight: 700, textAlign: 'left', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            >
+                              {group.todo.title}
+                            </button>
+                            <div style={{ marginTop: 5, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.66rem', color: '#94a3b8' }}>
+                              <span>{displayedTodoBar ? `${displayedTodoBar.startDate}${displayedTodoBar.startDate === displayedTodoBar.endDate ? '' : ` - ${displayedTodoBar.endDate}`}` : '未配置'}</span>
+                              <span>{displayedTodoBar ? `${diffCalendarDays(displayedTodoBar.endDate, displayedTodoBar.startDate) + 1}日` : '期間なし'}</span>
+                              <span>{progress}%</span>
+                              {showScheduleSignals && scheduleHealth && (
+                                <span style={scheduleHealthBadgeStyle(scheduleHealth)}>
+                                  {scheduleHealth.label}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ marginTop: 5, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.66rem' }}>
+                              {group.todo.category_name && <span style={{ color: group.todo.category_color ?? '#a5b4fc' }}>{group.todo.category_name}</span>}
+                              {canToggleSubtasks && (
+                                <span style={{ color: isExpanded ? '#93c5fd' : '#64748b' }}>
+                                  {isExpanded ? `展開 ${group.datedSubTasks.length}件` : `折りたたみ ${group.datedSubTasks.length}件`}
+                                </span>
+                              )}
+                              {clipped && <span style={{ color: '#fbbf24' }}>表示範囲外</span>}
+                              {group.undatedSubTaskCount > 0 && <span style={{ color: '#94a3b8' }}>日付未設定のサブタスク {group.undatedSubTaskCount}件</span>}
+                            </div>
+                          </div>
+                          <button onClick={() => handleChartItemSelect(group.todo.id)} style={detailShortcutButtonStyle}>
+                            詳細
+                          </button>
                         </div>
                       </div>
 
                       <div style={rowTimelineStyle(PARENT_ROW_HEIGHT, unitWidth, timelineWidth)}>
                         {renderTodayOverlay(PARENT_ROW_HEIGHT)}
-                        {todoBar && todoVisible && (
-                          <div onClick={() => handleChartItemSelect(group.todo.id)} style={{ position: 'absolute', left: displayStartIndex * unitWidth + 4, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: Math.max((displayEndIndex - displayStartIndex + 1) * unitWidth - 8, 24), height: PARENT_BAR_HEIGHT, borderRadius: 12, background: tone.background, border: `1px solid ${tone.border}`, boxSizing: 'border-box', overflow: 'hidden', boxShadow: activeState ? '0 10px 24px rgba(15, 23, 42, 0.28)' : 'none', cursor: clipped || !isTimelineEditable ? 'pointer' : 'grab' }}>
+                        {baselineBar && baselineVisible && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: baselineStartIndex * unitWidth + 8,
+                              top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2 + 6,
+                              width: Math.max((baselineEndIndex - baselineStartIndex + 1) * unitWidth - 16, 12),
+                              height: PARENT_BAR_HEIGHT - 12,
+                              borderRadius: 999,
+                              background: '#94a3b81f',
+                              border: '1px dashed #94a3b8',
+                              boxSizing: 'border-box',
+                              pointerEvents: 'none'
+                            }}
+                          />
+                        )}
+                        {displayedTodoBar && todoVisible && (
+                          <div ref={(node) => setDependencyTargetBarRef(group.todo.id, node)} onClick={() => handleChartItemSelect(group.todo.id)} style={{ position: 'absolute', left: displayStartIndex * unitWidth + 4, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 12, background: tone.background, border: `1px solid ${tone.border}`, boxSizing: 'border-box', overflow: 'hidden', boxShadow: activeState ? '0 10px 24px rgba(15, 23, 42, 0.28)' : isDependencySource || isDependencyTarget ? '0 0 0 2px rgba(56, 189, 248, 0.42), 0 10px 24px rgba(8, 47, 73, 0.24)' : 'none', cursor: !isTimelineEditable ? 'pointer' : 'grab' }}>
                             <div style={{ position: 'absolute', inset: 0, width: `${progress}%`, background: `${tone.fill}66` }} />
+                            {showScheduleSignals && scheduleHealth && scheduleHealth.status !== 'done' && scheduleHealth.expectedProgress > 0 && (
+                              <div style={scheduleHealthStripeStyle(scheduleHealth, barWidth)} />
+                            )}
                             <div
                               onPointerDown={(event) => {
-                                if (event.button !== 0 || clipped || !isTimelineEditable) return
-                                beginInteraction('move', 'todo', group.todo.id, group.todo.id, todoBar.startDate, todoBar.endDate, event.clientX)
+                                if (event.button !== 0 || !isTimelineEditable) return
+                                beginInteraction('move', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX)
                               }}
-                              style={{ position: 'absolute', left: 9, right: 9, top: 0, bottom: 0, display: 'flex', alignItems: 'center', gap: 10, cursor: clipped || !isTimelineEditable ? 'pointer' : 'grab', color: tone.text, zIndex: 2 }}
+                              style={{ position: 'absolute', left: 9, right: 9, top: 0, bottom: 0, display: 'flex', alignItems: 'center', gap: 10, cursor: !isTimelineEditable ? 'pointer' : 'grab', color: tone.text, zIndex: 2 }}
                             >
-                              <span style={{ fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{barStartLabel(todoBar.startDate, timeScale)}</span>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{barStartLabel(displayedTodoBar.startDate, timeScale)}</span>
                               <span style={{ fontSize: '0.78rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.todo.title}</span>
                             </div>
-                            {isTimelineEditable && !clipped && (
+                            {isTimelineEditable && (
                               <>
-                                <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeStart', 'todo', group.todo.id, group.todo.id, todoBar.startDate, todoBar.endDate, event.clientX) }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 10, cursor: 'ew-resize', background: '#ffffff12' }} />
-                                <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeEnd', 'todo', group.todo.id, group.todo.id, todoBar.startDate, todoBar.endDate, event.clientX) }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 10, cursor: 'ew-resize', background: '#ffffff12' }} />
+                                <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeStart', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX) }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 10, cursor: 'ew-resize', background: '#ffffff12' }} />
+                                <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeEnd', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX) }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 10, cursor: 'ew-resize', background: '#ffffff12' }} />
                               </>
                             )}
                           </div>
                         )}
+                        {isTimelineEditable && dependencyGeometry && (
+                          <>
+                            {dependencyDrag && dependencyDrag.predecessorTodoId !== group.todo.id && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  left: dependencyGeometry.targetX - DEPENDENCY_TARGET_HANDLE_SIZE / 2,
+                                  top: (PARENT_ROW_HEIGHT - DEPENDENCY_TARGET_HANDLE_SIZE) / 2,
+                                  width: DEPENDENCY_TARGET_HANDLE_SIZE,
+                                  height: DEPENDENCY_TARGET_HANDLE_SIZE,
+                                  borderRadius: 999,
+                                  border: `2px solid ${isDependencyTarget ? '#38bdf8' : '#334155'}`,
+                                  background: isDependencyTarget ? '#38bdf8' : '#0b1220',
+                                  boxShadow: isDependencyTarget ? '0 0 0 4px rgba(56, 189, 248, 0.18)' : 'none',
+                                  pointerEvents: 'none',
+                                  zIndex: 4
+                                }}
+                              />
+                            )}
+                            <div
+                              ref={(node) => setDependencySourceHandleRef(group.todo.id, node)}
+                              onClick={(event) => event.stopPropagation()}
+                              onPointerDown={(event) => beginDependencyDrag(group.todo.id, event)}
+                              title="ドラッグして依存関係を追加"
+                              style={{
+                                position: 'absolute',
+                                left: dependencyGeometry.sourceX - DEPENDENCY_HANDLE_SIZE / 2,
+                                top: (PARENT_ROW_HEIGHT - DEPENDENCY_HANDLE_SIZE) / 2,
+                                width: DEPENDENCY_HANDLE_SIZE,
+                                height: DEPENDENCY_HANDLE_SIZE,
+                                borderRadius: 999,
+                                border: `2px solid ${isDependencySource ? '#bae6fd' : '#0f172a'}`,
+                                background: isDependencySource ? '#38bdf8' : '#f59e0b',
+                                boxShadow: isDependencySource ? '0 0 0 4px rgba(56, 189, 248, 0.18)' : '0 0 0 2px rgba(15, 23, 42, 0.58)',
+                                cursor: isTimelineEditable ? 'crosshair' : 'default',
+                                zIndex: 4
+                              }}
+                            />
+                          </>
+                        )}
                       </div>
                     </div>
 
-                    {showSubtasks && group.datedSubTasks.map(({ subTask, bar }) => {
-                      const tone = subTaskTone(subTask)
+                    {showSubtasks && isExpanded && group.datedSubTasks.map(({ subTask, bar }) => {
+                      const tone = subTaskTone(subTask, todayKey)
+                      const baselineBar = showBaseline ? baselineSnapshot?.subTasks[subTask.id] ?? null : null
                       const subTaskActiveState = interaction?.targetType === 'subtask' && interaction.targetId === subTask.id ? interaction : null
-                      const actualSubTaskStartIndex = diffUnits(bar.startDate, timelineStart, timeScale)
-                      const actualSubTaskEndIndex = diffUnits(bar.endDate, timelineStart, timeScale)
+                      const displayedBar = subTaskActiveState
+                        ? normalizeBar(subTaskActiveState.previewStartDate, subTaskActiveState.previewEndDate)
+                        : bar
+                      const actualSubTaskStartIndex = diffUnits(displayedBar.startDate, timelineStart, timeScale)
+                      const actualSubTaskEndIndex = diffUnits(displayedBar.endDate, timelineStart, timeScale)
                       const clipped = actualSubTaskStartIndex < 0 || actualSubTaskEndIndex > totalUnits - 1
-                      const subTaskStartIndex = clamp(subTaskActiveState ? subTaskActiveState.previewStartIndex : actualSubTaskStartIndex, 0, totalUnits - 1)
-                      const subTaskEndIndex = clamp(subTaskActiveState ? subTaskActiveState.previewEndIndex : actualSubTaskEndIndex, 0, totalUnits - 1)
+                      const subTaskStartIndex = clamp(actualSubTaskStartIndex, 0, totalUnits - 1)
+                      const subTaskEndIndex = clamp(actualSubTaskEndIndex, 0, totalUnits - 1)
+                      const baselineVisible = baselineBar
+                        ? intersectsRange(baselineBar.startDate, baselineBar.endDate, normalizedRange.start, normalizedRange.end)
+                        : false
+                      const baselineStartIndex = baselineBar ? clamp(diffUnits(baselineBar.startDate, timelineStart, timeScale), 0, totalUnits - 1) : 0
+                      const baselineEndIndex = baselineBar ? clamp(diffUnits(baselineBar.endDate, timelineStart, timeScale), 0, totalUnits - 1) : 0
                       return (
                         <div key={subTask.id} style={{ display: 'flex', minHeight: SUBTASK_ROW_HEIGHT, borderTop: '1px solid #0f172a' }}>
-                          <div style={{ position: 'sticky', left: 0, zIndex: 3, width: LEFT_COLUMN_WIDTH, minWidth: LEFT_COLUMN_WIDTH, background: '#0c1322', borderRight: '1px solid #1e293b', padding: '8px 12px 8px 24px' }}>
-                            <button onClick={() => handleChartItemSelect(group.todo.id)} style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: '#cbd5e1', fontSize: '0.75rem', fontWeight: 600, textAlign: 'left', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>└ {subTask.title}</button>
-                            <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: '#64748b' }}>
+                          <div style={{ position: 'sticky', left: 0, zIndex: 3, width: LEFT_COLUMN_WIDTH, minWidth: LEFT_COLUMN_WIDTH, background: tone.rowBackground, borderRight: '1px solid #1e293b', padding: '8px 12px 8px 24px' }}>
+                            <button
+                              onClick={() => handleChartItemSelect(group.todo.id)}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                padding: 0,
+                                cursor: 'pointer',
+                                color: tone.text,
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                textAlign: 'left',
+                                width: '100%',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                textDecoration: Boolean(subTask.done) ? 'line-through' : 'none'
+                              }}
+                            >
+                              - {subTask.title}
+                            </button>
+                            <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: tone.metaText }}>
                               <span>サブタスク</span>
                               <span>{bar.startDate === bar.endDate ? bar.startDate : `${bar.startDate} - ${bar.endDate}`}</span>
-                              {Boolean(subTask.done) ? <span style={{ color: '#86efac' }}>完了</span> : <span>未完</span>}
+                              <span
+                                style={{
+                                  padding: '1px 6px',
+                                  borderRadius: 999,
+                                  background: tone.statusBackground,
+                                  color: tone.statusText,
+                                  fontWeight: 700
+                                }}
+                              >
+                                {tone.statusLabel}
+                              </span>
                             </div>
                           </div>
 
                           <div style={rowTimelineStyle(SUBTASK_ROW_HEIGHT, unitWidth, timelineWidth)}>
                             {renderTodayOverlay(SUBTASK_ROW_HEIGHT)}
-                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTask.title} (${bar.startDate}${bar.startDate === bar.endDate ? '' : ` - ${bar.endDate}`})`} style={{ position: 'absolute', left: subTaskStartIndex * unitWidth + 6, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: Math.max((subTaskEndIndex - subTaskStartIndex + 1) * unitWidth - 12, 12), height: SUBTASK_BAR_HEIGHT, borderRadius: 999, background: tone.background, border: `1px dashed ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: clipped || !isTimelineEditable ? 'pointer' : 'grab', overflow: 'hidden', boxShadow: subTaskActiveState ? '0 8px 18px rgba(15, 23, 42, 0.24)' : 'none' }}>
+                            {baselineBar && baselineVisible && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  left: baselineStartIndex * unitWidth + 9,
+                                  top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2 + 4,
+                                  width: Math.max((baselineEndIndex - baselineStartIndex + 1) * unitWidth - 18, 10),
+                                  height: SUBTASK_BAR_HEIGHT - 8,
+                                  borderRadius: 999,
+                                  background: '#94a3b81a',
+                                  border: '1px dashed #94a3b8',
+                                  boxSizing: 'border-box',
+                                  pointerEvents: 'none'
+                                }}
+                              />
+                            )}
+                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTask.title} (${displayedBar.startDate}${displayedBar.startDate === displayedBar.endDate ? '' : ` - ${displayedBar.endDate}`})`} style={{ position: 'absolute', left: subTaskStartIndex * unitWidth + 6, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: Math.max((subTaskEndIndex - subTaskStartIndex + 1) * unitWidth - 12, 12), height: SUBTASK_BAR_HEIGHT, borderRadius: 999, background: tone.background, border: `1px ${tone.borderStyle} ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: !isTimelineEditable ? 'pointer' : 'grab', overflow: 'hidden', boxShadow: subTaskActiveState ? '0 8px 18px rgba(15, 23, 42, 0.24)' : Boolean(subTask.done) ? '0 0 0 1px rgba(134, 239, 172, 0.18) inset' : 'none' }}>
                               <div
                                 onPointerDown={(event) => {
-                                  if (event.button !== 0 || clipped || !isTimelineEditable) return
-                                  beginInteraction('move', 'subtask', subTask.id, group.todo.id, bar.startDate, bar.endDate, event.clientX)
+                                  if (event.button !== 0 || !isTimelineEditable) return
+                                  beginInteraction('move', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX)
                                 }}
-                                style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: clipped || !isTimelineEditable ? 'pointer' : 'grab' }}
+                                style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: !isTimelineEditable ? 'pointer' : 'grab' }}
                               >
-                                <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '0 6px', whiteSpace: 'nowrap' }}>{unitWidth >= UNIT_WIDTH[timeScale].normal ? subTask.title : barStartLabel(bar.startDate, timeScale)}</span>
+                                <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '0 6px', whiteSpace: 'nowrap', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
+                                  {Boolean(subTask.done) && unitWidth >= UNIT_WIDTH[timeScale].normal ? '完了 ' : ''}
+                                  {unitWidth >= UNIT_WIDTH[timeScale].normal ? subTask.title : barStartLabel(displayedBar.startDate, timeScale)}
+                                </span>
                               </div>
-                              {isTimelineEditable && !clipped && (
+                              {isTimelineEditable && (
                                 <>
-                                  <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeStart', 'subtask', subTask.id, group.todo.id, bar.startDate, bar.endDate, event.clientX) }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: '#ffffff12' }} />
-                                  <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeEnd', 'subtask', subTask.id, group.todo.id, bar.startDate, bar.endDate, event.clientX) }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: '#ffffff12' }} />
+                                  <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeStart', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX) }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: '#ffffff12' }} />
+                                  <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeEnd', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX) }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: '#ffffff12' }} />
                                 </>
                               )}
                             </div>
@@ -1007,7 +2390,8 @@ export function GanttView({
                     })}
                   </div>
                 )
-              })}
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -1017,11 +2401,11 @@ export function GanttView({
         <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 16, padding: 16 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ fontSize: '0.92rem', color: '#f8fafc', fontWeight: 700 }}>未配置タスク</div>
-            <div style={{ fontSize: '0.76rem', color: '#64748b' }}>親タスク期間も日付付きサブタスクもないものを置いています。</div>
+            <div style={{ fontSize: '0.76rem', color: '#64748b' }}>日付のないタスクは、タイムラインに配置するまでここに表示されます。</div>
           </div>
 
           {unscheduledGroups.length === 0 ? (
-            <div style={{ marginTop: 12, fontSize: '0.82rem', color: '#64748b' }}>未配置のタスクはありません。</div>
+            <div style={{ marginTop: 12, fontSize: '0.82rem', color: '#64748b' }}>未配置タスクはありません。</div>
           ) : (
             <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
               {unscheduledGroups.map((group) => (
@@ -1033,7 +2417,7 @@ export function GanttView({
                     {group.subTaskCount > 0 && <span>サブタスク {group.subTaskCount}件</span>}
                     {group.todo.category_name && <span style={{ color: group.todo.category_color ?? '#a5b4fc' }}>{group.todo.category_name}</span>}
                   </div>
-                  <button onClick={() => void onUpdateTodo(group.todo.id, { start_date: todayKey, due_date: todayKey })} style={{ marginTop: 10, padding: '6px 10px', borderRadius: 8, border: '1px solid #2563eb', background: '#172554', color: '#dbeafe', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700 }}>今日に置く</button>
+                  <button onClick={() => void onUpdateTodo(group.todo.id, { start_date: todayKey, due_date: todayKey })} style={{ marginTop: 10, padding: '6px 10px', borderRadius: 8, border: '1px solid #2563eb', background: '#172554', color: '#dbeafe', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700 }}>今日に配置</button>
                 </div>
               ))}
             </div>
@@ -1099,6 +2483,18 @@ const toggleLabelStyle: React.CSSProperties = {
   fontSize: '0.8rem'
 }
 
+const detailShortcutButtonStyle: React.CSSProperties = {
+  padding: '5px 8px',
+  borderRadius: 8,
+  border: '1px solid #334155',
+  background: '#111827',
+  color: '#cbd5e1',
+  cursor: 'pointer',
+  fontSize: '0.68rem',
+  fontWeight: 700,
+  flexShrink: 0
+}
+
 const headerActionButtonStyle: React.CSSProperties = {
   padding: '8px 12px',
   borderRadius: 999,
@@ -1132,6 +2528,63 @@ const taskSelectionPanelStyle: React.CSSProperties = {
   background: '#0f172a'
 }
 
+const dependencyListStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  maxHeight: 180,
+  overflow: 'auto',
+  padding: 10,
+  borderRadius: 12,
+  border: '1px solid #1f2937',
+  background: '#0f172a'
+}
+
+const dependencyRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 10,
+  padding: '8px 10px',
+  borderRadius: 10,
+  background: '#111827',
+  border: '1px solid #1e293b'
+}
+
+const dependencyDeleteButtonStyle: React.CSSProperties = {
+  padding: '5px 8px',
+  borderRadius: 8,
+  border: '1px solid #7f1d1d',
+  background: '#450a0a',
+  color: '#fecaca',
+  cursor: 'pointer',
+  fontSize: '0.72rem',
+  fontWeight: 700,
+  flexShrink: 0
+}
+
+const dependencyLagBadgeStyle: React.CSSProperties = {
+  padding: '2px 8px',
+  borderRadius: 999,
+  border: '1px solid #334155',
+  background: '#0b1220',
+  color: '#cbd5e1',
+  fontSize: '0.72rem',
+  fontWeight: 700
+}
+
+const dependencyLagButtonStyle: React.CSSProperties = {
+  padding: '5px 8px',
+  borderRadius: 8,
+  border: '1px solid #334155',
+  background: '#111827',
+  color: '#cbd5e1',
+  cursor: 'pointer',
+  fontSize: '0.72rem',
+  fontWeight: 700,
+  flexShrink: 0
+}
+
 const selectionEmptyStyle: React.CSSProperties = {
   fontSize: '0.78rem',
   color: '#64748b'
@@ -1145,6 +2598,15 @@ const collapsedSummaryChipStyle: React.CSSProperties = {
   color: '#cbd5e1',
   fontSize: '0.76rem',
   fontWeight: 600
+}
+
+function healthSummaryChipStyle(background: string, border: string, text: string): React.CSSProperties {
+  return {
+    ...collapsedSummaryChipStyle,
+    background,
+    border: `1px solid ${border}`,
+    color: text
+  }
 }
 
 const settingsPanelStyle: React.CSSProperties = {
@@ -1194,6 +2656,48 @@ const centerEmptyStyle: React.CSSProperties = {
   textAlign: 'center'
 }
 
+const secondaryActionChipStyle: React.CSSProperties = {
+  padding: '7px 10px',
+  borderRadius: 999,
+  border: '1px solid #475569',
+  background: '#0f172a',
+  color: '#cbd5e1',
+  cursor: 'pointer',
+  fontSize: '0.76rem',
+  fontWeight: 700
+}
+
+function scheduleHealthBadgeStyle(health: ScheduleHealthInfo): React.CSSProperties {
+  return {
+    padding: '1px 6px',
+    borderRadius: 999,
+    background: health.background,
+    border: `1px solid ${health.accent}`,
+    color: health.text,
+    fontWeight: 700
+  }
+}
+
+function scheduleHealthStripeStyle(health: ScheduleHealthInfo, barWidth: number): React.CSSProperties {
+  const innerWidth = Math.max(barWidth - 18, 0)
+  const stripeWidth = Math.min(
+    innerWidth,
+    Math.max((innerWidth * health.expectedProgress) / 100, health.expectedProgress > 0 ? 10 : 0)
+  )
+
+  return {
+    position: 'absolute',
+    left: 9,
+    bottom: 4,
+    width: stripeWidth,
+    height: 4,
+    borderRadius: 999,
+    background: `repeating-linear-gradient(135deg, ${health.accent} 0, ${health.accent} 6px, ${health.background} 6px, ${health.background} 12px)`,
+    opacity: 0.95,
+    pointerEvents: 'none'
+  }
+}
+
 function chipStyle(active: boolean): React.CSSProperties {
   return {
     padding: '7px 10px',
@@ -1204,6 +2708,23 @@ function chipStyle(active: boolean): React.CSSProperties {
     cursor: 'pointer',
     fontSize: '0.76rem',
     fontWeight: 700
+  }
+}
+
+function expandToggleButtonStyle(active: boolean, expanded: boolean): React.CSSProperties {
+  return {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    border: `1px solid ${active ? '#334155' : '#1f2937'}`,
+    background: active ? '#111827' : 'transparent',
+    color: active ? (expanded ? '#bfdbfe' : '#94a3b8') : '#334155',
+    cursor: active ? 'pointer' : 'default',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 1
   }
 }
 

@@ -11,14 +11,12 @@ import type { ToastMessage } from './components/Toast'
 import { SettingsModal } from './components/SettingsModal'
 import { WorkLogSummary } from './components/WorkLogSummary'
 import { SetupWizardModal } from './components/SetupWizardModal'
-import { CalendarView } from './components/CalendarView'
-import { OverviewDashboard } from './components/OverviewDashboard'
 import { PlanView } from './components/PlanView'
 import { TodayFlowRail } from './components/TodayFlowRail'
 import { GanttView } from './components/GanttView'
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
-type CenterView = 'detail' | 'log' | 'calendar' | 'overview' | 'plan' | 'gantt'
+type CenterView = 'detail' | 'log' | 'plan' | 'gantt'
 type GanttSidePanelMode = 'detail' | 'today'
 type PaneKey = 'category' | 'list' | 'side'
 
@@ -471,8 +469,6 @@ export function App(): React.JSX.Element {
         activeView={activeView}
         showPlanRail={showPlanRail}
         onToggleLogView={() => toggleCenterView('log')}
-        onToggleCalendarView={() => toggleCenterView('calendar')}
-        onToggleOverviewView={() => toggleCenterView('overview')}
         onTogglePlanView={() => toggleCenterView('plan')}
         onToggleGanttView={() => toggleCenterView('gantt')}
         onTogglePlanRail={() => setShowPlanRail((prev) => !prev)}
@@ -576,12 +572,7 @@ export function App(): React.JSX.Element {
         />
 
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: '#0f172a' }}>
-          {activeView === 'calendar' ? (
-            <CalendarView
-              todos={todos}
-              onSelectTodo={openTodoDetail}
-            />
-          ) : activeView === 'gantt' ? (
+          {activeView === 'gantt' ? (
             <GanttView
               categories={categories}
               todos={filteredTodos}
@@ -604,17 +595,10 @@ export function App(): React.JSX.Element {
             />
           ) : activeView === 'log' ? (
             <WorkLogSummary />
-          ) : activeView === 'overview' ? (
-            <OverviewDashboard
-              todos={todos}
-              categories={categories}
-              runningTodoId={runningTodoId}
-              elapsedSeconds={elapsedSeconds}
-              onSelectTodo={openTodoDetail}
-            />
           ) : (
             <TodoDetail
               todo={selectedTodo}
+              allTodos={todos}
               categories={categories}
               todayPlanItems={todayPlanItems}
               runningTodoId={runningTodoId}
@@ -666,6 +650,7 @@ export function App(): React.JSX.Element {
                     {ganttSidePanelMode === 'detail' ? (
                       <TodoDetail
                         todo={selectedTodo}
+                        allTodos={todos}
                         categories={categories}
                         todayPlanItems={todayPlanItems}
                         runningTodoId={runningTodoId}

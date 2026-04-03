@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import type { Todo, WorkLog, SubTask, UpdateTodoInput, Category, CreateSubTaskInput, DailyPlanItem } from '../types'
+import type { Todo, TodoDependency, WorkLog, SubTask, UpdateTodoInput, Category, CreateSubTaskInput, DailyPlanItem } from '../types'
 import { TimerDisplay } from './TimerDisplay'
 
 interface Props {
   todo: Todo | null
+  allTodos: Todo[]
   categories: Category[]
   todayPlanItems: DailyPlanItem[]
   runningTodoId: string | null
@@ -25,17 +26,23 @@ interface EditableSubTask {
 }
 
 export function TodoDetail({
-  todo, categories, todayPlanItems, runningTodoId, elapsedSeconds,
+  todo, allTodos, categories, todayPlanItems, runningTodoId, elapsedSeconds,
   onUpdate, onStartTimer, onStopTimer, onAddToTodayPlan, onShowToast
 }: Props): React.JSX.Element {
   const [logs, setLogs] = useState<WorkLog[]>([])
   const [subTasks, setSubTasks] = useState<SubTask[]>([])
+  const [dependencies, setDependencies] = useState<TodoDependency[]>([])
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState<UpdateTodoInput>({})
   const [editableSubTasks, setEditableSubTasks] = useState<EditableSubTask[]>([])
   const [stopNote, setStopNote] = useState('')
   const [localProgress, setLocalProgress] = useState<number | null>(null)
   const [newSubTask, setNewSubTask] = useState<CreateSubTaskInput>({ title: '', description: '', start_date: null, due_date: null })
+  const [dependencyDraft, setDependencyDraft] = useState<{ mode: 'predecessor' | 'successor'; relatedTodoId: string; lagDays: string }>({
+    mode: 'predecessor',
+    relatedTodoId: '',
+    lagDays: '0'
+  })
   const isDragging = useRef(false)
   const progBarRef = useRef<HTMLDivElement>(null)
 
@@ -45,6 +52,16 @@ export function TodoDetail({
       setSubTasks(st)
     } catch (e) {
       console.error('Failed to load subtasks', e)
+    }
+  }, [])
+
+  const loadDependencies = useCallback(async (todoId: string) => {
+    try {
+      const rows = await window.api.todoDependencyGetAll()
+      setDependencies(rows.filter((row) => row.predecessor_todo_id === todoId || row.successor_todo_id === todoId))
+    } catch (e) {
+      console.error('Failed to load dependencies', e)
+      setDependencies([])
     }
   }, [])
 
@@ -75,13 +92,14 @@ export function TodoDetail({
 
   // todo が切り替わったときだけ編集状態をリセット
   useEffect(() => {
-    if (!todoId || !todo) { setSubTasks([]); setLogs([]); return }
+    if (!todoId || !todo) { setSubTasks([]); setLogs([]); setDependencies([]); return }
     setEditing(false)
     setEditData(createEditData(todo))
     window.api.worklogGetByTodo(todoId).then(setLogs).catch(console.error)
     loadSubTasks(todoId)
+    loadDependencies(todoId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todoId, loadSubTasks, createEditData])
+  }, [todoId, loadDependencies, loadSubTasks, createEditData])
 
   useEffect(() => {
     if (!editing) {
@@ -93,12 +111,17 @@ export function TodoDetail({
     if (!todoId) return
 
     const unsubscribe = window.api.onDataChanged((scope) => {
-      if (scope !== 'subtask') return
-      void loadSubTasks(todoId)
+      if (scope === 'subtask') {
+        void loadSubTasks(todoId)
+        return
+      }
+      if (scope === 'todo') {
+        void loadDependencies(todoId)
+      }
     })
 
     return () => unsubscribe()
-  }, [loadSubTasks, todoId])
+  }, [loadDependencies, loadSubTasks, todoId])
 
   // ─── 進捗バードラッグ ─────────────────────────────────────────
   // ※ Rules of Hooks: useCallback は条件分岐の前に定義する
@@ -253,9 +276,63 @@ export function TodoDetail({
     )))
   }
 
+  const handleCreateDependency = async (): Promise<void> => {
+    if (!todoId || !dependencyDraft.relatedTodoId) {
+      onShowToast('依存先のタスクを選択してください', 'error')
+      return
+    }
+
+    const lagDays = clampDependencyLagDays(Number(dependencyDraft.lagDays || '0'))
+    const predecessorTodoId = dependencyDraft.mode === 'predecessor' ? dependencyDraft.relatedTodoId : todoId
+    const successorTodoId = dependencyDraft.mode === 'predecessor' ? todoId : dependencyDraft.relatedTodoId
+
+    try {
+      await window.api.todoDependencyCreate(predecessorTodoId, successorTodoId, lagDays)
+      await loadDependencies(todoId)
+      onShowToast('依存関係を追加しました')
+      setDependencyDraft((previous) => ({ ...previous, relatedTodoId: '', lagDays: String(lagDays) }))
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '依存関係を追加できませんでした', 'error')
+    }
+  }
+
+  const handleUpdateDependencyLag = async (dependencyId: string, lagDays: number): Promise<void> => {
+    if (!todoId) return
+
+    try {
+      await window.api.todoDependencyUpdate(dependencyId, clampDependencyLagDays(lagDays))
+      await loadDependencies(todoId)
+      onShowToast('待機日数を更新しました')
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '待機日数を更新できませんでした', 'error')
+    }
+  }
+
+  const handleDeleteDependency = async (dependencyId: string): Promise<void> => {
+    if (!todoId) return
+
+    try {
+      await window.api.todoDependencyDelete(dependencyId)
+      await loadDependencies(todoId)
+      onShowToast('依存関係を削除しました')
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '依存関係を削除できませんでした', 'error')
+    }
+  }
+
   const doneCount = subTasks.filter((s) => s.done).length
   const subTaskProgress = subTasks.length > 0 ? Math.round((doneCount / subTasks.length) * 100) : null
   const displayProg = localProgress ?? todo.progress ?? 0
+  const todoTitleById = new Map(allTodos.map((item) => [item.id, item.title]))
+  const predecessorDependencies = dependencies.filter((dependency) => dependency.successor_todo_id === todo.id)
+  const successorDependencies = dependencies.filter((dependency) => dependency.predecessor_todo_id === todo.id)
+  const blockedCandidateIds = new Set(
+    (dependencyDraft.mode === 'predecessor' ? predecessorDependencies : successorDependencies)
+      .map((dependency) => dependencyDraft.mode === 'predecessor' ? dependency.predecessor_todo_id : dependency.successor_todo_id)
+  )
+  const dependencyCandidates = allTodos.filter((candidate) => (
+    candidate.id !== todo.id && !blockedCandidateIds.has(candidate.id)
+  ))
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -477,6 +554,103 @@ export function TodoDetail({
         </form>
       </div>
 
+      <div>
+        <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          依存関係
+        </div>
+        <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.5 }}>
+            このタスクの前後関係をここから変更できます。待機日数を減らすと、後続タスクも前へ詰まります。
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 0.9fr) minmax(0, 1.4fr) 88px auto', gap: 6 }}>
+            <select
+              value={dependencyDraft.mode}
+              onChange={(e) => setDependencyDraft((previous) => ({ ...previous, mode: e.target.value as 'predecessor' | 'successor', relatedTodoId: '' }))}
+              style={inputStyle}
+            >
+              <option value="predecessor">前タスクを追加</option>
+              <option value="successor">後タスクを追加</option>
+            </select>
+            <select
+              value={dependencyDraft.relatedTodoId}
+              onChange={(e) => setDependencyDraft((previous) => ({ ...previous, relatedTodoId: e.target.value }))}
+              style={inputStyle}
+            >
+              <option value="">タスクを選択</option>
+              {dependencyCandidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>{candidate.title}</option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min={0}
+              max={60}
+              value={dependencyDraft.lagDays}
+              onChange={(e) => setDependencyDraft((previous) => ({ ...previous, lagDays: e.target.value }))}
+              style={inputStyle}
+              placeholder="待機日数"
+            />
+            <button onClick={() => void handleCreateDependency()} style={smallBtnStyle('#2563eb')}>
+              追加
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: 6 }}>前タスク</div>
+              {predecessorDependencies.length === 0 ? (
+                <div style={{ fontSize: '0.8rem', color: '#475569' }}>設定されていません</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {predecessorDependencies.map((dependency) => (
+                    <div key={dependency.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: '#0f172a', flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => void window.api.windowOpenTodo(dependency.predecessor_todo_id)}
+                        style={{ background: 'none', border: 'none', padding: 0, color: '#e2e8f0', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}
+                      >
+                        {todoTitleById.get(dependency.predecessor_todo_id) ?? '不明なタスク'}
+                      </button>
+                      <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>待機 {dependency.lag_days}日</span>
+                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button onClick={() => void handleUpdateDependencyLag(dependency.id, dependency.lag_days - 1)} style={smallBtnStyle('#334155')}>-1日</button>
+                        <button onClick={() => void handleUpdateDependencyLag(dependency.id, dependency.lag_days + 1)} style={smallBtnStyle('#334155')}>+1日</button>
+                        <button onClick={() => void handleDeleteDependency(dependency.id)} style={smallBtnStyle('#7f1d1d')}>削除</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: 6 }}>後タスク</div>
+              {successorDependencies.length === 0 ? (
+                <div style={{ fontSize: '0.8rem', color: '#475569' }}>設定されていません</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {successorDependencies.map((dependency) => (
+                    <div key={dependency.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: '#0f172a', flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => void window.api.windowOpenTodo(dependency.successor_todo_id)}
+                        style={{ background: 'none', border: 'none', padding: 0, color: '#e2e8f0', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}
+                      >
+                        {todoTitleById.get(dependency.successor_todo_id) ?? '不明なタスク'}
+                      </button>
+                      <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>待機 {dependency.lag_days}日</span>
+                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button onClick={() => void handleUpdateDependencyLag(dependency.id, dependency.lag_days - 1)} style={smallBtnStyle('#334155')}>-1日</button>
+                        <button onClick={() => void handleUpdateDependencyLag(dependency.id, dependency.lag_days + 1)} style={smallBtnStyle('#334155')}>+1日</button>
+                        <button onClick={() => void handleDeleteDependency(dependency.id)} style={smallBtnStyle('#7f1d1d')}>削除</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 説明 */}
       {!editing && todo.description && (
         <div style={{ background: '#1e293b', borderRadius: 10, padding: 14, fontSize: '0.9rem', color: '#94a3b8', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
@@ -641,6 +815,11 @@ function SubTaskRow({ subTask, onToggle, onDelete }: { subTask: SubTask; onToggl
 function dueDateColor(dueDate: string, done: boolean): string {
   if (done) return '#475569'
   return isOverdue(dueDate) ? '#fca5a5' : '#cbd5e1'
+}
+
+function clampDependencyLagDays(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(60, Math.max(0, Math.round(value)))
 }
 
 function dueDateBg(dueDate: string, done: boolean): string {

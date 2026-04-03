@@ -14,6 +14,10 @@ import {
   archiveTodo,
   unarchiveTodo,
   deleteTodo,
+  getAllTodoDependencies,
+  createTodoDependency,
+  updateTodoDependency,
+  deleteTodoDependency,
   reorderTodos,
   startTimer,
   stopTimer,
@@ -81,6 +85,10 @@ export function registerIpcHandlers(
   ipcMain.handle('todo:unarchive', handleMutation('todo', (id: string) => unarchiveTodo(id)))
   ipcMain.handle('todo:delete', handleMutation('todo', (id: string) => deleteTodo(id)))
   ipcMain.handle('todo:reorder', handleMutation('todo', (orderedIds: string[]) => reorderTodos(orderedIds)))
+  ipcMain.handle('todoDependency:getAll', () => getAllTodoDependencies())
+  ipcMain.handle('todoDependency:create', handleMutation('todo', (predecessorTodoId: string, successorTodoId: string, lagDays: number) => createTodoDependency(predecessorTodoId, successorTodoId, lagDays)))
+  ipcMain.handle('todoDependency:update', handleMutation('todo', (id: string, lagDays: number) => updateTodoDependency(id, lagDays)))
+  ipcMain.handle('todoDependency:delete', handleMutation('todo', (id: string) => deleteTodoDependency(id)))
 
   // SubTasks
   ipcMain.handle('subtask:getByTodo', (_, todoId: string) => getSubTasksByTodo(todoId))

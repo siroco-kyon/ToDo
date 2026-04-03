@@ -62,6 +62,18 @@ function createTables(): void {
       FOREIGN KEY (todo_id) REFERENCES Todos(id)
     );
 
+    CREATE TABLE IF NOT EXISTS TodoDependencies (
+      id TEXT PRIMARY KEY,
+      predecessor_todo_id TEXT NOT NULL,
+      successor_todo_id TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'finish_to_start',
+      lag_days INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      UNIQUE(predecessor_todo_id, successor_todo_id),
+      FOREIGN KEY (predecessor_todo_id) REFERENCES Todos(id) ON DELETE CASCADE,
+      FOREIGN KEY (successor_todo_id) REFERENCES Todos(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS WorkLogs (
       id TEXT PRIMARY KEY,
       todo_id TEXT NOT NULL,
@@ -105,6 +117,7 @@ function migrateDb(): void {
   const todoColumns = db.prepare('PRAGMA table_info(Todos)').all() as { name: string }[]
   const subTaskColumns = db.prepare('PRAGMA table_info(SubTasks)').all() as { name: string }[]
   const dailyPlanColumns = db.prepare('PRAGMA table_info(DailyPlanItems)').all() as { name: string }[]
+  const dependencyColumns = db.prepare('PRAGMA table_info(TodoDependencies)').all() as { name: string }[]
 
   // Todos.progress 追加
   if (!todoColumns.some((c) => c.name === 'progress')) {
@@ -176,6 +189,10 @@ function migrateDb(): void {
     db.prepare('ALTER TABLE DailyPlanItems ADD COLUMN lane INTEGER DEFAULT 0').run()
     db.prepare('UPDATE DailyPlanItems SET lane = 0 WHERE lane IS NULL').run()
   }
+
+  if (!dependencyColumns.some((c) => c.name === 'lag_days')) {
+    db.prepare('ALTER TABLE TodoDependencies ADD COLUMN lag_days INTEGER NOT NULL DEFAULT 0').run()
+  }
 }
 
 function insertDefaultSettings(): void {
@@ -205,6 +222,36 @@ function parseDateKey(dateStr: string): Date {
 function diffCalendarDays(dateStr: string, baseDateStr: string): number {
   const diffMs = parseDateKey(dateStr).getTime() - parseDateKey(baseDateStr).getTime()
   return Math.round(diffMs / 86400000)
+}
+
+function addDays(dateStr: string, days: number): string {
+  const date = parseDateKey(dateStr)
+  date.setDate(date.getDate() + days)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+interface TodoBar {
+  startDate: string
+  endDate: string
+}
+
+function getNormalizedTodoBar(todo: Pick<Todo, 'start_date' | 'due_date'>): TodoBar | null {
+  const start = normalizeDateKey(todo.start_date)
+  const end = normalizeDateKey(todo.due_date)
+  if (!start && !end) return null
+  if (start && end) return start <= end ? { startDate: start, endDate: end } : { startDate: end, endDate: start }
+  const singleDay = start ?? end!
+  return { startDate: singleDay, endDate: singleDay }
+}
+
+function getTodoDurationDays(todo: Pick<Todo, 'start_date' | 'due_date'>): number {
+  const bar = getNormalizedTodoBar(todo)
+  return bar ? Math.max(diffCalendarDays(bar.endDate, bar.startDate), 0) : 0
+}
+
+function clampDependencyLagDays(value: number | null | undefined): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 0
+  return Math.max(0, Math.min(60, Math.round(value)))
 }
 
 function normalizeDateKey(value: string | null | undefined): string | null {
@@ -316,6 +363,105 @@ export function getAllTodos(): Todo[] {
     .all() as Todo[]
 }
 
+function getTodoById(id: string): Todo {
+  return db
+    .prepare(
+      `SELECT t.*, c.name as category_name, c.color as category_color
+       FROM Todos t LEFT JOIN Categories c ON t.category_id = c.id WHERE t.id = ?`
+    )
+    .get(id) as Todo
+}
+
+function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): void {
+  const fields: string[] = ['updated_at = ?']
+  const values: unknown[] = [updatedAt]
+
+  if (data.title !== undefined) { fields.push('title = ?'); values.push(data.title) }
+  if (data.description !== undefined) { fields.push('description = ?'); values.push(data.description) }
+  if (data.category_id !== undefined) { fields.push('category_id = ?'); values.push(data.category_id) }
+  if (data.status !== undefined) { fields.push('status = ?'); values.push(data.status) }
+  if (data.priority !== undefined) { fields.push('priority = ?'); values.push(data.priority) }
+  if (data.progress !== undefined) { fields.push('progress = ?'); values.push(data.progress) }
+  if (data.start_date !== undefined) { fields.push('start_date = ?'); values.push(normalizeDateKey(data.start_date)) }
+  if (data.due_date !== undefined) { fields.push('due_date = ?'); values.push(normalizeDateKey(data.due_date)) }
+  if (data.recurrence !== undefined) { fields.push('recurrence = ?'); values.push(data.recurrence) }
+
+  values.push(id)
+  db.prepare(`UPDATE Todos SET ${fields.join(', ')} WHERE id = ?`).run(...values)
+}
+
+function shiftTodoToStart(todoId: string, nextStartDate: string, updatedAt: string): TodoBar {
+  const current = getTodoById(todoId)
+  const currentBar = getNormalizedTodoBar(current)
+
+  if (!currentBar) {
+    applyTodoUpdate(todoId, { start_date: nextStartDate, due_date: nextStartDate }, updatedAt)
+    return { startDate: nextStartDate, endDate: nextStartDate }
+  }
+
+  if (currentBar.startDate === nextStartDate) return currentBar
+
+  const durationDays = getTodoDurationDays(current)
+  const nextEndDate = addDays(nextStartDate, durationDays)
+  applyTodoUpdate(todoId, { start_date: nextStartDate, due_date: nextEndDate }, updatedAt)
+  return { startDate: nextStartDate, endDate: nextEndDate }
+}
+
+function enforcePredecessorConstraints(todoId: string, updatedAt: string): TodoBar | null {
+  const predecessorRows = db
+    .prepare('SELECT predecessor_todo_id, lag_days FROM TodoDependencies WHERE successor_todo_id = ? ORDER BY created_at ASC')
+    .all(todoId) as Array<{ predecessor_todo_id: string; lag_days: number }>
+
+  if (predecessorRows.length === 0) {
+    return getNormalizedTodoBar(getTodoById(todoId))
+  }
+
+  let requiredStart: string | null = null
+  for (const row of predecessorRows) {
+    const predecessorBar = getNormalizedTodoBar(getTodoById(row.predecessor_todo_id))
+    if (!predecessorBar) continue
+    const candidate = addDays(predecessorBar.endDate, 1 + clampDependencyLagDays(row.lag_days))
+    if (!requiredStart || candidate > requiredStart) requiredStart = candidate
+  }
+
+  if (!requiredStart) return getNormalizedTodoBar(getTodoById(todoId))
+  return shiftTodoToStart(todoId, requiredStart, updatedAt)
+}
+
+function resolveDependencyCascade(todoId: string, updatedAt: string, visited = new Set<string>()): void {
+  if (visited.has(todoId)) return
+  visited.add(todoId)
+
+  enforcePredecessorConstraints(todoId, updatedAt)
+
+  const successors = db
+    .prepare('SELECT successor_todo_id FROM TodoDependencies WHERE predecessor_todo_id = ? ORDER BY created_at ASC')
+    .all(todoId) as Array<{ successor_todo_id: string }>
+
+  for (const row of successors) {
+    resolveDependencyCascade(row.successor_todo_id, updatedAt, visited)
+  }
+}
+
+function dependencyCreatesCycle(predecessorTodoId: string, successorTodoId: string): boolean {
+  const queue = [successorTodoId]
+  const visited = new Set<string>()
+
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    if (current === predecessorTodoId) return true
+    if (visited.has(current)) continue
+    visited.add(current)
+
+    const nextRows = db
+      .prepare('SELECT successor_todo_id FROM TodoDependencies WHERE predecessor_todo_id = ?')
+      .all(current) as Array<{ successor_todo_id: string }>
+    for (const row of nextRows) queue.push(row.successor_todo_id)
+  }
+
+  return false
+}
+
 export function createTodo(data: CreateTodoInput): Todo {
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
@@ -358,27 +504,11 @@ export function reorderTodos(orderedIds: string[]): void {
 
 export function updateTodo(id: string, data: UpdateTodoInput): Todo {
   const now = new Date().toISOString()
-  const fields: string[] = ['updated_at = ?']
-  const values: unknown[] = [now]
-
-  if (data.title !== undefined) { fields.push('title = ?'); values.push(data.title) }
-  if (data.description !== undefined) { fields.push('description = ?'); values.push(data.description) }
-  if (data.category_id !== undefined) { fields.push('category_id = ?'); values.push(data.category_id) }
-  if (data.status !== undefined) { fields.push('status = ?'); values.push(data.status) }
-  if (data.priority !== undefined) { fields.push('priority = ?'); values.push(data.priority) }
-  if (data.progress !== undefined) { fields.push('progress = ?'); values.push(data.progress) }
-  if (data.start_date !== undefined) { fields.push('start_date = ?'); values.push(normalizeDateKey(data.start_date)) }
-  if (data.due_date !== undefined) { fields.push('due_date = ?'); values.push(normalizeDateKey(data.due_date)) }
-  if (data.recurrence !== undefined) { fields.push('recurrence = ?'); values.push(data.recurrence) }
-
-  values.push(id)
-  db.prepare(`UPDATE Todos SET ${fields.join(', ')} WHERE id = ?`).run(...values)
-  return db
-    .prepare(
-      `SELECT t.*, c.name as category_name, c.color as category_color
-       FROM Todos t LEFT JOIN Categories c ON t.category_id = c.id WHERE t.id = ?`
-    )
-    .get(id) as Todo
+  db.transaction(() => {
+    applyTodoUpdate(id, data, now)
+    resolveDependencyCascade(id, now)
+  })()
+  return getTodoById(id)
 }
 
 export function archiveTodo(id: string): void {
@@ -396,10 +526,81 @@ export function unarchiveTodo(id: string): void {
 }
 
 export function deleteTodo(id: string): void {
+  db.prepare('DELETE FROM TodoDependencies WHERE predecessor_todo_id = ? OR successor_todo_id = ?').run(id, id)
   db.prepare('DELETE FROM WorkLogs WHERE todo_id = ?').run(id)
   db.prepare('DELETE FROM RunningState WHERE todo_id = ?').run(id)
   db.prepare('DELETE FROM SubTasks WHERE todo_id = ?').run(id)
   db.prepare('DELETE FROM Todos WHERE id = ?').run(id)
+}
+
+export function getAllTodoDependencies(): TodoDependency[] {
+  return db
+    .prepare('SELECT * FROM TodoDependencies ORDER BY created_at ASC')
+    .all() as TodoDependency[]
+}
+
+export function createTodoDependency(predecessorTodoId: string, successorTodoId: string, lagDays = 0): TodoDependency {
+  if (predecessorTodoId === successorTodoId) {
+    throw new Error('同じタスク同士は依存関係にできません')
+  }
+
+  const predecessorExists = db.prepare('SELECT 1 FROM Todos WHERE id = ?').get(predecessorTodoId)
+  const successorExists = db.prepare('SELECT 1 FROM Todos WHERE id = ?').get(successorTodoId)
+  if (!predecessorExists || !successorExists) {
+    throw new Error('依存関係の対象タスクが見つかりません')
+  }
+
+  const existing = db
+    .prepare('SELECT id FROM TodoDependencies WHERE predecessor_todo_id = ? AND successor_todo_id = ?')
+    .get(predecessorTodoId, successorTodoId) as { id: string } | undefined
+  if (existing) {
+    throw new Error('その依存関係はすでに存在します')
+  }
+
+  if (dependencyCreatesCycle(predecessorTodoId, successorTodoId)) {
+    throw new Error('循環する依存関係は作成できません')
+  }
+
+  const id = crypto.randomUUID()
+  const now = new Date().toISOString()
+  const normalizedLagDays = clampDependencyLagDays(lagDays)
+
+  db.transaction(() => {
+    db.prepare(
+      `INSERT INTO TodoDependencies (id, predecessor_todo_id, successor_todo_id, type, lag_days, created_at)
+       VALUES (?, ?, ?, 'finish_to_start', ?, ?)`
+    ).run(id, predecessorTodoId, successorTodoId, normalizedLagDays, now)
+    resolveDependencyCascade(successorTodoId, now)
+  })()
+
+  return db.prepare('SELECT * FROM TodoDependencies WHERE id = ?').get(id) as TodoDependency
+}
+
+export function updateTodoDependency(id: string, lagDays: number): TodoDependency {
+  const current = db.prepare('SELECT * FROM TodoDependencies WHERE id = ?').get(id) as TodoDependency | undefined
+  if (!current) {
+    throw new Error('依存関係が見つかりません')
+  }
+
+  const now = new Date().toISOString()
+  const normalizedLagDays = clampDependencyLagDays(lagDays)
+  db.transaction(() => {
+    db.prepare('UPDATE TodoDependencies SET lag_days = ? WHERE id = ?').run(normalizedLagDays, id)
+    resolveDependencyCascade(current.successor_todo_id, now)
+  })()
+
+  return db.prepare('SELECT * FROM TodoDependencies WHERE id = ?').get(id) as TodoDependency
+}
+
+export function deleteTodoDependency(id: string): void {
+  const current = db.prepare('SELECT * FROM TodoDependencies WHERE id = ?').get(id) as TodoDependency | undefined
+  if (!current) return
+
+  const now = new Date().toISOString()
+  db.transaction(() => {
+    db.prepare('DELETE FROM TodoDependencies WHERE id = ?').run(id)
+    resolveDependencyCascade(current.successor_todo_id, now)
+  })()
 }
 
 // ─── SubTasks ─────────────────────────────────────────────────
@@ -990,6 +1191,15 @@ export interface Todo {
   created_at: string
   updated_at: string
   archived_at: string | null
+}
+
+export interface TodoDependency {
+  id: string
+  predecessor_todo_id: string
+  successor_todo_id: string
+  type: 'finish_to_start'
+  lag_days: number
+  created_at: string
 }
 
 export interface SubTask {

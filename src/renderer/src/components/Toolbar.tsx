@@ -10,18 +10,16 @@ interface Props {
   showArchived: boolean
   onToggleArchived: () => void
   onOpenSettings: () => void
-  activeView: 'detail' | 'log' | 'calendar' | 'overview' | 'plan' | 'gantt'
+  activeView: 'detail' | 'log' | 'plan' | 'gantt'
   showPlanRail: boolean
   onToggleLogView: () => void
-  onToggleCalendarView: () => void
-  onToggleOverviewView: () => void
   onTogglePlanView: () => void
   onToggleGanttView: () => void
   onTogglePlanRail: () => void
 }
 
 interface ViewButton {
-  key: 'plan' | 'overview' | 'gantt' | 'calendar' | 'log'
+  key: 'plan' | 'gantt' | 'log'
   label: string
   active: boolean
   onClick: () => void
@@ -39,8 +37,6 @@ export function Toolbar({
   activeView,
   showPlanRail,
   onToggleLogView,
-  onToggleCalendarView,
-  onToggleOverviewView,
   onTogglePlanView,
   onToggleGanttView,
   onTogglePlanRail
@@ -50,10 +46,8 @@ export function Toolbar({
   const [categoryId, setCategoryId] = useState('')
 
   const viewButtons: ViewButton[] = [
-    { key: 'plan', label: '\u8a08\u753b', active: activeView === 'plan', onClick: onTogglePlanView },
-    { key: 'overview', label: '\u6982\u8981', active: activeView === 'overview', onClick: onToggleOverviewView },
     { key: 'gantt', label: '\u30ac\u30f3\u30c8', active: activeView === 'gantt', onClick: onToggleGanttView },
-    { key: 'calendar', label: '\u30ab\u30ec\u30f3\u30c0\u30fc', active: activeView === 'calendar', onClick: onToggleCalendarView },
+    { key: 'plan', label: '\u8a08\u753b', active: activeView === 'plan', onClick: onTogglePlanView },
     { key: 'log', label: '\u8a18\u9332', active: activeView === 'log', onClick: onToggleLogView }
   ]
 

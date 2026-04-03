@@ -26,6 +26,15 @@ export interface Todo {
   archived_at: string | null
 }
 
+export interface TodoDependency {
+  id: string
+  predecessor_todo_id: string
+  successor_todo_id: string
+  type: 'finish_to_start'
+  lag_days: number
+  created_at: string
+}
+
 export interface SubTask {
   id: string
   todo_id: string
