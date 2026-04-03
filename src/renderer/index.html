@@ -13,6 +13,18 @@
         color: #e2e8f0;
         overflow: hidden;
       }
+      body.theme-light {
+        background: #f8fafc;
+        color: #0f172a;
+      }
+      body.theme-light #root {
+        filter: invert(1) hue-rotate(180deg);
+      }
+      body.theme-light #root img,
+      body.theme-light #root video,
+      body.theme-light #root canvas {
+        filter: invert(1) hue-rotate(180deg);
+      }
     </style>
   </head>
   <body>

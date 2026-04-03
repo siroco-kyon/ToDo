@@ -19,6 +19,7 @@ type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_da
 type CenterView = 'detail' | 'log' | 'plan' | 'gantt'
 type GanttSidePanelMode = 'detail' | 'today'
 type PaneKey = 'category' | 'list' | 'side'
+type ThemeMode = 'dark' | 'light'
 
 interface PaneWidths {
   category: number
@@ -82,6 +83,10 @@ export function App(): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [showQuickAdd, setShowQuickAdd] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    const saved = window.localStorage.getItem('app-theme-mode')
+    return saved === 'light' ? 'light' : 'dark'
+  })
   const [activeView, setActiveView] = useState<CenterView>(() => 'gantt')
   const [ganttSidePanelMode, setGanttSidePanelMode] = useState<GanttSidePanelMode>('today')
   const [showPlanRail, setShowPlanRail] = useState<boolean>(() => {
@@ -134,6 +139,17 @@ export function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    let disposed = false
+    window.api.settingsGet('themeMode').then((value) => {
+      if (disposed) return
+      if (value === 'dark' || value === 'light') setThemeMode(value)
+    })
+    return () => {
+      disposed = true
+    }
+  }, [])
+
+  useEffect(() => {
     const unsubscribe = window.api.onNavigateTodo((todoId) => {
       setSelectedTodoId(todoId)
       setActiveView('detail')
@@ -153,6 +169,12 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     window.localStorage.setItem('show-plan-rail', String(showPlanRail))
   }, [showPlanRail])
+
+  useEffect(() => {
+    window.localStorage.setItem('app-theme-mode', themeMode)
+    if (themeMode === 'light') document.body.classList.add('theme-light')
+    else document.body.classList.remove('theme-light')
+  }, [themeMode])
 
   useEffect(() => {
     window.localStorage.setItem('app-pane-widths', JSON.stringify(paneWidths))
@@ -217,6 +239,11 @@ export function App(): React.JSX.Element {
     const result = await window.api.markdownExport('clipboard')
     showToast(result.message, result.success ? 'success' : 'error')
   }, [showToast])
+
+  const handleThemeModeChange = useCallback(async (mode: ThemeMode) => {
+    setThemeMode(mode)
+    await window.api.settingsSet('themeMode', mode)
+  }, [])
 
   useEffect(() => {
     const unsubQuickAdd = window.api.onShortcutQuickAdd(() => setShowQuickAdd(true))
@@ -701,6 +728,8 @@ export function App(): React.JSX.Element {
         <SettingsModal
           onClose={() => setShowSettings(false)}
           onShowToast={showToast}
+          themeMode={themeMode}
+          onThemeChange={handleThemeModeChange}
         />
       )}
     </div>

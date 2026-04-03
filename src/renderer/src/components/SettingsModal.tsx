@@ -3,7 +3,11 @@ import React, { useState, useEffect, useRef } from 'react'
 interface Props {
   onClose: () => void
   onShowToast: (message: string, type?: 'success' | 'error') => void
+  themeMode: ThemeMode
+  onThemeChange: (mode: ThemeMode) => Promise<void>
 }
+
+type ThemeMode = 'dark' | 'light'
 
 interface ShortcutConfig {
   key: string       // Settings DBのキー
@@ -42,7 +46,7 @@ function captureKeyEvent(e: React.KeyboardEvent): string | null {
   return modifiers.join('+')
 }
 
-export function SettingsModal({ onClose, onShowToast }: Props): React.JSX.Element {
+export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange }: Props): React.JSX.Element {
   const [shortcuts, setShortcuts] = useState<ShortcutConfig[]>([
     { key: 'globalShortcutFocus', label: 'アプリを最前面に表示', value: 'CommandOrControl+Alt+T', editing: false },
     { key: 'globalShortcutQuickAdd', label: 'クイック追加モーダル', value: 'CommandOrControl+Alt+N', editing: false },
@@ -150,6 +154,16 @@ export function SettingsModal({ onClose, onShowToast }: Props): React.JSX.Elemen
     }
   }
 
+  const handleThemeSelect = async (nextMode: ThemeMode): Promise<void> => {
+    if (nextMode === themeMode) return
+    try {
+      await onThemeChange(nextMode)
+      onShowToast(`表示テーマを${nextMode === 'light' ? 'ライト' : 'ダーク'}に変更しました`)
+    } catch {
+      onShowToast('テーマの変更に失敗しました', 'error')
+    }
+  }
+
   const editingIndex = shortcuts.findIndex((s) => s.editing)
 
   return (
@@ -173,6 +187,37 @@ export function SettingsModal({ onClose, onShowToast }: Props): React.JSX.Elemen
         </div>
 
         {/* ─── 1. キーボードショートカット ─── */}
+        <section>
+          <h3 style={sectionHead}>表示テーマ</h3>
+          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+            アプリ表示をライト/ダークで切り替えます。設定は保存され、次回起動時も維持されます。
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => { void handleThemeSelect('dark') }}
+              style={{
+                ...secondaryBtn,
+                border: `1px solid ${themeMode === 'dark' ? '#2563eb' : '#334155'}`,
+                background: themeMode === 'dark' ? '#1d4ed8' : '#334155',
+                color: themeMode === 'dark' ? '#eff6ff' : '#cbd5e1'
+              }}
+            >
+              ダーク
+            </button>
+            <button
+              onClick={() => { void handleThemeSelect('light') }}
+              style={{
+                ...secondaryBtn,
+                border: `1px solid ${themeMode === 'light' ? '#2563eb' : '#334155'}`,
+                background: themeMode === 'light' ? '#1d4ed8' : '#334155',
+                color: themeMode === 'light' ? '#eff6ff' : '#cbd5e1'
+              }}
+            >
+              ライト
+            </button>
+          </div>
+        </section>
+
         <section>
           <h3 style={sectionHead}>キーボードショートカット</h3>
           <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
