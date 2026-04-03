@@ -1,50 +1,84 @@
-# ToDo
+﻿# ToDo
 
-Electron + React + SQLite で作ったデスクトップ向けの ToDo / 作業ログアプリです。  
-タスク管理だけでなく、タイマー計測、日次ログ、ガントチャート、カテゴリ整理、繰り返しタスク運用までを 1 つにまとめています。
+Electron + React + SQLite で作ったデスクトップ向けタスク管理アプリです。
+
+現在はガントチャートを中心にした運用を前提にしていて、タスク管理、サブタスク、依存関係、今日の計画、作業ログを 1 つのアプリで扱えます。
 
 ## 主な機能
 
-- タスク、カテゴリ、サブタスクの作成・編集・完了管理
-- ガントチャート表示
-  - 親タスクとサブタスクを階層表示
-  - 開始日 / 期限のドラッグ編集
-  - 表示期間、粒度、カテゴリ、表示対象の絞り込み
-  - 別ウィンドウ表示
-- 計画 / 概要 / カレンダー / 記録ビュー
-- 今日のレール表示と日次の作業整理
-- タイマー計測と作業ログ保存
-- daily / weekly / monthly の繰り返しタスク
-- 期限通知
-- Markdown 形式でのログ出力
-- システムトレイ常駐
-- グローバルショートカット
-- データ保存先の変更
-- アプリアイコンの差し替え
+- ガントチャート中心のタスク管理
+- タスクバーのドラッグ移動、開始日・終了日のリサイズ
+- 親タスクごとのサブタスク展開・折りたたみ
+- 依存関係の管理
+  - ガント上のドラッグ接続
+  - 依存関係パネルからの追加
+  - タスク詳細画面からの追加・待機日数変更・削除
+  - Finish to Start 形式の依存関係と待機日数
+- 基準線の保存と比較表示
+- 進捗シグナル表示
+  - 順調
+  - 遅れ
+  - 期限超過
+  - 開始前
+- 今日の計画ビュー
+- 作業ログとタイマー
+- カテゴリ管理
+- Markdown エクスポート
+- タスクの繰り返し設定
+  - daily
+  - weekly
+  - monthly
+- アーカイブ
+- 別ウィンドウでのガント表示
+
+## 画面構成
+
+- `ガント`
+  メイン画面です。日程調整、依存関係、基準線、進捗確認をここで行います。
+- `計画`
+  今日の予定を時間レーンで並べて確認します。
+- `記録`
+  作業ログを確認します。
+- `詳細`
+  タスクの説明、日付、カテゴリ、サブタスク、依存関係、ログを確認・編集します。
+
+補足:
+- 以前あった `カレンダー` と `概要` は現在のメイン導線から外しています。
+- ガントを中心に使う前提の UI です。
 
 ## 技術スタック
 
 | 項目 | 内容 |
 | --- | --- |
-| デスクトップ基盤 | Electron 29 |
+| デスクトップ | Electron 29 |
 | UI | React 18 + TypeScript |
-| データベース | better-sqlite3 |
-| ビルド | electron-vite + electron-builder |
+| DB | better-sqlite3 |
+| ビルド | electron-vite |
+| 配布 | electron-builder |
+
+## セットアップ
+
+```bash
+npm install
+```
+
+`better-sqlite3` を使っているため、`postinstall` でネイティブモジュールの再ビルドが走ります。
 
 ## 開発
 
 ```bash
-npm install
 npm run dev
+```
+
+開発モードでは Electron と Vite が同時に起動します。
+
+## ビルド
+
+```bash
 npm run build
 ```
 
-- `npm run dev`
-  Electron + Vite の開発モードで起動します。
-- `npm run build`
-  本番用ビルドを `out/` に生成します。
-
-`better-sqlite3` を使っているため、依存インストール時にネイティブモジュールの再ビルドが走ります。通常は `postinstall` で自動処理されます。
+本番用のビルド成果物は `out/` に出力されます。
 
 ## 配布ビルド
 
@@ -54,36 +88,23 @@ npm run dist
 
 `npm run dist` では次を順に実行します。
 
-1. `build/icon.png` と `build/icon.ico` を自動生成
-2. Electron 本体を本番ビルド
-3. `electron-builder` で配布物を生成
+1. `build/icon.png` と `build/icon.ico` を生成
+2. 本番ビルドを作成
+3. `electron-builder` で Windows 向けパッケージを生成
 
-Windows では主に次の成果物が出ます。
+主な出力先:
 
 - `dist/todo-app-1.0.0-setup.exe`
 - `dist/win-unpacked/ToDo.exe`
 
-セットアップ exe とアプリ exe には、同じビルド用アイコンを使います。
-
 ## データ保存先
 
-- 開発時: `<プロジェクト>/data`
-- パッケージ版の既定: `exe` と同じ階層の `data/`
+- 開発時
+  `D:\Github\ToDo\data`
+- パッケージ版
+  `exe` と同じ階層の `data/`
 
-初回起動時のセットアップ画面、または設定画面から保存先を変更できます。
-
-## 画面構成
-
-- `ガント`
-  メインの進行管理ビューです。初期表示もガントです。
-- `計画`
-  予定とタスクの整理に使います。
-- `概要`
-  全体の状況を俯瞰します。
-- `カレンダー`
-  日付ベースで確認します。
-- `記録`
-  作業ログを確認します。
+初回セットアップ後は、設定画面から保存先を変更できます。
 
 ## ディレクトリ構成
 
@@ -93,14 +114,13 @@ src/
     index.ts          # Electron メインプロセス
     db.ts             # SQLite アクセス
     ipc.ts            # IPC ハンドラ
-    tray.ts           # システムトレイ
+    config.ts         # データ保存先設定
     shortcuts.ts      # グローバルショートカット
-    notifications.ts  # 期限通知
-    archive.ts        # 古いデータの整理
-    config.ts         # 保存先などの初期設定
-    icon.ts           # 実行時アイコン処理
+    archive.ts        # アーカイブ整理
+    markdown.ts       # Markdown エクスポート
+    icon.ts           # アイコン操作
   preload/
-    index.ts          # renderer へ公開する API
+    index.ts          # renderer に公開する API
   renderer/
     src/
       App.tsx
@@ -109,28 +129,29 @@ src/
         GanttView.tsx
         TodoDetail.tsx
         TodoList.tsx
-        CalendarView.tsx
-        OverviewDashboard.tsx
         PlanView.tsx
         WorkLogSummary.tsx
+        Toolbar.tsx
         SettingsModal.tsx
         SetupWizardModal.tsx
 scripts/
-  generate-build-icons.cjs  # 配布用 icon.png / icon.ico 生成
+  generate-build-icons.cjs
 ```
 
-## 既定ショートカット
+## ショートカット
 
-設定画面から変更できます。
+既定値:
 
 | ショートカット | 動作 |
 | --- | --- |
 | `Ctrl+Alt+T` | アプリを前面表示 |
-| `Ctrl+Alt+N` | クイック追加モーダルを開く |
-| `Ctrl+Alt+E` | Markdown エクスポートを開く |
+| `Ctrl+Alt+N` | クイック追加を開く |
+| `Ctrl+Alt+E` | Markdown エクスポート |
+
+設定画面から変更できます。
 
 ## メモ
 
-- 配布ビルドの Windows アイコンは `electron-builder` 側で明示設定しています。
-- 実行中のアプリアイコン差し替えは設定画面から行えます。
-- ガントチャートでタスクを選ぶと、右ペインに詳細を表示できます。
+- HTTP クライアントとして `axios` は使っていません。
+- データ操作は Electron の IPC 経由で main プロセスに集約しています。
+- 依存関係の自動調整は DB 側で処理しています。

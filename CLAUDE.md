@@ -1,55 +1,58 @@
-# CLAUDE.md
-必ず日本語で出力してください。
+﻿# CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+このファイルは、このリポジトリを扱うエージェント向けの簡易メモです。
 
 ## コマンド
 
 ```bash
-npm install        # 依存関係インストール
-npm run dev        # 開発サーバー起動（Electron + Vite）
-npm run build      # プロダクションビルド
-npm run dist       # インストーラー生成
+npm install
+npm run dev
+npm run build
+npm run dist
 ```
 
-## アーキテクチャ概要
+## アプリの方向性
 
-**Electronデスクトップアプリ** - タイムトラッキング付きTODO管理
+- 現在はガントチャート中心のアプリ
+- `カレンダー` と `概要` はメイン導線から外している
+- 依存関係は Finish to Start を採用
+- 依存関係はガント画面とタスク詳細画面の両方から編集できる
 
-### 技術スタック
-- **メインプロセス**: Electron + better-sqlite3 (同期API)
-- **レンダラー**: React 18 + TypeScript (Vite)
-- **IPC**: contextBridge経由でのみDB操作（nodeIntegration無効）
-- **ビルド**: electron-vite + electron-builder
+## 技術構成
 
-### ディレクトリ構造
+- main process
+  Electron + better-sqlite3
+- renderer
+  React + TypeScript
+- renderer から DB を直接触らず、`window.api` 経由で IPC を使う
+
+## 重要ファイル
+
+```text
+src/main/index.ts          Electron 起動とウィンドウ管理
+src/main/db.ts             SQLite アクセスと依存関係の連鎖処理
+src/main/ipc.ts            IPC ハンドラ
+src/main/config.ts         データ保存先
+src/main/shortcuts.ts      グローバルショートカット
+
+src/preload/index.ts       renderer に公開する API
+
+src/renderer/src/App.tsx                       レイアウトと画面切り替え
+src/renderer/src/components/GanttView.tsx     ガント本体
+src/renderer/src/components/TodoDetail.tsx    タスク詳細
+src/renderer/src/components/PlanView.tsx      今日の計画
+src/renderer/src/components/WorkLogSummary.tsx 作業ログ
 ```
-src/
-  main/        # Electronメインプロセス
-    index.ts   # BrowserWindow・トレイ・ショートカット初期化
-    db.ts      # better-sqlite3 全CRUD（同期）
-    ipc.ts     # IPCハンドラ登録
-    tray.ts    # システムトレイ常駐
-    shortcuts.ts  # グローバルショートカット
-    markdown.ts   # 日次ログMarkdown生成
-    archive.ts    # 起動時アーカイブ自動削除
-  preload/
-    index.ts   # contextBridge API公開
-  renderer/
-    src/
-      App.tsx           # 3ペインレイアウト
-      types.ts          # 共通型定義
-      components/       # UIコンポーネント
-      hooks/useTimer.ts # タイマー状態管理
-```
 
-### 重要な設計方針
-- SQLiteはメインプロセスのみで使用（better-sqlite3は同期API）
-- レンダラー↔DB通信はすべてIPC経由（`window.api.*`）
-- タイマー排他制御: `RunningState`テーブルで管理（最大1行）
-- アプリ起動時にRunningStateを確認してタイマーを復元
-- 閉じるボタンはウィンドウ非表示（トレイ常駐）、終了はトレイメニュー
+## 実装メモ
 
-### グローバルショートカット（デフォルト）
-- `Ctrl+Alt+N` - クイック追加モーダル
-- `Ctrl+Alt+E` - Markdownエクスポート（クリップボード）
+- タスク日付変更時は `db.ts` 側で依存関係の連鎖を再計算する
+- 依存関係の追加、待機日数変更、削除でも後続タスクを再計算する
+- ガントの表示設定は `localStorage` に保存している
+- ガントの自動スクロールは表示期間やズーム変更時だけ走る
+
+## 注意点
+
+- `better-sqlite3` を使うので、依存インストール後にネイティブ再ビルドが必要
+- 文字化けした日本語が残っていたら、README と UI 文言の両方を確認する
+- ドキュメント更新時は、ガント中心の仕様と依存関係機能の説明を優先する
