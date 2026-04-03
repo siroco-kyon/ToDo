@@ -343,6 +343,7 @@ export function App(): React.JSX.Element {
       await window.api.todoCreate({
         title: todo.title,
         description: todo.description,
+        memo: todo.memo,
         category_id: todo.category_id,
         priority: todo.priority,
         start_date: nextStartDate,

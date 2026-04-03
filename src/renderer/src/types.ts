@@ -11,6 +11,7 @@ export interface Todo {
   id: string
   title: string
   description: string
+  memo: string
   category_id: string | null
   category_name: string | null
   category_color: string | null
@@ -72,6 +73,7 @@ export interface UpdateSubTaskInput {
 export interface CreateTodoInput {
   title: string
   description?: string
+  memo?: string
   category_id?: string | null
   priority?: number
   progress?: number
@@ -83,6 +85,7 @@ export interface CreateTodoInput {
 export interface UpdateTodoInput {
   title?: string
   description?: string
+  memo?: string
   category_id?: string | null
   status?: 'active' | 'done' | 'archived'
   priority?: number

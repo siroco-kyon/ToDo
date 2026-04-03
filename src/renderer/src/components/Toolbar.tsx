@@ -46,9 +46,9 @@ export function Toolbar({
   const [categoryId, setCategoryId] = useState('')
 
   const viewButtons: ViewButton[] = [
-    { key: 'gantt', label: '\u30ac\u30f3\u30c8', active: activeView === 'gantt', onClick: onToggleGanttView },
-    { key: 'plan', label: '\u8a08\u753b', active: activeView === 'plan', onClick: onTogglePlanView },
-    { key: 'log', label: '\u8a18\u9332', active: activeView === 'log', onClick: onToggleLogView }
+    { key: 'gantt', label: 'ガント', active: activeView === 'gantt', onClick: onToggleGanttView },
+    { key: 'plan', label: '計画', active: activeView === 'plan', onClick: onTogglePlanView },
+    { key: 'log', label: '記録', active: activeView === 'log', onClick: onToggleLogView }
   ]
 
   const handleAdd = async (event: React.FormEvent): Promise<void> => {
@@ -78,7 +78,7 @@ export function Toolbar({
             autoFocus
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="\u30bf\u30b9\u30af\u3092\u8ffd\u52a0..."
+            placeholder="タスクを追加..."
             style={inputStyle}
             onKeyDown={(event) => {
               if (event.key === 'Escape') setAdding(false)
@@ -90,18 +90,18 @@ export function Toolbar({
               onChange={(event) => setCategoryId(event.target.value)}
               style={{ ...inputStyle, maxWidth: 160 }}
             >
-              <option value="">\u30ab\u30c6\u30b4\u30ea\u306a\u3057</option>
+              <option value="">カテゴリなし</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>{category.name}</option>
               ))}
             </select>
           )}
-          <button type="submit" style={primaryButtonStyle}>{'\u8ffd\u52a0'}</button>
-          <button type="button" onClick={() => setAdding(false)} style={ghostButtonStyle}>{'\u9589\u3058\u308b'}</button>
+          <button type="submit" style={primaryButtonStyle}>追加</button>
+          <button type="button" onClick={() => setAdding(false)} style={ghostButtonStyle}>閉じる</button>
         </form>
       ) : (
         <button onClick={() => setAdding(true)} style={primaryButtonStyle}>
-          + {'\u8ffd\u52a0'}
+          + 追加
         </button>
       )}
 
@@ -117,7 +117,7 @@ export function Toolbar({
               borderRadius: 999
             }}
           >
-            {'\u8a08\u6e2c\u4e2d'}
+            計測中
           </span>
         )}
 
@@ -135,14 +135,14 @@ export function Toolbar({
 
         <div style={groupStyle}>
           <button onClick={onTogglePlanRail} style={utilityButtonStyle(showPlanRail)}>
-            {'\u4eca\u65e5\u306e\u30ec\u30fc\u30eb'}
+            今日のレール
           </button>
           <button onClick={onToggleArchived} style={utilityButtonStyle(showArchived)}>
-            {showArchived ? '\u30a2\u30fc\u30ab\u30a4\u30d6\u8868\u793a\u4e2d' : '\u30a2\u30fc\u30ab\u30a4\u30d6'}
+            {showArchived ? 'アーカイブ表示中' : 'アーカイブ'}
           </button>
-          <button onClick={onExportClipboard} style={utilityButtonStyle(false)}>{'\u30b3\u30d4\u30fc'}</button>
-          <button onClick={onExportFile} style={utilityButtonStyle(false)}>{'\u4fdd\u5b58'}</button>
-          <button onClick={onOpenSettings} style={utilityButtonStyle(false)}>{'\u8a2d\u5b9a'}</button>
+          <button onClick={onExportClipboard} style={utilityButtonStyle(false)}>コピー</button>
+          <button onClick={onExportFile} style={utilityButtonStyle(false)}>保存</button>
+          <button onClick={onOpenSettings} style={utilityButtonStyle(false)}>設定</button>
         </div>
       </div>
     </div>

@@ -34,6 +34,7 @@ function createTables(): void {
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       description TEXT DEFAULT '',
+      memo TEXT DEFAULT '',
       category_id TEXT,
       status TEXT NOT NULL DEFAULT 'active',
       priority INTEGER DEFAULT 2,
@@ -192,6 +193,10 @@ function migrateDb(): void {
 
   if (!dependencyColumns.some((c) => c.name === 'lag_days')) {
     db.prepare('ALTER TABLE TodoDependencies ADD COLUMN lag_days INTEGER NOT NULL DEFAULT 0').run()
+  }
+
+  if (!todoColumns.some((c) => c.name === 'memo')) {
+    db.prepare("ALTER TABLE Todos ADD COLUMN memo TEXT DEFAULT ''").run()
   }
 }
 
@@ -378,6 +383,7 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
 
   if (data.title !== undefined) { fields.push('title = ?'); values.push(data.title) }
   if (data.description !== undefined) { fields.push('description = ?'); values.push(data.description) }
+  if (data.memo !== undefined) { fields.push('memo = ?'); values.push(data.memo) }
   if (data.category_id !== undefined) { fields.push('category_id = ?'); values.push(data.category_id) }
   if (data.status !== undefined) { fields.push('status = ?'); values.push(data.status) }
   if (data.priority !== undefined) { fields.push('priority = ?'); values.push(data.priority) }
@@ -470,12 +476,13 @@ export function createTodo(data: CreateTodoInput): Todo {
   // 新規タスクはsort_orderを最小値-1にして先頭に表示
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) as m FROM Todos').get() as { m: number }).m
   db.prepare(
-    `INSERT INTO Todos (id, title, description, category_id, status, priority, progress, start_date, due_date, sort_order, recurrence, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO Todos (id, title, description, memo, category_id, status, priority, progress, start_date, due_date, sort_order, recurrence, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     data.title,
     data.description ?? '',
+    data.memo ?? '',
     data.category_id ?? null,
     data.priority ?? 3,
     data.progress ?? 0,
@@ -1178,6 +1185,7 @@ export interface Todo {
   id: string
   title: string
   description: string
+  memo: string
   category_id: string | null
   category_name: string | null
   category_color: string | null
@@ -1239,6 +1247,7 @@ export interface UpdateSubTaskInput {
 export interface CreateTodoInput {
   title: string
   description?: string
+  memo?: string
   category_id?: string | null
   priority?: number
   progress?: number
@@ -1250,6 +1259,7 @@ export interface CreateTodoInput {
 export interface UpdateTodoInput {
   title?: string
   description?: string
+  memo?: string
   category_id?: string | null
   status?: 'active' | 'done' | 'archived'
   priority?: number
