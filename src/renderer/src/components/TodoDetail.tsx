@@ -368,8 +368,20 @@ export function TodoDetail({
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+    <div style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 2,
+          padding: '20px 20px 12px',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 10,
+          borderBottom: '1px solid #1e293b',
+          background: '#0b1220'
+        }}
+      >
         <div style={{ flex: 1 }}>
           {editing ? (
             <input value={editData.title ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, title: event.target.value }))} style={inputStyle} />
@@ -387,6 +399,7 @@ export function TodoDetail({
         </button>
       </div>
 
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {!editing && (todo.start_date || todo.due_date) && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {todo.start_date && <Badge color="#93c5fd">開始日 {todo.start_date}</Badge>}
@@ -575,6 +588,7 @@ export function TodoDetail({
           </div>
         )}
       </section>
+    </div>
     </div>
   )
 }

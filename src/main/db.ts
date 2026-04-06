@@ -518,6 +518,17 @@ export function updateTodo(id: string, data: UpdateTodoInput): Todo {
   return getTodoById(id)
 }
 
+function syncTodoDueDateWithSubTask(todoId: string, subTaskDueDate: string | null): void {
+  const normalizedSubTaskDueDate = normalizeDateKey(subTaskDueDate)
+  if (!normalizedSubTaskDueDate) return
+
+  const todo = getTodoById(todoId)
+  const normalizedTodoDueDate = normalizeDateKey(todo.due_date)
+  if (normalizedTodoDueDate && normalizedTodoDueDate >= normalizedSubTaskDueDate) return
+
+  updateTodo(todoId, { due_date: normalizedSubTaskDueDate })
+}
+
 export function archiveTodo(id: string): void {
   const now = new Date().toISOString()
   db.prepare(`UPDATE Todos SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ?`).run(
@@ -780,7 +791,9 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
   db.prepare(
     'INSERT INTO SubTasks (id, todo_id, title, description, start_date, due_date, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)'
   ).run(id, todoId, data.title, data.description ?? '', startDate, dueDate, maxOrder + 1, now)
-  return db.prepare('SELECT * FROM SubTasks WHERE id = ?').get(id) as SubTask
+  const created = db.prepare('SELECT * FROM SubTasks WHERE id = ?').get(id) as SubTask
+  syncTodoDueDateWithSubTask(todoId, created.due_date)
+  return created
 }
 
 export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
@@ -805,7 +818,9 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
       db.prepare('UPDATE SubTasks SET done = 0, completed_at = NULL WHERE id = ?').run(id)
     }
   }
-  return db.prepare('SELECT * FROM SubTasks WHERE id = ?').get(id) as SubTask
+  const updated = db.prepare('SELECT * FROM SubTasks WHERE id = ?').get(id) as SubTask
+  syncTodoDueDateWithSubTask(updated.todo_id, updated.due_date)
+  return updated
 }
 
 export function deleteSubTask(id: string): void {

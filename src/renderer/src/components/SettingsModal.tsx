@@ -30,7 +30,7 @@ function toDisplay(accelerator: string): string {
 }
 
 function captureKeyEvent(e: React.KeyboardEvent): string | null {
-  e.preventDefault()
+  if (e.nativeEvent.isComposing) return null
   const modifiers: string[] = []
   if (e.ctrlKey || e.metaKey) modifiers.push('CommandOrControl')
   if (e.altKey) modifiers.push('Alt')
@@ -39,6 +39,7 @@ function captureKeyEvent(e: React.KeyboardEvent): string | null {
   const ignored = ['Control', 'Alt', 'Shift', 'Meta', 'CapsLock', 'Tab']
   if (ignored.includes(e.key)) return null
 
+  e.preventDefault()
   let key = e.key
   if (key.length === 1) key = key.toUpperCase()
   // ファンクションキーはそのまま (F1-F12)
@@ -104,6 +105,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange }
   }
 
   const handleKeyCapture = async (e: React.KeyboardEvent, index: number): Promise<void> => {
+    if (e.nativeEvent.isComposing) return
     if (e.key === 'Escape') { cancelEdit(); return }
     const accelerator = captureKeyEvent(e)
     if (!accelerator) return
@@ -165,6 +167,21 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange }
   }
 
   const editingIndex = shortcuts.findIndex((s) => s.editing)
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.isComposing) return
+      event.preventDefault()
+      if (editingIndex >= 0) {
+        cancelEdit()
+        return
+      }
+      onClose()
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [cancelEdit, editingIndex, onClose])
 
   return (
     <div

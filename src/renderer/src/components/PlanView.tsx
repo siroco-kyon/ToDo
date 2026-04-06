@@ -650,6 +650,7 @@ export function PlanView({
     if (!placementDraft) return undefined
 
     const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.isComposing) return
       if (event.key !== 'Escape') return
       setPlacementDraft(null)
       setPlacementTarget(null)

@@ -111,6 +111,7 @@ const NO_CATEGORY_KEY = '__uncategorized__'
 const GANTT_VIEW_SETTINGS_STORAGE_KEY = 'gantt-view-settings'
 const COLLAPSED_TODO_STORAGE_KEY = 'gantt-collapsed-todo-ids'
 const GANTT_BASELINE_STORAGE_KEY = 'gantt-baseline-snapshot'
+const GANTT_SCROLL_STATE_STORAGE_KEY = 'gantt-scroll-state'
 const LEFT_COLUMN_WIDTH = 252
 const PARENT_ROW_HEIGHT = 60
 const SUBTASK_ROW_HEIGHT = 42
@@ -118,6 +119,7 @@ const PARENT_BAR_HEIGHT = 34
 const SUBTASK_BAR_HEIGHT = 22
 const DEPENDENCY_HANDLE_SIZE = 14
 const DEPENDENCY_TARGET_HANDLE_SIZE = 18
+const DEPENDENCY_TARGET_INSET = 2
 const RANGE_PADDING_DAYS = 5
 const UNIT_WIDTH: Record<TimeScale, Record<ZoomMode, number>> = {
   day: { compact: 28, normal: 40, detail: 56, focus: 84 },
@@ -251,6 +253,14 @@ interface PersistedGanttViewSettings {
   manualPreset: RangePreset
   controlsCollapsed: boolean
   selectedCategoryKeys: CategoryFilterKey[]
+}
+
+interface PersistedGanttScrollState {
+  timeScale: TimeScale
+  leftDate: string | null
+  leftOffset: number
+  scrollLeft: number
+  scrollTop: number
 }
 
 function defaultGanttViewSettings(): PersistedGanttViewSettings {
@@ -511,6 +521,46 @@ function getScheduleHealth(todo: Todo, todoBar: TodoBar | null, todayKey: string
   }
 }
 
+function isDateKeyFormat(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+function loadGanttScrollState(): PersistedGanttScrollState | null {
+  try {
+    const raw = window.localStorage.getItem(GANTT_SCROLL_STATE_STORAGE_KEY)
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw) as Partial<PersistedGanttScrollState>
+    const timeScale = parsed.timeScale === 'day' || parsed.timeScale === 'month' || parsed.timeScale === 'year'
+      ? parsed.timeScale
+      : null
+    if (!timeScale) return null
+
+    const leftDate = typeof parsed.leftDate === 'string' && isDateKeyFormat(parsed.leftDate)
+      ? parsed.leftDate
+      : null
+    const leftOffset = typeof parsed.leftOffset === 'number' && Number.isFinite(parsed.leftOffset)
+      ? Math.max(0, parsed.leftOffset)
+      : 0
+    const scrollLeft = typeof parsed.scrollLeft === 'number' && Number.isFinite(parsed.scrollLeft)
+      ? Math.max(0, parsed.scrollLeft)
+      : 0
+    const scrollTop = typeof parsed.scrollTop === 'number' && Number.isFinite(parsed.scrollTop)
+      ? Math.max(0, parsed.scrollTop)
+      : 0
+
+    return {
+      timeScale,
+      leftDate,
+      leftOffset,
+      scrollLeft,
+      scrollTop
+    }
+  } catch {
+    return null
+  }
+}
+
 function parentTone(todo: Todo): { background: string; border: string; text: string; fill: string } {
   if (todo.status === 'done') return { background: '#16a34a22', border: '#22c55e', text: '#dcfce7', fill: '#22c55e' }
   const base = todo.category_color ?? '#6366f1'
@@ -594,16 +644,17 @@ function barStartLabel(dateStr: string, scale: TimeScale): string {
 }
 
 function buildDependencyPath(startX: number, startY: number, endX: number, endY: number): string {
+  const endHookX = endX - 10
+  const endBendOffset = 12
   const horizontalGap = endX - startX
-  if (horizontalGap >= 36) {
-    const elbowX = Math.max(startX + 22, endX - 18, startX + 22 + Math.abs(endY - startY) * 0.12)
-    return `M ${startX} ${startY} H ${elbowX} V ${endY} H ${endX}`
-  }
 
-  const topLaneY = Math.max(Math.min(startY, endY) - 28, 6)
-  const startLeadX = startX + 10
-  const targetApproachX = Math.max(endX - 16, startLeadX + 10)
-  return `M ${startX} ${startY} H ${startLeadX} V ${topLaneY} H ${targetApproachX} V ${endY} H ${endX}`
+  const bendY = endY + (startY <= endY ? -endBendOffset : endBendOffset)
+  const laneX = horizontalGap >= 36
+    ? Math.max(startX + 22, endHookX + 10, startX + 22 + Math.abs(endY - startY) * 0.12)
+    : Math.max(startX + 10, endHookX + 10)
+
+  // 終端手前で一度Yをずらしてから右向きに入ることで、終端付近の自己重なりを防ぐ。
+  return `M ${startX} ${startY} H ${laneX} V ${bendY} H ${endHookX} V ${endY} H ${endX}`
 }
 
 function areDependencyPathsEqual(previous: DependencyPath[], next: DependencyPath[]): boolean {
@@ -621,6 +672,7 @@ export function GanttView({
   standalone = false
 }: Props): React.JSX.Element {
   const initialSettings = useMemo(() => loadGanttViewSettings(), [])
+  const initialScrollState = useMemo(() => loadGanttScrollState(), [])
   const [zoom, setZoom] = useState<ZoomMode>(initialSettings.zoom)
   const [timeScale, setTimeScale] = useState<TimeScale>(initialSettings.timeScale)
   const [subTasks, setSubTasks] = useState<SubTask[]>([])
@@ -653,6 +705,7 @@ export function GanttView({
   const [dragOverTodoId, setDragOverTodoId] = useState<string | null>(null)
   const [reorderPending, setReorderPending] = useState(false)
   const [dependencyLayoutVersion, setDependencyLayoutVersion] = useState(0)
+  const [scrollStateReady, setScrollStateReady] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const chartCanvasRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<InteractionState | null>(null)
@@ -661,6 +714,7 @@ export function GanttView({
   const dependencyTargetBarRefs = useRef(new Map<string, HTMLDivElement>())
   const suppressSelectionRef = useRef(false)
   const lastAutoScrollKeyRef = useRef<string | null>(null)
+  const initialScrollStateRef = useRef<PersistedGanttScrollState | null>(initialScrollState)
 
   interactionRef.current = interaction
   dependencyDragRef.current = dependencyDrag
@@ -802,7 +856,17 @@ export function GanttView({
     if (!isReorderMode) return
 
     const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.isComposing) return
       if (event.key !== 'Escape') return
+      const target = event.target
+      if (
+        target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return
+      }
       event.preventDefault()
       setIsReorderMode(false)
     }
@@ -931,8 +995,8 @@ export function GanttView({
       })
   ), [filteredGroups])
 
-  const autoStart = scheduledGroups[0]?.anchorDate ?? addDays(todayKey, -7)
-  const autoEnd = scheduledGroups.reduce((latest, group) => {
+  const autoStartBase = scheduledGroups[0]?.anchorDate ?? addDays(todayKey, -7)
+  const autoEndBase = scheduledGroups.reduce((latest, group) => {
     let candidate = latest
     if (group.todoBar && group.todoBar.endDate > candidate) candidate = group.todoBar.endDate
     for (const subTask of group.datedSubTasks) {
@@ -940,6 +1004,8 @@ export function GanttView({
     }
     return candidate
   }, scheduledGroups[0]?.todoBar?.endDate ?? scheduledGroups[0]?.anchorDate ?? addDays(todayKey, 21))
+  const autoStart = autoStartBase <= todayKey ? autoStartBase : todayKey
+  const autoEnd = autoEndBase >= todayKey ? autoEndBase : todayKey
 
   const rangeStart = rangeMode === 'manual' && manualStart ? manualStart : addDays(autoStart, -RANGE_PADDING_DAYS)
   const rangeEnd = rangeMode === 'manual' && manualEnd ? manualEnd : addDays(autoEnd, RANGE_PADDING_DAYS)
@@ -1131,6 +1197,7 @@ export function GanttView({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.isComposing) return
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'z') return
       if (!lastUndoEntry || undoPending) return
 
@@ -1174,20 +1241,100 @@ export function GanttView({
   const timelineWidth = totalUnits * unitWidth
   const todayIndex = diffUnits(todayKey, timelineStart, timeScale)
   const autoScrollKey = `${normalizedRange.start}:${normalizedRange.end}:${timeScale}:${zoom}:${totalUnits}:${todayIndex}`
+  const getTodayScrollLeft = useCallback((container: HTMLDivElement): number => {
+    const todayStart = todayIndex * unitWidth
+    const maxScrollLeft = Math.max(container.scrollWidth - container.clientWidth, 0)
+    return clamp(todayStart, 0, maxScrollLeft)
+  }, [todayIndex, unitWidth])
+  const handleJumpToToday = useCallback(() => {
+    const container = scrollRef.current
+    if (container && todayIndex >= 0 && todayIndex < totalUnits) {
+      container.scrollTo({ left: getTodayScrollLeft(container), behavior: 'smooth' })
+      return
+    }
+
+    centerRangeOnToday()
+  }, [centerRangeOnToday, getTodayScrollLeft, todayIndex, totalUnits])
+
+  useLayoutEffect(() => {
+    if (scrollStateReady) return
+
+    const container = scrollRef.current
+    if (!container) return
+
+    const snapshot = initialScrollStateRef.current
+    if (snapshot && loading) return
+
+    if (snapshot) {
+      const maxScrollLeft = Math.max(container.scrollWidth - container.clientWidth, 0)
+      const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
+      let restoredLeft = clamp(snapshot.scrollLeft, 0, maxScrollLeft)
+
+      if (snapshot.leftDate && snapshot.timeScale === timeScale) {
+        const storedIndex = diffUnits(snapshot.leftDate, timelineStart, timeScale)
+        if (Number.isFinite(storedIndex)) {
+          restoredLeft = clamp(storedIndex * unitWidth + snapshot.leftOffset, 0, maxScrollLeft)
+        }
+      }
+
+      container.scrollLeft = restoredLeft
+      container.scrollTop = clamp(snapshot.scrollTop, 0, maxScrollTop)
+      lastAutoScrollKeyRef.current = autoScrollKey
+    }
+
+    setScrollStateReady(true)
+  }, [autoScrollKey, loading, scrollStateReady, timeScale, timelineStart, unitWidth])
 
   useEffect(() => {
+    if (!scrollStateReady) return
+
     const container = scrollRef.current
     if (!container) return
     if (lastAutoScrollKeyRef.current === autoScrollKey) return
 
-    const focusDate = todayIndex >= 0 && todayIndex < totalUnits
-      ? todayKey
-      : chartGroups[0]?.anchorDate ?? normalizedRange.start
-    const targetIndex = clamp(diffUnits(focusDate, timelineStart, timeScale) - 1, 0, Math.max(totalUnits - 1, 0))
-
-    container.scrollLeft = targetIndex * unitWidth
+    container.scrollLeft = getTodayScrollLeft(container)
     lastAutoScrollKeyRef.current = autoScrollKey
-  }, [autoScrollKey, chartGroups, normalizedRange.start, timeScale, timelineStart, todayIndex, todayKey, totalUnits, unitWidth])
+  }, [autoScrollKey, getTodayScrollLeft, scrollStateReady])
+
+  useEffect(() => {
+    if (!scrollStateReady) return
+
+    const container = scrollRef.current
+    if (!container) return
+
+    let frameId = 0
+    const persistScrollState = (): void => {
+      frameId = 0
+      const scrollLeft = Math.max(container.scrollLeft, 0)
+      const scrollTop = Math.max(container.scrollTop, 0)
+      const unitIndex = totalUnits > 0 ? clamp(Math.floor(scrollLeft / unitWidth), 0, totalUnits - 1) : 0
+      const leftDate = totalUnits > 0 ? addUnits(timelineStart, timeScale, unitIndex) : null
+      const leftOffset = totalUnits > 0 ? Math.max(0, scrollLeft - unitIndex * unitWidth) : 0
+
+      const nextState: PersistedGanttScrollState = {
+        timeScale,
+        leftDate,
+        leftOffset,
+        scrollLeft,
+        scrollTop
+      }
+
+      window.localStorage.setItem(GANTT_SCROLL_STATE_STORAGE_KEY, JSON.stringify(nextState))
+    }
+
+    const handleScroll = (): void => {
+      if (frameId) window.cancelAnimationFrame(frameId)
+      frameId = window.requestAnimationFrame(persistScrollState)
+    }
+
+    container.addEventListener('scroll', handleScroll, { passive: true })
+    persistScrollState()
+
+    return () => {
+      if (frameId) window.cancelAnimationFrame(frameId)
+      container.removeEventListener('scroll', handleScroll)
+    }
+  }, [scrollStateReady, timeScale, timelineStart, totalUnits, unitWidth])
 
   useEffect(() => {
     if (!interaction || !isTimelineEditable) return
@@ -1263,15 +1410,29 @@ export function GanttView({
       }
 
       const previousSubTaskSnapshot = snapshotSubTaskSchedule(current.targetId)
+      const affectedTodoIds = collectDependentTodoIds([current.ownerTodoId])
+      const previousTodoSnapshots = snapshotTodoSchedules(affectedTodoIds)
+      const ownerTodo = todoById.get(current.ownerTodoId)
+      const ownerDueDate = ownerTodo?.due_date?.slice(0, 10) ?? null
+      const shouldExtendOwnerDue = !ownerDueDate || current.previewEndDate > ownerDueDate
+
       void window.api.subtaskUpdate(current.targetId, {
         start_date: current.previewStartDate,
         due_date: current.previewEndDate
-      }).then(() => {
+      }).then(async () => {
+        if (shouldExtendOwnerDue) {
+          const latestTodos = await window.api.todoGetAll()
+          ensureRangeIncludesTodos(affectedTodoIds, latestTodos)
+        }
+
         if (!previousSubTaskSnapshot) return
         setLastUndoEntry({
           label: 'サブタスク移動',
           run: async () => {
             await restoreSubTaskSchedule(previousSubTaskSnapshot)
+            if (shouldExtendOwnerDue && previousTodoSnapshots.length > 0) {
+              await restoreTodoSchedules(previousTodoSnapshots)
+            }
           }
         })
       })
@@ -1566,7 +1727,7 @@ export function GanttView({
 
       next.set(group.todo.id, {
         sourceX: endIndex * unitWidth + unitWidth - 6,
-        targetX: startIndex * unitWidth + 6,
+        targetX: startIndex * unitWidth + DEPENDENCY_TARGET_INSET,
         centerY: row.centerY
       })
     }
@@ -1639,7 +1800,7 @@ export function GanttView({
         if (!sourceElement || !targetElement) continue
 
         const sourcePoint = getDependencyPointInCanvas(sourceElement, 'end', 0)
-        const targetPoint = getDependencyPointInCanvas(targetElement, 'start', 6)
+        const targetPoint = getDependencyPointInCanvas(targetElement, 'start', DEPENDENCY_TARGET_INSET)
         if (!sourcePoint || !targetPoint) continue
 
         nextPaths.push({
@@ -1675,7 +1836,7 @@ export function GanttView({
     const hoveredTargetElement = dependencyDrag.hoverSuccessorTodoId
       ? dependencyTargetBarRefs.current.get(dependencyDrag.hoverSuccessorTodoId) ?? null
       : null
-    const hoveredPoint = hoveredTargetElement ? getDependencyPointInCanvas(hoveredTargetElement, 'start', 6) : null
+    const hoveredPoint = hoveredTargetElement ? getDependencyPointInCanvas(hoveredTargetElement, 'start', DEPENDENCY_TARGET_INSET) : null
     const endX = hoveredPoint ? hoveredPoint.x : dependencyDrag.pointerX
     const endY = hoveredPoint ? hoveredPoint.y : dependencyDrag.pointerY
 
@@ -1832,6 +1993,9 @@ export function GanttView({
           <button onClick={() => setControlsCollapsed((previous) => !previous)} style={headerActionButtonStyle}>
             {controlsCollapsed ? '表示設定を開く' : '表示設定を閉じる'}
           </button>
+          <button onClick={handleJumpToToday} style={headerActionButtonStyle}>
+            今日に戻る
+          </button>
           {!standalone && onOpenSeparateWindow && (
             <button onClick={onOpenSeparateWindow} style={headerActionButtonStyle}>
               別ウィンドウで開く
@@ -1928,7 +2092,7 @@ export function GanttView({
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button onClick={() => shiftVisibleRange(-1)} style={chipStyle(false)}>前へ</button>
-                <button onClick={centerRangeOnToday} style={chipStyle(false)}>今日</button>
+                <button onClick={handleJumpToToday} style={chipStyle(false)}>今日</button>
                 <button onClick={() => shiftVisibleRange(1)} style={chipStyle(false)}>次へ</button>
               </div>
             </div>

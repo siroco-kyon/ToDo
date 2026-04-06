@@ -303,7 +303,7 @@ export function App(): React.JSX.Element {
   const selectedTodo = todos.find((todo) => todo.id === selectedTodoId) ?? null
 
   const toggleCenterView = useCallback((view: CenterView) => {
-    setActiveView((prev) => prev === view ? (view === 'gantt' ? 'gantt' : 'detail') : view)
+    setActiveView((prev) => prev === view ? 'detail' : view)
     if (view === 'gantt') setGanttSidePanelMode('today')
   }, [])
 
@@ -489,9 +489,8 @@ export function App(): React.JSX.Element {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <Toolbar
-        categories={categories}
         isTimerRunning={isRunning}
-        onAdd={handleAdd}
+        onOpenQuickAdd={() => setShowQuickAdd(true)}
         onExportClipboard={handleExportClipboard}
         onExportFile={handleExportFile}
         showArchived={showArchived}
