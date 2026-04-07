@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react'
+﻿import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DailyPlanItem, Todo, UpdateDailyPlanItemInput } from '../types'
 
 interface Props {
@@ -69,6 +69,7 @@ const LANE_COUNT = 1
 const COMPACT_BLOCK_THRESHOLD = 64
 const EDGE_SCROLL_THRESHOLD = 72
 const EDGE_SCROLL_PIXELS = 24
+const AUTO_SCROLL_LEAD_MINUTES = 60
 
 function getTodayKey(): string {
   const now = new Date()
@@ -577,7 +578,7 @@ export function PlanView({
 
   const availableTodos = useMemo(() => (
     todos
-      .filter((todo) => todo.status === 'active')
+      .filter((todo) => todo.status !== 'done' && todo.status !== 'archived')
       .filter((todo) => !plannedTodoIds.has(todo.id))
       .sort((a, b) => {
         if (a.due_date && b.due_date && a.due_date !== b.due_date) return a.due_date.localeCompare(b.due_date)
@@ -645,6 +646,32 @@ export function PlanView({
 
   const activePreview = dragPreview ?? (placementDraft ? { title: placementDraft.title, durationMinutes: placementDraft.durationMinutes } : null)
   const previewTarget = dragOverMinutes != null && dragOverLane != null ? { minutes: dragOverMinutes, lane: dragOverLane } : placementTarget
+
+  useLayoutEffect(() => {
+    const todayKey = getTodayKey()
+    if (date !== todayKey) return
+
+    const scrollContainer = scrollContainerRef.current
+    if (!scrollContainer) return
+
+    const applyScroll = (): void => {
+      const startOffset = clamp(nowOffsetMinutes() - AUTO_SCROLL_LEAD_MINUTES, 0, TIMELINE_TOTAL_MINUTES)
+      const targetTop = startOffset * PIXELS_PER_MINUTE
+      const maxScrollTop = Math.max(scrollContainer.scrollHeight - scrollContainer.clientHeight, 0)
+      scrollContainer.scrollTop = clamp(targetTop, 0, maxScrollTop)
+    }
+
+    applyScroll()
+    const timer1 = window.setTimeout(applyScroll, 0)
+    const timer2 = window.setTimeout(applyScroll, 120)
+    const timer3 = window.setTimeout(applyScroll, 320)
+
+    return () => {
+      window.clearTimeout(timer1)
+      window.clearTimeout(timer2)
+      window.clearTimeout(timer3)
+    }
+  }, [date])
 
   useEffect(() => {
     if (!placementDraft) return undefined

@@ -9,11 +9,13 @@ function getBootstrapFile(): string {
 
 function defaultDataDir(): string {
   if (app.isPackaged) {
-    // パッケージ版: exeと同じフォルダの data/
-    return path.join(path.dirname(process.execPath), 'data')
+    return path.join(app.getPath('userData'), 'data')
   }
-  // 開発版: プロジェクトルートの data/
   return path.join(process.cwd(), 'data')
+}
+
+function legacyPackagedDataDir(): string {
+  return path.join(path.dirname(process.execPath), 'data')
 }
 
 interface BootstrapConfig {
@@ -26,7 +28,9 @@ function readConfig(): BootstrapConfig {
     if (fs.existsSync(bootstrapFile)) {
       return JSON.parse(fs.readFileSync(bootstrapFile, 'utf-8')) as BootstrapConfig
     }
-  } catch { /* ignore */ }
+  } catch {
+    // ignore malformed config
+  }
   return {}
 }
 
@@ -37,9 +41,68 @@ function writeConfig(config: BootstrapConfig): void {
   fs.writeFileSync(bootstrapFile, JSON.stringify(config, null, 2))
 }
 
+function normalizeForCompare(value: string): string {
+  const normalized = path.normalize(path.resolve(value))
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+}
+
+function pathsEqual(a: string, b: string): boolean {
+  return normalizeForCompare(a) === normalizeForCompare(b)
+}
+
+function copyFileIfMissing(source: string, destination: string): void {
+  if (!fs.existsSync(source) || fs.existsSync(destination)) return
+  fs.copyFileSync(source, destination)
+}
+
+function copyDirectoryIfMissing(sourceDir: string, destinationDir: string): void {
+  if (!fs.existsSync(sourceDir)) return
+  if (!fs.existsSync(destinationDir)) fs.mkdirSync(destinationDir, { recursive: true })
+
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = path.join(sourceDir, entry.name)
+    const destinationPath = path.join(destinationDir, entry.name)
+
+    if (entry.isDirectory()) {
+      copyDirectoryIfMissing(sourcePath, destinationPath)
+      continue
+    }
+
+    if (entry.isFile() && !fs.existsSync(destinationPath)) {
+      fs.copyFileSync(sourcePath, destinationPath)
+    }
+  }
+}
+
+function migrateLegacyPackagedDataDir(config: BootstrapConfig): string {
+  const configuredDir = config.dataDir ?? defaultDataDir()
+  if (!app.isPackaged) return configuredDir
+
+  const legacyDir = legacyPackagedDataDir()
+  const persistentDir = defaultDataDir()
+  if (!pathsEqual(configuredDir, legacyDir) || pathsEqual(configuredDir, persistentDir)) {
+    return configuredDir
+  }
+
+  try {
+    if (!fs.existsSync(persistentDir)) fs.mkdirSync(persistentDir, { recursive: true })
+
+    copyFileIfMissing(path.join(legacyDir, 'todo.db'), path.join(persistentDir, 'todo.db'))
+    copyFileIfMissing(path.join(legacyDir, 'todo.db-wal'), path.join(persistentDir, 'todo.db-wal'))
+    copyFileIfMissing(path.join(legacyDir, 'todo.db-shm'), path.join(persistentDir, 'todo.db-shm'))
+    copyDirectoryIfMissing(path.join(legacyDir, 'icons'), path.join(persistentDir, 'icons'))
+
+    config.dataDir = persistentDir
+    writeConfig(config)
+    return persistentDir
+  } catch {
+    return configuredDir
+  }
+}
+
 export function getDataDir(): string {
   const config = readConfig()
-  return config.dataDir ?? defaultDataDir()
+  return migrateLegacyPackagedDataDir(config)
 }
 
 export function setDataDir(newDir: string): void {

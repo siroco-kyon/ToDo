@@ -23,7 +23,7 @@ export function checkDueNotifications(): void {
   }
 
   const dueTodos = todos.filter(
-    (t) => t.status === 'active' && t.due_date?.startsWith(checkStr)
+    (t) => t.status !== 'done' && t.status !== 'archived' && t.due_date?.startsWith(checkStr)
   )
   if (dueTodos.length === 0) return
 

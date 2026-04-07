@@ -7,6 +7,8 @@ export interface Category {
   created_at: string
 }
 
+export type TodoStatus = 'not_started' | 'active' | 'done' | 'archived'
+
 export interface Todo {
   id: string
   title: string
@@ -15,7 +17,7 @@ export interface Todo {
   category_id: string | null
   category_name: string | null
   category_color: string | null
-  status: 'active' | 'done' | 'archived'
+  status: TodoStatus
   priority: number
   progress: number
   start_date: string | null
@@ -51,7 +53,7 @@ export interface SubTask {
 
 export interface CalendarSubTask extends SubTask {
   todo_title: string
-  todo_status: 'active' | 'done' | 'archived'
+  todo_status: TodoStatus
   category_color: string | null
 }
 
@@ -87,7 +89,7 @@ export interface UpdateTodoInput {
   description?: string
   memo?: string
   category_id?: string | null
-  status?: 'active' | 'done' | 'archived'
+  status?: TodoStatus
   priority?: number
   progress?: number
   start_date?: string | null
@@ -137,7 +139,7 @@ export interface DailyPlanItem {
   category_id: string | null
   category_name: string | null
   category_color: string | null
-  status: 'active' | 'done' | 'archived'
+  status: TodoStatus
   priority: number
   progress: number
   start_date: string | null

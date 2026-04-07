@@ -363,7 +363,9 @@ export function App(): React.JSX.Element {
   }, [loadTodos, selectedTodoId, showToast])
 
   const handleToggleDone = useCallback(async (todo: Todo) => {
-    const newStatus = todo.status === 'done' ? 'active' : 'done'
+    const newStatus: Todo['status'] = todo.status === 'done'
+      ? (todo.progress > 0 ? 'active' : 'not_started')
+      : 'done'
     await window.api.todoUpdate(todo.id, { status: newStatus })
 
     if (newStatus === 'done' && todo.recurrence) {

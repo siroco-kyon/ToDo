@@ -2118,7 +2118,7 @@ export function GanttView({
             <div style={settingsSectionStyle}>
               <label style={controlLabelStyle}>フィルター</label>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <button onClick={() => setStatusFilter('active')} style={chipStyle(statusFilter === 'active')}>進行中</button>
+                <button onClick={() => setStatusFilter('active')} style={chipStyle(statusFilter === 'active')}>未完了</button>
                 <button onClick={() => setStatusFilter('done')} style={chipStyle(statusFilter === 'done')}>完了</button>
                 <button onClick={() => setStatusFilter('all')} style={chipStyle(statusFilter === 'all')}>すべて</button>
               </div>

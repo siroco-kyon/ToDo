@@ -117,8 +117,8 @@ export function TodayFlowRail({
     ? timedItems.find((item) => nowMinutes >= item.startMinutes && nowMinutes < item.endMinutes) ?? null
     : null
   const nextItem = date === getTodayKey()
-    ? timedItems.find((item) => item.startMinutes > nowMinutes && item.status === 'active') ?? null
-    : timedItems.find((item) => item.status === 'active') ?? null
+    ? timedItems.find((item) => item.startMinutes > nowMinutes && item.status !== 'done' && item.status !== 'archived') ?? null
+    : timedItems.find((item) => item.status !== 'done' && item.status !== 'archived') ?? null
 
   return (
     <aside style={{ height: '100%', background: '#0b1220', display: 'flex', flexDirection: 'column' }}>
