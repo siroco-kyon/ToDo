@@ -21,6 +21,7 @@ nsis:
   shortcutName: '${productName}'
   uninstallDisplayName: '${productName}'
   createDesktopShortcut: always
+  deleteAppDataOnUninstall: false
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
   installerHeaderIcon: build/icon.ico
