@@ -8,16 +8,18 @@ interface Props {
   showArchived: boolean
   onToggleArchived: () => void
   onOpenSettings: () => void
-  activeView: 'detail' | 'log' | 'plan' | 'gantt'
+  activeView: 'detail' | 'log' | 'plan' | 'gantt' | 'team'
   showPlanRail: boolean
+  showTeamButton?: boolean
   onToggleLogView: () => void
   onTogglePlanView: () => void
   onToggleGanttView: () => void
+  onToggleTeamView: () => void
   onTogglePlanRail: () => void
 }
 
 interface ViewButton {
-  key: 'plan' | 'gantt' | 'log'
+  key: 'plan' | 'gantt' | 'log' | 'team'
   label: string
   active: boolean
   onClick: () => void
@@ -33,13 +35,16 @@ export function Toolbar({
   onOpenSettings,
   activeView,
   showPlanRail,
+  showTeamButton = false,
   onToggleLogView,
   onTogglePlanView,
   onToggleGanttView,
+  onToggleTeamView,
   onTogglePlanRail
 }: Props): React.JSX.Element {
   const viewButtons: ViewButton[] = [
     { key: 'gantt', label: 'ガント', active: activeView === 'gantt', onClick: onToggleGanttView },
+    ...(showTeamButton ? [{ key: 'team' as const, label: 'チーム', active: activeView === 'team', onClick: onToggleTeamView }] : []),
     { key: 'plan', label: '計画', active: activeView === 'plan', onClick: onTogglePlanView },
     { key: 'log', label: '記録', active: activeView === 'log', onClick: onToggleLogView }
   ]

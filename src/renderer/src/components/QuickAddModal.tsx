@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import type { Category, CreateTodoInput } from '../types'
+import type { Category, CreateTodoInput, PublicUser } from '../types'
+import { AssigneePicker } from './AssigneePicker'
 
 interface Props {
   categories: Category[]
+  users?: PublicUser[]
   onAdd: (data: CreateTodoInput) => Promise<void>
   onClose: () => void
 }
@@ -25,11 +27,12 @@ const labelStyle: React.CSSProperties = {
   color: '#94a3b8'
 }
 
-export function QuickAddModal({ categories, onAdd, onClose }: Props): React.JSX.Element {
+export function QuickAddModal({ categories, users = [], onAdd, onClose }: Props): React.JSX.Element {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [memo, setMemo] = useState('')
   const [categoryId, setCategoryId] = useState('')
+  const [assigneeId, setAssigneeId] = useState<string | null>(null)
   const [priority, setPriority] = useState(3)
   const [startDate, setStartDate] = useState('')
   const [dueDate, setDueDate] = useState('')
@@ -69,6 +72,7 @@ export function QuickAddModal({ categories, onAdd, onClose }: Props): React.JSX.
         description: description.trim(),
         memo: memo.trim(),
         category_id: categoryId || null,
+        assignee_id: assigneeId,
         priority,
         start_date: startDate || null,
         due_date: dueDate || null
@@ -191,6 +195,13 @@ export function QuickAddModal({ categories, onAdd, onClose }: Props): React.JSX.
               </select>
             </div>
           </div>
+
+          {users.length > 0 && (
+            <div>
+              <label style={labelStyle}>担当者</label>
+              <AssigneePicker users={users} value={assigneeId} onChange={setAssigneeId} />
+            </div>
+          )}
 
           {isDateRangeInvalid && (
             <div style={{ fontSize: '0.76rem', color: '#fca5a5' }}>

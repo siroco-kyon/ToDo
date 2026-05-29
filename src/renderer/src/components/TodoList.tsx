@@ -145,6 +145,19 @@ function TodoItem({
                   {todo.due_date.slice(0, 10)}
                 </span>
               )}
+              {todo.assignee_name && !isArchived && (
+                <span
+                  title={todo.assignee_name}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 15, height: 15, borderRadius: '50%', flexShrink: 0,
+                    background: todo.assignee_color ?? '#64748b',
+                    color: '#0b1220', fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase'
+                  }}
+                >
+                  {todo.assignee_name.slice(0, 1)}
+                </span>
+              )}
               {!isArchived && prog > 0 && (
                 <span style={{ fontSize: '0.68rem', color: progressColor(prog), marginLeft: 'auto' }}>
                   {prog}%

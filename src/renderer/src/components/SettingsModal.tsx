@@ -5,6 +5,8 @@ interface Props {
   onShowToast: (message: string, type?: 'success' | 'error') => void
   themeMode: ThemeMode
   onThemeChange: (mode: ThemeMode) => Promise<void>
+  canManageUsers?: boolean
+  onManageUsers?: () => void
 }
 
 type ThemeMode = 'dark' | 'light'
@@ -47,7 +49,7 @@ function captureKeyEvent(e: React.KeyboardEvent): string | null {
   return modifiers.join('+')
 }
 
-export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange }: Props): React.JSX.Element {
+export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, canManageUsers = false, onManageUsers }: Props): React.JSX.Element {
   const [shortcuts, setShortcuts] = useState<ShortcutConfig[]>([
     { key: 'globalShortcutFocus', label: 'アプリを最前面に表示', value: 'CommandOrControl+Alt+T', editing: false },
     { key: 'globalShortcutQuickAdd', label: 'クイック追加モーダル', value: 'CommandOrControl+Alt+N', editing: false },
@@ -202,6 +204,17 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange }
           <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0' }}>⚙ 設定</h2>
           <button onClick={onClose} style={closeBtnStyle}>×</button>
         </div>
+
+        {/* ─── 管理者: ユーザー管理 ─── */}
+        {canManageUsers && onManageUsers && (
+          <section>
+            <h3 style={sectionHead}>管理者</h3>
+            <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+              メンバーの追加・編集・権限変更・パスワード再設定を行います。
+            </p>
+            <button onClick={onManageUsers} style={primaryBtn}>👤 ユーザー管理を開く</button>
+          </section>
+        )}
 
         {/* ─── 1. キーボードショートカット ─── */}
         <section>

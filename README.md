@@ -1,8 +1,15 @@
 ﻿# ToDo
 
-Electron + React + SQLite で作ったデスクトップ向けタスク管理アプリです。
+ガントチャートを中心にしたタスク管理アプリです。タスク管理、サブタスク、依存関係、今日の計画、作業ログを 1 つのアプリで扱えます。
 
-現在はガントチャートを中心にした運用を前提にしていて、タスク管理、サブタスク、依存関係、今日の計画、作業ログを 1 つのアプリで扱えます。
+2 つの動作モードがあります。
+
+- デスクトップ版（Electron）
+  1 人で使うローカルアプリです。データは端末内の SQLite に保存します。
+- チーム向けサーバー版（マルチユーザー Web）
+  中央サーバーに配置し、ブラウザから複数人（6 人規模を想定）で利用します。担当者ごとの進捗・期限や「今だれが何をやっているか」を、ガントとチームダッシュボードで共有できます。
+
+React 部分（レンダラー）は両モードで共通です。`window.api` の実装を Electron IPC と HTTP/WebSocket で差し替えることで、同じ画面をデスクトップでもブラウザでも動かしています。
 
 ## 主な機能
 
@@ -31,6 +38,19 @@ Electron + React + SQLite で作ったデスクトップ向けタスク管理ア
 - アーカイブ
 - 別ウィンドウでのガント表示
 
+### チーム向けサーバー版の追加機能
+
+- 管理者によるアカウント発行（自己登録なし、bcrypt でパスワードをハッシュ化）
+- セッション Cookie による認証
+- タスクへの担当者割り当てと担当者カラー
+- ガントの担当者フィルタ、担当者カラー表示、稼働中ハイライト
+- チームダッシュボード
+  - いま稼働中（メンバーごとの実行中タイマー）
+  - 期限超過 / まもなく期限
+  - メンバーの負荷
+- WebSocket によるリアルタイム同期（変更が全員に即時反映）
+- 管理者用ユーザー管理画面（追加・編集・権限変更・パスワード再設定）
+
 ## 画面構成
 
 - `ガント`
@@ -55,6 +75,9 @@ Electron + React + SQLite で作ったデスクトップ向けタスク管理ア
 | DB | better-sqlite3 |
 | ビルド | electron-vite |
 | 配布 | electron-builder |
+| サーバー | Express + ws + better-sqlite3（`tsx` で実行） |
+| 認証 | bcryptjs + セッション Cookie |
+| Web ビルド | Vite（`dist-web/` へ出力） |
 
 ## セットアップ
 
@@ -106,6 +129,85 @@ npm run dist
 
 初回セットアップ後は、設定画面から保存先を変更できます。
 
+## チーム向けサーバー版（マルチユーザー Web）
+
+中央サーバー（社内 LAN）に配置し、ブラウザから複数人で利用するモードです。サーバーは `server/` にある独立した Node パッケージで、`better-sqlite3` のネイティブ ABI 競合を避けるため自前の `node_modules` を持ちます。
+
+### 構成
+
+- フロントエンド
+  `src/renderer/` の React をそのまま使い、`web/` のエントリでビルドします（出力先 `dist-web/`）。
+- サーバー
+  Express + better-sqlite3 + ws。`tsx` で TypeScript を直接実行します。既定ポートは `4577`。
+- 認証
+  管理者がアカウントを発行します（自己登録なし）。パスワードは bcrypt でハッシュ化し、セッションは Cookie（`todo_session`）で管理します。
+- リアルタイム同期
+  `/ws` の WebSocket で、変更を全クライアントへ即時通知します。
+
+### セットアップ
+
+```bash
+# 1. ルート（フロント）依存をインストール
+npm install
+
+# 2. サーバー依存をインストール（独立パッケージ）
+npm --prefix server install
+```
+
+### 開発
+
+フロントとサーバーを別々に起動します。
+
+```bash
+# サーバー（ポート 4577、ファイル変更を監視）
+npm run dev:server
+
+# Web フロント（ポート 5273、/api と /ws を 4577 にプロキシ）
+npm run dev:web
+```
+
+ブラウザで `http://localhost:5273` を開きます。
+
+### 本番デプロイ
+
+1. Web フロントをビルドします。成果物は `dist-web/` に出力されます。
+
+   ```bash
+   npm run build:web
+   ```
+
+2. サーバーを起動します。`dist-web/` が存在すれば、サーバーが同一ポートで画面と API の両方を配信します。
+
+   ```bash
+   npm run start:server
+   ```
+
+3. 各メンバーは `http://<サーバーのIP>:4577` にブラウザでアクセスします。
+
+### 環境変数
+
+| 変数 | 既定値 | 説明 |
+| --- | --- | --- |
+| `PORT` | `4577` | サーバーの待ち受けポート |
+| `TODO_DATA_DIR` | `server/data` | SQLite データベースの保存先ディレクトリ |
+| `TODO_WEB_DIST` | `dist-web`（リポジトリ直下） | 配信する Web ビルドの場所 |
+| `ADMIN_USERNAME` | `admin` | 初回起動時に作る管理者のユーザー名 |
+| `ADMIN_PASSWORD` | （空） | 管理者の初期パスワード。未設定ならランダム生成し、起動ログに 1 回だけ表示します |
+| `SESSION_TTL_DAYS` | `30` | セッションの有効日数 |
+
+### 初回起動と管理者
+
+- データベースは `TODO_DATA_DIR/todo.db`（既定 `server/data/todo.db`）に作成されます。
+- ユーザーが 0 人のときだけ、管理者アカウントを 1 つ自動作成します。
+  - `ADMIN_PASSWORD` を指定していればそのパスワードを使います。
+  - 未指定ならランダムなパスワードを生成し、起動ログに 1 回だけ表示します。必ず控えてください。
+- 以降のメンバー追加・編集・権限変更・パスワード再設定は、管理者でログイン後、設定画面の「ユーザー管理」から行います。
+
+### 注意点
+
+- 社内 LAN での利用を前提にした構成です（インターネット公開は想定していません）。
+- サーバーの `better-sqlite3` は Node 用 ABI、デスクトップ版は Electron 用 ABI でビルドされます。`server/` は独立パッケージなので、依存を混在させないでください。
+
 ## ディレクトリ構成
 
 ```text
@@ -120,8 +222,8 @@ src/
     markdown.ts       # Markdown エクスポート
     icon.ts           # アイコン操作
   preload/
-    index.ts          # renderer に公開する API
-  renderer/
+    index.ts          # renderer に公開する API（Api 契約の定義元）
+  renderer/           # React 画面（デスクトップ／サーバー両モードで共通）
     src/
       App.tsx
       types.ts
@@ -134,6 +236,20 @@ src/
         Toolbar.tsx
         SettingsModal.tsx
         SetupWizardModal.tsx
+        UserManagementModal.tsx   # 管理者用ユーザー管理（サーバー版）
+web/                  # Web 版のエントリと HTTP/WS クライアント
+  index.html
+  main.tsx            # window.api を HTTP/WS 実装で差し替え
+  lib/client.ts       # Api 契約の HTTP/WebSocket 実装
+  auth/               # ログイン画面・認証ゲート・セッション
+server/               # 中央サーバー（独立 Node パッケージ）
+  src/
+    index.ts          # 起動・静的配信・ルートのマウント
+    config.ts         # ポート・データ保存先・管理者・セッション設定
+    auth.ts           # bcrypt 認証・セッション・管理者シード
+    realtime.ts       # WebSocket リアルタイム同期
+    db/               # マルチユーザー対応の SQLite アクセス層
+    routes/           # auth / data / users の REST ルート
 scripts/
   generate-build-icons.cjs
 ```
@@ -153,5 +269,5 @@ scripts/
 ## メモ
 
 - HTTP クライアントとして `axios` は使っていません。
-- データ操作は Electron の IPC 経由で main プロセスに集約しています。
-- 依存関係の自動調整は DB 側で処理しています。
+- データ操作は `window.api` に集約しています。デスクトップ版は Electron IPC、サーバー版は HTTP/WebSocket で同じ契約を実装しています。
+- 依存関係の自動調整は DB 側で処理しています（デスクトップ版・サーバー版で同じロジックを移植）。

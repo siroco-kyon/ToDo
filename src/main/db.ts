@@ -1201,6 +1201,81 @@ export interface Category {
 
 export type TodoStatus = 'not_started' | 'active' | 'done' | 'archived'
 
+export type UserRole = 'admin' | 'member'
+
+/** A user as exposed to clients (never includes the password hash). Web-only; the Electron build returns an empty user list. */
+export interface PublicUser {
+  id: string
+  username: string
+  display_name: string
+  role: UserRole
+  color: string
+  is_active: number
+  created_at: string
+  updated_at: string
+}
+
+/** Fields accepted when an admin creates a user. Web-only. */
+export interface CreateUserInput {
+  username: string
+  display_name: string
+  password: string
+  role?: UserRole
+  color?: string
+}
+
+/** Fields an admin may change on an existing user. Web-only. */
+export interface UpdateUserInput {
+  display_name?: string
+  role?: UserRole
+  color?: string
+  is_active?: boolean
+}
+
+/** A teammate currently running a timer — "who is doing what right now". */
+export interface TeamNowItem {
+  user_id: string
+  display_name: string
+  user_color: string
+  todo_id: string
+  todo_title: string
+  category_name: string | null
+  category_color: string | null
+  start_time: string
+  elapsed_seconds: number
+}
+
+export interface TeamDeadlineItem {
+  todo_id: string
+  title: string
+  due_date: string
+  status: TodoStatus
+  priority: number
+  progress: number
+  category_name: string | null
+  category_color: string | null
+  assignee_id: string | null
+  assignee_name: string | null
+  assignee_color: string | null
+  days_until_due: number
+}
+
+export interface TeamMemberWorkload {
+  user_id: string
+  display_name: string
+  user_color: string
+  active_tasks: number
+  overdue_tasks: number
+  today_minutes: number
+}
+
+export interface TeamDashboard {
+  now: TeamNowItem[]
+  overdue: TeamDeadlineItem[]
+  dueSoon: TeamDeadlineItem[]
+  workloads: TeamMemberWorkload[]
+}
+
 export interface Todo {
   id: string
   title: string
@@ -1209,6 +1284,9 @@ export interface Todo {
   category_id: string | null
   category_name: string | null
   category_color: string | null
+  assignee_id: string | null
+  assignee_name: string | null
+  assignee_color: string | null
   status: TodoStatus
   priority: number
   progress: number
@@ -1269,6 +1347,7 @@ export interface CreateTodoInput {
   description?: string
   memo?: string
   category_id?: string | null
+  assignee_id?: string | null
   priority?: number
   progress?: number
   start_date?: string | null
@@ -1281,6 +1360,7 @@ export interface UpdateTodoInput {
   description?: string
   memo?: string
   category_id?: string | null
+  assignee_id?: string | null
   status?: TodoStatus
   priority?: number
   progress?: number
