@@ -1,17 +1,20 @@
-export interface Category {
-  id: string
-  name: string
-  color: string
-  description: string
-  sort_order: number
-  created_at: string
-}
-
-export type TodoStatus = 'not_started' | 'active' | 'done' | 'archived'
+// ─── Users & auth ─────────────────────────────────────────────
 
 export type UserRole = 'admin' | 'member'
 
-/** A user as exposed to clients. Web-only; the Electron build returns an empty user list. */
+export interface UserRecord {
+  id: string
+  username: string
+  display_name: string
+  password_hash: string
+  role: UserRole
+  color: string
+  is_active: number
+  created_at: string
+  updated_at: string
+}
+
+/** User as exposed to clients (never includes the password hash). */
 export interface PublicUser {
   id: string
   username: string
@@ -23,22 +26,27 @@ export interface PublicUser {
   updated_at: string
 }
 
-/** Fields accepted when an admin creates a user. Web-only. */
-export interface CreateUserInput {
-  username: string
-  display_name: string
-  password: string
-  role?: UserRole
-  color?: string
+export interface Session {
+  token: string
+  user_id: string
+  created_at: string
+  expires_at: string
 }
 
-/** Fields an admin may change on an existing user. Web-only. */
-export interface UpdateUserInput {
-  display_name?: string
-  role?: UserRole
-  color?: string
-  is_active?: boolean
+// ─── Categories ───────────────────────────────────────────────
+
+export interface Category {
+  id: string
+  name: string
+  color: string
+  description: string
+  sort_order: number
+  created_at: string
 }
+
+// ─── Todos ────────────────────────────────────────────────────
+
+export type TodoStatus = 'not_started' | 'active' | 'done' | 'archived'
 
 export interface Todo {
   id: string
@@ -51,6 +59,7 @@ export interface Todo {
   assignee_id: string | null
   assignee_name: string | null
   assignee_color: string | null
+  created_by: string | null
   status: TodoStatus
   priority: number
   progress: number
@@ -61,49 +70,6 @@ export interface Todo {
   created_at: string
   updated_at: string
   archived_at: string | null
-}
-
-export interface TodoDependency {
-  id: string
-  predecessor_todo_id: string
-  successor_todo_id: string
-  type: 'finish_to_start'
-  lag_days: number
-  created_at: string
-}
-
-export interface SubTask {
-  id: string
-  todo_id: string
-  title: string
-  description: string
-  start_date: string | null
-  due_date: string | null
-  done: number  // 0 or 1
-  completed_at: string | null
-  sort_order: number
-  created_at: string
-}
-
-export interface CalendarSubTask extends SubTask {
-  todo_title: string
-  todo_status: TodoStatus
-  category_color: string | null
-}
-
-export interface CreateSubTaskInput {
-  title: string
-  description?: string
-  start_date?: string | null
-  due_date?: string | null
-}
-
-export interface UpdateSubTaskInput {
-  title?: string
-  description?: string
-  start_date?: string | null
-  due_date?: string | null
-  done?: boolean
 }
 
 export interface CreateTodoInput {
@@ -133,9 +99,57 @@ export interface UpdateTodoInput {
   recurrence?: 'daily' | 'weekly' | 'monthly' | null
 }
 
+export interface TodoDependency {
+  id: string
+  predecessor_todo_id: string
+  successor_todo_id: string
+  type: 'finish_to_start'
+  lag_days: number
+  created_at: string
+}
+
+// ─── SubTasks ─────────────────────────────────────────────────
+
+export interface SubTask {
+  id: string
+  todo_id: string
+  title: string
+  description: string
+  start_date: string | null
+  due_date: string | null
+  done: number
+  completed_at: string | null
+  sort_order: number
+  created_at: string
+}
+
+export interface CalendarSubTask extends SubTask {
+  todo_title: string
+  todo_status: TodoStatus
+  category_color: string | null
+}
+
+export interface CreateSubTaskInput {
+  title: string
+  description?: string
+  start_date?: string | null
+  due_date?: string | null
+}
+
+export interface UpdateSubTaskInput {
+  title?: string
+  description?: string
+  start_date?: string | null
+  due_date?: string | null
+  done?: boolean
+}
+
+// ─── Timer & work logs ────────────────────────────────────────
+
 export interface WorkLog {
   id: string
   todo_id: string
+  user_id: string
   start_time: string
   end_time: string
   duration_seconds: number
@@ -144,8 +158,14 @@ export interface WorkLog {
 }
 
 export interface RunningState {
+  user_id: string
   todo_id: string
   start_time: string
+}
+
+export interface TodayWorkLog extends WorkLog {
+  title: string
+  category: string | null
 }
 
 export interface WorkLogSummaryRow {
@@ -160,10 +180,13 @@ export interface WorkLogSummaryRow {
   note: string
 }
 
+// ─── Daily plan ───────────────────────────────────────────────
+
 export interface DailyPlanItem {
   id: string
   plan_date: string
   todo_id: string
+  user_id: string
   scheduled_start: string | null
   estimated_minutes: number | null
   lane: number
@@ -175,6 +198,9 @@ export interface DailyPlanItem {
   category_id: string | null
   category_name: string | null
   category_color: string | null
+  assignee_id: string | null
+  assignee_name: string | null
+  assignee_color: string | null
   status: TodoStatus
   priority: number
   progress: number
@@ -187,6 +213,8 @@ export interface UpdateDailyPlanItemInput {
   estimated_minutes?: number | null
   lane?: number
 }
+
+// ─── Overview ─────────────────────────────────────────────────
 
 export type OverviewTaskReason = 'overdue' | 'dueSoon' | 'highPriority' | 'stale' | 'dueToday' | 'nearlyDone'
 

@@ -2482,6 +2482,12 @@ export function GanttView({
                             </div>
                             <div style={{ marginTop: 5, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.66rem' }}>
                               {group.todo.category_name && <span style={{ color: group.todo.category_color ?? '#a5b4fc' }}>{group.todo.category_name}</span>}
+                              {group.todo.assignee_name && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: group.todo.assignee_color ?? '#94a3b8' }}>
+                                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.todo.assignee_color ?? '#64748b' }} />
+                                  {group.todo.assignee_name}
+                                </span>
+                              )}
                               {canToggleSubtasks && (
                                 <span style={{ color: isExpanded ? '#93c5fd' : '#64748b' }}>
                                   {isExpanded ? `展開 ${group.datedSubTasks.length}件` : `折りたたみ ${group.datedSubTasks.length}件`}
@@ -2709,6 +2715,12 @@ export function GanttView({
                     <span>{group.todo.progress}%</span>
                     {group.subTaskCount > 0 && <span>サブタスク {group.subTaskCount}件</span>}
                     {group.todo.category_name && <span style={{ color: group.todo.category_color ?? '#a5b4fc' }}>{group.todo.category_name}</span>}
+                    {group.todo.assignee_name && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: group.todo.assignee_color ?? '#94a3b8' }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.todo.assignee_color ?? '#64748b' }} />
+                        {group.todo.assignee_name}
+                      </span>
+                    )}
                   </div>
                   <button onClick={() => void onUpdateTodo(group.todo.id, { start_date: todayKey, due_date: todayKey })} style={{ marginTop: 10, padding: '6px 10px', borderRadius: 8, border: '1px solid #2563eb', background: '#172554', color: '#dbeafe', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700 }}>今日に配置</button>
                 </div>

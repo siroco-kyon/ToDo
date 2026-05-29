@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import type { Category, CreateSubTaskInput, DailyPlanItem, SubTask, Todo, TodoDependency, UpdateTodoInput, WorkLog } from '../types'
+import type { Category, CreateSubTaskInput, DailyPlanItem, PublicUser, SubTask, Todo, TodoDependency, UpdateTodoInput, WorkLog } from '../types'
 import { TimerDisplay } from './TimerDisplay'
+import { AssigneeChip, AssigneePicker } from './AssigneePicker'
 
 interface Props {
   todo: Todo | null
   allTodos: Todo[]
   categories: Category[]
+  users?: PublicUser[]
   todayPlanItems: DailyPlanItem[]
   runningTodoId: string | null
   elapsedSeconds: number
@@ -56,6 +58,7 @@ export function TodoDetail({
   todo,
   allTodos,
   categories,
+  users = [],
   todayPlanItems,
   runningTodoId,
   elapsedSeconds,
@@ -108,7 +111,8 @@ export function TodoDetail({
     progress: source.progress,
     start_date: source.start_date ?? undefined,
     due_date: source.due_date ?? undefined,
-    recurrence: source.recurrence ?? undefined
+    recurrence: source.recurrence ?? undefined,
+    assignee_id: source.assignee_id
   }), [])
 
   const createEditableSubTasks = useCallback((items: SubTask[]): EditableSubTask[] => (
@@ -400,10 +404,11 @@ export function TodoDetail({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {!editing && (todo.start_date || todo.due_date) && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {!editing && (todo.start_date || todo.due_date || todo.assignee_name) && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {todo.start_date && <Badge color="#93c5fd">開始日 {todo.start_date}</Badge>}
           {todo.due_date && <Badge color="#fbbf24">締切 {todo.due_date}</Badge>}
+          <AssigneeChip name={todo.assignee_name} color={todo.assignee_color} fontSize={0.74} />
         </div>
       )}
 
@@ -432,6 +437,9 @@ export function TodoDetail({
           <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最高</option><option value={2}>高</option><option value={3}>中</option><option value={4}>低</option><option value={5}>最低</option></select></div></div>
           <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>締切</label><input type="date" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div><div style={{ flex: 1 }}><label style={labelStyle}>繰り返し</label><select value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as 'daily' | 'weekly' | 'monthly' | null }))} style={inputStyle}><option value="">なし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option></select></div></div>
           <div><label style={labelStyle}>状態</label><select value={editData.status ?? 'active'} onChange={(event) => setEditData((previous) => ({ ...previous, status: event.target.value as 'not_started' | 'active' | 'done' | 'archived' }))} style={inputStyle}><option value="not_started">未着手</option><option value="active">進行中</option><option value="done">完了</option><option value="archived">アーカイブ</option></select></div>
+          {users.length > 0 && (
+            <div><label style={labelStyle}>担当者</label><AssigneePicker users={users} value={editData.assignee_id ?? null} onChange={(assigneeId) => setEditData((previous) => ({ ...previous, assignee_id: assigneeId }))} selectStyle={inputStyle} /></div>
+          )}
           <div><label style={labelStyle}>進捗 {editData.progress ?? 0}%</label><input type="range" min={0} max={100} step={5} value={editData.progress ?? 0} onChange={(event) => setEditData((previous) => ({ ...previous, progress: Number(event.target.value) }))} style={{ width: '100%', accentColor: '#6366f1' }} /></div>
           <button onClick={() => void handleSave()} style={{ ...buttonStyle('#6366f1'), alignSelf: 'flex-end' }}>保存</button>
         </div>

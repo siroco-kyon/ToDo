@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import type { Category, CreateTodoInput, DailyPlanItem, Todo, UpdateDailyPlanItemInput, UpdateTodoInput } from './types'
+import type { Category, CreateTodoInput, DailyPlanItem, PublicUser, Todo, UpdateDailyPlanItemInput, UpdateTodoInput } from './types'
 import { useTimer } from './hooks/useTimer'
 import { Toolbar } from './components/Toolbar'
 import { CategoryList } from './components/CategoryList'
@@ -9,14 +9,16 @@ import { QuickAddModal } from './components/QuickAddModal'
 import { Toast } from './components/Toast'
 import type { ToastMessage } from './components/Toast'
 import { SettingsModal } from './components/SettingsModal'
+import { UserManagementModal } from './components/UserManagementModal'
 import { WorkLogSummary } from './components/WorkLogSummary'
 import { SetupWizardModal } from './components/SetupWizardModal'
 import { PlanView } from './components/PlanView'
 import { TodayFlowRail } from './components/TodayFlowRail'
 import { GanttView } from './components/GanttView'
+import { TeamDashboard } from './components/TeamDashboard'
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
-type CenterView = 'detail' | 'log' | 'plan' | 'gantt'
+type CenterView = 'detail' | 'log' | 'plan' | 'gantt' | 'team'
 type GanttSidePanelMode = 'detail' | 'today'
 type PaneKey = 'category' | 'list' | 'side'
 type ThemeMode = 'dark' | 'light'
@@ -75,7 +77,11 @@ export function App(): React.JSX.Element {
   const [todos, setTodos] = useState<Todo[]>([])
   const [todayPlanItems, setTodayPlanItems] = useState<DailyPlanItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [users, setUsers] = useState<PublicUser[]>([])
+  const [currentUser, setCurrentUser] = useState<PublicUser | null>(null)
+  const [showUserManagement, setShowUserManagement] = useState(false)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null)
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
   const [sortField, setSortField] = useState<SortField>('created_at')
@@ -121,15 +127,28 @@ export function App(): React.JSX.Element {
     setCategories(all)
   }, [])
 
+  const loadUsers = useCallback(async () => {
+    const [allUsers, me] = await Promise.all([
+      window.api.userList(),
+      window.api.authGetCurrentUser()
+    ])
+    setUsers(allUsers)
+    setCurrentUser(me)
+  }, [])
+
   const loadInitialData = useCallback(async () => {
-    const [allTodos, allCategories, planItems] = await Promise.all([
+    const [allTodos, allCategories, planItems, allUsers, me] = await Promise.all([
       window.api.todoGetAll(),
       window.api.categoryGetAll(),
-      window.api.dailyPlanGetByDate(getTodayKey())
+      window.api.dailyPlanGetByDate(getTodayKey()),
+      window.api.userList(),
+      window.api.authGetCurrentUser()
     ])
     setTodos(allTodos)
     setCategories(allCategories)
     setTodayPlanItems(planItems)
+    setUsers(allUsers)
+    setCurrentUser(me)
   }, [])
 
   const { isRunning, runningTodoId, elapsedSeconds, start, stop, restore } = useTimer(loadTodos)
@@ -257,11 +276,17 @@ export function App(): React.JSX.Element {
   }, [handleExportClipboard])
 
   const q = searchQuery.trim().toLowerCase()
+  const multiUser = users.length > 0
+  const isAdmin = currentUser?.role === 'admin'
 
   const filteredTodos = todos
     .filter((todo) => {
       if (!showArchived && todo.status === 'archived') return false
       if (selectedCategoryId && todo.category_id !== selectedCategoryId) return false
+      if (selectedAssigneeId !== null) {
+        if (selectedAssigneeId === '' && todo.assignee_id !== null) return false
+        if (selectedAssigneeId !== '' && todo.assignee_id !== selectedAssigneeId) return false
+      }
 
       if (q) {
         const hit = todo.title.toLowerCase().includes(q)
@@ -475,7 +500,7 @@ export function App(): React.JSX.Element {
   }
 
   const isManualSort = sortField === 'sort_order'
-  const showRightPlanRail = showPlanRail && activeView !== 'plan'
+  const showRightPlanRail = showPlanRail && activeView !== 'plan' && activeView !== 'team'
   const showGanttSidePanel = activeView === 'gantt' && (ganttSidePanelMode === 'detail' || showPlanRail)
   const showAuxiliaryPanel = activeView === 'gantt' ? showGanttSidePanel : showRightPlanRail
   const SORT_FIELDS: { key: SortField; label: string }[] = [
@@ -500,9 +525,11 @@ export function App(): React.JSX.Element {
         onOpenSettings={() => setShowSettings(true)}
         activeView={activeView}
         showPlanRail={showPlanRail}
+        showTeamButton={multiUser}
         onToggleLogView={() => toggleCenterView('log')}
         onTogglePlanView={() => toggleCenterView('plan')}
         onToggleGanttView={() => toggleCenterView('gantt')}
+        onToggleTeamView={() => toggleCenterView('team')}
         onTogglePlanRail={() => setShowPlanRail((prev) => !prev)}
       />
 
@@ -542,6 +569,35 @@ export function App(): React.JSX.Element {
                 boxSizing: 'border-box'
               }}
             />
+            {multiUser && (
+              <select
+                value={selectedAssigneeId === null ? '__all__' : selectedAssigneeId === '' ? '__none__' : selectedAssigneeId}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setSelectedAssigneeId(v === '__all__' ? null : v === '__none__' ? '' : v)
+                }}
+                style={{
+                  width: '100%',
+                  marginTop: 6,
+                  padding: '5px 8px',
+                  background: '#0f172a',
+                  border: `1px solid ${selectedAssigneeId !== null ? '#6366f1' : '#1e293b'}`,
+                  borderRadius: 6,
+                  color: selectedAssigneeId !== null ? '#e2e8f0' : '#94a3b8',
+                  fontSize: '0.8rem',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              >
+                <option value="__all__">担当者: 全員</option>
+                <option value="__none__">担当者: 未割り当て</option>
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    担当: {user.display_name}{user.is_active ? '' : '（無効）'}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div style={{ padding: '5px 8px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
@@ -628,11 +684,14 @@ export function App(): React.JSX.Element {
             />
           ) : activeView === 'log' ? (
             <WorkLogSummary />
+          ) : activeView === 'team' ? (
+            <TeamDashboard onSelectTodo={openTodoDetail} />
           ) : (
             <TodoDetail
               todo={selectedTodo}
               allTodos={todos}
               categories={categories}
+              users={users}
               todayPlanItems={todayPlanItems}
               runningTodoId={runningTodoId}
               elapsedSeconds={elapsedSeconds}
@@ -685,6 +744,7 @@ export function App(): React.JSX.Element {
                         todo={selectedTodo}
                         allTodos={todos}
                         categories={categories}
+                        users={users}
                         todayPlanItems={todayPlanItems}
                         runningTodoId={runningTodoId}
                         elapsedSeconds={elapsedSeconds}
@@ -722,6 +782,7 @@ export function App(): React.JSX.Element {
       {showQuickAdd && (
         <QuickAddModal
           categories={categories}
+          users={users}
           onAdd={handleAdd}
           onClose={() => setShowQuickAdd(false)}
         />
@@ -735,6 +796,17 @@ export function App(): React.JSX.Element {
           onShowToast={showToast}
           themeMode={themeMode}
           onThemeChange={handleThemeModeChange}
+          canManageUsers={isAdmin}
+          onManageUsers={() => { setShowSettings(false); setShowUserManagement(true) }}
+        />
+      )}
+
+      {showUserManagement && currentUser && (
+        <UserManagementModal
+          currentUserId={currentUser.id}
+          onClose={() => setShowUserManagement(false)}
+          onShowToast={showToast}
+          onChanged={() => void loadUsers()}
         />
       )}
     </div>

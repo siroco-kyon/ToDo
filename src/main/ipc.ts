@@ -120,6 +120,18 @@ export function registerIpcHandlers(
   // Markdown export
   ipcMain.handle('markdown:export', (_, mode: 'clipboard' | 'file') => exportMarkdown(mode))
 
+  // Users & team — single-user desktop build has no team, so report none.
+  // (The web server provides the real multi-user implementations.)
+  ipcMain.handle('user:list', () => [])
+  ipcMain.handle('team:getDashboard', () => ({ now: [], overdue: [], dueSoon: [], workloads: [] }))
+  ipcMain.handle('auth:getCurrentUser', () => null)
+  const userManagementUnavailable = (): never => {
+    throw new Error('ユーザー管理はサーバー版でのみ利用できます')
+  }
+  ipcMain.handle('user:create', userManagementUnavailable)
+  ipcMain.handle('user:update', userManagementUnavailable)
+  ipcMain.handle('user:resetPassword', userManagementUnavailable)
+
   // Settings
   ipcMain.handle('settings:get', (_, key: string) => getSetting(key) ?? null)
   ipcMain.handle('settings:set', (_, key: string, value: string) => setSetting(key, value))

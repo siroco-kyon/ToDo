@@ -9,6 +9,11 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
+    "dev:web": "vite --config vite.web.config.ts",
+    "build:web": "vite build --config vite.web.config.ts",
+    "preview:web": "vite preview --config vite.web.config.ts",
+    "dev:server": "npm --prefix server run dev",
+    "start:server": "npm --prefix server run start",
     "generate:icons": "node scripts/generate-build-icons.cjs",
     "dist": "npm run generate:icons && npm run build && electron-builder",
     "postinstall": "electron-rebuild -f -w better-sqlite3"

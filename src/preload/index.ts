@@ -14,7 +14,15 @@ import type {
   WorkLogSummaryRow,
   OverviewData,
   DailyPlanItem,
-  UpdateDailyPlanItemInput
+  UpdateDailyPlanItemInput,
+  PublicUser,
+  UserRole,
+  CreateUserInput,
+  UpdateUserInput,
+  TeamDashboard,
+  TeamNowItem,
+  TeamDeadlineItem,
+  TeamMemberWorkload
 } from '../main/db'
 
 export type {
@@ -32,7 +40,15 @@ export type {
   WorkLogSummaryRow,
   OverviewData,
   DailyPlanItem,
-  UpdateDailyPlanItemInput
+  UpdateDailyPlanItemInput,
+  PublicUser,
+  UserRole,
+  CreateUserInput,
+  UpdateUserInput,
+  TeamDashboard,
+  TeamNowItem,
+  TeamDeadlineItem,
+  TeamMemberWorkload
 }
 
 export interface ExportResult {
@@ -112,6 +128,16 @@ const api = {
   // Markdown
   markdownExport: (mode: 'clipboard' | 'file'): Promise<ExportResult> =>
     ipcRenderer.invoke('markdown:export', mode),
+
+  // Users & team (multi-user; the Electron build returns empty/no-op values)
+  userList: (): Promise<PublicUser[]> => ipcRenderer.invoke('user:list'),
+  teamGetDashboard: (): Promise<TeamDashboard> => ipcRenderer.invoke('team:getDashboard'),
+  authGetCurrentUser: (): Promise<PublicUser | null> => ipcRenderer.invoke('auth:getCurrentUser'),
+  userCreate: (input: CreateUserInput): Promise<PublicUser> => ipcRenderer.invoke('user:create', input),
+  userUpdate: (id: string, input: UpdateUserInput): Promise<PublicUser> =>
+    ipcRenderer.invoke('user:update', id, input),
+  userResetPassword: (id: string, password: string): Promise<void> =>
+    ipcRenderer.invoke('user:resetPassword', id, password),
 
   // Settings
   settingsGet: (key: string): Promise<string | null> => ipcRenderer.invoke('settings:get', key),
