@@ -171,14 +171,15 @@ dataRouter.delete('/progress-notes/:id', (req, res) =>
     deleteProgressNote(req.params.id)
   }, 'todo'))
 
-// ─── Progress digest (admin report) ───────────────────────────
-dataRouter.get('/progress-digest', requireAdmin, (req, res) =>
+// ─── Progress digest (admin: anyone / member: self only) ──────
+dataRouter.get('/progress-digest', (req, res) =>
   run(res, () => {
     const from = String(req.query.from ?? '')
     const to = String(req.query.to ?? '')
     const rawIds = req.query.userIds
-    const userIds =
+    let userIds =
       typeof rawIds === 'string' && rawIds.length > 0 ? rawIds.split(',').filter(Boolean) : undefined
+    if (req.user!.role !== 'admin') userIds = [req.user!.id]
     return getProgressDigest(from, to, userIds)
   }))
 

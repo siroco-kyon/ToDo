@@ -72,6 +72,7 @@ export function App(): React.JSX.Element {
   const [showUserManagement, setShowUserManagement] = useState(false)
   const [showProgressReport, setShowProgressReport] = useState(false)
   const [showDesktopImport, setShowDesktopImport] = useState(false)
+  const [showMySummary, setShowMySummary] = useState(false)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null)
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
@@ -783,6 +784,7 @@ export function App(): React.JSX.Element {
           onManageUsers={() => { setShowSettings(false); setShowUserManagement(true) }}
           onProgressReport={isAdmin ? () => { setShowSettings(false); setShowProgressReport(true) } : undefined}
           onDesktopImport={isAdmin && multiUser ? () => { setShowSettings(false); setShowDesktopImport(true) } : undefined}
+          onMySummary={() => { setShowSettings(false); setShowMySummary(true) }}
         />
       )}
 
@@ -807,6 +809,16 @@ export function App(): React.JSX.Element {
         <DesktopImportModal
           users={users}
           onClose={() => setShowDesktopImport(false)}
+          onShowToast={showToast}
+        />
+      )}
+
+      {showMySummary && (
+        <ProgressReportModal
+          users={users}
+          selfOnly
+          currentUser={currentUser}
+          onClose={() => setShowMySummary(false)}
           onShowToast={showToast}
         />
       )}

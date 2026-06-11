@@ -2524,6 +2524,9 @@ export function GanttView({
                         {displayedTodoBar && todoVisible && (
                           <div ref={(node) => setDependencyTargetBarRef(group.todo.id, node)} onClick={() => handleChartItemSelect(group.todo.id)} style={{ position: 'absolute', left: displayStartIndex * unitWidth + 4, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 12, background: tone.background, border: `1px solid ${tone.border}`, boxSizing: 'border-box', overflow: 'hidden', boxShadow: activeState ? '0 10px 24px rgba(15, 23, 42, 0.28)' : isDependencySource || isDependencyTarget ? '0 0 0 2px rgba(56, 189, 248, 0.42), 0 10px 24px rgba(8, 47, 73, 0.24)' : 'none', cursor: !isTimelineEditable ? 'pointer' : 'grab' }}>
                             <div style={{ position: 'absolute', inset: 0, width: `${progress}%`, background: `${tone.fill}66` }} />
+                            {group.todo.assignee_color && (
+                              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: group.todo.assignee_color, zIndex: 3 }} />
+                            )}
                             {showScheduleSignals && scheduleHealth && scheduleHealth.status !== 'done' && scheduleHealth.expectedProgress > 0 && (
                               <div style={scheduleHealthStripeStyle(scheduleHealth, barWidth)} />
                             )}
@@ -2536,6 +2539,12 @@ export function GanttView({
                             >
                               <span style={{ fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{barStartLabel(displayedTodoBar.startDate, timeScale)}</span>
                               <span style={{ fontSize: '0.78rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.todo.title}</span>
+                              {group.todo.assignee_name && barWidth > 150 && (
+                                <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', fontWeight: 600, whiteSpace: 'nowrap', opacity: 0.9 }}>
+                                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: group.todo.assignee_color ?? '#64748b', flexShrink: 0 }} />
+                                  {group.todo.assignee_name}
+                                </span>
+                              )}
                             </div>
                             {isTimelineEditable && (
                               <>
