@@ -1,4 +1,8 @@
-import { Router, type Response } from 'express'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import crypto from 'crypto'
+import { Router, raw, type Response } from 'express'
 import { requireAuth, requireAdmin } from '../auth'
 import { broadcastDataChanged, type DataScope } from '../realtime'
 import { generateDailyMarkdown } from '../markdown'
@@ -31,7 +35,10 @@ import {
   deleteSubTask
 } from '../db/subtasks'
 import { startTimer, stopTimer, getRunningState } from '../db/timer'
-import { getWorkLogsByTodo, getWorkLogsByDate, getWorkLogsSummary } from '../db/worklogs'
+import { getWorkLogsByTodo, getAllWorkLogRows, getWorkLogsByDate, getWorkLogsSummary } from '../db/worklogs'
+import { getUserById } from '../db/users'
+import { getDb } from '../db/connection'
+import { importDesktopDb } from '../import/import-desktop-db'
 import { getOverviewData } from '../db/overview'
 import {
   getDailyPlanItems,
@@ -106,6 +113,7 @@ dataRouter.get('/timer/running', (req, res) => run(res, () => getRunningState(re
 
 // ─── WorkLogs ─────────────────────────────────────────────────
 dataRouter.get('/todos/:todoId/worklogs', (req, res) => run(res, () => getWorkLogsByTodo(req.params.todoId)))
+dataRouter.get('/worklogs/all', (req, res) => run(res, () => getAllWorkLogRows(req.user!.id)))
 dataRouter.get('/worklogs/by-date', (req, res) =>
   run(res, () => getWorkLogsByDate(req.user!.id, String(req.query.date ?? ''))))
 dataRouter.get('/worklogs/summary', (req, res) =>
@@ -173,6 +181,49 @@ dataRouter.get('/progress-digest', requireAdmin, (req, res) =>
       typeof rawIds === 'string' && rawIds.length > 0 ? rawIds.split(',').filter(Boolean) : undefined
     return getProgressDigest(from, to, userIds)
   }))
+
+// ─── Desktop DB import (admin) ────────────────────────────────
+// Body is the raw bytes of a desktop todo.db. Written to a temp file because
+// better-sqlite3 only opens databases from a path.
+dataRouter.post(
+  '/import/desktop-db',
+  requireAdmin,
+  raw({ type: () => true, limit: '500mb' }),
+  (req, res) => {
+    try {
+      const targetUserId = String(req.query.userId ?? '')
+      const dryRun = req.query.dryRun === '1'
+      if (!targetUserId || !getUserById(targetUserId)) {
+        throw new Error('取り込み先のユーザーが見つかりません')
+      }
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        throw new Error('ファイルが空か、読み込めませんでした')
+      }
+
+      const tmpPath = path.join(os.tmpdir(), `desktop-import-${crypto.randomUUID()}.db`)
+      fs.writeFileSync(tmpPath, req.body)
+      try {
+        const result = importDesktopDb({
+          webDb: getDb(),
+          sourceDbPath: tmpPath,
+          targetUserId,
+          dryRun
+        })
+        if (!dryRun) {
+          broadcastDataChanged('category')
+          broadcastDataChanged('todo')
+          broadcastDataChanged('subtask')
+          broadcastDataChanged('plan')
+        }
+        res.json(result)
+      } finally {
+        try { fs.unlinkSync(tmpPath) } catch { /* 一時ファイルの削除失敗は無視 */ }
+      }
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : 'エラーが発生しました' })
+    }
+  }
+)
 
 // ─── Team dashboard ───────────────────────────────────────────
 dataRouter.get('/team', (_req, res) => run(res, () => getTeamDashboard()))

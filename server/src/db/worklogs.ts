@@ -26,6 +26,22 @@ export function getTodayWorkLogs(userId: string): TodayWorkLog[] {
     .all(userId, todayStart.toISOString(), todayEnd.toISOString()) as TodayWorkLog[]
 }
 
+/** CSVエクスポート用: 本人の全作業ログをタスク名・カテゴリ付きで返す。 */
+export function getAllWorkLogRows(userId: string): WorkLogSummaryRow[] {
+  return getDb()
+    .prepare(
+      `SELECT wl.id, wl.todo_id, t.title,
+              c.name AS category_name, c.color AS category_color,
+              wl.start_time, wl.end_time, wl.duration_seconds, wl.note
+       FROM WorkLogs wl
+       JOIN Todos t ON wl.todo_id = t.id
+       LEFT JOIN Categories c ON t.category_id = c.id
+       WHERE wl.user_id = ?
+       ORDER BY wl.start_time ASC`
+    )
+    .all(userId) as WorkLogSummaryRow[]
+}
+
 export function getWorkLogsByDate(userId: string, dateStr: string): WorkLogSummaryRow[] {
   return getDb()
     .prepare(

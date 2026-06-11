@@ -23,6 +23,7 @@ import {
   stopTimer,
   getRunningState,
   getWorkLogsByTodo,
+  getAllWorkLogRows,
   getWorkLogsByDate,
   getWorkLogsSummary,
   getOverviewData,
@@ -114,6 +115,7 @@ export function registerIpcHandlers(
 
   // WorkLogs
   ipcMain.handle('worklog:getByTodo', (_, todoId: string) => getWorkLogsByTodo(todoId))
+  ipcMain.handle('worklog:getAll', () => getAllWorkLogRows())
   ipcMain.handle('worklog:getByDate', (_, dateStr: string) => getWorkLogsByDate(dateStr))
   ipcMain.handle('worklog:getSummary', (_, days: number) => getWorkLogsSummary(days))
   ipcMain.handle('overview:getData', () => getOverviewData())
@@ -140,6 +142,9 @@ export function registerIpcHandlers(
   ipcMain.handle('user:create', userManagementUnavailable)
   ipcMain.handle('user:update', userManagementUnavailable)
   ipcMain.handle('user:resetPassword', userManagementUnavailable)
+  ipcMain.handle('admin:importDesktopDb', (): never => {
+    throw new Error('デスクトップDBの取り込みはサーバー版でのみ利用できます')
+  })
 
   // Progress notes (shared) / digest (desktop = single bucket)
   ipcMain.handle('progressNote:getByTodo', (_, todoId: string) => getProgressNotesByTodo(todoId))

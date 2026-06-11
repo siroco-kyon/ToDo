@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { toCsv, downloadCsv, dateStamp } from '../lib/csv'
+import type { Todo } from '../types'
 
 interface Props {
   onClose: () => void
@@ -8,6 +10,23 @@ interface Props {
   canManageUsers?: boolean
   onManageUsers?: () => void
   onProgressReport?: () => void
+  onDesktopImport?: () => void
+}
+
+const STATUS_LABEL: Record<Todo['status'], string> = {
+  not_started: '未着手',
+  active: '進行中',
+  done: '完了',
+  archived: 'アーカイブ'
+}
+
+const RECURRENCE_LABEL: Record<string, string> = { daily: '毎日', weekly: '毎週', monthly: '毎月' }
+
+function formatLocal(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 type ThemeMode = 'dark' | 'light'
@@ -50,7 +69,56 @@ function captureKeyEvent(e: React.KeyboardEvent): string | null {
   return modifiers.join('+')
 }
 
-export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, canManageUsers = false, onManageUsers, onProgressReport }: Props): React.JSX.Element {
+export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, canManageUsers = false, onManageUsers, onProgressReport, onDesktopImport }: Props): React.JSX.Element {
+  const [exporting, setExporting] = useState(false)
+
+  const exportCsv = async (kind: 'todos' | 'subtasks' | 'worklogs'): Promise<void> => {
+    if (exporting) return
+    setExporting(true)
+    try {
+      if (kind === 'todos') {
+        const todos = await window.api.todoGetAll()
+        downloadCsv(`tasks_${dateStamp()}.csv`, toCsv(
+          ['ID', 'タイトル', '説明', 'メモ', 'カテゴリ', '担当者', '状態', '優先度', '進捗(%)', '開始日', '締切日', '繰り返し', '作成日時', '更新日時'],
+          todos.map((todo) => [
+            todo.id, todo.title, todo.description, todo.memo,
+            todo.category_name, todo.assignee_name,
+            STATUS_LABEL[todo.status] ?? todo.status, todo.priority, todo.progress,
+            todo.start_date, todo.due_date,
+            todo.recurrence ? RECURRENCE_LABEL[todo.recurrence] ?? todo.recurrence : '',
+            formatLocal(todo.created_at), formatLocal(todo.updated_at)
+          ])
+        ))
+      } else if (kind === 'subtasks') {
+        const [todos, subTasks] = await Promise.all([window.api.todoGetAll(), window.api.subtaskGetAll()])
+        const titleById = new Map(todos.map((todo) => [todo.id, todo.title]))
+        downloadCsv(`subtasks_${dateStamp()}.csv`, toCsv(
+          ['ID', 'タスク', 'サブタスク', 'メモ', '開始日', '締切日', '完了', '完了日時', '作成日時'],
+          subTasks.map((sub) => [
+            sub.id, titleById.get(sub.todo_id) ?? sub.todo_id, sub.title, sub.description,
+            sub.start_date, sub.due_date, sub.done ? '済' : '',
+            sub.completed_at ? formatLocal(sub.completed_at) : '', formatLocal(sub.created_at)
+          ])
+        ))
+      } else {
+        const logs = await window.api.worklogGetAll()
+        downloadCsv(`worklogs_${dateStamp()}.csv`, toCsv(
+          ['ID', 'タスク', 'カテゴリ', '開始', '終了', '分', 'メモ'],
+          logs.map((log) => [
+            log.id, log.title, log.category_name,
+            formatLocal(log.start_time), formatLocal(log.end_time),
+            Math.round(log.duration_seconds / 60), log.note
+          ])
+        ))
+      }
+      onShowToast('CSVを書き出しました')
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : 'CSVの書き出しに失敗しました', 'error')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const [shortcuts, setShortcuts] = useState<ShortcutConfig[]>([
     { key: 'globalShortcutFocus', label: 'アプリを最前面に表示', value: 'CommandOrControl+Alt+T', editing: false },
     { key: 'globalShortcutQuickAdd', label: 'クイック追加モーダル', value: 'CommandOrControl+Alt+N', editing: false },
@@ -218,9 +286,25 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               {onProgressReport && (
                 <button onClick={onProgressReport} style={secondaryBtn}>📊 進捗レポートを開く</button>
               )}
+              {onDesktopImport && (
+                <button onClick={onDesktopImport} style={secondaryBtn}>💾 デスクトップDBを取り込む</button>
+              )}
             </div>
           </section>
         )}
+
+        {/* ─── データのエクスポート ─── */}
+        <section>
+          <h3 style={sectionHead}>データのエクスポート</h3>
+          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+            CSV（UTF-8 BOM付き・Excel対応）でダウンロードします。バックアップや共有にどうぞ。
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => void exportCsv('todos')} disabled={exporting} style={secondaryBtn}>📋 タスクCSV</button>
+            <button onClick={() => void exportCsv('subtasks')} disabled={exporting} style={secondaryBtn}>📑 サブタスクCSV</button>
+            <button onClick={() => void exportCsv('worklogs')} disabled={exporting} style={secondaryBtn}>⏱ 作業ログCSV</button>
+          </div>
+        </section>
 
         {/* ─── 1. キーボードショートカット ─── */}
         <section>

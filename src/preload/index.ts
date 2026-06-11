@@ -29,7 +29,8 @@ import type {
   ProgressDigestTodo,
   ProgressDigestSubTask,
   ProgressDigestNote,
-  ProgressDigestQuery
+  ProgressDigestQuery,
+  DesktopImportResult
 } from '../main/db'
 
 export type {
@@ -62,7 +63,8 @@ export type {
   ProgressDigestTodo,
   ProgressDigestSubTask,
   ProgressDigestNote,
-  ProgressDigestQuery
+  ProgressDigestQuery,
+  DesktopImportResult
 }
 
 export interface ExportResult {
@@ -120,6 +122,7 @@ const api = {
   // WorkLogs
   worklogGetByTodo: (todoId: string): Promise<WorkLog[]> =>
     ipcRenderer.invoke('worklog:getByTodo', todoId),
+  worklogGetAll: (): Promise<WorkLogSummaryRow[]> => ipcRenderer.invoke('worklog:getAll'),
   worklogGetByDate: (dateStr: string): Promise<WorkLogSummaryRow[]> =>
     ipcRenderer.invoke('worklog:getByDate', dateStr),
   worklogGetSummary: (days: number): Promise<WorkLogSummaryRow[]> =>
@@ -152,6 +155,9 @@ const api = {
     ipcRenderer.invoke('user:update', id, input),
   userResetPassword: (id: string, password: string): Promise<void> =>
     ipcRenderer.invoke('user:resetPassword', id, password),
+  /** デスクトップ版 todo.db を取り込む（サーバー版の管理者専用。デスクトップ版ではエラー） */
+  adminImportDesktopDb: (data: ArrayBuffer, targetUserId: string, dryRun: boolean): Promise<DesktopImportResult> =>
+    ipcRenderer.invoke('admin:importDesktopDb', data, targetUserId, dryRun),
 
   // Progress notes (shared) / digest (admin report; desktop returns a single bucket)
   progressNoteGetByTodo: (todoId: string): Promise<ProgressNote[]> =>

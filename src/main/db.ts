@@ -970,6 +970,20 @@ export function getTodayWorkLogs(): TodayWorkLog[] {
     .all(todayStart.toISOString(), todayEnd.toISOString()) as TodayWorkLog[]
 }
 
+export function getAllWorkLogRows(): WorkLogSummaryRow[] {
+  return db
+    .prepare(
+      `SELECT wl.id, wl.todo_id, t.title,
+              c.name as category_name, c.color as category_color,
+              wl.start_time, wl.end_time, wl.duration_seconds, wl.note
+       FROM WorkLogs wl
+       JOIN Todos t ON wl.todo_id = t.id
+       LEFT JOIN Categories c ON t.category_id = c.id
+       ORDER BY wl.start_time ASC`
+    )
+    .all() as WorkLogSummaryRow[]
+}
+
 export function getWorkLogsByDate(dateStr: string): WorkLogSummaryRow[] {
   return db
     .prepare(
@@ -1504,6 +1518,18 @@ export interface ProgressDigestQuery {
   from: string
   to: string
   userIds?: string[]
+}
+
+/** デスクトップ版 todo.db をサーバー版へ取り込んだ結果の件数（サーバー版のみ） */
+export interface DesktopImportResult {
+  categories: number
+  todos: number
+  subTasks: number
+  dependencies: number
+  workLogs: number
+  planItems: number
+  skippedOrphans: number
+  dryRun: boolean
 }
 
 export interface Todo {
