@@ -21,15 +21,6 @@ interface DatedSubTask {
   bar: TodoBar
 }
 
-interface Group {
-  todo: Todo
-  todoBar: TodoBar | null
-  datedSubTasks: DatedSubTask[]
-  undatedSubTaskCount: number
-  subTaskCount: number
-  anchorDate: string | null
-}
-
 interface InteractionState {
   targetType: 'todo' | 'subtask'
   targetId: string
@@ -424,10 +415,6 @@ function getSubTaskBar(subTask: SubTask): TodoBar | null {
 
 function intersectsRange(startDate: string, endDate: string, rangeStart: string, rangeEnd: string): boolean {
   return startDate <= rangeEnd && endDate >= rangeStart
-}
-
-function isDateInsideRange(dateStr: string, rangeStart: string, rangeEnd: string): boolean {
-  return dateStr >= rangeStart && dateStr <= rangeEnd
 }
 
 function calculateExpectedProgress(bar: TodoBar, todayKey: string): number {
@@ -1855,7 +1842,7 @@ export function GanttView({
       })
   ), [todoById, visibleDependencies])
 
-  const renderTodayOverlay = (height: number): React.JSX.Element | null => {
+  const renderTodayOverlay = (): React.JSX.Element | null => {
     if (todayIndex < 0 || todayIndex >= totalUnits) return null
     return (
       <div
@@ -2504,7 +2491,7 @@ export function GanttView({
                       </div>
 
                       <div style={rowTimelineStyle(PARENT_ROW_HEIGHT, unitWidth, timelineWidth)}>
-                        {renderTodayOverlay(PARENT_ROW_HEIGHT)}
+                        {renderTodayOverlay()}
                         {baselineBar && baselineVisible && (
                           <div
                             style={{
@@ -2606,7 +2593,6 @@ export function GanttView({
                         : bar
                       const actualSubTaskStartIndex = diffUnits(displayedBar.startDate, timelineStart, timeScale)
                       const actualSubTaskEndIndex = diffUnits(displayedBar.endDate, timelineStart, timeScale)
-                      const clipped = actualSubTaskStartIndex < 0 || actualSubTaskEndIndex > totalUnits - 1
                       const subTaskStartIndex = clamp(actualSubTaskStartIndex, 0, totalUnits - 1)
                       const subTaskEndIndex = clamp(actualSubTaskEndIndex, 0, totalUnits - 1)
                       const baselineVisible = baselineBar
@@ -2655,7 +2641,7 @@ export function GanttView({
                           </div>
 
                           <div style={rowTimelineStyle(SUBTASK_ROW_HEIGHT, unitWidth, timelineWidth)}>
-                            {renderTodayOverlay(SUBTASK_ROW_HEIGHT)}
+                            {renderTodayOverlay()}
                             {baselineBar && baselineVisible && (
                               <div
                                 style={{
@@ -2740,34 +2726,6 @@ export function GanttView({
       )}
     </div>
   )
-}
-
-const cardStyle: React.CSSProperties = {
-  background: '#111827',
-  border: '1px solid #1f2937',
-  borderRadius: 14,
-  padding: '12px 14px',
-  minWidth: 180
-}
-
-const cardLabelStyle: React.CSSProperties = {
-  fontSize: '0.7rem',
-  color: '#64748b',
-  textTransform: 'uppercase',
-  letterSpacing: '0.08em'
-}
-
-const cardValueStyle: React.CSSProperties = {
-  fontSize: '1.05rem',
-  color: '#f8fafc',
-  fontWeight: 700,
-  marginTop: 8
-}
-
-const cardDetailStyle: React.CSSProperties = {
-  fontSize: '0.76rem',
-  color: '#94a3b8',
-  marginTop: 5
 }
 
 const inputStyle: React.CSSProperties = {

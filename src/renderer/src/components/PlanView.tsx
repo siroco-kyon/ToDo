@@ -339,45 +339,6 @@ function EmptyState({ label }: { label: string }): React.JSX.Element {
   return <div style={{ color: '#64748b', fontSize: '0.82rem', padding: '4px 2px', lineHeight: 1.6 }}>{label}</div>
 }
 
-function FocusCard({
-  title,
-  item,
-  emptyLabel,
-  onSelect
-}: {
-  title: string
-  item: TimelineBlock | null
-  emptyLabel: string
-  onSelect: (id: string) => void
-}): React.JSX.Element {
-  if (!item) {
-    return (
-      <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '12px 14px', minHeight: 120 }}>
-        <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{title}</div>
-        <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: 10, lineHeight: 1.5 }}>{emptyLabel}</div>
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '12px 14px', minHeight: 120 }}>
-      <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{title}</div>
-      <button
-        onClick={() => onSelect(item.todo_id)}
-        style={{ background: 'transparent', border: 'none', padding: 0, color: '#f8fafc', cursor: 'pointer', fontSize: '0.92rem', fontWeight: 700, textAlign: 'left', marginTop: 10 }}
-      >
-        {item.title}
-      </button>
-      <div style={{ fontSize: '0.8rem', color: '#93c5fd', marginTop: 8 }}>
-        {offsetToClock(item.startMinutes)} - {offsetToClock(item.endMinutes)}
-      </div>
-      <div style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: 6 }}>
-        {item.category_name ?? 'カテゴリなし'}
-      </div>
-    </div>
-  )
-}
-
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 10px',
