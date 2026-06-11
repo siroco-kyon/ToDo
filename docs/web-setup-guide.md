@@ -159,6 +159,57 @@ http://192.168.1.50:4577
 
 ---
 
+## 3.5 Windows サービスにして常駐させる（おすすめ）
+
+3 章の方法はターミナルを閉じるとサーバーが止まります。
+**Windows サービス**として登録すると、ターミナル不要・PC 再起動後も自動起動になります。
+
+### 登録手順（初回のみ）
+
+1. まだなら Web フロントをビルドしておきます。
+
+   ```powershell
+   npm run build:web
+   ```
+
+2. **PowerShell を「管理者として実行」で開きます**（スタートメニューで PowerShell を右クリック →「管理者として実行」）。サービスの登録には管理者権限が必要です。
+
+3. `D:\Github\ToDo` に移動して登録コマンドを実行します。
+
+   ```powershell
+   cd D:\Github\ToDo
+   npm run service:install
+   ```
+
+   「インストールしました。起動します...」と出れば完了です。
+   サービス名は **TodoTeamServer** で、Windows の「サービス」一覧（`services.msc`）にも表示されます。
+
+4. ブラウザで `http://localhost:4577` を開いて動作確認します。
+
+> 💡 ポートやパスワードなどの環境変数を変えたい場合は、**登録する前に**同じ管理者 PowerShell でセットします。
+>
+> ```powershell
+> $env:PORT = "8080"
+> $env:ADMIN_PASSWORD = "好きなパスワード"
+> npm run service:install
+> ```
+>
+> インストール時点の値がサービスに焼き込まれます。後から変えたいときは、一度解除して環境変数をセットし直してから再登録してください。
+
+### 起動・停止・解除
+
+| やりたいこと | 方法 |
+| --- | --- |
+| 状態確認・手動の開始/停止 | `services.msc` を開いて「TodoTeamServer」を操作（または管理者 PowerShell で `Start-Service TodoTeamServer` / `Stop-Service TodoTeamServer`） |
+| サービス登録の解除 | 管理者 PowerShell で `npm run service:uninstall`（データベースは消えません） |
+| ログの確認 | `server\service\daemon\` フォルダに出力されます（初回管理者パスワードのログもここ） |
+
+> ⚠️ サービス運用で初回起動した場合、ランダム生成される管理者パスワードはターミナルではなく
+> `server\service\daemon\` 内のログファイルに出力されます。控え忘れに注意してください。
+> 確実なのは、登録前に `$env:ADMIN_PASSWORD = "..."` を指定しておく方法です。
+
+---
+
 ## 4. 管理者アカウントと初回パスワード
 
 データベースにユーザーが 1 人もいないとき（＝いちばん最初の起動時）だけ、
@@ -246,6 +297,8 @@ npm run start:server
 | 開発：フロント起動 | `npm run dev:web` | `D:\Github\ToDo` |
 | 本番：ビルド | `npm run build:web` | `D:\Github\ToDo` |
 | 本番：サーバー起動 | `npm run start:server` | `D:\Github\ToDo` |
+| 本番：サービス登録（管理者 PowerShell） | `npm run service:install` | `D:\Github\ToDo` |
+| 本番：サービス解除（管理者 PowerShell） | `npm run service:uninstall` | `D:\Github\ToDo` |
 
 | モード | アクセス先 |
 | --- | --- |
