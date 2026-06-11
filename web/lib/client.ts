@@ -342,6 +342,12 @@ export const api: Api = {
     const data = await res.json()
     return (data?.user ?? null) as PublicUser | null
   },
+  authLogout: async (): Promise<void> => {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
+    disconnectRealtime()
+    // AuthGate が /auth/me を取り直してログイン画面に戻す
+    window.location.reload()
+  },
   userCreate: (input: CreateUserInput) => post<PublicUser>('/users', input),
   userUpdate: (id: string, input: UpdateUserInput) => put<PublicUser>(`/users/${id}`, input),
   userResetPassword: (id: string, password: string) =>
