@@ -367,3 +367,15 @@ export interface ProgressDigestQuery {
   to: string
   userIds?: string[]
 }
+
+/** デスクトップ版 todo.db をサーバー版へ取り込んだ結果の件数（サーバー版のみ） */
+export interface DesktopImportResult {
+  categories: number
+  todos: number
+  subTasks: number
+  dependencies: number
+  workLogs: number
+  planItems: number
+  skippedOrphans: number
+  dryRun: boolean
+}

@@ -23,7 +23,8 @@ import type {
   TeamDashboard,
   ProgressNote,
   ProgressDigest,
-  ProgressDigestQuery
+  ProgressDigestQuery,
+  DesktopImportResult
 } from '@preload'
 
 // ─── HTTP plumbing ────────────────────────────────────────────
@@ -285,6 +286,7 @@ export const api: Api = {
 
   // WorkLogs / overview
   worklogGetByTodo: (todoId) => get<WorkLog[]>(`/todos/${todoId}/worklogs`),
+  worklogGetAll: () => get<WorkLogSummaryRow[]>('/worklogs/all'),
   worklogGetByDate: (dateStr) => get<WorkLogSummaryRow[]>('/worklogs/by-date', { date: dateStr }),
   worklogGetSummary: (days) => get<WorkLogSummaryRow[]>('/worklogs/summary', { days }),
   overviewGetData: () => get<OverviewData>('/overview'),
@@ -344,6 +346,27 @@ export const api: Api = {
   userUpdate: (id: string, input: UpdateUserInput) => put<PublicUser>(`/users/${id}`, input),
   userResetPassword: (id: string, password: string) =>
     post<void>(`/users/${id}/password`, { password }),
+  adminImportDesktopDb: async (data: ArrayBuffer, targetUserId: string, dryRun: boolean) => {
+    // JSONではなく todo.db のバイト列をそのまま送る
+    const res = await fetch(
+      buildUrl('/import/desktop-db', { userId: targetUserId, dryRun: dryRun ? '1' : undefined }),
+      {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: data
+      }
+    )
+    const text = await res.text()
+    const json = text ? JSON.parse(text) : undefined
+    if (!res.ok) {
+      const message =
+        (json && typeof json === 'object' && typeof json.error === 'string' ? json.error : null) ??
+        `リクエストに失敗しました (${res.status})`
+      throw new HttpError(res.status, message)
+    }
+    return json as DesktopImportResult
+  },
 
   // ─── Desktop-only surface: stubbed for the web build ─────────
   iconGetDataUrl: async () => DEFAULT_ICON_DATA_URL,

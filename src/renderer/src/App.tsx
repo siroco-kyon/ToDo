@@ -11,6 +11,7 @@ import type { ToastMessage } from './components/Toast'
 import { SettingsModal } from './components/SettingsModal'
 import { UserManagementModal } from './components/UserManagementModal'
 import { ProgressReportModal } from './components/ProgressReportModal'
+import { DesktopImportModal } from './components/DesktopImportModal'
 import { WorkLogSummary } from './components/WorkLogSummary'
 import { SetupWizardModal } from './components/SetupWizardModal'
 import { PlanView } from './components/PlanView'
@@ -70,6 +71,7 @@ export function App(): React.JSX.Element {
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null)
   const [showUserManagement, setShowUserManagement] = useState(false)
   const [showProgressReport, setShowProgressReport] = useState(false)
+  const [showDesktopImport, setShowDesktopImport] = useState(false)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null)
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
@@ -780,6 +782,7 @@ export function App(): React.JSX.Element {
           canManageUsers={isAdmin}
           onManageUsers={() => { setShowSettings(false); setShowUserManagement(true) }}
           onProgressReport={isAdmin ? () => { setShowSettings(false); setShowProgressReport(true) } : undefined}
+          onDesktopImport={isAdmin && multiUser ? () => { setShowSettings(false); setShowDesktopImport(true) } : undefined}
         />
       )}
 
@@ -796,6 +799,14 @@ export function App(): React.JSX.Element {
         <ProgressReportModal
           users={users}
           onClose={() => setShowProgressReport(false)}
+          onShowToast={showToast}
+        />
+      )}
+
+      {showDesktopImport && isAdmin && multiUser && (
+        <DesktopImportModal
+          users={users}
+          onClose={() => setShowDesktopImport(false)}
           onShowToast={showToast}
         />
       )}
