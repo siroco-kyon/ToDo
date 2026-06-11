@@ -20,7 +20,10 @@ import type {
   PublicUser,
   CreateUserInput,
   UpdateUserInput,
-  TeamDashboard
+  TeamDashboard,
+  ProgressNote,
+  ProgressDigest,
+  ProgressDigestQuery
 } from '@preload'
 
 // ─── HTTP plumbing ────────────────────────────────────────────
@@ -285,6 +288,17 @@ export const api: Api = {
   worklogGetByDate: (dateStr) => get<WorkLogSummaryRow[]>('/worklogs/by-date', { date: dateStr }),
   worklogGetSummary: (days) => get<WorkLogSummaryRow[]>('/worklogs/summary', { days }),
   overviewGetData: () => get<OverviewData>('/overview'),
+
+  // Progress notes (shared) / digest (admin report)
+  progressNoteGetByTodo: (todoId) => get<ProgressNote[]>(`/todos/${todoId}/progress-notes`),
+  progressNoteCreate: (todoId, body) => post<ProgressNote>(`/todos/${todoId}/progress-notes`, { body }),
+  progressNoteDelete: (id) => del<void>(`/progress-notes/${id}`),
+  progressDigestGet: (query: ProgressDigestQuery) =>
+    get<ProgressDigest>('/progress-digest', {
+      from: query.from,
+      to: query.to,
+      userIds: query.userIds && query.userIds.length > 0 ? query.userIds.join(',') : undefined
+    }),
 
   // Daily plan
   dailyPlanGetByDate: (dateStr) => get<DailyPlanItem[]>('/plan', { date: dateStr }),

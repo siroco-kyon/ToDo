@@ -22,7 +22,14 @@ import type {
   TeamDashboard,
   TeamNowItem,
   TeamDeadlineItem,
-  TeamMemberWorkload
+  TeamMemberWorkload,
+  ProgressNote,
+  ProgressDigest,
+  ProgressDigestUser,
+  ProgressDigestTodo,
+  ProgressDigestSubTask,
+  ProgressDigestNote,
+  ProgressDigestQuery
 } from '../main/db'
 
 export type {
@@ -48,7 +55,14 @@ export type {
   TeamDashboard,
   TeamNowItem,
   TeamDeadlineItem,
-  TeamMemberWorkload
+  TeamMemberWorkload,
+  ProgressNote,
+  ProgressDigest,
+  ProgressDigestUser,
+  ProgressDigestTodo,
+  ProgressDigestSubTask,
+  ProgressDigestNote,
+  ProgressDigestQuery
 }
 
 export interface ExportResult {
@@ -138,6 +152,15 @@ const api = {
     ipcRenderer.invoke('user:update', id, input),
   userResetPassword: (id: string, password: string): Promise<void> =>
     ipcRenderer.invoke('user:resetPassword', id, password),
+
+  // Progress notes (shared) / digest (admin report; desktop returns a single bucket)
+  progressNoteGetByTodo: (todoId: string): Promise<ProgressNote[]> =>
+    ipcRenderer.invoke('progressNote:getByTodo', todoId),
+  progressNoteCreate: (todoId: string, body: string): Promise<ProgressNote> =>
+    ipcRenderer.invoke('progressNote:create', todoId, body),
+  progressNoteDelete: (id: string): Promise<void> => ipcRenderer.invoke('progressNote:delete', id),
+  progressDigestGet: (query: ProgressDigestQuery): Promise<ProgressDigest> =>
+    ipcRenderer.invoke('progressDigest:get', query),
 
   // Settings
   settingsGet: (key: string): Promise<string | null> => ipcRenderer.invoke('settings:get', key),

@@ -111,6 +111,17 @@ function createTables(): void {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS ProgressNotes (
+      id TEXT PRIMARY KEY,
+      todo_id TEXT NOT NULL,
+      user_id TEXT,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_progress_notes_todo ON ProgressNotes(todo_id, created_at);
   `)
 }
 
@@ -1188,6 +1199,93 @@ export function setSetting(key: string, value: string): void {
   db.prepare('INSERT OR REPLACE INTO Settings (key, value) VALUES (?, ?)').run(key, value)
 }
 
+// ─── Progress notes ───────────────────────────────────────────
+// Desktop is single-user: notes carry no author (user_id stays NULL) and the
+// digest collapses to one bucket. Kept here so the shared UI works in both modes.
+
+const PROGRESS_NOTE_SELECT =
+  'SELECT id, todo_id, user_id, NULL AS author_name, NULL AS author_color, body, created_at FROM ProgressNotes'
+
+export function getProgressNotesByTodo(todoId: string): ProgressNote[] {
+  return db
+    .prepare(`${PROGRESS_NOTE_SELECT} WHERE todo_id = ? ORDER BY created_at DESC`)
+    .all(todoId) as ProgressNote[]
+}
+
+export function createProgressNote(todoId: string, body: string): ProgressNote {
+  const trimmed = body.trim()
+  if (!trimmed) throw new Error('進捗メモの内容を入力してください')
+  const id = crypto.randomUUID()
+  const now = new Date().toISOString()
+  db.prepare('INSERT INTO ProgressNotes (id, todo_id, user_id, body, created_at) VALUES (?, ?, NULL, ?, ?)').run(
+    id,
+    todoId,
+    trimmed,
+    now
+  )
+  return db.prepare(`${PROGRESS_NOTE_SELECT} WHERE id = ?`).get(id) as ProgressNote
+}
+
+export function deleteProgressNote(id: string): void {
+  db.prepare('DELETE FROM ProgressNotes WHERE id = ?').run(id)
+}
+
+export function getProgressDigest(query: ProgressDigestQuery): ProgressDigest {
+  const { from, to } = query
+
+  const addedTodos = db
+    .prepare(
+      `SELECT t.id, t.title, t.status, t.progress, t.memo,
+              c.name AS category_name, c.color AS category_color, t.created_at
+       FROM Todos t LEFT JOIN Categories c ON t.category_id = c.id
+       WHERE date(t.created_at, 'localtime') BETWEEN ? AND ?
+       ORDER BY t.created_at ASC`
+    )
+    .all(from, to) as ProgressDigestTodo[]
+
+  const addedSubTasks = db
+    .prepare(
+      `SELECT st.id, st.title, st.todo_id, t.title AS todo_title, st.done, st.created_at
+       FROM SubTasks st JOIN Todos t ON st.todo_id = t.id
+       WHERE date(st.created_at, 'localtime') BETWEEN ? AND ?
+       ORDER BY st.created_at ASC`
+    )
+    .all(from, to) as ProgressDigestSubTask[]
+
+  const notes = db
+    .prepare(
+      `SELECT pn.id, pn.todo_id, t.title AS todo_title, pn.body, pn.created_at
+       FROM ProgressNotes pn JOIN Todos t ON pn.todo_id = t.id
+       WHERE date(pn.created_at, 'localtime') BETWEEN ? AND ?
+       ORDER BY pn.created_at ASC`
+    )
+    .all(from, to) as ProgressDigestNote[]
+
+  const work = db
+    .prepare(
+      `SELECT COALESCE(SUM(duration_seconds), 0) AS seconds, COUNT(*) AS cnt
+       FROM WorkLogs WHERE date(start_time, 'localtime') BETWEEN ? AND ?`
+    )
+    .get(from, to) as { seconds: number; cnt: number }
+
+  return {
+    from,
+    to,
+    users: [
+      {
+        user_id: null,
+        display_name: '自分',
+        color: '#6366f1',
+        added_todos: addedTodos,
+        added_subtasks: addedSubTasks,
+        notes,
+        work_minutes: Math.round(work.seconds / 60),
+        work_log_count: work.cnt
+      }
+    ]
+  }
+}
+
 // ─── Types ────────────────────────────────────────────────────
 
 export interface Category {
@@ -1274,6 +1372,70 @@ export interface TeamDashboard {
   overdue: TeamDeadlineItem[]
   dueSoon: TeamDeadlineItem[]
   workloads: TeamMemberWorkload[]
+}
+
+/** A timestamped, authored progress note attached to a task. On desktop the author fields are null. */
+export interface ProgressNote {
+  id: string
+  todo_id: string
+  user_id: string | null
+  author_name: string | null
+  author_color: string | null
+  body: string
+  created_at: string
+}
+
+export interface ProgressDigestTodo {
+  id: string
+  title: string
+  status: TodoStatus
+  progress: number
+  memo: string
+  category_name: string | null
+  category_color: string | null
+  created_at: string
+}
+
+export interface ProgressDigestSubTask {
+  id: string
+  title: string
+  todo_id: string
+  todo_title: string
+  done: number
+  created_at: string
+}
+
+export interface ProgressDigestNote {
+  id: string
+  todo_id: string
+  todo_title: string
+  body: string
+  created_at: string
+}
+
+/** One member's activity within the requested period. Desktop returns a single bucket. */
+export interface ProgressDigestUser {
+  user_id: string | null
+  display_name: string
+  color: string
+  added_todos: ProgressDigestTodo[]
+  added_subtasks: ProgressDigestSubTask[]
+  notes: ProgressDigestNote[]
+  work_minutes: number
+  work_log_count: number
+}
+
+export interface ProgressDigest {
+  from: string
+  to: string
+  users: ProgressDigestUser[]
+}
+
+/** Period (inclusive YYYY-MM-DD) + optional member filter for the admin report. Web-only filter. */
+export interface ProgressDigestQuery {
+  from: string
+  to: string
+  userIds?: string[]
 }
 
 export interface Todo {

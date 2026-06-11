@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import type { Category, CreateSubTaskInput, DailyPlanItem, PublicUser, SubTask, Todo, TodoDependency, UpdateTodoInput, WorkLog } from '../types'
+import type { Category, CreateSubTaskInput, DailyPlanItem, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, UpdateTodoInput, WorkLog } from '../types'
 import { TimerDisplay } from './TimerDisplay'
 import { AssigneeChip, AssigneePicker } from './AssigneePicker'
 
@@ -8,6 +8,7 @@ interface Props {
   allTodos: Todo[]
   categories: Category[]
   users?: PublicUser[]
+  currentUser?: PublicUser | null
   todayPlanItems: DailyPlanItem[]
   runningTodoId: string | null
   elapsedSeconds: number
@@ -59,6 +60,7 @@ export function TodoDetail({
   allTodos,
   categories,
   users = [],
+  currentUser = null,
   todayPlanItems,
   runningTodoId,
   elapsedSeconds,
@@ -71,6 +73,9 @@ export function TodoDetail({
   const [logs, setLogs] = useState<WorkLog[]>([])
   const [subTasks, setSubTasks] = useState<SubTask[]>([])
   const [dependencies, setDependencies] = useState<TodoDependency[]>([])
+  const [progressNotes, setProgressNotes] = useState<ProgressNote[]>([])
+  const [noteDraft, setNoteDraft] = useState('')
+  const [noteSaving, setNoteSaving] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState<UpdateTodoInput>({})
   const [editableSubTasks, setEditableSubTasks] = useState<EditableSubTask[]>([])
@@ -145,11 +150,22 @@ export function TodoDetail({
     }
   }, [])
 
+  const loadProgressNotes = useCallback(async (id: string) => {
+    try {
+      setProgressNotes(await window.api.progressNoteGetByTodo(id))
+    } catch (error) {
+      console.error('Failed to load progress notes', error)
+      setProgressNotes([])
+    }
+  }, [])
+
   useEffect(() => {
     if (!todoId || !todo) {
       setLogs([])
       setSubTasks([])
       setDependencies([])
+      setProgressNotes([])
+      setNoteDraft('')
       setDescriptionDraft('')
       setDescriptionBase('')
       setMemoDraft('')
@@ -163,10 +179,12 @@ export function TodoDetail({
     setDescriptionBase(todo.description ?? '')
     setMemoDraft(todo.memo ?? '')
     setMemoBase(todo.memo ?? '')
+    setNoteDraft('')
     window.api.worklogGetByTodo(todoId).then(setLogs).catch(console.error)
     void loadSubTasks(todoId)
     void loadDependencies(todoId)
-  }, [createEditData, loadDependencies, loadSubTasks, todo, todoId])
+    void loadProgressNotes(todoId)
+  }, [createEditData, loadDependencies, loadProgressNotes, loadSubTasks, todo, todoId])
 
   useEffect(() => {
     if (!editing) setEditableSubTasks(createEditableSubTasks(subTasks))
@@ -177,11 +195,14 @@ export function TodoDetail({
 
     const unsubscribe = window.api.onDataChanged((scope) => {
       if (scope === 'subtask') void loadSubTasks(todoId)
-      if (scope === 'todo') void loadDependencies(todoId)
+      if (scope === 'todo') {
+        void loadDependencies(todoId)
+        void loadProgressNotes(todoId)
+      }
     })
 
     return () => unsubscribe()
-  }, [loadDependencies, loadSubTasks, todoId])
+  }, [loadDependencies, loadProgressNotes, loadSubTasks, todoId])
 
   const calcProgress = useCallback((clientX: number): number => {
     if (!progressBarRef.current) return 0
@@ -336,6 +357,34 @@ export function TodoDetail({
     await loadDependencies(todoId)
     setDependencyDraft((previous) => ({ ...previous, relatedTodoId: '', lagDays: String(lagDays) }))
   }
+
+  const handleAddProgressNote = async (): Promise<void> => {
+    if (!todoId || noteSaving) return
+    const body = noteDraft.trim()
+    if (!body) return
+    try {
+      setNoteSaving(true)
+      const created = await window.api.progressNoteCreate(todoId, body)
+      setProgressNotes((previous) => [created, ...previous])
+      setNoteDraft('')
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '進捗メモを追加できませんでした', 'error')
+    } finally {
+      setNoteSaving(false)
+    }
+  }
+
+  const handleDeleteProgressNote = async (id: string): Promise<void> => {
+    try {
+      await window.api.progressNoteDelete(id)
+      setProgressNotes((previous) => previous.filter((note) => note.id !== id))
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '進捗メモを削除できませんでした', 'error')
+    }
+  }
+
+  const canDeleteNote = (note: ProgressNote): boolean =>
+    currentUser == null || currentUser.role === 'admin' || note.user_id === currentUser.id
 
   if (!todo) {
     return (
@@ -525,6 +574,56 @@ export function TodoDetail({
         </section>
       )}
 
+      {!editing && (
+        <section>
+          <div style={sectionTitleStyle}>進捗ログ {progressNotes.length > 0 && `(${progressNotes.length})`}</div>
+          <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.5 }}>
+              日時と担当者つきで進捗を追記していく履歴です。管理者の進捗レポートに集計されます。Ctrl/Cmd + Enter でも追記できます。
+            </div>
+            <textarea
+              value={noteDraft}
+              onChange={(event) => setNoteDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                  event.preventDefault()
+                  void handleAddProgressNote()
+                }
+              }}
+              placeholder="今日やったこと、進んだこと、判明したことなど..."
+              rows={3}
+              style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: 72 }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{noteDraft.length}文字</div>
+              <button
+                onClick={() => void handleAddProgressNote()}
+                disabled={!noteDraft.trim() || noteSaving}
+                style={buttonStyle(!noteDraft.trim() || noteSaving ? '#1e293b' : '#6366f1', !noteDraft.trim() || noteSaving ? '#64748b' : '#fff')}
+              >
+                {noteSaving ? '追記中...' : '追記'}
+              </button>
+            </div>
+            {progressNotes.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {progressNotes.map((note) => (
+                  <div key={note.id} style={{ background: '#0f172a', borderRadius: 8, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      {note.author_name && <AssigneeChip name={note.author_name} color={note.author_color} fontSize={0.68} />}
+                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{formatDateTime(note.created_at)}</span>
+                      {canDeleteNote(note) && (
+                        <button onClick={() => void handleDeleteProgressNote(note.id)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.72rem' }}>削除</button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.84rem', color: '#cbd5e1', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{note.body}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       <section>
         <div style={sectionTitleStyle}>サブタスク {subTasks.length > 0 && `(${doneCount}/${subTasks.length})`}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
@@ -679,4 +778,10 @@ function clampLag(value: number): number {
 
 function formatTime(date: Date): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function formatDateTime(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return `${date.getMonth() + 1}/${date.getDate()} ${formatTime(date)}`
 }
