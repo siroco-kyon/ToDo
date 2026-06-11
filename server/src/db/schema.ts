@@ -46,6 +46,7 @@ export function createSchema(db: Database.Database): void {
       due_date TEXT,
       sort_order INTEGER DEFAULT 0,
       recurrence TEXT DEFAULT NULL,
+      recurrence_copy_subtasks INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       archived_at TEXT,
@@ -163,6 +164,9 @@ export function runMigrations(db: Database.Database): void {
   }
   if (!todoColumns.some((c) => c.name === 'created_by')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN created_by TEXT').run()
+  }
+  if (!todoColumns.some((c) => c.name === 'recurrence_copy_subtasks')) {
+    db.prepare('ALTER TABLE Todos ADD COLUMN recurrence_copy_subtasks INTEGER DEFAULT 0').run()
   }
 }
 

@@ -43,6 +43,7 @@ function createTables(): void {
       due_date TEXT,
       sort_order INTEGER DEFAULT 0,
       recurrence TEXT DEFAULT NULL,
+      recurrence_copy_subtasks INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       archived_at TEXT,
@@ -181,6 +182,10 @@ function migrateDb(): void {
 
   if (!todoColumns.some((c) => c.name === 'recurrence')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN recurrence TEXT DEFAULT NULL').run()
+  }
+
+  if (!todoColumns.some((c) => c.name === 'recurrence_copy_subtasks')) {
+    db.prepare('ALTER TABLE Todos ADD COLUMN recurrence_copy_subtasks INTEGER DEFAULT 0').run()
   }
 
   // SubTasks.description 追加
@@ -402,6 +407,7 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
   if (data.start_date !== undefined) { fields.push('start_date = ?'); values.push(normalizeDateKey(data.start_date)) }
   if (data.due_date !== undefined) { fields.push('due_date = ?'); values.push(normalizeDateKey(data.due_date)) }
   if (data.recurrence !== undefined) { fields.push('recurrence = ?'); values.push(data.recurrence) }
+  if (data.recurrence_copy_subtasks !== undefined) { fields.push('recurrence_copy_subtasks = ?'); values.push(data.recurrence_copy_subtasks ? 1 : 0) }
 
   values.push(id)
   db.prepare(`UPDATE Todos SET ${fields.join(', ')} WHERE id = ?`).run(...values)
@@ -487,8 +493,8 @@ export function createTodo(data: CreateTodoInput): Todo {
   // 新規タスクはsort_orderを最小値-1にして先頭に表示
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) as m FROM Todos').get() as { m: number }).m
   db.prepare(
-    `INSERT INTO Todos (id, title, description, memo, category_id, status, priority, progress, start_date, due_date, sort_order, recurrence, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO Todos (id, title, description, memo, category_id, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     data.title,
@@ -501,6 +507,7 @@ export function createTodo(data: CreateTodoInput): Todo {
     dueDate,
     minOrder - 1,
     data.recurrence ?? null,
+    data.recurrence_copy_subtasks ? 1 : 0,
     now,
     now
   )
@@ -520,11 +527,72 @@ export function reorderTodos(orderedIds: string[]): void {
   run()
 }
 
+// ─── Recurrence ───────────────────────────────────────────────
+
+function shiftRecurrenceDate(value: string | null, recurrence: 'daily' | 'weekly' | 'monthly'): string | null {
+  const dateKey = normalizeDateKey(value)
+  if (!dateKey) return null
+  if (recurrence === 'daily') return addDays(dateKey, 1)
+  if (recurrence === 'weekly') return addDays(dateKey, 7)
+
+  // monthly は月末を丸める（1/31 の次を 3/3 にしない）
+  const date = parseDateKey(dateKey)
+  const day = date.getDate()
+  date.setDate(1)
+  date.setMonth(date.getMonth() + 1)
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
+  date.setDate(Math.min(day, lastDay))
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+// 完了した繰り返しタスクの次回分を作成する。recurrence_copy_subtasks が
+// 立っていればサブタスクも未完了状態・日付シフトつきで複製する。
+function spawnNextRecurrence(source: Todo): void {
+  const recurrence = source.recurrence
+  if (!recurrence) return
+
+  const next = createTodo({
+    title: source.title,
+    description: source.description,
+    memo: source.memo,
+    category_id: source.category_id,
+    priority: source.priority,
+    start_date: shiftRecurrenceDate(source.start_date, recurrence),
+    due_date: shiftRecurrenceDate(source.due_date, recurrence),
+    recurrence,
+    recurrence_copy_subtasks: source.recurrence_copy_subtasks
+  })
+
+  if (source.recurrence_copy_subtasks) {
+    const now = new Date().toISOString()
+    const insert = db.prepare(
+      'INSERT INTO SubTasks (id, todo_id, title, description, start_date, due_date, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)'
+    )
+    for (const sub of getSubTasksByTodo(source.id)) {
+      insert.run(
+        crypto.randomUUID(),
+        next.id,
+        sub.title,
+        sub.description ?? '',
+        shiftRecurrenceDate(sub.start_date, recurrence),
+        shiftRecurrenceDate(sub.due_date, recurrence),
+        sub.sort_order,
+        now
+      )
+    }
+  }
+}
+
 export function updateTodo(id: string, data: UpdateTodoInput): Todo {
   const now = new Date().toISOString()
+  const before = getTodoById(id)
   db.transaction(() => {
     applyTodoUpdate(id, data, now)
     resolveDependencyCascade(id, now)
+    const updated = getTodoById(id)
+    if (before.status !== 'done' && updated.status === 'done' && updated.recurrence) {
+      spawnNextRecurrence(updated)
+    }
   })()
   return getTodoById(id)
 }
@@ -1456,6 +1524,8 @@ export interface Todo {
   due_date: string | null
   sort_order: number
   recurrence: 'daily' | 'weekly' | 'monthly' | null
+  /** 1 のとき、繰り返しの次回分にサブタスクを未完了状態で複製する */
+  recurrence_copy_subtasks: number
   created_at: string
   updated_at: string
   archived_at: string | null
@@ -1515,6 +1585,7 @@ export interface CreateTodoInput {
   start_date?: string | null
   due_date?: string | null
   recurrence?: 'daily' | 'weekly' | 'monthly' | null
+  recurrence_copy_subtasks?: number
 }
 
 export interface UpdateTodoInput {
@@ -1529,6 +1600,7 @@ export interface UpdateTodoInput {
   start_date?: string | null
   due_date?: string | null
   recurrence?: 'daily' | 'weekly' | 'monthly' | null
+  recurrence_copy_subtasks?: number
 }
 
 export interface WorkLog {
