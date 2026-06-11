@@ -55,18 +55,6 @@ function loadPaneWidths(): PaneWidths {
   }
 }
 
-function shiftRecurringDate(dateStr: string | null | undefined, recurrence: Todo['recurrence']): string | null {
-  if (!dateStr || !recurrence) return null
-
-  const next = new Date(dateStr)
-
-  if (recurrence === 'daily') next.setDate(next.getDate() + 1)
-  else if (recurrence === 'weekly') next.setDate(next.getDate() + 7)
-  else if (recurrence === 'monthly') next.setMonth(next.getMonth() + 1)
-
-  return next.toISOString().slice(0, 10)
-}
-
 function getTodayKey(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -393,21 +381,10 @@ export function App(): React.JSX.Element {
     const newStatus: Todo['status'] = todo.status === 'done'
       ? (todo.progress > 0 ? 'active' : 'not_started')
       : 'done'
+    // 繰り返しタスクの次回分はDB層が完了時に自動生成する
     await window.api.todoUpdate(todo.id, { status: newStatus })
 
     if (newStatus === 'done' && todo.recurrence) {
-      const nextStartDate = shiftRecurringDate(todo.start_date, todo.recurrence)
-      const nextDue = shiftRecurringDate(todo.due_date, todo.recurrence)
-      await window.api.todoCreate({
-        title: todo.title,
-        description: todo.description,
-        memo: todo.memo,
-        category_id: todo.category_id,
-        priority: todo.priority,
-        start_date: nextStartDate,
-        due_date: nextDue,
-        recurrence: todo.recurrence
-      })
       const recurrenceLabel = todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : '毎月'
       showToast(`${recurrenceLabel}タスクを次回分として作成しました`)
     }

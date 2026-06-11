@@ -67,6 +67,8 @@ export interface Todo {
   due_date: string | null
   sort_order: number
   recurrence: 'daily' | 'weekly' | 'monthly' | null
+  /** 1 のとき、繰り返しの次回分にサブタスクを未完了状態で複製する */
+  recurrence_copy_subtasks: number
   created_at: string
   updated_at: string
   archived_at: string | null
@@ -83,6 +85,7 @@ export interface CreateTodoInput {
   start_date?: string | null
   due_date?: string | null
   recurrence?: 'daily' | 'weekly' | 'monthly' | null
+  recurrence_copy_subtasks?: number
 }
 
 export interface UpdateTodoInput {
@@ -97,6 +100,7 @@ export interface UpdateTodoInput {
   start_date?: string | null
   due_date?: string | null
   recurrence?: 'daily' | 'weekly' | 'monthly' | null
+  recurrence_copy_subtasks?: number
 }
 
 export interface TodoDependency {
