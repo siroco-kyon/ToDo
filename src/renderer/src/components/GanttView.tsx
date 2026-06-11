@@ -2470,6 +2470,14 @@ export function GanttView({
                                   {group.todo.assignee_name}
                                 </span>
                               )}
+                              {(group.todo.co_assignees ?? []).length > 0 && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }} title={`サブ担当: ${(group.todo.co_assignees ?? []).map((coAssignee) => coAssignee.display_name).join('、')}`}>
+                                  <span style={{ color: '#64748b' }}>+</span>
+                                  {(group.todo.co_assignees ?? []).map((coAssignee) => (
+                                    <span key={coAssignee.user_id} style={{ width: 8, height: 8, borderRadius: '50%', background: coAssignee.color, flexShrink: 0 }} />
+                                  ))}
+                                </span>
+                              )}
                               {canToggleSubtasks && (
                                 <span style={{ color: isExpanded ? '#93c5fd' : '#64748b' }}>
                                   {isExpanded ? `展開 ${group.datedSubTasks.length}件` : `折りたたみ ${group.datedSubTasks.length}件`}

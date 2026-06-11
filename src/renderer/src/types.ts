@@ -60,9 +60,17 @@ export interface Todo {
   recurrence: 'daily' | 'weekly' | 'monthly' | null
   /** 1 のとき、繰り返しの次回分にサブタスクを未完了状態で複製する */
   recurrence_copy_subtasks: number
+  /** サブ担当（サーバー版のみ。デスクトップ版では常に未設定） */
+  co_assignees?: TodoCoAssignee[]
   created_at: string
   updated_at: string
   archived_at: string | null
+}
+
+export interface TodoCoAssignee {
+  user_id: string
+  display_name: string
+  color: string
 }
 
 export interface TodoDependency {
@@ -135,6 +143,8 @@ export interface UpdateTodoInput {
   due_date?: string | null
   recurrence?: 'daily' | 'weekly' | 'monthly' | null
   recurrence_copy_subtasks?: number
+  /** 指定された場合、サブ担当をこのユーザーID群で置き換える（サーバー版のみ有効） */
+  co_assignee_ids?: string[]
 }
 
 export interface WorkLog {

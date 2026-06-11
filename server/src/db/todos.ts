@@ -9,7 +9,7 @@ import {
   parseDateKey,
   type TodoBar
 } from './helpers'
-import type { CreateTodoInput, Todo, TodoDependency, UpdateTodoInput } from './types'
+import type { CreateTodoInput, Todo, TodoCoAssignee, TodoDependency, UpdateTodoInput } from './types'
 
 const TODO_SELECT = `
   SELECT t.*,
@@ -20,14 +20,61 @@ const TODO_SELECT = `
   LEFT JOIN Users u ON t.assignee_id = u.id
 `
 
+// サブ担当を todo にぶら下げる。一覧は全件分を一括で引いて JS 側でグループ化する
+function attachCoAssignees(todos: Todo[]): Todo[] {
+  if (todos.length === 0) return todos
+  const rows = getDb()
+    .prepare(
+      `SELECT ca.todo_id, ca.user_id, u.display_name, u.color
+       FROM TodoCoAssignees ca
+       JOIN Users u ON ca.user_id = u.id
+       ORDER BY u.display_name ASC`
+    )
+    .all() as Array<TodoCoAssignee & { todo_id: string }>
+
+  const byTodo = new Map<string, TodoCoAssignee[]>()
+  for (const { todo_id, ...coAssignee } of rows) {
+    const list = byTodo.get(todo_id)
+    if (list) list.push(coAssignee)
+    else byTodo.set(todo_id, [coAssignee])
+  }
+  for (const todo of todos) todo.co_assignees = byTodo.get(todo.id) ?? []
+  return todos
+}
+
 export function getAllTodos(): Todo[] {
-  return getDb()
-    .prepare(`${TODO_SELECT} WHERE t.status != 'archived' OR t.archived_at IS NOT NULL ORDER BY t.created_at DESC`)
-    .all() as Todo[]
+  return attachCoAssignees(
+    getDb()
+      .prepare(`${TODO_SELECT} WHERE t.status != 'archived' OR t.archived_at IS NOT NULL ORDER BY t.created_at DESC`)
+      .all() as Todo[]
+  )
 }
 
 export function getTodoById(id: string): Todo {
-  return getDb().prepare(`${TODO_SELECT} WHERE t.id = ?`).get(id) as Todo
+  const todo = getDb().prepare(`${TODO_SELECT} WHERE t.id = ?`).get(id) as Todo
+  if (todo) {
+    todo.co_assignees = getDb()
+      .prepare(
+        `SELECT ca.user_id, u.display_name, u.color
+         FROM TodoCoAssignees ca
+         JOIN Users u ON ca.user_id = u.id
+         WHERE ca.todo_id = ?
+         ORDER BY u.display_name ASC`
+      )
+      .all(id) as TodoCoAssignee[]
+  }
+  return todo
+}
+
+function replaceCoAssignees(todoId: string, userIds: string[], now: string): void {
+  const db = getDb()
+  db.prepare('DELETE FROM TodoCoAssignees WHERE todo_id = ?').run(todoId)
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO TodoCoAssignees (todo_id, user_id, created_at) VALUES (?, ?, ?)'
+  )
+  for (const userId of userIds) {
+    if (userId) insert.run(todoId, userId, now)
+  }
 }
 
 function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): void {
@@ -200,6 +247,12 @@ function spawnNextRecurrence(source: Todo): void {
     source.created_by
   )
 
+  // サブ担当も次回分へ引き継ぐ
+  const coAssignees = source.co_assignees ?? []
+  if (coAssignees.length > 0) {
+    replaceCoAssignees(next.id, coAssignees.map((c) => c.user_id), new Date().toISOString())
+  }
+
   if (source.recurrence_copy_subtasks) {
     const db = getDb()
     const now = new Date().toISOString()
@@ -230,6 +283,9 @@ export function updateTodo(id: string, data: UpdateTodoInput): Todo {
   const before = getTodoById(id)
   db.transaction(() => {
     applyTodoUpdate(id, data, now)
+    if (data.co_assignee_ids !== undefined) {
+      replaceCoAssignees(id, data.co_assignee_ids, now)
+    }
     resolveDependencyCascade(id, now)
     const updated = getTodoById(id)
     if (before.status !== 'done' && updated.status === 'done' && updated.recurrence) {
@@ -270,6 +326,7 @@ export function deleteTodo(id: string): void {
   db.prepare('DELETE FROM WorkLogs WHERE todo_id = ?').run(id)
   db.prepare('DELETE FROM RunningState WHERE todo_id = ?').run(id)
   db.prepare('DELETE FROM SubTasks WHERE todo_id = ?').run(id)
+  db.prepare('DELETE FROM TodoCoAssignees WHERE todo_id = ?').run(id)
   db.prepare('DELETE FROM Todos WHERE id = ?').run(id)
 }
 
