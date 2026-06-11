@@ -11,6 +11,7 @@ interface Props {
   onManageUsers?: () => void
   onProgressReport?: () => void
   onDesktopImport?: () => void
+  onMySummary?: () => void
 }
 
 const STATUS_LABEL: Record<Todo['status'], string> = {
@@ -69,7 +70,7 @@ function captureKeyEvent(e: React.KeyboardEvent): string | null {
   return modifiers.join('+')
 }
 
-export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, canManageUsers = false, onManageUsers, onProgressReport, onDesktopImport }: Props): React.JSX.Element {
+export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, canManageUsers = false, onManageUsers, onProgressReport, onDesktopImport, onMySummary }: Props): React.JSX.Element {
   const [exporting, setExporting] = useState(false)
 
   const exportCsv = async (kind: 'todos' | 'subtasks' | 'worklogs'): Promise<void> => {
@@ -290,6 +291,17 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
                 <button onClick={onDesktopImport} style={secondaryBtn}>💾 デスクトップDBを取り込む</button>
               )}
             </div>
+          </section>
+        )}
+
+        {/* ─── 自分の進捗サマリー ─── */}
+        {onMySummary && (
+          <section>
+            <h3 style={sectionHead}>進捗サマリー</h3>
+            <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+              期間を指定して、自分が追加したタスク・進捗メモ・作業時間を振り返ります。Markdownでコピーして日報・週報に貼れます。
+            </p>
+            <button onClick={onMySummary} style={secondaryBtn}>📊 自分の進捗サマリーを開く</button>
           </section>
         )}
 

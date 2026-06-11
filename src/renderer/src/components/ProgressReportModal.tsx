@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
+import { copyTextToClipboard } from '../lib/clipboard'
 import type {
   ProgressDigest,
   ProgressDigestUser,
@@ -10,6 +11,9 @@ interface Props {
   users: PublicUser[]
   onClose: () => void
   onShowToast: (message: string, type?: 'success' | 'error') => void
+  /** true のとき自分の活動だけを集計する個人サマリーとして動く（メンバー選択を隠す） */
+  selfOnly?: boolean
+  currentUser?: PublicUser | null
 }
 
 const STATUS_LABEL: Record<TodoStatus, string> = {
@@ -57,7 +61,48 @@ function formatDateTime(iso: string): string {
   return `${m}/${d} ${hh}:${mm}`
 }
 
-export function ProgressReportModal({ users, onClose, onShowToast }: Props): React.JSX.Element {
+/** 集計結果を日報・週報に貼れる Markdown に変換する */
+function digestToMarkdown(digest: ProgressDigest): string {
+  const lines: string[] = [`# 進捗レポート ${digest.from} ～ ${digest.to}`, '']
+
+  for (const user of digest.users) {
+    lines.push(`## ${user.display_name}`)
+    lines.push(
+      `- 追加タスク: ${user.added_todos.length}件 / サブタスク: ${user.added_subtasks.length}件 / 進捗メモ: ${user.notes.length}件 / 作業時間: ${formatMinutes(user.work_minutes)}（${user.work_log_count}回）`
+    )
+    lines.push('')
+
+    if (user.added_todos.length > 0) {
+      lines.push('### 追加したタスク')
+      for (const todo of user.added_todos) {
+        const category = todo.category_name ? `［${todo.category_name}］` : ''
+        lines.push(`- [${STATUS_LABEL[todo.status]}] ${category}${todo.title}（${todo.progress}%）`)
+      }
+      lines.push('')
+    }
+
+    if (user.added_subtasks.length > 0) {
+      lines.push('### 追加したサブタスク')
+      for (const sub of user.added_subtasks) {
+        lines.push(`- ${sub.done ? '[x]' : '[ ]'} ${sub.todo_title} › ${sub.title}`)
+      }
+      lines.push('')
+    }
+
+    if (user.notes.length > 0) {
+      lines.push('### 進捗メモ')
+      for (const note of user.notes) {
+        const body = note.body.replace(/\r?\n/g, ' ')
+        lines.push(`- ${formatDateTime(note.created_at)}［${note.todo_title}］${body}`)
+      }
+      lines.push('')
+    }
+  }
+
+  return lines.join('\n')
+}
+
+export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = false, currentUser = null }: Props): React.JSX.Element {
   const today = new Date()
   const [from, setFrom] = useState(() => toDateInput(addDays(today, -6)))
   const [to, setTo] = useState(() => toDateInput(today))
@@ -72,24 +117,34 @@ export function ProgressReportModal({ users, onClose, onShowToast }: Props): Rea
       onShowToast('開始日は終了日より前にしてください', 'error')
       return
     }
-    if (selectedIds.size === 0) {
+    if (!selfOnly && selectedIds.size === 0) {
       onShowToast('メンバーを1人以上選択してください', 'error')
       return
     }
     setLoading(true)
     try {
-      const result = await window.api.progressDigestGet({
-        from,
-        to,
-        userIds: Array.from(selectedIds)
-      })
+      // selfOnly: サーバー版は自分のID、デスクトップ版は指定なし（「自分」の単一バケットが返る）
+      const userIds = selfOnly
+        ? (currentUser ? [currentUser.id] : undefined)
+        : Array.from(selectedIds)
+      const result = await window.api.progressDigestGet({ from, to, userIds })
       setDigest(result)
     } catch (err) {
       onShowToast(err instanceof Error ? err.message : '進捗レポートの取得に失敗しました', 'error')
     } finally {
       setLoading(false)
     }
-  }, [from, to, selectedIds, onShowToast])
+  }, [from, to, selectedIds, selfOnly, currentUser, onShowToast])
+
+  const handleCopyMarkdown = useCallback(async (): Promise<void> => {
+    if (!digest) return
+    try {
+      await copyTextToClipboard(digestToMarkdown(digest))
+      onShowToast('Markdownをコピーしました')
+    } catch {
+      onShowToast('クリップボードへのコピーに失敗しました', 'error')
+    }
+  }, [digest, onShowToast])
 
   // 初回オープン時に直近7日・全員で自動集計する。
   useEffect(() => {
@@ -141,7 +196,9 @@ export function ProgressReportModal({ users, onClose, onShowToast }: Props): Rea
         display: 'flex', flexDirection: 'column', gap: 22
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0', margin: 0 }}>📊 進捗レポート</h2>
+          <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0', margin: 0 }}>
+            {selfOnly ? '📊 自分の進捗サマリー' : '📊 進捗レポート'}
+          </h2>
           <button onClick={onClose} style={closeBtnStyle}>×</button>
         </div>
 
@@ -160,44 +217,54 @@ export function ProgressReportModal({ users, onClose, onShowToast }: Props): Rea
           </div>
         </section>
 
-        {/* ─── メンバー ─── */}
-        <section>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h3 style={sectionHead}>メンバー（{selectedIds.size}人選択中）</h3>
-            <button
-              onClick={() => setSelectedIds(allSelected ? new Set() : new Set(allActiveIds))}
-              style={linkBtn}
-            >
-              {allSelected ? '全解除' : '全員選択'}
-            </button>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-            {users.map((user) => {
-              const selected = selectedIds.has(user.id)
-              const inactive = user.is_active !== 1
-              return (
-                <button
-                  key={user.id}
-                  onClick={() => toggleMember(user.id)}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 7,
-                    padding: '5px 12px', borderRadius: 99, cursor: 'pointer',
-                    border: `1px solid ${selected ? user.color : '#334155'}`,
-                    background: selected ? `${user.color}26` : '#0f172a',
-                    color: selected ? '#e2e8f0' : '#64748b',
-                    fontSize: '0.82rem', opacity: inactive ? 0.6 : 1
-                  }}
-                >
-                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
-                  {user.display_name}{inactive ? '（無効）' : ''}
-                </button>
-              )
-            })}
-          </div>
-          <button onClick={() => void fetchDigest()} disabled={loading} style={{ ...primaryBtn, marginTop: 14 }}>
+        {/* ─── メンバー（個人サマリーでは非表示） ─── */}
+        {!selfOnly && (
+          <section>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h3 style={sectionHead}>メンバー（{selectedIds.size}人選択中）</h3>
+              <button
+                onClick={() => setSelectedIds(allSelected ? new Set() : new Set(allActiveIds))}
+                style={linkBtn}
+              >
+                {allSelected ? '全解除' : '全員選択'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+              {users.map((user) => {
+                const selected = selectedIds.has(user.id)
+                const inactive = user.is_active !== 1
+                return (
+                  <button
+                    key={user.id}
+                    onClick={() => toggleMember(user.id)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 7,
+                      padding: '5px 12px', borderRadius: 99, cursor: 'pointer',
+                      border: `1px solid ${selected ? user.color : '#334155'}`,
+                      background: selected ? `${user.color}26` : '#0f172a',
+                      color: selected ? '#e2e8f0' : '#64748b',
+                      fontSize: '0.82rem', opacity: inactive ? 0.6 : 1
+                    }}
+                  >
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
+                    {user.display_name}{inactive ? '（無効）' : ''}
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={() => void fetchDigest()} disabled={loading} style={primaryBtn}>
             {loading ? '集計中…' : '集計する'}
           </button>
-        </section>
+          {digest && (
+            <button onClick={() => void handleCopyMarkdown()} style={copyBtn}>
+              📋 Markdownをコピー
+            </button>
+          )}
+        </div>
 
         {/* ─── 結果 ─── */}
         <section style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -322,6 +389,12 @@ const primaryBtn: React.CSSProperties = {
   padding: '8px 18px', background: '#6366f1', border: 'none',
   borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: '0.85rem',
   fontWeight: 'bold', whiteSpace: 'nowrap', alignSelf: 'flex-start'
+}
+
+const copyBtn: React.CSSProperties = {
+  padding: '8px 18px', background: '#334155', border: 'none',
+  borderRadius: 8, color: '#cbd5e1', cursor: 'pointer', fontSize: '0.85rem',
+  fontWeight: 'bold', whiteSpace: 'nowrap'
 }
 
 const presetBtn: React.CSSProperties = {
