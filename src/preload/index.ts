@@ -150,6 +150,8 @@ const api = {
   userList: (): Promise<PublicUser[]> => ipcRenderer.invoke('user:list'),
   teamGetDashboard: (): Promise<TeamDashboard> => ipcRenderer.invoke('team:getDashboard'),
   authGetCurrentUser: (): Promise<PublicUser | null> => ipcRenderer.invoke('auth:getCurrentUser'),
+  /** サーバー版: セッションを破棄してログイン画面へ戻る。デスクトップ版では何もしない */
+  authLogout: (): Promise<void> => ipcRenderer.invoke('auth:logout'),
   userCreate: (input: CreateUserInput): Promise<PublicUser> => ipcRenderer.invoke('user:create', input),
   userUpdate: (id: string, input: UpdateUserInput): Promise<PublicUser> =>
     ipcRenderer.invoke('user:update', id, input),

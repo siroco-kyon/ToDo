@@ -508,6 +508,8 @@ export function App(): React.JSX.Element {
         activeView={activeView}
         showPlanRail={showPlanRail}
         showTeamButton={multiUser}
+        currentUser={currentUser}
+        onLogout={multiUser ? () => void window.api.authLogout() : undefined}
         onToggleLogView={() => toggleCenterView('log')}
         onTogglePlanView={() => toggleCenterView('plan')}
         onToggleGanttView={() => toggleCenterView('gantt')}

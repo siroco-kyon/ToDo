@@ -1,4 +1,5 @@
 import React from 'react'
+import type { PublicUser } from '../types'
 
 interface Props {
   isTimerRunning: boolean
@@ -11,6 +12,9 @@ interface Props {
   activeView: 'detail' | 'log' | 'plan' | 'gantt' | 'team'
   showPlanRail: boolean
   showTeamButton?: boolean
+  /** サーバー版のログイン中ユーザー。デスクトップ版は null で何も表示しない */
+  currentUser?: PublicUser | null
+  onLogout?: () => void
   onToggleLogView: () => void
   onTogglePlanView: () => void
   onToggleGanttView: () => void
@@ -36,6 +40,8 @@ export function Toolbar({
   activeView,
   showPlanRail,
   showTeamButton = false,
+  currentUser = null,
+  onLogout,
   onToggleLogView,
   onTogglePlanView,
   onToggleGanttView,
@@ -104,6 +110,33 @@ export function Toolbar({
           <button onClick={onExportFile} style={utilityButtonStyle(false)}>書き出し</button>
           <button onClick={onOpenSettings} style={utilityButtonStyle(false)}>設定</button>
         </div>
+
+        {currentUser && (
+          <div style={groupStyle}>
+            <span
+              title={`${currentUser.display_name}（${currentUser.username}）でログイン中`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 10px',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                color: '#e2e8f0',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: currentUser.color, flexShrink: 0 }} />
+              {currentUser.display_name}
+              {currentUser.role === 'admin' && (
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#fbbf24', background: '#451a03', borderRadius: 6, padding: '1px 6px' }}>管理者</span>
+              )}
+            </span>
+            {onLogout && (
+              <button onClick={onLogout} style={utilityButtonStyle(false)}>ログアウト</button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

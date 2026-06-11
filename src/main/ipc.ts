@@ -136,6 +136,7 @@ export function registerIpcHandlers(
   ipcMain.handle('user:list', () => [])
   ipcMain.handle('team:getDashboard', () => ({ now: [], overdue: [], dueSoon: [], workloads: [] }))
   ipcMain.handle('auth:getCurrentUser', () => null)
+  ipcMain.handle('auth:logout', () => undefined)
   const userManagementUnavailable = (): never => {
     throw new Error('ユーザー管理はサーバー版でのみ利用できます')
   }
