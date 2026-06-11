@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   Category,
   Todo,
+  TodoCoAssignee,
   TodoDependency,
   SubTask,
   CalendarSubTask,
@@ -36,6 +37,7 @@ import type {
 export type {
   Category,
   Todo,
+  TodoCoAssignee,
   TodoDependency,
   SubTask,
   CalendarSubTask,

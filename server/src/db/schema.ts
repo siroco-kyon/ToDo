@@ -131,6 +131,15 @@ export function createSchema(db: Database.Database): void {
       FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS TodoCoAssignees (
+      todo_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (todo_id, user_id),
+      FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS ProgressNotes (
       id TEXT PRIMARY KEY,
       todo_id TEXT NOT NULL,
@@ -148,6 +157,7 @@ export function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_subtasks_todo ON SubTasks(todo_id);
     CREATE INDEX IF NOT EXISTS idx_plan_date_user ON DailyPlanItems(plan_date, user_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON Sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_co_assignees_user ON TodoCoAssignees(user_id);
     CREATE INDEX IF NOT EXISTS idx_progress_notes_todo ON ProgressNotes(todo_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_notes_user ON ProgressNotes(user_id, created_at);
   `)

@@ -278,7 +278,12 @@ export function App(): React.JSX.Element {
       if (selectedCategoryId && todo.category_id !== selectedCategoryId) return false
       if (selectedAssigneeId !== null) {
         if (selectedAssigneeId === '' && todo.assignee_id !== null) return false
-        if (selectedAssigneeId !== '' && todo.assignee_id !== selectedAssigneeId) return false
+        // 主担当またはサブ担当のどちらかに入っていれば表示する
+        if (
+          selectedAssigneeId !== '' &&
+          todo.assignee_id !== selectedAssigneeId &&
+          !(todo.co_assignees ?? []).some((coAssignee) => coAssignee.user_id === selectedAssigneeId)
+        ) return false
       }
 
       if (q) {

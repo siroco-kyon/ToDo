@@ -118,7 +118,8 @@ export function TodoDetail({
     due_date: source.due_date ?? undefined,
     recurrence: source.recurrence ?? undefined,
     recurrence_copy_subtasks: source.recurrence_copy_subtasks ?? 0,
-    assignee_id: source.assignee_id
+    assignee_id: source.assignee_id,
+    co_assignee_ids: (source.co_assignees ?? []).map((coAssignee) => coAssignee.user_id)
   }), [])
 
   const createEditableSubTasks = useCallback((items: SubTask[]): EditableSubTask[] => (
@@ -454,11 +455,16 @@ export function TodoDetail({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {!editing && (todo.start_date || todo.due_date || todo.assignee_name) && (
+      {!editing && (todo.start_date || todo.due_date || todo.assignee_name || (todo.co_assignees ?? []).length > 0) && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {todo.start_date && <Badge color="#93c5fd">開始日 {todo.start_date}</Badge>}
           {todo.due_date && <Badge color="#fbbf24">締切 {todo.due_date}</Badge>}
           <AssigneeChip name={todo.assignee_name} color={todo.assignee_color} fontSize={0.74} />
+          {(todo.co_assignees ?? []).map((coAssignee) => (
+            <span key={coAssignee.user_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} title={`サブ担当: ${coAssignee.display_name}`}>
+              <AssigneeChip name={coAssignee.display_name} color={coAssignee.color} fontSize={0.7} />
+            </span>
+          ))}
         </div>
       )}
 
@@ -499,7 +505,39 @@ export function TodoDetail({
           )}
           <div><label style={labelStyle}>状態</label><select value={editData.status ?? 'active'} onChange={(event) => setEditData((previous) => ({ ...previous, status: event.target.value as 'not_started' | 'active' | 'done' | 'archived' }))} style={inputStyle}><option value="not_started">未着手</option><option value="active">進行中</option><option value="done">完了</option><option value="archived">アーカイブ</option></select></div>
           {users.length > 0 && (
-            <div><label style={labelStyle}>担当者</label><AssigneePicker users={users} value={editData.assignee_id ?? null} onChange={(assigneeId) => setEditData((previous) => ({ ...previous, assignee_id: assigneeId }))} selectStyle={inputStyle} /></div>
+            <div><label style={labelStyle}>担当者</label><AssigneePicker users={users} value={editData.assignee_id ?? null} onChange={(assigneeId) => setEditData((previous) => ({ ...previous, assignee_id: assigneeId, co_assignee_ids: (previous.co_assignee_ids ?? []).filter((id) => id !== assigneeId) }))} selectStyle={inputStyle} /></div>
+          )}
+          {users.length > 0 && (
+            <div>
+              <label style={labelStyle}>サブ担当（複数選択可）</label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {users.filter((user) => user.is_active === 1 && user.id !== (editData.assignee_id ?? null)).map((user) => {
+                  const selected = (editData.co_assignee_ids ?? []).includes(user.id)
+                  return (
+                    <button
+                      key={user.id}
+                      onClick={() => setEditData((previous) => {
+                        const current = previous.co_assignee_ids ?? []
+                        return {
+                          ...previous,
+                          co_assignee_ids: selected ? current.filter((id) => id !== user.id) : [...current, user.id]
+                        }
+                      })}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '4px 10px', borderRadius: 99, cursor: 'pointer',
+                        border: `1px solid ${selected ? user.color : '#334155'}`,
+                        background: selected ? `${user.color}26` : '#0f172a',
+                        color: selected ? '#e2e8f0' : '#64748b', fontSize: '0.78rem'
+                      }}
+                    >
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
+                      {user.display_name}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           )}
           <div><label style={labelStyle}>進捗 {editData.progress ?? 0}%</label><input type="range" min={0} max={100} step={5} value={editData.progress ?? 0} onChange={(event) => setEditData((previous) => ({ ...previous, progress: Number(event.target.value) }))} style={{ width: '100%', accentColor: '#6366f1' }} /></div>
           <button onClick={() => void handleSave()} style={{ ...buttonStyle('#6366f1'), alignSelf: 'flex-end' }}>保存</button>
