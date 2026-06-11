@@ -940,20 +940,15 @@ export function GanttView({
     })
   }, [ganttTodos, subTasks])
 
+  // 状態フィルターはタスク単位にだけ適用する。完了済みサブタスクを行ごと消すと
+  // 進捗の足跡が追えなくなるため、親タスクが表示される限りサブタスクは残す
+  // （完了サブタスクは緑のバーで描画される）。
   const filteredGroups = useMemo(() => {
-    return groups
-      .map((group) => ({
-        ...group,
-        datedSubTasks: group.datedSubTasks.filter((item) => {
-          if (statusFilter === 'all') return true
-          return statusFilter === 'done' ? Boolean(item.subTask.done) : !Boolean(item.subTask.done)
-        })
-      }))
-      .filter((group) => {
-        if (statusFilter === 'done' && group.todo.status !== 'done') return false
-        if (statusFilter === 'active' && group.todo.status === 'done') return false
-        return true
-      })
+    return groups.filter((group) => {
+      if (statusFilter === 'done' && group.todo.status !== 'done') return false
+      if (statusFilter === 'active' && group.todo.status === 'done') return false
+      return true
+    })
   }, [groups, statusFilter])
 
   const scheduledGroups = useMemo(() => (
