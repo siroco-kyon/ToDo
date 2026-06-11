@@ -1,9 +1,10 @@
 // チーム ToDo サーバーを Windows サービスとして登録する。
 // 管理者として開いた PowerShell で `npm run service:install` を実行すること。
 //
-// 環境変数（PORT / TODO_DATA_DIR / ADMIN_PASSWORD など）は「インストール時点の値」が
-// サービスに焼き込まれる。変更したいときは一度 service:uninstall してから、
-// 環境変数をセットし直して再インストールする。
+// 設定は server\.env に書くのがおすすめ（サーバー起動時に毎回読まれるため、
+// 変更してもサービスの再起動だけで反映される）。
+// シェルの環境変数（PORT / TODO_DATA_DIR / ADMIN_PASSWORD など）も
+// 「インストール時点の値」としてサービスに焼き込まれ、.env より優先される。
 const path = require('path')
 const { Service } = require('node-windows')
 
@@ -54,5 +55,7 @@ svc.on('error', (err) => {
 console.log('[service] TodoTeamServer をインストールします...')
 if (env.length > 0) {
   console.log('[service] 焼き込む環境変数:', env.map((e) => e.name).join(', '))
+} else {
+  console.log('[service] 設定は server\\.env から読み込まれます（無ければ既定値）。')
 }
 svc.install()
