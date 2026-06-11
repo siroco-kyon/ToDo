@@ -325,3 +325,69 @@ export interface TeamDashboard {
   dueSoon: TeamDeadlineItem[]
   workloads: TeamMemberWorkload[]
 }
+
+// ─── Progress notes & digest ──────────────────────────────────
+
+/** A timestamped, authored progress note attached to a task. */
+export interface ProgressNote {
+  id: string
+  todo_id: string
+  user_id: string | null
+  author_name: string | null
+  author_color: string | null
+  body: string
+  created_at: string
+}
+
+export interface ProgressDigestTodo {
+  id: string
+  title: string
+  status: TodoStatus
+  progress: number
+  memo: string
+  category_name: string | null
+  category_color: string | null
+  created_at: string
+}
+
+export interface ProgressDigestSubTask {
+  id: string
+  title: string
+  todo_id: string
+  todo_title: string
+  done: number
+  created_at: string
+}
+
+export interface ProgressDigestNote {
+  id: string
+  todo_id: string
+  todo_title: string
+  body: string
+  created_at: string
+}
+
+/** One member's activity within the requested period. */
+export interface ProgressDigestUser {
+  user_id: string | null
+  display_name: string
+  color: string
+  added_todos: ProgressDigestTodo[]
+  added_subtasks: ProgressDigestSubTask[]
+  notes: ProgressDigestNote[]
+  work_minutes: number
+  work_log_count: number
+}
+
+export interface ProgressDigest {
+  from: string
+  to: string
+  users: ProgressDigestUser[]
+}
+
+/** Period (inclusive YYYY-MM-DD) + optional member filter for the admin report. */
+export interface ProgressDigestQuery {
+  from: string
+  to: string
+  userIds?: string[]
+}

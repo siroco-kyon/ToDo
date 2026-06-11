@@ -593,7 +593,7 @@ function subTaskTone(subTask: SubTask, todayKey: string): {
   }
 
   const subTaskBar = getSubTaskBar(subTask)
-  const overdue = Boolean(subTaskBar) && subTaskBar.endDate < todayKey
+  const overdue = subTaskBar != null && subTaskBar.endDate < todayKey
 
   return overdue
     ? {

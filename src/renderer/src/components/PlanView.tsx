@@ -66,6 +66,7 @@ const HOUR_HEIGHT = PIXELS_PER_MINUTE * 60
 const TIMELINE_HEIGHT = TIMELINE_TOTAL_MINUTES * PIXELS_PER_MINUTE
 const BLOCK_GAP = 8
 const LANE_COUNT = 1
+const MAX_LANES = 2
 const COMPACT_BLOCK_THRESHOLD = 64
 const EDGE_SCROLL_THRESHOLD = 72
 const EDGE_SCROLL_PIXELS = 24
@@ -183,6 +184,69 @@ function getLaneLayout(lane: number): { left: string; width: string } {
       : `calc(${safeLane} * ((100% - ${totalGap}px) / ${LANE_COUNT}) + ${safeLane * BLOCK_GAP}px)`,
     width: `calc((100% - ${totalGap}px) / ${LANE_COUNT})`
   }
+}
+
+interface ColumnPlacement {
+  col: number
+  cols: number
+}
+
+function getColumnLayout({ col, cols }: ColumnPlacement): { left: string; width: string } {
+  if (cols <= 1) return { left: '0px', width: '100%' }
+
+  const totalGap = BLOCK_GAP * (cols - 1)
+  return {
+    left: col === 0
+      ? '0px'
+      : `calc(${col} * ((100% - ${totalGap}px) / ${cols}) + ${col * BLOCK_GAP}px)`,
+    width: `calc((100% - ${totalGap}px) / ${cols})`
+  }
+}
+
+/**
+ * Spreads time-overlapping blocks across up to MAX_LANES side-by-side columns
+ * so they no longer stack on top of each other. Blocks within one overlap
+ * cluster share the same column count (full width when nothing overlaps).
+ */
+function packColumns(blocks: TimelineBlock[]): Map<string, ColumnPlacement> {
+  const placement = new Map<string, ColumnPlacement>()
+  let index = 0
+
+  while (index < blocks.length) {
+    let clusterEnd = blocks[index].endMinutes
+    let next = index + 1
+    while (next < blocks.length && blocks[next].startMinutes < clusterEnd) {
+      clusterEnd = Math.max(clusterEnd, blocks[next].endMinutes)
+      next += 1
+    }
+
+    const cluster = blocks.slice(index, next)
+    const columnEnds: number[] = []
+    const assignedColumns = cluster.map((block) => {
+      let col = columnEnds.findIndex((end) => end <= block.startMinutes)
+      if (col === -1) {
+        if (columnEnds.length < MAX_LANES) {
+          col = columnEnds.length
+          columnEnds.push(block.endMinutes)
+        } else {
+          col = columnEnds[0] <= columnEnds[1] ? 0 : 1
+          columnEnds[col] = block.endMinutes
+        }
+      } else {
+        columnEnds[col] = block.endMinutes
+      }
+      return col
+    })
+
+    const cols = Math.min(columnEnds.length, MAX_LANES)
+    cluster.forEach((block, offset) => {
+      placement.set(block.id, { col: assignedColumns[offset], cols })
+    })
+
+    index = next
+  }
+
+  return placement
 }
 
 function readDragPreview(event: React.DragEvent<HTMLElement>): DragPreview | null {
@@ -634,6 +698,7 @@ export function PlanView({
   }, [interaction, planItems])
 
   const timelineBlocks = useMemo(() => buildTimelineBlocks(effectivePlanItems), [effectivePlanItems])
+  const columnMap = useMemo(() => packColumns(timelineBlocks), [timelineBlocks])
   const unscheduledItems = useMemo(() => (
     effectivePlanItems
       .filter((item) => !item.scheduled_start)
@@ -1179,7 +1244,7 @@ export function PlanView({
                   )}
 
                   {timelineBlocks.map((item) => {
-                    const lane = clampLane(item.lane ?? 0)
+                    const placement = columnMap.get(item.id) ?? { col: 0, cols: 1 }
                     const categoryColor = item.category_color ?? '#6366f1'
                     const dueLabel = formatDueLabel(item.due_date, date)
                     const blockHeight = item.durationMinutes * PIXELS_PER_MINUTE
@@ -1192,7 +1257,7 @@ export function PlanView({
                         style={{
                           position: 'absolute',
                           top: item.startMinutes * PIXELS_PER_MINUTE,
-                          ...getLaneLayout(lane),
+                          ...getColumnLayout(placement),
                           height: blockHeight,
                           minHeight: compactBlock ? 34 : 44,
                           background: `${categoryColor}20`,

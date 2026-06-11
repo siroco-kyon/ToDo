@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express'
-import { requireAuth } from '../auth'
+import { requireAuth, requireAdmin } from '../auth'
 import { broadcastDataChanged, type DataScope } from '../realtime'
 import { generateDailyMarkdown } from '../markdown'
 import {
@@ -43,6 +43,13 @@ import {
 } from '../db/plan'
 import { getSetting, setSetting, getUserSetting, setUserSetting } from '../db/settings'
 import { getTeamDashboard } from '../db/team'
+import {
+  getProgressNotesByTodo,
+  getProgressNote,
+  createProgressNote,
+  deleteProgressNote,
+  getProgressDigest
+} from '../db/progress'
 
 export const dataRouter = Router()
 dataRouter.use(requireAuth)
@@ -139,6 +146,32 @@ dataRouter.put('/settings/:key', (req, res) =>
     const key = req.params.key
     if (PER_USER_SETTING_KEYS.has(key)) setUserSetting(req.user!.id, key, req.body.value)
     else setSetting(key, req.body.value)
+  }))
+
+// ─── Progress notes (shared) ──────────────────────────────────
+dataRouter.get('/todos/:todoId/progress-notes', (req, res) =>
+  run(res, () => getProgressNotesByTodo(req.params.todoId)))
+dataRouter.post('/todos/:todoId/progress-notes', (req, res) =>
+  run(res, () => createProgressNote(req.params.todoId, req.user!.id, req.body.body), 'todo'))
+dataRouter.delete('/progress-notes/:id', (req, res) =>
+  run(res, () => {
+    const note = getProgressNote(req.params.id)
+    if (!note) throw new Error('進捗メモが見つかりません')
+    if (note.user_id !== req.user!.id && req.user!.role !== 'admin') {
+      throw new Error('この進捗メモを削除する権限がありません')
+    }
+    deleteProgressNote(req.params.id)
+  }, 'todo'))
+
+// ─── Progress digest (admin report) ───────────────────────────
+dataRouter.get('/progress-digest', requireAdmin, (req, res) =>
+  run(res, () => {
+    const from = String(req.query.from ?? '')
+    const to = String(req.query.to ?? '')
+    const rawIds = req.query.userIds
+    const userIds =
+      typeof rawIds === 'string' && rawIds.length > 0 ? rawIds.split(',').filter(Boolean) : undefined
+    return getProgressDigest(from, to, userIds)
   }))
 
 // ─── Team dashboard ───────────────────────────────────────────

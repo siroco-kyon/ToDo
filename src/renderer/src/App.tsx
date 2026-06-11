@@ -10,6 +10,7 @@ import { Toast } from './components/Toast'
 import type { ToastMessage } from './components/Toast'
 import { SettingsModal } from './components/SettingsModal'
 import { UserManagementModal } from './components/UserManagementModal'
+import { ProgressReportModal } from './components/ProgressReportModal'
 import { WorkLogSummary } from './components/WorkLogSummary'
 import { SetupWizardModal } from './components/SetupWizardModal'
 import { PlanView } from './components/PlanView'
@@ -80,6 +81,7 @@ export function App(): React.JSX.Element {
   const [users, setUsers] = useState<PublicUser[]>([])
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null)
   const [showUserManagement, setShowUserManagement] = useState(false)
+  const [showProgressReport, setShowProgressReport] = useState(false)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null)
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
@@ -692,6 +694,7 @@ export function App(): React.JSX.Element {
               allTodos={todos}
               categories={categories}
               users={users}
+              currentUser={currentUser}
               todayPlanItems={todayPlanItems}
               runningTodoId={runningTodoId}
               elapsedSeconds={elapsedSeconds}
@@ -745,6 +748,7 @@ export function App(): React.JSX.Element {
                         allTodos={todos}
                         categories={categories}
                         users={users}
+                        currentUser={currentUser}
                         todayPlanItems={todayPlanItems}
                         runningTodoId={runningTodoId}
                         elapsedSeconds={elapsedSeconds}
@@ -798,6 +802,7 @@ export function App(): React.JSX.Element {
           onThemeChange={handleThemeModeChange}
           canManageUsers={isAdmin}
           onManageUsers={() => { setShowSettings(false); setShowUserManagement(true) }}
+          onProgressReport={isAdmin ? () => { setShowSettings(false); setShowProgressReport(true) } : undefined}
         />
       )}
 
@@ -807,6 +812,14 @@ export function App(): React.JSX.Element {
           onClose={() => setShowUserManagement(false)}
           onShowToast={showToast}
           onChanged={() => void loadUsers()}
+        />
+      )}
+
+      {showProgressReport && isAdmin && multiUser && (
+        <ProgressReportModal
+          users={users}
+          onClose={() => setShowProgressReport(false)}
+          onShowToast={showToast}
         />
       )}
     </div>

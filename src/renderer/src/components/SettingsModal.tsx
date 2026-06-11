@@ -7,6 +7,7 @@ interface Props {
   onThemeChange: (mode: ThemeMode) => Promise<void>
   canManageUsers?: boolean
   onManageUsers?: () => void
+  onProgressReport?: () => void
 }
 
 type ThemeMode = 'dark' | 'light'
@@ -49,7 +50,7 @@ function captureKeyEvent(e: React.KeyboardEvent): string | null {
   return modifiers.join('+')
 }
 
-export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, canManageUsers = false, onManageUsers }: Props): React.JSX.Element {
+export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, canManageUsers = false, onManageUsers, onProgressReport }: Props): React.JSX.Element {
   const [shortcuts, setShortcuts] = useState<ShortcutConfig[]>([
     { key: 'globalShortcutFocus', label: 'アプリを最前面に表示', value: 'CommandOrControl+Alt+T', editing: false },
     { key: 'globalShortcutQuickAdd', label: 'クイック追加モーダル', value: 'CommandOrControl+Alt+N', editing: false },
@@ -212,7 +213,12 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
               メンバーの追加・編集・権限変更・パスワード再設定を行います。
             </p>
-            <button onClick={onManageUsers} style={primaryBtn}>👤 ユーザー管理を開く</button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={onManageUsers} style={primaryBtn}>👤 ユーザー管理を開く</button>
+              {onProgressReport && (
+                <button onClick={onProgressReport} style={secondaryBtn}>📊 進捗レポートを開く</button>
+              )}
+            </div>
           </section>
         )}
 

@@ -14,6 +14,7 @@
     "preview:web": "vite preview --config vite.web.config.ts",
     "dev:server": "npm --prefix server run dev",
     "start:server": "npm --prefix server run start",
+    "import:db": "npm --prefix server run import:db --",
     "generate:icons": "node scripts/generate-build-icons.cjs",
     "dist": "npm run generate:icons && npm run build && electron-builder",
     "postinstall": "electron-rebuild -f -w better-sqlite3"

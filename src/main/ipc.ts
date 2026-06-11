@@ -38,11 +38,20 @@ import {
   createSubTask,
   updateSubTask,
   deleteSubTask,
+  getProgressNotesByTodo,
+  createProgressNote,
+  deleteProgressNote,
+  getProgressDigest,
   getSetting,
   setSetting,
   initDb
 } from './db'
-import type { CreateSubTaskInput, UpdateDailyPlanItemInput, UpdateSubTaskInput } from './db'
+import type {
+  CreateSubTaskInput,
+  UpdateDailyPlanItemInput,
+  UpdateSubTaskInput,
+  ProgressDigestQuery
+} from './db'
 import { exportMarkdown } from './markdown'
 import { pickAndSetIcon, resetIcon, getIconDataUrl } from './icon'
 import { getDataDir, setDataDir, isFirstLaunch, getDefaultDataDir } from './config'
@@ -131,6 +140,12 @@ export function registerIpcHandlers(
   ipcMain.handle('user:create', userManagementUnavailable)
   ipcMain.handle('user:update', userManagementUnavailable)
   ipcMain.handle('user:resetPassword', userManagementUnavailable)
+
+  // Progress notes (shared) / digest (desktop = single bucket)
+  ipcMain.handle('progressNote:getByTodo', (_, todoId: string) => getProgressNotesByTodo(todoId))
+  ipcMain.handle('progressNote:create', handleMutation('todo', (todoId: string, body: string) => createProgressNote(todoId, body)))
+  ipcMain.handle('progressNote:delete', handleMutation('todo', (id: string) => deleteProgressNote(id)))
+  ipcMain.handle('progressDigest:get', (_, query: ProgressDigestQuery) => getProgressDigest(query))
 
   // Settings
   ipcMain.handle('settings:get', (_, key: string) => getSetting(key) ?? null)
