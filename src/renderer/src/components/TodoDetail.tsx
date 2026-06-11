@@ -653,7 +653,12 @@ export function TodoDetail({
                 key={subTask.id}
                 subTask={subTask}
                 onToggle={() => void window.api.subtaskUpdate(subTask.id, { done: !subTask.done }).then((updated) => setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item)))}
+                onSave={async (data) => {
+                  const updated = await window.api.subtaskUpdate(subTask.id, data)
+                  setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
+                }}
                 onDelete={() => void handleDeleteSubTask(subTask.id)}
+                onShowToast={onShowToast}
               />
             ))}
         </div>
@@ -754,7 +759,81 @@ function EditableSubTaskItem({ subTask, onChange, onDelete }: { subTask: Editabl
   )
 }
 
-function ReadonlySubTaskItem({ subTask, onToggle, onDelete }: { subTask: SubTask; onToggle: () => void; onDelete: () => void }): React.JSX.Element {
+interface SubTaskDraft {
+  title: string
+  description: string
+  start_date: string | null
+  due_date: string | null
+}
+
+// 閲覧モードでもサブタスク単体をその場で編集できる項目。
+// ✎ でフォームに切り替わり、保存するとそのサブタスクだけ即時更新される。
+function ReadonlySubTaskItem({ subTask, onToggle, onSave, onDelete, onShowToast }: {
+  subTask: SubTask
+  onToggle: () => void
+  onSave: (data: SubTaskDraft) => Promise<void>
+  onDelete: () => void
+  onShowToast: (message: string, type?: 'success' | 'error') => void
+}): React.JSX.Element {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<SubTaskDraft>({ title: '', description: '', start_date: null, due_date: null })
+  const [saving, setSaving] = useState(false)
+
+  const startEditing = (): void => {
+    setDraft({
+      title: subTask.title,
+      description: subTask.description ?? '',
+      start_date: subTask.start_date ?? null,
+      due_date: subTask.due_date ?? null
+    })
+    setEditing(true)
+  }
+
+  const handleSave = async (): Promise<void> => {
+    if (saving) return
+    if (!draft.title.trim()) {
+      onShowToast('サブタスク名を入力してください', 'error')
+      return
+    }
+    if (draft.start_date && draft.due_date && draft.start_date > draft.due_date) {
+      onShowToast('サブタスクの日付が不正です', 'error')
+      return
+    }
+    try {
+      setSaving(true)
+      await onSave({ ...draft, title: draft.title.trim() })
+      setEditing(false)
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : 'サブタスクを更新できませんでした', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', borderRadius: 8, background: '#1e293b', border: '1px solid #6366f1' }}>
+        <input
+          value={draft.title}
+          onChange={(event) => setDraft((previous) => ({ ...previous, title: event.target.value }))}
+          onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); void handleSave() } }}
+          placeholder="サブタスク名"
+          autoFocus
+          style={{ ...inputStyle, fontSize: '0.82rem', padding: '6px 8px' }}
+        />
+        <textarea value={draft.description} onChange={(event) => setDraft((previous) => ({ ...previous, description: event.target.value }))} placeholder="メモ..." rows={2} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          <input type="date" value={draft.start_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
+          <input type="date" value={draft.due_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, due_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+          <button onClick={() => setEditing(false)} style={buttonStyle('#334155')}>キャンセル</button>
+          <button onClick={() => void handleSave()} disabled={saving} style={buttonStyle('#6366f1')}>{saving ? '保存中...' : '保存'}</button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', borderRadius: 6, background: '#1e293b' }}>
       <button onClick={onToggle} style={{ width: 16, height: 16, borderRadius: 3, marginTop: 2, border: `2px solid ${subTask.done ? '#4ade80' : '#475569'}`, background: subTask.done ? '#4ade80' : 'transparent', cursor: 'pointer' }} />
@@ -763,6 +842,7 @@ function ReadonlySubTaskItem({ subTask, onToggle, onDelete }: { subTask: SubTask
         {(subTask.start_date || subTask.due_date) && <div style={{ marginTop: 4, fontSize: '0.68rem', color: '#94a3b8' }}>{subTask.start_date ?? ''}{subTask.start_date && subTask.due_date ? ' - ' : ''}{subTask.due_date ?? ''}</div>}
         {subTask.description && <div style={{ marginTop: 2, fontSize: '0.75rem', color: subTask.done ? '#334155' : '#64748b', whiteSpace: 'pre-wrap' }}>{subTask.description}</div>}
       </div>
+      <button onClick={startEditing} title="編集" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>✎</button>
       <button onClick={onDelete} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>削除</button>
     </div>
   )
