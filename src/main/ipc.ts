@@ -40,8 +40,14 @@ import {
   updateSubTask,
   deleteSubTask,
   getProgressNotesByTodo,
+  getProgressNotesByDate,
   createProgressNote,
+  updateProgressNote,
   deleteProgressNote,
+  createProgressNoteComment,
+  updateProgressNoteComment,
+  deleteProgressNoteComment,
+  toggleProgressNoteReaction,
   getProgressDigest,
   getSetting,
   setSetting,
@@ -149,8 +155,14 @@ export function registerIpcHandlers(
 
   // Progress notes (shared) / digest (desktop = single bucket)
   ipcMain.handle('progressNote:getByTodo', (_, todoId: string) => getProgressNotesByTodo(todoId))
+  ipcMain.handle('progressNote:getByDate', (_, dateStr: string) => getProgressNotesByDate(dateStr))
   ipcMain.handle('progressNote:create', handleMutation('todo', (todoId: string, body: string) => createProgressNote(todoId, body)))
+  ipcMain.handle('progressNote:update', handleMutation('todo', (id: string, body: string) => updateProgressNote(id, body)))
   ipcMain.handle('progressNote:delete', handleMutation('todo', (id: string) => deleteProgressNote(id)))
+  ipcMain.handle('progressNoteComment:create', handleMutation('todo', (noteId: string, body: string, parentCommentId?: string | null) => createProgressNoteComment(noteId, body, parentCommentId)))
+  ipcMain.handle('progressNoteComment:update', handleMutation('todo', (id: string, body: string) => updateProgressNoteComment(id, body)))
+  ipcMain.handle('progressNoteComment:delete', handleMutation('todo', (id: string) => deleteProgressNoteComment(id)))
+  ipcMain.handle('progressNoteReaction:toggle', handleMutation('todo', (noteId: string, emoji: string) => toggleProgressNoteReaction(noteId, emoji)))
   ipcMain.handle('progressDigest:get', (_, query: ProgressDigestQuery) => getProgressDigest(query))
 
   // Settings

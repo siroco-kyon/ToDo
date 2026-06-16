@@ -9,21 +9,26 @@ interface Props {
   showArchived: boolean
   onToggleArchived: () => void
   onOpenSettings: () => void
-  activeView: 'detail' | 'log' | 'plan' | 'gantt' | 'team'
+  activeView: 'detail' | 'log' | 'progress' | 'plan' | 'gantt' | 'team'
   showPlanRail: boolean
+  showCategoryPane: boolean
+  showTaskPane: boolean
   showTeamButton?: boolean
   /** サーバー版のログイン中ユーザー。デスクトップ版は null で何も表示しない */
   currentUser?: PublicUser | null
   onLogout?: () => void
   onToggleLogView: () => void
+  onToggleProgressView: () => void
   onTogglePlanView: () => void
   onToggleGanttView: () => void
   onToggleTeamView: () => void
   onTogglePlanRail: () => void
+  onToggleCategoryPane: () => void
+  onToggleTaskPane: () => void
 }
 
 interface ViewButton {
-  key: 'plan' | 'gantt' | 'log' | 'team'
+  key: 'plan' | 'gantt' | 'log' | 'progress' | 'team'
   label: string
   active: boolean
   onClick: () => void
@@ -39,18 +44,24 @@ export function Toolbar({
   onOpenSettings,
   activeView,
   showPlanRail,
+  showCategoryPane,
+  showTaskPane,
   showTeamButton = false,
   currentUser = null,
   onLogout,
   onToggleLogView,
+  onToggleProgressView,
   onTogglePlanView,
   onToggleGanttView,
   onToggleTeamView,
-  onTogglePlanRail
+  onTogglePlanRail,
+  onToggleCategoryPane,
+  onToggleTaskPane
 }: Props): React.JSX.Element {
   const viewButtons: ViewButton[] = [
     { key: 'gantt', label: 'ガント', active: activeView === 'gantt', onClick: onToggleGanttView },
     ...(showTeamButton ? [{ key: 'team' as const, label: 'チーム', active: activeView === 'team', onClick: onToggleTeamView }] : []),
+    { key: 'progress', label: '進捗', active: activeView === 'progress', onClick: onToggleProgressView },
     { key: 'plan', label: '計画', active: activeView === 'plan', onClick: onTogglePlanView },
     { key: 'log', label: '記録', active: activeView === 'log', onClick: onToggleLogView }
   ]
@@ -100,6 +111,12 @@ export function Toolbar({
         </div>
 
         <div style={groupStyle}>
+          <button onClick={onToggleCategoryPane} style={utilityButtonStyle(showCategoryPane)}>
+            カテゴリ
+          </button>
+          <button onClick={onToggleTaskPane} style={utilityButtonStyle(showTaskPane)}>
+            タスク一覧
+          </button>
           <button onClick={onTogglePlanRail} style={utilityButtonStyle(showPlanRail)}>
             今日のレール
           </button>

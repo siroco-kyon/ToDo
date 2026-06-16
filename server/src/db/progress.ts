@@ -2,6 +2,8 @@ import crypto from 'crypto'
 import { getDb } from './connection'
 import type {
   ProgressNote,
+  ProgressNoteComment,
+  ProgressNoteReaction,
   ProgressDigest,
   ProgressDigestNote,
   ProgressDigestSubTask,
@@ -9,41 +11,202 @@ import type {
   ProgressDigestUser
 } from './types'
 
-const NOTE_SELECT = `SELECT pn.id, pn.todo_id, pn.user_id, pn.body, pn.created_at,
-              u.display_name AS author_name, u.color AS author_color
+const NOTE_SELECT = `SELECT pn.id, pn.todo_id, pn.user_id, pn.body, pn.created_at, pn.updated_at,
+              t.title AS todo_title, c.name AS category_name, c.color AS category_color,
+              u.display_name AS author_name, u.color AS author_color,
+              COUNT(pnc.id) AS comment_count
        FROM ProgressNotes pn
-       LEFT JOIN Users u ON pn.user_id = u.id`
+       JOIN Todos t ON pn.todo_id = t.id
+       LEFT JOIN Categories c ON t.category_id = c.id
+       LEFT JOIN Users u ON pn.user_id = u.id
+       LEFT JOIN ProgressNoteComments pnc ON pnc.note_id = pn.id`
 
-/** All progress notes for one task, newest first, with author info. */
-export function getProgressNotesByTodo(todoId: string): ProgressNote[] {
-  return getDb()
-    .prepare(`${NOTE_SELECT} WHERE pn.todo_id = ? ORDER BY pn.created_at DESC`)
-    .all(todoId) as ProgressNote[]
+const COMMENT_SELECT = `SELECT pnc.id, pnc.note_id, pnc.parent_comment_id, pnc.user_id, pnc.body, pnc.created_at, pnc.updated_at,
+              u.display_name AS author_name, u.color AS author_color
+       FROM ProgressNoteComments pnc
+       LEFT JOIN Users u ON pnc.user_id = u.id`
+
+function actorKey(userId: string | null | undefined): string {
+  return userId ?? 'desktop'
 }
 
-export function getProgressNote(id: string): ProgressNote | undefined {
-  return getDb().prepare(`${NOTE_SELECT} WHERE pn.id = ?`).get(id) as ProgressNote | undefined
+function hydrateNotes(notes: ProgressNote[], currentUserId?: string | null): ProgressNote[] {
+  if (notes.length === 0) return []
+
+  const db = getDb()
+  const noteIds = notes.map((note) => note.id)
+  const placeholders = noteIds.map(() => '?').join(', ')
+
+  const commentRows = db
+    .prepare(`${COMMENT_SELECT} WHERE pnc.note_id IN (${placeholders}) ORDER BY pnc.created_at ASC`)
+    .all(...noteIds) as Array<Omit<ProgressNoteComment, 'replies'>>
+
+  const reactionRows = db
+    .prepare(
+      `SELECT note_id, emoji, COUNT(*) AS count,
+              SUM(CASE WHEN actor_key = ? THEN 1 ELSE 0 END) AS reacted_by_me
+       FROM ProgressNoteReactions
+       WHERE note_id IN (${placeholders})
+       GROUP BY note_id, emoji
+       ORDER BY emoji ASC`
+    )
+    .all(actorKey(currentUserId), ...noteIds) as Array<ProgressNoteReaction & { note_id: string }>
+
+  const commentById = new Map<string, ProgressNoteComment>()
+  for (const row of commentRows) {
+    commentById.set(row.id, { ...row, replies: [] })
+  }
+
+  const commentsByNote = new Map<string, ProgressNoteComment[]>()
+  for (const comment of commentById.values()) {
+    if (comment.parent_comment_id && commentById.has(comment.parent_comment_id)) {
+      commentById.get(comment.parent_comment_id)!.replies.push(comment)
+      continue
+    }
+
+    const list = commentsByNote.get(comment.note_id)
+    if (list) list.push(comment)
+    else commentsByNote.set(comment.note_id, [comment])
+  }
+
+  const reactionsByNote = new Map<string, ProgressNoteReaction[]>()
+  for (const row of reactionRows) {
+    const reaction: ProgressNoteReaction = {
+      emoji: row.emoji,
+      count: Number(row.count),
+      reacted_by_me: Boolean(row.reacted_by_me)
+    }
+    const list = reactionsByNote.get(row.note_id)
+    if (list) list.push(reaction)
+    else reactionsByNote.set(row.note_id, [reaction])
+  }
+
+  return notes.map((note) => ({
+    ...note,
+    comment_count: Number(note.comment_count),
+    comments: commentsByNote.get(note.id) ?? [],
+    reactions: reactionsByNote.get(note.id) ?? []
+  }))
+}
+
+export function getProgressNotesByTodo(todoId: string, currentUserId?: string | null): ProgressNote[] {
+  const notes = getDb()
+    .prepare(`${NOTE_SELECT} WHERE pn.todo_id = ? GROUP BY pn.id ORDER BY pn.created_at DESC`)
+    .all(todoId) as ProgressNote[]
+  return hydrateNotes(notes, currentUserId)
+}
+
+export function getProgressNotesByDate(dateStr: string, currentUserId?: string | null): ProgressNote[] {
+  const notes = getDb()
+    .prepare(`${NOTE_SELECT} WHERE date(pn.created_at, 'localtime') = ? GROUP BY pn.id ORDER BY pn.created_at DESC`)
+    .all(dateStr) as ProgressNote[]
+  return hydrateNotes(notes, currentUserId)
+}
+
+export function getProgressNote(id: string, currentUserId?: string | null): ProgressNote | undefined {
+  const note = getDb()
+    .prepare(`${NOTE_SELECT} WHERE pn.id = ? GROUP BY pn.id`)
+    .get(id) as ProgressNote | undefined
+  return note ? hydrateNotes([note], currentUserId)[0] : undefined
 }
 
 export function createProgressNote(todoId: string, userId: string, body: string): ProgressNote {
   const trimmed = body.trim()
-  if (!trimmed) throw new Error('進捗メモの内容を入力してください')
+  if (!trimmed) throw new Error('進捗ログの内容を入力してください')
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
   getDb()
-    .prepare('INSERT INTO ProgressNotes (id, todo_id, user_id, body, created_at) VALUES (?, ?, ?, ?, ?)')
-    .run(id, todoId, userId, trimmed, now)
-  return getProgressNote(id) as ProgressNote
+    .prepare('INSERT INTO ProgressNotes (id, todo_id, user_id, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, todoId, userId, trimmed, now, now)
+  return getProgressNote(id, userId) as ProgressNote
+}
+
+export function updateProgressNote(id: string, body: string, currentUserId: string): ProgressNote {
+  const trimmed = body.trim()
+  if (!trimmed) throw new Error('進捗ログの内容を入力してください')
+  const now = new Date().toISOString()
+  getDb()
+    .prepare('UPDATE ProgressNotes SET body = ?, updated_at = ? WHERE id = ?')
+    .run(trimmed, now, id)
+  return getProgressNote(id, currentUserId) as ProgressNote
 }
 
 export function deleteProgressNote(id: string): void {
   getDb().prepare('DELETE FROM ProgressNotes WHERE id = ?').run(id)
 }
 
+export function getProgressNoteComment(id: string): ProgressNoteComment | undefined {
+  return getDb().prepare(`${COMMENT_SELECT} WHERE pnc.id = ?`).get(id) as ProgressNoteComment | undefined
+}
+
+export function createProgressNoteComment(noteId: string, userId: string, body: string, parentCommentId?: string | null): ProgressNote {
+  const trimmed = body.trim()
+  if (!trimmed) throw new Error('コメントを入力してください')
+  const parentId = parentCommentId || null
+  if (parentId) {
+    const parent = getProgressNoteComment(parentId)
+    if (!parent || parent.note_id !== noteId) throw new Error('返信先のコメントが見つかりません')
+  }
+  const id = crypto.randomUUID()
+  const now = new Date().toISOString()
+  getDb()
+    .prepare('INSERT INTO ProgressNoteComments (id, note_id, parent_comment_id, user_id, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(id, noteId, parentId, userId, trimmed, now, now)
+  return getProgressNote(noteId, userId) as ProgressNote
+}
+
+export function updateProgressNoteComment(id: string, body: string, currentUserId: string): ProgressNote {
+  const trimmed = body.trim()
+  if (!trimmed) throw new Error('コメントを入力してください')
+  const comment = getProgressNoteComment(id)
+  if (!comment) throw new Error('コメントが見つかりません')
+  const now = new Date().toISOString()
+  getDb()
+    .prepare('UPDATE ProgressNoteComments SET body = ?, updated_at = ? WHERE id = ?')
+    .run(trimmed, now, id)
+  return getProgressNote(comment.note_id, currentUserId) as ProgressNote
+}
+
+export function deleteProgressNoteComment(id: string, currentUserId: string): ProgressNote {
+  const comment = getProgressNoteComment(id)
+  if (!comment) throw new Error('コメントが見つかりません')
+  getDb()
+    .prepare(
+      `WITH RECURSIVE comment_tree(id) AS (
+         SELECT id FROM ProgressNoteComments WHERE id = ?
+         UNION ALL
+         SELECT c.id FROM ProgressNoteComments c
+         JOIN comment_tree ct ON c.parent_comment_id = ct.id
+       )
+       DELETE FROM ProgressNoteComments WHERE id IN (SELECT id FROM comment_tree)`
+    )
+    .run(id)
+  return getProgressNote(comment.note_id, currentUserId) as ProgressNote
+}
+
+export function toggleProgressNoteReaction(noteId: string, userId: string, emoji: string): ProgressNote {
+  const normalizedEmoji = emoji.trim()
+  if (!normalizedEmoji) throw new Error('リアクションを選択してください')
+  const key = actorKey(userId)
+  const db = getDb()
+  const existing = db
+    .prepare('SELECT id FROM ProgressNoteReactions WHERE note_id = ? AND actor_key = ? AND emoji = ?')
+    .get(noteId, key, normalizedEmoji) as { id: string } | undefined
+
+  if (existing) {
+    db.prepare('DELETE FROM ProgressNoteReactions WHERE id = ?').run(existing.id)
+  } else {
+    db.prepare('INSERT INTO ProgressNoteReactions (id, note_id, user_id, actor_key, emoji, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(crypto.randomUUID(), noteId, userId, key, normalizedEmoji, new Date().toISOString())
+  }
+
+  return getProgressNote(noteId, userId) as ProgressNote
+}
+
 /**
  * Admin progress report: for each target member, what they added (tasks +
  * subtasks, grouped by assignee), the progress notes they authored, and the
- * time they logged — all within the inclusive [from, to] local-date range.
+ * time they logged, all within the inclusive [from, to] local-date range.
  */
 export function getProgressDigest(from: string, to: string, userIds?: string[]): ProgressDigest {
   const db = getDb()

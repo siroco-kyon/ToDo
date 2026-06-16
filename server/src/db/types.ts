@@ -346,11 +346,37 @@ export interface TeamDashboard {
 export interface ProgressNote {
   id: string
   todo_id: string
+  todo_title: string
+  category_name: string | null
+  category_color: string | null
   user_id: string | null
   author_name: string | null
   author_color: string | null
   body: string
   created_at: string
+  updated_at: string
+  comment_count: number
+  comments: ProgressNoteComment[]
+  reactions: ProgressNoteReaction[]
+}
+
+export interface ProgressNoteComment {
+  id: string
+  note_id: string
+  parent_comment_id: string | null
+  user_id: string | null
+  author_name: string | null
+  author_color: string | null
+  body: string
+  created_at: string
+  updated_at: string
+  replies: ProgressNoteComment[]
+}
+
+export interface ProgressNoteReaction {
+  emoji: string
+  count: number
+  reacted_by_me: boolean
 }
 
 export interface ProgressDigestTodo {

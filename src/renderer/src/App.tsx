@@ -13,6 +13,7 @@ import { UserManagementModal } from './components/UserManagementModal'
 import { ProgressReportModal } from './components/ProgressReportModal'
 import { DesktopImportModal } from './components/DesktopImportModal'
 import { WorkLogSummary } from './components/WorkLogSummary'
+import { ProgressTimeline } from './components/ProgressTimeline'
 import { SetupWizardModal } from './components/SetupWizardModal'
 import { PlanView } from './components/PlanView'
 import { TodayFlowRail } from './components/TodayFlowRail'
@@ -20,7 +21,7 @@ import { GanttView } from './components/GanttView'
 import { TeamDashboard } from './components/TeamDashboard'
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
-type CenterView = 'detail' | 'log' | 'plan' | 'gantt' | 'team'
+type CenterView = 'detail' | 'log' | 'progress' | 'plan' | 'gantt' | 'team'
 type GanttSidePanelMode = 'detail' | 'today'
 type PaneKey = 'category' | 'list' | 'side'
 type ThemeMode = 'dark' | 'light'
@@ -92,6 +93,15 @@ export function App(): React.JSX.Element {
     const saved = window.localStorage.getItem('show-plan-rail')
     return saved == null ? true : saved === 'true'
   })
+  const [showCategoryPane, setShowCategoryPane] = useState<boolean>(() => {
+    const saved = window.localStorage.getItem('show-category-pane')
+    return saved == null ? true : saved === 'true'
+  })
+  const [showTaskPane, setShowTaskPane] = useState<boolean>(() => {
+    const saved = window.localStorage.getItem('show-task-pane')
+    return saved == null ? true : saved === 'true'
+  })
+  const [assigneeDefaultApplied, setAssigneeDefaultApplied] = useState(false)
   const [paneWidths, setPaneWidths] = useState<PaneWidths>(() => loadPaneWidths())
   const [toasts, setToasts] = useState<ToastMessage[]>([])
   const toastIdRef = useRef(0)
@@ -183,6 +193,20 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     window.localStorage.setItem('show-plan-rail', String(showPlanRail))
   }, [showPlanRail])
+
+  useEffect(() => {
+    window.localStorage.setItem('show-category-pane', String(showCategoryPane))
+  }, [showCategoryPane])
+
+  useEffect(() => {
+    window.localStorage.setItem('show-task-pane', String(showTaskPane))
+  }, [showTaskPane])
+
+  useEffect(() => {
+    if (assigneeDefaultApplied || !currentUser || users.length === 0) return
+    setSelectedAssigneeId(currentUser.id)
+    setAssigneeDefaultApplied(true)
+  }, [assigneeDefaultApplied, currentUser, users.length])
 
   useEffect(() => {
     window.localStorage.setItem('app-theme-mode', themeMode)
@@ -460,6 +484,16 @@ export function App(): React.JSX.Element {
     await loadTodos()
   }, [loadTodos])
 
+  const standaloneSortOptions: { key: SortField; label: string }[] = [
+    { key: 'sort_order', label: '手動' },
+    { key: 'created_at', label: '作成日' },
+    { key: 'updated_at', label: '更新日' },
+    { key: 'priority', label: '優先度' },
+    { key: 'progress', label: '進捗' },
+    { key: 'due_date', label: '期限' },
+    { key: 'title', label: 'タイトル' }
+  ]
+
   if (isFirstLaunch === null) {
     return <div style={{ height: '100vh', background: '#0a0f1a' }} />
   }
@@ -470,24 +504,76 @@ export function App(): React.JSX.Element {
 
   if (isStandaloneGanttWindow) {
     return (
-      <div style={{ height: '100vh', overflow: 'hidden', background: '#0f172a' }}>
-        <GanttView
-          categories={categories}
-          todos={filteredTodos}
-          onSelectTodo={(id) => {
-            void window.api.windowOpenTodo(id)
-          }}
-          onUpdateTodo={handleUpdate}
-          onReorderTodos={handleReorder}
-          standalone
-        />
+      <div style={{ height: '100vh', overflow: 'hidden', background: '#0f172a', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flexShrink: 0, padding: '10px 12px', borderBottom: '1px solid #1e293b', background: '#0b1220', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="タスク検索"
+            style={{ minWidth: 200, flex: '1 1 220px', padding: '7px 9px', background: '#0f172a', border: `1px solid ${searchQuery ? '#6366f1' : '#334155'}`, borderRadius: 7, color: '#e2e8f0', fontSize: '0.82rem', outline: 'none' }}
+          />
+          {multiUser && (
+            <select
+              value={selectedAssigneeId === null ? '__all__' : selectedAssigneeId === '' ? '__none__' : selectedAssigneeId}
+              onChange={(e) => {
+                const v = e.target.value
+                setSelectedAssigneeId(v === '__all__' ? null : v === '__none__' ? '' : v)
+              }}
+              style={{ padding: '7px 9px', background: '#0f172a', border: `1px solid ${selectedAssigneeId !== null ? '#6366f1' : '#334155'}`, borderRadius: 7, color: '#e2e8f0', fontSize: '0.82rem', outline: 'none' }}
+            >
+              <option value="__all__">全員</option>
+              <option value="__none__">未割り当て</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.display_name}{user.is_active ? '' : ' (無効)'}
+                </option>
+              ))}
+            </select>
+          )}
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {standaloneSortOptions.map(({ key, label }) => {
+              const active = sortField === key
+              return (
+                <button
+                  key={key}
+                  onClick={() => {
+                    if (key === 'sort_order') {
+                      setSortField('sort_order')
+                      return
+                    }
+                    if (active) setSortDir((prev) => prev === 'asc' ? 'desc' : 'asc')
+                    else {
+                      setSortField(key)
+                      setSortDir('desc')
+                    }
+                  }}
+                  style={{ padding: '6px 9px', borderRadius: 999, border: `1px solid ${active ? '#3b82f6' : '#334155'}`, background: active ? '#172554' : '#111827', color: active ? '#dbeafe' : '#94a3b8', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}
+                >
+                  {label}{active && key !== 'sort_order' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <GanttView
+            categories={categories}
+            todos={filteredTodos}
+            onSelectTodo={(id) => {
+              void window.api.windowOpenTodo(id)
+            }}
+            onUpdateTodo={handleUpdate}
+            onReorderTodos={handleReorder}
+            standalone
+          />
+        </div>
         <Toast toasts={toasts} onRemove={removeToast} />
       </div>
     )
   }
 
   const isManualSort = sortField === 'sort_order'
-  const showRightPlanRail = showPlanRail && activeView !== 'plan' && activeView !== 'team'
+  const showRightPlanRail = showPlanRail && activeView !== 'plan' && activeView !== 'team' && activeView !== 'progress'
   const showGanttSidePanel = activeView === 'gantt' && (ganttSidePanelMode === 'detail' || showPlanRail)
   const showAuxiliaryPanel = activeView === 'gantt' ? showGanttSidePanel : showRightPlanRail
   const SORT_FIELDS: { key: SortField; label: string }[] = [
@@ -512,18 +598,23 @@ export function App(): React.JSX.Element {
         onOpenSettings={() => setShowSettings(true)}
         activeView={activeView}
         showPlanRail={showPlanRail}
+        showCategoryPane={showCategoryPane}
+        showTaskPane={showTaskPane}
         showTeamButton={multiUser}
         currentUser={currentUser}
         onLogout={multiUser ? () => void window.api.authLogout() : undefined}
         onToggleLogView={() => toggleCenterView('log')}
+        onToggleProgressView={() => toggleCenterView('progress')}
         onTogglePlanView={() => toggleCenterView('plan')}
         onToggleGanttView={() => toggleCenterView('gantt')}
         onToggleTeamView={() => toggleCenterView('team')}
         onTogglePlanRail={() => setShowPlanRail((prev) => !prev)}
+        onToggleCategoryPane={() => setShowCategoryPane((prev) => !prev)}
+        onToggleTaskPane={() => setShowTaskPane((prev) => !prev)}
       />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minWidth: 0 }}>
-        <div style={{ width: paneWidths.category, flexShrink: 0, background: '#0a0f1a', borderRight: '1px solid #1e293b', overflow: 'hidden' }}>
+        <div style={{ width: paneWidths.category, flexShrink: 0, background: '#0a0f1a', borderRight: '1px solid #1e293b', overflow: 'hidden', display: showCategoryPane ? 'block' : 'none' }}>
           <CategoryList
             categories={categories}
             selectedId={selectedCategoryId}
@@ -537,10 +628,10 @@ export function App(): React.JSX.Element {
 
         <div
           onPointerDown={(event) => beginResize('category', paneWidths.category, event)}
-          style={resizeHandleStyle}
+          style={{ ...resizeHandleStyle, display: showCategoryPane ? 'block' : 'none' }}
         />
 
-        <div style={{ width: paneWidths.list, flexShrink: 0, background: '#0d1525', borderRight: '1px solid #1e293b', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ width: paneWidths.list, flexShrink: 0, background: '#0d1525', borderRight: '1px solid #1e293b', overflow: 'hidden', display: showTaskPane ? 'flex' : 'none', flexDirection: 'column' }}>
           <div style={{ padding: '6px 8px', borderBottom: '1px solid #1e293b' }}>
             <input
               value={searchQuery}
@@ -645,7 +736,7 @@ export function App(): React.JSX.Element {
 
         <div
           onPointerDown={(event) => beginResize('list', paneWidths.list, event)}
-          style={resizeHandleStyle}
+          style={{ ...resizeHandleStyle, display: showTaskPane ? 'block' : 'none' }}
         />
 
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: '#0f172a' }}>
@@ -673,6 +764,13 @@ export function App(): React.JSX.Element {
             />
           ) : activeView === 'log' ? (
             <WorkLogSummary />
+          ) : activeView === 'progress' ? (
+            <ProgressTimeline
+              todos={filteredTodos}
+              currentUser={currentUser}
+              onSelectTodo={openTodoDetail}
+              onShowToast={showToast}
+            />
           ) : activeView === 'team' ? (
             <TeamDashboard onSelectTodo={openTodoDetail} />
           ) : (

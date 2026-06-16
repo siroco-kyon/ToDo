@@ -25,6 +25,8 @@ import type {
   TeamDeadlineItem,
   TeamMemberWorkload,
   ProgressNote,
+  ProgressNoteComment,
+  ProgressNoteReaction,
   ProgressDigest,
   ProgressDigestUser,
   ProgressDigestTodo,
@@ -60,6 +62,8 @@ export type {
   TeamDeadlineItem,
   TeamMemberWorkload,
   ProgressNote,
+  ProgressNoteComment,
+  ProgressNoteReaction,
   ProgressDigest,
   ProgressDigestUser,
   ProgressDigestTodo,
@@ -166,9 +170,21 @@ const api = {
   // Progress notes (shared) / digest (admin report; desktop returns a single bucket)
   progressNoteGetByTodo: (todoId: string): Promise<ProgressNote[]> =>
     ipcRenderer.invoke('progressNote:getByTodo', todoId),
+  progressNoteGetByDate: (dateStr: string): Promise<ProgressNote[]> =>
+    ipcRenderer.invoke('progressNote:getByDate', dateStr),
   progressNoteCreate: (todoId: string, body: string): Promise<ProgressNote> =>
     ipcRenderer.invoke('progressNote:create', todoId, body),
+  progressNoteUpdate: (id: string, body: string): Promise<ProgressNote> =>
+    ipcRenderer.invoke('progressNote:update', id, body),
   progressNoteDelete: (id: string): Promise<void> => ipcRenderer.invoke('progressNote:delete', id),
+  progressNoteCommentCreate: (noteId: string, body: string, parentCommentId?: string | null): Promise<ProgressNote> =>
+    ipcRenderer.invoke('progressNoteComment:create', noteId, body, parentCommentId),
+  progressNoteCommentUpdate: (id: string, body: string): Promise<ProgressNote> =>
+    ipcRenderer.invoke('progressNoteComment:update', id, body),
+  progressNoteCommentDelete: (id: string): Promise<ProgressNote> =>
+    ipcRenderer.invoke('progressNoteComment:delete', id),
+  progressNoteReactionToggle: (noteId: string, emoji: string): Promise<ProgressNote> =>
+    ipcRenderer.invoke('progressNoteReaction:toggle', noteId, emoji),
   progressDigestGet: (query: ProgressDigestQuery): Promise<ProgressDigest> =>
     ipcRenderer.invoke('progressDigest:get', query),
 

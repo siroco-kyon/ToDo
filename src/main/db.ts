@@ -119,10 +119,36 @@ function createTables(): void {
       user_id TEXT,
       body TEXT NOT NULL,
       created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
       FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS ProgressNoteComments (
+      id TEXT PRIMARY KEY,
+      note_id TEXT NOT NULL,
+      parent_comment_id TEXT,
+      user_id TEXT,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (note_id) REFERENCES ProgressNotes(id) ON DELETE CASCADE,
+      FOREIGN KEY (parent_comment_id) REFERENCES ProgressNoteComments(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS ProgressNoteReactions (
+      id TEXT PRIMARY KEY,
+      note_id TEXT NOT NULL,
+      user_id TEXT,
+      actor_key TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(note_id, actor_key, emoji),
+      FOREIGN KEY (note_id) REFERENCES ProgressNotes(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_progress_notes_todo ON ProgressNotes(todo_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_progress_comments_note ON ProgressNoteComments(note_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_progress_reactions_note ON ProgressNoteReactions(note_id, emoji);
   `)
 }
 
@@ -131,6 +157,8 @@ function migrateDb(): void {
   const subTaskColumns = db.prepare('PRAGMA table_info(SubTasks)').all() as { name: string }[]
   const dailyPlanColumns = db.prepare('PRAGMA table_info(DailyPlanItems)').all() as { name: string }[]
   const dependencyColumns = db.prepare('PRAGMA table_info(TodoDependencies)').all() as { name: string }[]
+  const progressNoteColumns = db.prepare('PRAGMA table_info(ProgressNotes)').all() as { name: string }[]
+  const progressCommentColumns = db.prepare('PRAGMA table_info(ProgressNoteComments)').all() as { name: string }[]
 
   // Todos.progress 追加
   if (!todoColumns.some((c) => c.name === 'progress')) {
@@ -214,6 +242,16 @@ function migrateDb(): void {
   if (!todoColumns.some((c) => c.name === 'memo')) {
     db.prepare("ALTER TABLE Todos ADD COLUMN memo TEXT DEFAULT ''").run()
   }
+
+  if (!progressNoteColumns.some((c) => c.name === 'updated_at')) {
+    db.prepare("ALTER TABLE ProgressNotes ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''").run()
+    db.prepare("UPDATE ProgressNotes SET updated_at = created_at WHERE updated_at = ''").run()
+  }
+
+  if (!progressCommentColumns.some((c) => c.name === 'parent_comment_id')) {
+    db.prepare('ALTER TABLE ProgressNoteComments ADD COLUMN parent_comment_id TEXT').run()
+  }
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_progress_comments_parent ON ProgressNoteComments(parent_comment_id, created_at)').run()
 }
 
 function insertDefaultSettings(): void {
@@ -1285,13 +1323,92 @@ export function setSetting(key: string, value: string): void {
 // Desktop is single-user: notes carry no author (user_id stays NULL) and the
 // digest collapses to one bucket. Kept here so the shared UI works in both modes.
 
-const PROGRESS_NOTE_SELECT =
-  'SELECT id, todo_id, user_id, NULL AS author_name, NULL AS author_color, body, created_at FROM ProgressNotes'
+const PROGRESS_NOTE_SELECT = `SELECT pn.id, pn.todo_id, pn.user_id, pn.body, pn.created_at, pn.updated_at,
+              t.title AS todo_title, c.name AS category_name, c.color AS category_color,
+              NULL AS author_name, NULL AS author_color,
+              COUNT(pnc.id) AS comment_count
+       FROM ProgressNotes pn
+       JOIN Todos t ON pn.todo_id = t.id
+       LEFT JOIN Categories c ON t.category_id = c.id
+       LEFT JOIN ProgressNoteComments pnc ON pnc.note_id = pn.id`
+
+const PROGRESS_COMMENT_SELECT = `SELECT id, note_id, parent_comment_id, user_id, NULL AS author_name, NULL AS author_color,
+              body, created_at, updated_at
+       FROM ProgressNoteComments`
+
+function hydrateProgressNotes(notes: ProgressNote[]): ProgressNote[] {
+  if (notes.length === 0) return []
+
+  const noteIds = notes.map((note) => note.id)
+  const placeholders = noteIds.map(() => '?').join(', ')
+  const commentRows = db
+    .prepare(`${PROGRESS_COMMENT_SELECT} WHERE note_id IN (${placeholders}) ORDER BY created_at ASC`)
+    .all(...noteIds) as Array<Omit<ProgressNoteComment, 'replies'>>
+  const reactionRows = db
+    .prepare(
+      `SELECT note_id, emoji, COUNT(*) AS count,
+              SUM(CASE WHEN actor_key = 'desktop' THEN 1 ELSE 0 END) AS reacted_by_me
+       FROM ProgressNoteReactions
+       WHERE note_id IN (${placeholders})
+       GROUP BY note_id, emoji
+       ORDER BY emoji ASC`
+    )
+    .all(...noteIds) as Array<ProgressNoteReaction & { note_id: string }>
+
+  const commentById = new Map<string, ProgressNoteComment>()
+  for (const row of commentRows) {
+    commentById.set(row.id, { ...row, replies: [] })
+  }
+
+  const commentsByNote = new Map<string, ProgressNoteComment[]>()
+  for (const comment of commentById.values()) {
+    if (comment.parent_comment_id && commentById.has(comment.parent_comment_id)) {
+      commentById.get(comment.parent_comment_id)!.replies.push(comment)
+      continue
+    }
+
+    const list = commentsByNote.get(comment.note_id)
+    if (list) list.push(comment)
+    else commentsByNote.set(comment.note_id, [comment])
+  }
+
+  const reactionsByNote = new Map<string, ProgressNoteReaction[]>()
+  for (const row of reactionRows) {
+    const reaction: ProgressNoteReaction = {
+      emoji: row.emoji,
+      count: Number(row.count),
+      reacted_by_me: Boolean(row.reacted_by_me)
+    }
+    const list = reactionsByNote.get(row.note_id)
+    if (list) list.push(reaction)
+    else reactionsByNote.set(row.note_id, [reaction])
+  }
+
+  return notes.map((note) => ({
+    ...note,
+    comment_count: Number(note.comment_count),
+    comments: commentsByNote.get(note.id) ?? [],
+    reactions: reactionsByNote.get(note.id) ?? []
+  }))
+}
 
 export function getProgressNotesByTodo(todoId: string): ProgressNote[] {
-  return db
-    .prepare(`${PROGRESS_NOTE_SELECT} WHERE todo_id = ? ORDER BY created_at DESC`)
+  const notes = db
+    .prepare(`${PROGRESS_NOTE_SELECT} WHERE pn.todo_id = ? GROUP BY pn.id ORDER BY pn.created_at DESC`)
     .all(todoId) as ProgressNote[]
+  return hydrateProgressNotes(notes)
+}
+
+export function getProgressNotesByDate(dateStr: string): ProgressNote[] {
+  const notes = db
+    .prepare(`${PROGRESS_NOTE_SELECT} WHERE date(pn.created_at, 'localtime') = ? GROUP BY pn.id ORDER BY pn.created_at DESC`)
+    .all(dateStr) as ProgressNote[]
+  return hydrateProgressNotes(notes)
+}
+
+export function getProgressNote(id: string): ProgressNote | undefined {
+  const note = db.prepare(`${PROGRESS_NOTE_SELECT} WHERE pn.id = ? GROUP BY pn.id`).get(id) as ProgressNote | undefined
+  return note ? hydrateProgressNotes([note])[0] : undefined
 }
 
 export function createProgressNote(todoId: string, body: string): ProgressNote {
@@ -1299,17 +1416,89 @@ export function createProgressNote(todoId: string, body: string): ProgressNote {
   if (!trimmed) throw new Error('進捗メモの内容を入力してください')
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
-  db.prepare('INSERT INTO ProgressNotes (id, todo_id, user_id, body, created_at) VALUES (?, ?, NULL, ?, ?)').run(
+  db.prepare('INSERT INTO ProgressNotes (id, todo_id, user_id, body, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?)').run(
     id,
     todoId,
     trimmed,
+    now,
     now
   )
-  return db.prepare(`${PROGRESS_NOTE_SELECT} WHERE id = ?`).get(id) as ProgressNote
+  return getProgressNote(id) as ProgressNote
+}
+
+export function updateProgressNote(id: string, body: string): ProgressNote {
+  const trimmed = body.trim()
+  if (!trimmed) throw new Error('進捗ログの内容を入力してください')
+  db.prepare('UPDATE ProgressNotes SET body = ?, updated_at = ? WHERE id = ?').run(trimmed, new Date().toISOString(), id)
+  return getProgressNote(id) as ProgressNote
 }
 
 export function deleteProgressNote(id: string): void {
   db.prepare('DELETE FROM ProgressNotes WHERE id = ?').run(id)
+}
+
+export function getProgressNoteComment(id: string): ProgressNoteComment | undefined {
+  return db.prepare(`${PROGRESS_COMMENT_SELECT} WHERE id = ?`).get(id) as ProgressNoteComment | undefined
+}
+
+export function createProgressNoteComment(noteId: string, body: string, parentCommentId?: string | null): ProgressNote {
+  const trimmed = body.trim()
+  if (!trimmed) throw new Error('コメントを入力してください')
+  const parentId = parentCommentId || null
+  if (parentId) {
+    const parent = getProgressNoteComment(parentId)
+    if (!parent || parent.note_id !== noteId) throw new Error('返信先のコメントが見つかりません')
+  }
+  const id = crypto.randomUUID()
+  const now = new Date().toISOString()
+  db.prepare('INSERT INTO ProgressNoteComments (id, note_id, parent_comment_id, user_id, body, created_at, updated_at) VALUES (?, ?, ?, NULL, ?, ?, ?)').run(
+    id,
+    noteId,
+    parentId,
+    trimmed,
+    now,
+    now
+  )
+  return getProgressNote(noteId) as ProgressNote
+}
+
+export function updateProgressNoteComment(id: string, body: string): ProgressNote {
+  const comment = getProgressNoteComment(id)
+  if (!comment) throw new Error('コメントが見つかりません')
+  const trimmed = body.trim()
+  if (!trimmed) throw new Error('コメントを入力してください')
+  db.prepare('UPDATE ProgressNoteComments SET body = ?, updated_at = ? WHERE id = ?').run(trimmed, new Date().toISOString(), id)
+  return getProgressNote(comment.note_id) as ProgressNote
+}
+
+export function deleteProgressNoteComment(id: string): ProgressNote {
+  const comment = getProgressNoteComment(id)
+  if (!comment) throw new Error('コメントが見つかりません')
+  db.prepare(
+    `WITH RECURSIVE comment_tree(id) AS (
+       SELECT id FROM ProgressNoteComments WHERE id = ?
+       UNION ALL
+       SELECT c.id FROM ProgressNoteComments c
+       JOIN comment_tree ct ON c.parent_comment_id = ct.id
+     )
+     DELETE FROM ProgressNoteComments WHERE id IN (SELECT id FROM comment_tree)`
+  ).run(id)
+  return getProgressNote(comment.note_id) as ProgressNote
+}
+
+export function toggleProgressNoteReaction(noteId: string, emoji: string): ProgressNote {
+  const normalizedEmoji = emoji.trim()
+  if (!normalizedEmoji) throw new Error('リアクションを選択してください')
+  const existing = db
+    .prepare("SELECT id FROM ProgressNoteReactions WHERE note_id = ? AND actor_key = 'desktop' AND emoji = ?")
+    .get(noteId, normalizedEmoji) as { id: string } | undefined
+  if (existing) {
+    db.prepare('DELETE FROM ProgressNoteReactions WHERE id = ?').run(existing.id)
+  } else {
+    db.prepare('INSERT INTO ProgressNoteReactions (id, note_id, user_id, actor_key, emoji, created_at) VALUES (?, ?, NULL, ?, ?, ?)')
+      .run(crypto.randomUUID(), noteId, 'desktop', normalizedEmoji, new Date().toISOString())
+  }
+  return getProgressNote(noteId) as ProgressNote
 }
 
 export function getProgressDigest(query: ProgressDigestQuery): ProgressDigest {
@@ -1460,11 +1649,37 @@ export interface TeamDashboard {
 export interface ProgressNote {
   id: string
   todo_id: string
+  todo_title: string
+  category_name: string | null
+  category_color: string | null
   user_id: string | null
   author_name: string | null
   author_color: string | null
   body: string
   created_at: string
+  updated_at: string
+  comment_count: number
+  comments: ProgressNoteComment[]
+  reactions: ProgressNoteReaction[]
+}
+
+export interface ProgressNoteComment {
+  id: string
+  note_id: string
+  parent_comment_id: string | null
+  user_id: string | null
+  author_name: string | null
+  author_color: string | null
+  body: string
+  created_at: string
+  updated_at: string
+  replies: ProgressNoteComment[]
+}
+
+export interface ProgressNoteReaction {
+  emoji: string
+  count: number
+  reacted_by_me: boolean
 }
 
 export interface ProgressDigestTodo {
