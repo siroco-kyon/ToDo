@@ -146,8 +146,34 @@ export function createSchema(db: Database.Database): void {
       user_id TEXT,
       body TEXT NOT NULL,
       created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
       FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ProgressNoteComments (
+      id TEXT PRIMARY KEY,
+      note_id TEXT NOT NULL,
+      parent_comment_id TEXT,
+      user_id TEXT,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (note_id) REFERENCES ProgressNotes(id) ON DELETE CASCADE,
+      FOREIGN KEY (parent_comment_id) REFERENCES ProgressNoteComments(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ProgressNoteReactions (
+      id TEXT PRIMARY KEY,
+      note_id TEXT NOT NULL,
+      user_id TEXT,
+      actor_key TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(note_id, actor_key, emoji),
+      FOREIGN KEY (note_id) REFERENCES ProgressNotes(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
     );
 
     CREATE INDEX IF NOT EXISTS idx_todos_assignee ON Todos(assignee_id);
@@ -160,6 +186,8 @@ export function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_co_assignees_user ON TodoCoAssignees(user_id);
     CREATE INDEX IF NOT EXISTS idx_progress_notes_todo ON ProgressNotes(todo_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_notes_user ON ProgressNotes(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_progress_comments_note ON ProgressNoteComments(note_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_progress_reactions_note ON ProgressNoteReactions(note_id, emoji);
   `)
 }
 
@@ -178,6 +206,18 @@ export function runMigrations(db: Database.Database): void {
   if (!todoColumns.some((c) => c.name === 'recurrence_copy_subtasks')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN recurrence_copy_subtasks INTEGER DEFAULT 0').run()
   }
+
+  const progressNoteColumns = db.prepare('PRAGMA table_info(ProgressNotes)').all() as { name: string }[]
+  if (!progressNoteColumns.some((c) => c.name === 'updated_at')) {
+    db.prepare("ALTER TABLE ProgressNotes ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''").run()
+    db.prepare("UPDATE ProgressNotes SET updated_at = created_at WHERE updated_at = ''").run()
+  }
+
+  const progressCommentColumns = db.prepare('PRAGMA table_info(ProgressNoteComments)').all() as { name: string }[]
+  if (!progressCommentColumns.some((c) => c.name === 'parent_comment_id')) {
+    db.prepare('ALTER TABLE ProgressNoteComments ADD COLUMN parent_comment_id TEXT').run()
+  }
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_progress_comments_parent ON ProgressNoteComments(parent_comment_id, created_at)').run()
 }
 
 export function insertDefaultSettings(db: Database.Database): void {

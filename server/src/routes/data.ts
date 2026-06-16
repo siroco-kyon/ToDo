@@ -52,9 +52,16 @@ import { getSetting, setSetting, getUserSetting, setUserSetting } from '../db/se
 import { getTeamDashboard } from '../db/team'
 import {
   getProgressNotesByTodo,
+  getProgressNotesByDate,
   getProgressNote,
   createProgressNote,
+  updateProgressNote,
   deleteProgressNote,
+  getProgressNoteComment,
+  createProgressNoteComment,
+  updateProgressNoteComment,
+  deleteProgressNoteComment,
+  toggleProgressNoteReaction,
   getProgressDigest
 } from '../db/progress'
 
@@ -158,18 +165,53 @@ dataRouter.put('/settings/:key', (req, res) =>
 
 // ─── Progress notes (shared) ──────────────────────────────────
 dataRouter.get('/todos/:todoId/progress-notes', (req, res) =>
-  run(res, () => getProgressNotesByTodo(req.params.todoId)))
+  run(res, () => getProgressNotesByTodo(req.params.todoId, req.user!.id)))
+dataRouter.get('/progress-notes/timeline', (req, res) =>
+  run(res, () => getProgressNotesByDate(String(req.query.date ?? ''), req.user!.id)))
 dataRouter.post('/todos/:todoId/progress-notes', (req, res) =>
   run(res, () => createProgressNote(req.params.todoId, req.user!.id, req.body.body), 'todo'))
+dataRouter.put('/progress-notes/:id', (req, res) =>
+  run(res, () => {
+    const note = getProgressNote(req.params.id, req.user!.id)
+    if (!note) throw new Error('進捗ログが見つかりません')
+    if (note.user_id !== req.user!.id && req.user!.role !== 'admin') {
+      throw new Error('この進捗ログを編集する権限がありません')
+    }
+    return updateProgressNote(req.params.id, req.body.body, req.user!.id)
+  }, 'todo'))
 dataRouter.delete('/progress-notes/:id', (req, res) =>
   run(res, () => {
-    const note = getProgressNote(req.params.id)
-    if (!note) throw new Error('進捗メモが見つかりません')
+    const note = getProgressNote(req.params.id, req.user!.id)
+    if (!note) throw new Error('進捗ログが見つかりません')
     if (note.user_id !== req.user!.id && req.user!.role !== 'admin') {
-      throw new Error('この進捗メモを削除する権限がありません')
+      throw new Error('この進捗ログを削除する権限がありません')
     }
     deleteProgressNote(req.params.id)
   }, 'todo'))
+
+// ─── Progress comments/reactions ──────────────────────────────
+dataRouter.post('/progress-notes/:id/comments', (req, res) =>
+  run(res, () => createProgressNoteComment(req.params.id, req.user!.id, req.body.body, req.body.parentCommentId), 'todo'))
+dataRouter.put('/progress-note-comments/:id', (req, res) =>
+  run(res, () => {
+    const comment = getProgressNoteComment(req.params.id)
+    if (!comment) throw new Error('コメントが見つかりません')
+    if (comment.user_id !== req.user!.id && req.user!.role !== 'admin') {
+      throw new Error('このコメントを編集する権限がありません')
+    }
+    return updateProgressNoteComment(req.params.id, req.body.body, req.user!.id)
+  }, 'todo'))
+dataRouter.delete('/progress-note-comments/:id', (req, res) =>
+  run(res, () => {
+    const comment = getProgressNoteComment(req.params.id)
+    if (!comment) throw new Error('コメントが見つかりません')
+    if (comment.user_id !== req.user!.id && req.user!.role !== 'admin') {
+      throw new Error('このコメントを削除する権限がありません')
+    }
+    return deleteProgressNoteComment(req.params.id, req.user!.id)
+  }, 'todo'))
+dataRouter.post('/progress-notes/:id/reactions', (req, res) =>
+  run(res, () => toggleProgressNoteReaction(req.params.id, req.user!.id, req.body.emoji), 'todo'))
 
 // ─── Progress digest (admin: anyone / member: self only) ──────
 dataRouter.get('/progress-digest', (req, res) =>

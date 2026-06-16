@@ -76,6 +76,8 @@ export function TodoDetail({
   const [progressNotes, setProgressNotes] = useState<ProgressNote[]>([])
   const [noteDraft, setNoteDraft] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
+  const [editingProgressNoteId, setEditingProgressNoteId] = useState<string | null>(null)
+  const [editingProgressNoteDraft, setEditingProgressNoteDraft] = useState('')
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState<UpdateTodoInput>({})
   const [editableSubTasks, setEditableSubTasks] = useState<EditableSubTask[]>([])
@@ -168,6 +170,8 @@ export function TodoDetail({
       setDependencies([])
       setProgressNotes([])
       setNoteDraft('')
+      setEditingProgressNoteId(null)
+      setEditingProgressNoteDraft('')
       setDescriptionDraft('')
       setDescriptionBase('')
       setMemoDraft('')
@@ -182,6 +186,8 @@ export function TodoDetail({
     setMemoDraft(todo.memo ?? '')
     setMemoBase(todo.memo ?? '')
     setNoteDraft('')
+    setEditingProgressNoteId(null)
+    setEditingProgressNoteDraft('')
     window.api.worklogGetByTodo(todoId).then(setLogs).catch(console.error)
     void loadSubTasks(todoId)
     void loadDependencies(todoId)
@@ -373,6 +379,19 @@ export function TodoDetail({
       onShowToast(error instanceof Error ? error.message : '進捗メモを追加できませんでした', 'error')
     } finally {
       setNoteSaving(false)
+    }
+  }
+
+  const handleUpdateProgressNote = async (id: string): Promise<void> => {
+    const body = editingProgressNoteDraft.trim()
+    if (!body) return
+    try {
+      const updated = await window.api.progressNoteUpdate(id, body)
+      setProgressNotes((previous) => previous.map((note) => note.id === updated.id ? updated : note))
+      setEditingProgressNoteId(null)
+      setEditingProgressNoteDraft('')
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '進捗ログを更新できませんでした', 'error')
     }
   }
 
@@ -662,10 +681,23 @@ export function TodoDetail({
                       {note.author_name && <AssigneeChip name={note.author_name} color={note.author_color} fontSize={0.68} />}
                       <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{formatDateTime(note.created_at)}</span>
                       {canDeleteNote(note) && (
-                        <button onClick={() => void handleDeleteProgressNote(note.id)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.72rem' }}>削除</button>
+                        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                          <button onClick={() => { setEditingProgressNoteId(note.id); setEditingProgressNoteDraft(note.body) }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.72rem' }}>編集</button>
+                          <button onClick={() => void handleDeleteProgressNote(note.id)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.72rem' }}>削除</button>
+                        </div>
                       )}
                     </div>
-                    <div style={{ fontSize: '0.84rem', color: '#cbd5e1', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{note.body}</div>
+                    {editingProgressNoteId === note.id ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <textarea value={editingProgressNoteDraft} onChange={(event) => setEditingProgressNoteDraft(event.target.value)} rows={3} autoFocus style={{ ...inputStyle, fontSize: '0.82rem', lineHeight: 1.5, resize: 'vertical' }} />
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                          <button onClick={() => { setEditingProgressNoteId(null); setEditingProgressNoteDraft('') }} style={buttonStyle('#334155')}>キャンセル</button>
+                          <button onClick={() => void handleUpdateProgressNote(note.id)} disabled={!editingProgressNoteDraft.trim()} style={buttonStyle(editingProgressNoteDraft.trim() ? '#6366f1' : '#1e293b', editingProgressNoteDraft.trim() ? '#fff' : '#64748b')}>保存</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.84rem', color: '#cbd5e1', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{note.body}</div>
+                    )}
                   </div>
                 ))}
               </div>

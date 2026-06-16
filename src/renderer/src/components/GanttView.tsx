@@ -888,11 +888,13 @@ export function GanttView({
     })
   ), [selectedCategoryKeys, todos])
 
+  const todoOrderById = useMemo(() => new Map(todos.map((todo, index) => [todo.id, index])), [todos])
+
   const todoSelectionCandidates = useMemo(() => (
     categoryFilteredTodos
       .filter((todo) => todoMatchesQuery(todo, normalizedTaskQuery))
-      .sort((a, b) => a.title.localeCompare(b.title, 'ja'))
-  ), [categoryFilteredTodos, normalizedTaskQuery])
+      .sort((a, b) => (todoOrderById.get(a.id) ?? 0) - (todoOrderById.get(b.id) ?? 0) || a.title.localeCompare(b.title, 'ja'))
+  ), [categoryFilteredTodos, normalizedTaskQuery, todoOrderById])
   const todoById = useMemo(() => new Map(todos.map((todo) => [todo.id, todo])), [todos])
   const subTaskById = useMemo(() => new Map(subTasks.map((subTask) => [subTask.id, subTask])), [subTasks])
 
@@ -955,8 +957,8 @@ export function GanttView({
     filteredGroups
       .filter((group) => group.todoBar || group.datedSubTasks.length > 0)
       .sort((a, b) => {
-        const aOrder = a.todo.sort_order ?? 0
-        const bOrder = b.todo.sort_order ?? 0
+        const aOrder = todoOrderById.get(a.todo.id) ?? 0
+        const bOrder = todoOrderById.get(b.todo.id) ?? 0
         if (aOrder !== bOrder) return aOrder - bOrder
         const aAnchor = a.anchorDate ?? '9999-12-31'
         const bAnchor = b.anchorDate ?? '9999-12-31'
@@ -964,18 +966,18 @@ export function GanttView({
         if (b.todo.priority !== a.todo.priority) return b.todo.priority - a.todo.priority
         return a.todo.title.localeCompare(b.todo.title, 'ja')
       })
-  ), [filteredGroups])
+  ), [filteredGroups, todoOrderById])
 
   const unscheduledGroups = useMemo(() => (
     filteredGroups
       .filter((group) => !group.todoBar && group.datedSubTasks.length === 0)
       .sort((a, b) => {
-        const aOrder = a.todo.sort_order ?? 0
-        const bOrder = b.todo.sort_order ?? 0
+        const aOrder = todoOrderById.get(a.todo.id) ?? 0
+        const bOrder = todoOrderById.get(b.todo.id) ?? 0
         if (aOrder !== bOrder) return aOrder - bOrder
         return b.todo.priority - a.todo.priority || a.todo.title.localeCompare(b.todo.title, 'ja')
       })
-  ), [filteredGroups])
+  ), [filteredGroups, todoOrderById])
 
   const autoStartBase = scheduledGroups[0]?.anchorDate ?? addDays(todayKey, -7)
   const autoEndBase = scheduledGroups.reduce((latest, group) => {
