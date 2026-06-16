@@ -85,8 +85,11 @@ npm run dev:server
 次のようなログが出れば起動成功です（初回はここに管理者パスワードも出ます → [4 章](#4-管理者アカウントと初回パスワード)）。
 
 ```
-[server] http://localhost:4577 で待ち受け中
+[server] listening on http://localhost:4577
 ```
+
+開発モードで `dist-web\` がまだ無い場合は、続けて `web build not found ...` と出ることがあります。
+これは「本番用のビルド済み画面が無い」という案内なので、次の `npm run dev:web` で確認する開発モードでは問題ありません。
 
 このターミナルは**開いたままにします**（閉じるとサーバーが止まります）。
 
@@ -108,6 +111,9 @@ http://localhost:5273
 
 ログイン画面が出れば成功です。
 （ポート 5273 のフロントが、API と WebSocket を裏でポート 4577 のサーバーへ中継します。だから両方起動が必要です。）
+
+> 💡 サーバーのポートを変えて開発する場合は、サーバー側の `PORT` と、Web フロント側の `SERVER_PORT` を同じ値にします。
+> 例: ターミナル 1 で `$env:PORT = "8080"; npm run dev:server`、ターミナル 2 で `$env:SERVER_PORT = "8080"; npm run dev:web`
 
 > **止めるとき**: それぞれのターミナルで `Ctrl + C` を押します。
 
@@ -302,6 +308,32 @@ npm run start:server
 > デスクトップ版は `D:\Github\ToDo\data\todo.db`、サーバー版は `server\data\todo.db` を使います。
 > 両者は同期しません。Web 版で入れたタスクはデスクトップ版には出てきません（逆も同様）。
 
+### デスクトップ版の DB をサーバー版へ取り込む場合
+
+デスクトップ版で使っていた `todo.db` は、管理者だけがサーバー版へ取り込めます。
+取り込みは**一方向のコピー**です。取り込んだ後にデスクトップ版と自動同期されるわけではありません。
+
+画面から取り込む場合:
+
+1. 管理者アカウントで Web 版にログインする
+2. **設定**を開く
+3. **デスクトップDBを取り込む**を開く
+4. デスクトップ版の `todo.db` を選び、取り込み先メンバーを選択する
+5. まず **ドライラン（確認のみ）** で件数を確認し、問題なければ **取り込みを実行**する
+
+コマンドで取り込む場合は、サーバーを止めてから実行します。
+
+```powershell
+# 件数だけ確認
+npm run import:db -- --db "D:\Github\ToDo\data\todo.db" --user kenji --dry-run
+
+# 実際に取り込む
+npm run import:db -- --db "D:\Github\ToDo\data\todo.db" --user kenji
+```
+
+`--user` には、先に Web 版の「ユーザー管理」で作成したユーザー名を指定します。
+取り込まれたタスク、サブタスク、作業ログ、予定は、そのメンバーのデータとして登録されます。
+
 ---
 
 ## 7. 設定を変えたいとき（.env ファイル / 環境変数）
@@ -335,6 +367,9 @@ $env:PORT = "8080"
 npm run start:server
 ```
 
+> 💡 開発モードで `npm run dev:web` も使う場合、Web フロントのプロキシ先は既定で `4577` です。
+> サーバーを別ポートで起動するなら、`npm run dev:web` を叩く前に `$env:SERVER_PORT = "8080"` のように指定してください。
+
 ---
 
 ## 8. コマンド早見表（すべて `D:\Github\ToDo` で）
@@ -349,6 +384,7 @@ npm run start:server
 | 本番：サーバー起動 | `npm run start:server` | `D:\Github\ToDo` |
 | 本番：サービス登録（管理者 PowerShell） | `npm run service:install` | `D:\Github\ToDo` |
 | 本番：サービス解除（管理者 PowerShell） | `npm run service:uninstall` | `D:\Github\ToDo` |
+| 管理者：デスクトップDB取り込み | `npm run import:db -- --db "<todo.dbのパス>" --user <Webのユーザー名>` | `D:\Github\ToDo` |
 
 | モード | アクセス先 |
 | --- | --- |
