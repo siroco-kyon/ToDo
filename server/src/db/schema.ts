@@ -60,13 +60,15 @@ export function createSchema(db: Database.Database): void {
       todo_id TEXT NOT NULL,
       title TEXT NOT NULL,
       description TEXT DEFAULT '',
+      assignee_id TEXT,
       start_date TEXT,
       due_date TEXT,
       done INTEGER DEFAULT 0,
       completed_at TEXT,
       sort_order INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
-      FOREIGN KEY (todo_id) REFERENCES Todos(id)
+      FOREIGN KEY (todo_id) REFERENCES Todos(id),
+      FOREIGN KEY (assignee_id) REFERENCES Users(id)
     );
 
     CREATE TABLE IF NOT EXISTS TodoDependencies (
@@ -206,6 +208,12 @@ export function runMigrations(db: Database.Database): void {
   if (!todoColumns.some((c) => c.name === 'recurrence_copy_subtasks')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN recurrence_copy_subtasks INTEGER DEFAULT 0').run()
   }
+
+  const subTaskColumns = db.prepare('PRAGMA table_info(SubTasks)').all() as { name: string }[]
+  if (!subTaskColumns.some((c) => c.name === 'assignee_id')) {
+    db.prepare('ALTER TABLE SubTasks ADD COLUMN assignee_id TEXT').run()
+  }
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_subtasks_assignee ON SubTasks(assignee_id)').run()
 
   const progressNoteColumns = db.prepare('PRAGMA table_info(ProgressNotes)').all() as { name: string }[]
   if (!progressNoteColumns.some((c) => c.name === 'updated_at')) {

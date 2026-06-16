@@ -4,24 +4,38 @@ import { normalizeDateKey } from './helpers'
 import { syncTodoDueDateWithSubTask } from './todos'
 import type { CalendarSubTask, CreateSubTaskInput, SubTask, UpdateSubTaskInput } from './types'
 
+const SUBTASK_SELECT = `
+  SELECT st.*,
+         u.display_name AS assignee_name,
+         u.color AS assignee_color
+  FROM SubTasks st
+  LEFT JOIN Users u ON st.assignee_id = u.id
+`
+
 export function getSubTasksByTodo(todoId: string): SubTask[] {
   return getDb()
-    .prepare('SELECT * FROM SubTasks WHERE todo_id = ? ORDER BY sort_order ASC, created_at ASC')
+    .prepare(`${SUBTASK_SELECT} WHERE st.todo_id = ? ORDER BY st.sort_order ASC, st.created_at ASC`)
     .all(todoId) as SubTask[]
 }
 
 export function getAllSubTasks(): SubTask[] {
   return getDb()
-    .prepare('SELECT * FROM SubTasks ORDER BY todo_id ASC, sort_order ASC, created_at ASC')
+    .prepare(`${SUBTASK_SELECT} ORDER BY st.todo_id ASC, st.sort_order ASC, st.created_at ASC`)
     .all() as SubTask[]
 }
 
 export function getSubTasksForCalendar(): CalendarSubTask[] {
   return getDb()
     .prepare(
-      `SELECT st.*, t.title AS todo_title, t.status AS todo_status, c.color AS category_color
+      `SELECT st.*,
+              u.display_name AS assignee_name,
+              u.color AS assignee_color,
+              t.title AS todo_title,
+              t.status AS todo_status,
+              c.color AS category_color
        FROM SubTasks st
        JOIN Todos t ON st.todo_id = t.id
+       LEFT JOIN Users u ON st.assignee_id = u.id
        LEFT JOIN Categories c ON t.category_id = c.id
        WHERE st.due_date IS NOT NULL AND t.status != 'archived'
        ORDER BY st.due_date ASC, st.sort_order ASC, st.created_at ASC`
@@ -37,9 +51,9 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
   const startDate = normalizeDateKey(data.start_date)
   const dueDate = normalizeDateKey(data.due_date)
   db.prepare(
-    'INSERT INTO SubTasks (id, todo_id, title, description, start_date, due_date, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)'
-  ).run(id, todoId, data.title, data.description ?? '', startDate, dueDate, maxOrder + 1, now)
-  const created = db.prepare('SELECT * FROM SubTasks WHERE id = ?').get(id) as SubTask
+    'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)'
+  ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, maxOrder + 1, now)
+  const created = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
   syncTodoDueDateWithSubTask(todoId, created.due_date)
   return created
 }
@@ -54,6 +68,9 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
   if (data.description !== undefined) {
     db.prepare('UPDATE SubTasks SET description = ? WHERE id = ?').run(data.description, id)
   }
+  if (data.assignee_id !== undefined) {
+    db.prepare('UPDATE SubTasks SET assignee_id = ? WHERE id = ?').run(data.assignee_id, id)
+  }
   if (data.start_date !== undefined) {
     db.prepare('UPDATE SubTasks SET start_date = ? WHERE id = ?').run(normalizeDateKey(data.start_date), id)
   }
@@ -67,7 +84,7 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
       db.prepare('UPDATE SubTasks SET done = 0, completed_at = NULL WHERE id = ?').run(id)
     }
   }
-  const updated = db.prepare('SELECT * FROM SubTasks WHERE id = ?').get(id) as SubTask
+  const updated = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
   syncTodoDueDateWithSubTask(updated.todo_id, updated.due_date)
   return updated
 }
