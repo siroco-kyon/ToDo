@@ -55,6 +55,7 @@ function createTables(): void {
       todo_id TEXT NOT NULL,
       title TEXT NOT NULL,
       description TEXT DEFAULT '',
+      assignee_id TEXT,
       start_date TEXT,
       due_date TEXT,
       done INTEGER DEFAULT 0,
@@ -219,6 +220,9 @@ function migrateDb(): void {
   // SubTasks.description 追加
   if (!subTaskColumns.some((c) => c.name === 'description')) {
     db.prepare("ALTER TABLE SubTasks ADD COLUMN description TEXT DEFAULT ''").run()
+  }
+  if (!subTaskColumns.some((c) => c.name === 'assignee_id')) {
+    db.prepare('ALTER TABLE SubTasks ADD COLUMN assignee_id TEXT').run()
   }
   if (!subTaskColumns.some((c) => c.name === 'start_date')) {
     db.prepare('ALTER TABLE SubTasks ADD COLUMN start_date TEXT').run()
@@ -604,7 +608,7 @@ function spawnNextRecurrence(source: Todo): void {
   if (source.recurrence_copy_subtasks) {
     const now = new Date().toISOString()
     const insert = db.prepare(
-      'INSERT INTO SubTasks (id, todo_id, title, description, start_date, due_date, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)'
+      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)'
     )
     for (const sub of getSubTasksByTodo(source.id)) {
       insert.run(
@@ -612,6 +616,7 @@ function spawnNextRecurrence(source: Todo): void {
         next.id,
         sub.title,
         sub.description ?? '',
+        sub.assignee_id,
         shiftRecurrenceDate(sub.start_date, recurrence),
         shiftRecurrenceDate(sub.due_date, recurrence),
         sub.sort_order,
@@ -881,16 +886,16 @@ export function reorderDailyPlanItems(planDate: string, orderedIds: string[]): v
 }
 
 export function getSubTasksByTodo(todoId: string): SubTask[] {
-  return db.prepare('SELECT * FROM SubTasks WHERE todo_id = ? ORDER BY sort_order ASC, created_at ASC').all(todoId) as SubTask[]
+  return db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.todo_id = ? ORDER BY st.sort_order ASC, st.created_at ASC').all(todoId) as SubTask[]
 }
 
 export function getAllSubTasks(): SubTask[] {
-  return db.prepare('SELECT * FROM SubTasks ORDER BY todo_id ASC, sort_order ASC, created_at ASC').all() as SubTask[]
+  return db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st ORDER BY st.todo_id ASC, st.sort_order ASC, st.created_at ASC').all() as SubTask[]
 }
 
 export function getSubTasksForCalendar(): CalendarSubTask[] {
   return db.prepare(
-    `SELECT st.*, t.title AS todo_title, t.status AS todo_status, c.color AS category_color
+    `SELECT st.*, NULL AS assignee_name, NULL AS assignee_color, t.title AS todo_title, t.status AS todo_status, c.color AS category_color
      FROM SubTasks st
      JOIN Todos t ON st.todo_id = t.id
      LEFT JOIN Categories c ON t.category_id = c.id
@@ -906,9 +911,9 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
   const startDate = normalizeDateKey(data.start_date)
   const dueDate = normalizeDateKey(data.due_date)
   db.prepare(
-    'INSERT INTO SubTasks (id, todo_id, title, description, start_date, due_date, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)'
-  ).run(id, todoId, data.title, data.description ?? '', startDate, dueDate, maxOrder + 1, now)
-  const created = db.prepare('SELECT * FROM SubTasks WHERE id = ?').get(id) as SubTask
+    'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)'
+  ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, maxOrder + 1, now)
+  const created = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
   syncTodoDueDateWithSubTask(todoId, created.due_date)
   return created
 }
@@ -921,6 +926,9 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
   }
   if (data.description !== undefined) {
     db.prepare('UPDATE SubTasks SET description = ? WHERE id = ?').run(data.description, id)
+  }
+  if (data.assignee_id !== undefined) {
+    db.prepare('UPDATE SubTasks SET assignee_id = ? WHERE id = ?').run(data.assignee_id, id)
   }
   if (data.start_date !== undefined) {
     db.prepare('UPDATE SubTasks SET start_date = ? WHERE id = ?').run(normalizeDateKey(data.start_date), id)
@@ -935,7 +943,7 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
       db.prepare('UPDATE SubTasks SET done = 0, completed_at = NULL WHERE id = ?').run(id)
     }
   }
-  const updated = db.prepare('SELECT * FROM SubTasks WHERE id = ?').get(id) as SubTask
+  const updated = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
   syncTodoDueDateWithSubTask(updated.todo_id, updated.due_date)
   return updated
 }
@@ -1794,6 +1802,9 @@ export interface SubTask {
   todo_id: string
   title: string
   description: string
+  assignee_id: string | null
+  assignee_name: string | null
+  assignee_color: string | null
   start_date: string | null
   due_date: string | null
   done: number  // SQLite INTEGER (0 or 1)
@@ -1811,6 +1822,7 @@ export interface CalendarSubTask extends SubTask {
 export interface CreateSubTaskInput {
   title: string
   description?: string
+  assignee_id?: string | null
   start_date?: string | null
   due_date?: string | null
 }
@@ -1818,6 +1830,7 @@ export interface CreateSubTaskInput {
 export interface UpdateSubTaskInput {
   title?: string
   description?: string
+  assignee_id?: string | null
   start_date?: string | null
   due_date?: string | null
   done?: boolean

@@ -558,6 +558,7 @@ export function App(): React.JSX.Element {
         <div style={{ flex: 1, minHeight: 0 }}>
           <GanttView
             categories={categories}
+            users={users}
             todos={filteredTodos}
             onSelectTodo={(id) => {
               void window.api.windowOpenTodo(id)
@@ -743,6 +744,7 @@ export function App(): React.JSX.Element {
           {activeView === 'gantt' ? (
             <GanttView
               categories={categories}
+              users={users}
               todos={filteredTodos}
               onSelectTodo={openTodoDetail}
               onUpdateTodo={handleUpdate}
@@ -753,7 +755,7 @@ export function App(): React.JSX.Element {
             <PlanView
               date={getTodayKey()}
               planItems={todayPlanItems}
-              todos={todos}
+              todos={filteredTodos}
               runningTodoId={runningTodoId}
               onSelectTodo={openTodoDetail}
               onAddTodo={handleAddToTodayPlan}

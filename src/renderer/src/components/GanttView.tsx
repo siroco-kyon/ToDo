@@ -1,9 +1,10 @@
 ﻿import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Category, SubTask, Todo, TodoDependency, UpdateTodoInput } from '../types'
+import type { Category, PublicUser, SubTask, Todo, TodoDependency, UpdateSubTaskInput, UpdateTodoInput } from '../types'
 
 interface Props {
   todos: Todo[]
   categories: Category[]
+  users?: PublicUser[]
   onSelectTodo: (id: string) => void
   onUpdateTodo: (id: string, data: UpdateTodoInput) => Promise<void>
   onReorderTodos?: (orderedIds: string[]) => Promise<void>
@@ -81,6 +82,9 @@ interface UndoEntry {
   run: () => Promise<void>
 }
 
+type EditableTodoField = 'start_date' | 'due_date' | 'progress' | 'assignee_id'
+type EditableSubTaskField = 'title' | 'start_date' | 'due_date' | 'done' | 'assignee_id'
+type GanttLeftColumnKey = 'title' | 'start' | 'due' | 'progress' | 'assignee'
 type ZoomMode = 'compact' | 'normal' | 'detail' | 'focus'
 type StatusFilter = 'active' | 'done' | 'all'
 type TimeScale = 'day' | 'month' | 'year'
@@ -103,15 +107,32 @@ const GANTT_VIEW_SETTINGS_STORAGE_KEY = 'gantt-view-settings'
 const COLLAPSED_TODO_STORAGE_KEY = 'gantt-collapsed-todo-ids'
 const GANTT_BASELINE_STORAGE_KEY = 'gantt-baseline-snapshot'
 const GANTT_SCROLL_STATE_STORAGE_KEY = 'gantt-scroll-state'
-const LEFT_COLUMN_WIDTH = 252
-const PARENT_ROW_HEIGHT = 60
-const SUBTASK_ROW_HEIGHT = 42
-const PARENT_BAR_HEIGHT = 34
-const SUBTASK_BAR_HEIGHT = 22
-const DEPENDENCY_HANDLE_SIZE = 14
-const DEPENDENCY_TARGET_HANDLE_SIZE = 18
+const GANTT_LEFT_COLUMN_WIDTHS_STORAGE_KEY = 'gantt-left-column-widths'
+const PARENT_ROW_HEIGHT = 38
+const SUBTASK_ROW_HEIGHT = 28
+const PARENT_BAR_HEIGHT = 20
+const SUBTASK_BAR_HEIGHT = 14
+const DEPENDENCY_HANDLE_SIZE = 10
+const DEPENDENCY_TARGET_HANDLE_SIZE = 14
 const DEPENDENCY_TARGET_INSET = 2
 const RANGE_PADDING_DAYS = 5
+const LEFT_COLUMN_GAP = 8
+const LEFT_TABLE_HORIZONTAL_PADDING = 32
+const LEFT_TABLE_CATEGORY_STRIPE_WIDTH = 3
+const LEFT_COLUMN_DEFS: Array<{ key: GanttLeftColumnKey; label: string; min: number; max: number }> = [
+  { key: 'title', label: 'タスク', min: 120, max: 520 },
+  { key: 'start', label: '開始', min: 54, max: 140 },
+  { key: 'due', label: '期限', min: 54, max: 140 },
+  { key: 'progress', label: '進捗', min: 44, max: 120 },
+  { key: 'assignee', label: '担当', min: 56, max: 220 }
+]
+const DEFAULT_LEFT_COLUMN_WIDTHS: GanttLeftColumnWidths = {
+  title: 150,
+  start: 64,
+  due: 64,
+  progress: 46,
+  assignee: 62
+}
 const UNIT_WIDTH: Record<TimeScale, Record<ZoomMode, number>> = {
   day: { compact: 28, normal: 40, detail: 56, focus: 84 },
   month: { compact: 64, normal: 88, detail: 120, focus: 164 },
@@ -252,6 +273,74 @@ interface PersistedGanttScrollState {
   leftOffset: number
   scrollLeft: number
   scrollTop: number
+}
+
+interface EditingTodoCell {
+  todoId: string
+  field: EditableTodoField
+  value: string
+}
+
+interface EditingSubTaskCell {
+  subTaskId: string
+  field: EditableSubTaskField
+  value: string
+}
+
+interface GanttLeftColumnWidths {
+  title: number
+  start: number
+  due: number
+  progress: number
+  assignee: number
+}
+
+interface LeftColumnResizeState {
+  column: GanttLeftColumnKey
+  originClientX: number
+  originalWidth: number
+}
+
+function leftColumnDef(key: GanttLeftColumnKey): { key: GanttLeftColumnKey; label: string; min: number; max: number } {
+  return LEFT_COLUMN_DEFS.find((column) => column.key === key) ?? LEFT_COLUMN_DEFS[0]
+}
+
+function clampLeftColumnWidth(key: GanttLeftColumnKey, width: number): number {
+  const column = leftColumnDef(key)
+  return clamp(Math.round(width), column.min, column.max)
+}
+
+function loadGanttLeftColumnWidths(): GanttLeftColumnWidths {
+  const defaults: GanttLeftColumnWidths = { ...DEFAULT_LEFT_COLUMN_WIDTHS }
+
+  try {
+    const raw = window.localStorage.getItem(GANTT_LEFT_COLUMN_WIDTHS_STORAGE_KEY)
+    if (!raw) return defaults
+
+    const parsed = JSON.parse(raw) as Partial<Record<GanttLeftColumnKey, unknown>>
+    const next: GanttLeftColumnWidths = { ...defaults }
+    for (const column of LEFT_COLUMN_DEFS) {
+      const value = parsed[column.key]
+      next[column.key] = typeof value === 'number' && Number.isFinite(value)
+        ? clampLeftColumnWidth(column.key, value)
+        : defaults[column.key]
+    }
+    return next
+  } catch {
+    return defaults
+  }
+}
+
+function leftGridTemplateFor(widths: GanttLeftColumnWidths): string {
+  return `${widths.title}px ${widths.start}px ${widths.due}px ${widths.progress}px ${widths.assignee}px`
+}
+
+function leftTableWidthFor(widths: GanttLeftColumnWidths): number {
+  const columnTotal = LEFT_COLUMN_DEFS.reduce((total, column) => total + widths[column.key], 0)
+  return columnTotal
+    + LEFT_COLUMN_GAP * (LEFT_COLUMN_DEFS.length - 1)
+    + LEFT_TABLE_HORIZONTAL_PADDING
+    + LEFT_TABLE_CATEGORY_STRIPE_WIDTH
 }
 
 function defaultGanttViewSettings(): PersistedGanttViewSettings {
@@ -652,6 +741,7 @@ function areDependencyPathsEqual(previous: DependencyPath[], next: DependencyPat
 export function GanttView({
   todos,
   categories,
+  users = [],
   onSelectTodo,
   onUpdateTodo,
   onReorderTodos,
@@ -693,6 +783,12 @@ export function GanttView({
   const [reorderPending, setReorderPending] = useState(false)
   const [dependencyLayoutVersion, setDependencyLayoutVersion] = useState(0)
   const [scrollStateReady, setScrollStateReady] = useState(false)
+  const [leftColumnWidths, setLeftColumnWidths] = useState<GanttLeftColumnWidths>(() => loadGanttLeftColumnWidths())
+  const [resizingLeftColumn, setResizingLeftColumn] = useState<LeftColumnResizeState | null>(null)
+  const [editingTodoCell, setEditingTodoCell] = useState<EditingTodoCell | null>(null)
+  const [editingTodoCellSaving, setEditingTodoCellSaving] = useState(false)
+  const [editingSubTaskCell, setEditingSubTaskCell] = useState<EditingSubTaskCell | null>(null)
+  const [editingSubTaskCellSaving, setEditingSubTaskCellSaving] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const chartCanvasRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<InteractionState | null>(null)
@@ -705,6 +801,9 @@ export function GanttView({
 
   interactionRef.current = interaction
   dependencyDragRef.current = dependencyDrag
+
+  const leftGridTemplate = useMemo(() => leftGridTemplateFor(leftColumnWidths), [leftColumnWidths])
+  const leftTableWidth = useMemo(() => leftTableWidthFor(leftColumnWidths), [leftColumnWidths])
 
   const loadGanttData = useCallback(async (): Promise<void> => {
     setLoading(true)
@@ -798,6 +897,47 @@ export function GanttView({
   ])
 
   useEffect(() => {
+    window.localStorage.setItem(GANTT_LEFT_COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(leftColumnWidths))
+    setDependencyLayoutVersion((previous) => previous + 1)
+  }, [leftColumnWidths])
+
+  useEffect(() => {
+    if (!resizingLeftColumn) return
+
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      const nextWidth = clampLeftColumnWidth(
+        resizingLeftColumn.column,
+        resizingLeftColumn.originalWidth + event.clientX - resizingLeftColumn.originClientX
+      )
+      setLeftColumnWidths((previous) => (
+        previous[resizingLeftColumn.column] === nextWidth
+          ? previous
+          : { ...previous, [resizingLeftColumn.column]: nextWidth }
+      ))
+    }
+
+    const handlePointerUp = (): void => {
+      setResizingLeftColumn(null)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+    return () => {
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+  }, [resizingLeftColumn])
+
+  useEffect(() => {
     setSelectedCategoryKeys((previous) => previous.filter((key) => {
       if (key === NO_CATEGORY_KEY) return todos.some((todo) => !todo.category_id)
       return categories.some((category) => category.id === key)
@@ -817,6 +957,18 @@ export function GanttView({
   const unitWidth = UNIT_WIDTH[timeScale][zoom]
   const isTimelineEditable = !isReorderMode
   const normalizedTaskQuery = taskQuery.trim().toLowerCase()
+
+  const beginLeftColumnResize = useCallback((column: GanttLeftColumnKey, event: React.PointerEvent<HTMLSpanElement>): void => {
+    event.preventDefault()
+    event.stopPropagation()
+    setEditingTodoCell(null)
+    setEditingSubTaskCell(null)
+    setResizingLeftColumn({
+      column,
+      originClientX: event.clientX,
+      originalWidth: leftColumnWidths[column]
+    })
+  }, [leftColumnWidths])
 
   const applyManualPreset = useCallback((preset: Exclude<RangePreset, null>) => {
     const config = RANGE_PRESETS.find((item) => item.key === preset)
@@ -880,6 +1032,13 @@ export function GanttView({
     return next
   }, [categories, todos])
 
+  const assigneeOptions = useMemo(() => (
+    users
+      .filter((user) => user.is_active !== 0)
+      .slice()
+      .sort((a, b) => a.display_name.localeCompare(b.display_name, 'ja'))
+  ), [users])
+
   const categoryFilteredTodos = useMemo(() => (
     todos.filter((todo) => {
       if (selectedCategoryKeys.length === 0) return true
@@ -897,6 +1056,190 @@ export function GanttView({
   ), [categoryFilteredTodos, normalizedTaskQuery, todoOrderById])
   const todoById = useMemo(() => new Map(todos.map((todo) => [todo.id, todo])), [todos])
   const subTaskById = useMemo(() => new Map(subTasks.map((subTask) => [subTask.id, subTask])), [subTasks])
+
+  useEffect(() => {
+    if (!editingTodoCell) return
+    if (!todoById.has(editingTodoCell.todoId)) setEditingTodoCell(null)
+  }, [editingTodoCell, todoById])
+
+  useEffect(() => {
+    if (!editingSubTaskCell) return
+    if (!subTaskById.has(editingSubTaskCell.subTaskId)) setEditingSubTaskCell(null)
+  }, [editingSubTaskCell, subTaskById])
+
+  const beginTodoCellEdit = useCallback((todo: Todo, field: EditableTodoField): void => {
+    if (isReorderMode || editingTodoCellSaving) return
+
+    const value = field === 'start_date'
+        ? todo.start_date?.slice(0, 10) ?? ''
+        : field === 'due_date'
+          ? todo.due_date?.slice(0, 10) ?? ''
+          : field === 'progress'
+            ? String(clamp(todo.status === 'done' ? 100 : todo.progress, 0, 100))
+            : todo.assignee_id ?? ''
+
+    setEditingSubTaskCell(null)
+    setEditingTodoCell({ todoId: todo.id, field, value })
+  }, [editingTodoCellSaving, isReorderMode])
+
+  const cancelTodoCellEdit = useCallback((): void => {
+    setEditingTodoCell(null)
+  }, [])
+
+  const commitTodoCellEdit = useCallback(async (): Promise<void> => {
+    const edit = editingTodoCell
+    if (!edit || editingTodoCellSaving) return
+
+    const todo = todoById.get(edit.todoId)
+    if (!todo) {
+      setEditingTodoCell(null)
+      return
+    }
+
+    const update: UpdateTodoInput = {}
+    if (edit.field === 'start_date') {
+      const next = edit.value || null
+      const current = todo.start_date?.slice(0, 10) ?? null
+      if (next === current) {
+        setEditingTodoCell(null)
+        return
+      }
+      update.start_date = next
+    } else if (edit.field === 'due_date') {
+      const next = edit.value || null
+      const current = todo.due_date?.slice(0, 10) ?? null
+      if (next === current) {
+        setEditingTodoCell(null)
+        return
+      }
+      update.due_date = next
+    } else if (edit.field === 'progress') {
+      const progress = clamp(Math.round(Number(edit.value)), 0, 100)
+      if (!Number.isFinite(progress) || progress === todo.progress) {
+        setEditingTodoCell(null)
+        return
+      }
+      update.progress = progress
+    } else {
+      const next = edit.value || null
+      if (next === todo.assignee_id) {
+        setEditingTodoCell(null)
+        return
+      }
+      update.assignee_id = next
+    }
+
+    setEditingTodoCellSaving(true)
+    setEditingTodoCell(null)
+    try {
+      await onUpdateTodo(todo.id, update)
+    } finally {
+      setEditingTodoCellSaving(false)
+    }
+  }, [editingTodoCell, editingTodoCellSaving, onUpdateTodo, todoById])
+
+  const handleTodoCellEditorKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>): void => {
+    event.stopPropagation()
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      void commitTodoCellEdit()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      cancelTodoCellEdit()
+    }
+  }, [cancelTodoCellEdit, commitTodoCellEdit])
+
+  const beginSubTaskCellEdit = useCallback((subTask: SubTask, field: EditableSubTaskField): void => {
+    if (isReorderMode || editingSubTaskCellSaving) return
+
+    const value = field === 'title'
+      ? subTask.title
+      : field === 'start_date'
+        ? subTask.start_date?.slice(0, 10) ?? ''
+        : field === 'due_date'
+          ? subTask.due_date?.slice(0, 10) ?? ''
+          : field === 'done'
+            ? Boolean(subTask.done) ? 'done' : 'active'
+            : subTask.assignee_id ?? ''
+
+    setEditingTodoCell(null)
+    setEditingSubTaskCell({ subTaskId: subTask.id, field, value })
+  }, [editingSubTaskCellSaving, isReorderMode])
+
+  const cancelSubTaskCellEdit = useCallback((): void => {
+    setEditingSubTaskCell(null)
+  }, [])
+
+  const commitSubTaskCellEdit = useCallback(async (): Promise<void> => {
+    const edit = editingSubTaskCell
+    if (!edit || editingSubTaskCellSaving) return
+
+    const subTask = subTaskById.get(edit.subTaskId)
+    if (!subTask) {
+      setEditingSubTaskCell(null)
+      return
+    }
+
+    const update: UpdateSubTaskInput = {}
+    if (edit.field === 'title') {
+      const title = edit.value.trim()
+      if (!title || title === subTask.title) {
+        setEditingSubTaskCell(null)
+        return
+      }
+      update.title = title
+    } else if (edit.field === 'start_date') {
+      const next = edit.value || null
+      const current = subTask.start_date?.slice(0, 10) ?? null
+      if (next === current) {
+        setEditingSubTaskCell(null)
+        return
+      }
+      update.start_date = next
+    } else if (edit.field === 'due_date') {
+      const next = edit.value || null
+      const current = subTask.due_date?.slice(0, 10) ?? null
+      if (next === current) {
+        setEditingSubTaskCell(null)
+        return
+      }
+      update.due_date = next
+    } else if (edit.field === 'done') {
+      const done = edit.value === 'done'
+      if (done === Boolean(subTask.done)) {
+        setEditingSubTaskCell(null)
+        return
+      }
+      update.done = done
+    } else {
+      const next = edit.value || null
+      if (next === subTask.assignee_id) {
+        setEditingSubTaskCell(null)
+        return
+      }
+      update.assignee_id = next
+    }
+
+    setEditingSubTaskCellSaving(true)
+    setEditingSubTaskCell(null)
+    try {
+      const updated = await window.api.subtaskUpdate(subTask.id, update)
+      setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
+    } finally {
+      setEditingSubTaskCellSaving(false)
+    }
+  }, [editingSubTaskCell, editingSubTaskCellSaving, subTaskById])
+
+  const handleSubTaskCellEditorKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>): void => {
+    event.stopPropagation()
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      void commitSubTaskCellEdit()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      cancelSubTaskCellEdit()
+    }
+  }, [cancelSubTaskCellEdit, commitSubTaskCellEdit])
 
   const ganttTodos = useMemo(() => (
     todoSelectionCandidates.filter((todo) => selectedTodoIds.length === 0 || selectedTodoIds.includes(todo.id))
@@ -1739,16 +2082,16 @@ export function GanttView({
 
     const rect = element.getBoundingClientRect()
     const x = edge === 'start'
-      ? rect.left - canvasRect.left - LEFT_COLUMN_WIDTH + inset
+      ? rect.left - canvasRect.left - leftTableWidth + inset
       : edge === 'end'
-        ? rect.right - canvasRect.left - LEFT_COLUMN_WIDTH - inset
-        : rect.left - canvasRect.left - LEFT_COLUMN_WIDTH + rect.width / 2
+        ? rect.right - canvasRect.left - leftTableWidth - inset
+        : rect.left - canvasRect.left - leftTableWidth + rect.width / 2
 
     return {
       x,
       y: rect.top - canvasRect.top + rect.height / 2
     }
-  }, [])
+  }, [leftTableWidth])
   const getHoveredDependencyTargetId = useCallback((clientX: number, clientY: number, predecessorTodoId: string): string | null => {
     for (const [todoId, element] of dependencyTargetBarRefs.current.entries()) {
       if (todoId === predecessorTodoId) continue
@@ -1900,7 +2243,7 @@ export function GanttView({
       const canvasRect = chartCanvasRef.current?.getBoundingClientRect()
       if (!current || !canvasRect) return
 
-      const pointerX = event.clientX - canvasRect.left - LEFT_COLUMN_WIDTH
+      const pointerX = event.clientX - canvasRect.left - leftTableWidth
       const pointerY = event.clientY - canvasRect.top
       const hoverSuccessorTodoId = getHoveredDependencyTargetId(event.clientX, event.clientY, current.predecessorTodoId)
 
@@ -1927,21 +2270,14 @@ export function GanttView({
       window.removeEventListener('pointerup', handlePointerUp)
       window.removeEventListener('pointercancel', handlePointerUp)
     }
-  }, [createDependency, dependencyDrag, getHoveredDependencyTargetId, getSuggestedDependencyLagDays, isTimelineEditable, setDependencyDragState])
+  }, [createDependency, dependencyDrag, getHoveredDependencyTargetId, getSuggestedDependencyLagDays, isTimelineEditable, leftTableWidth, setDependencyDragState])
 
   return (
-    <div style={{ height: '100%', overflow: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 12, position: 'relative' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+    <div style={{ height: '100%', overflow: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: '1rem', color: '#f8fafc', fontWeight: 700 }}>ガントチャート</div>
-          <div style={{ marginTop: 4, fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.5 }}>
-            {standalone
-              ? '別ウィンドウでタイムラインを編集できます。'
-              : 'メイン画面で日付調整や依存関係の管理ができます。'}
-            {isReorderMode
-              ? ' 並び替えモード中です。左列のドラッグハンドルでタスク順を変更できます。'
-              : ' バーや端のハンドルをドラッグして日程を調整できます。'}
-          </div>
+          <div style={{ fontSize: '0.95rem', color: '#f8fafc', fontWeight: 700 }}>ガントチャート</div>
+          {isReorderMode && <div style={{ marginTop: 2, fontSize: '0.72rem', color: '#93c5fd' }}>並び替えモード中</div>}
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1989,7 +2325,7 @@ export function GanttView({
         </div>
       </div>
 
-      <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 14, padding: '8px 12px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 8, padding: '6px 8px', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={collapsedSummaryChipStyle}>期間 {shortDateLabel(normalizedRange.start)} - {shortDateLabel(normalizedRange.end)}</span>
         <span style={collapsedSummaryChipStyle}>表示単位 {SCALE_LABELS[timeScale]}</span>
         <span style={collapsedSummaryChipStyle}>ズーム {ZOOM_LABELS[zoom]}</span>
@@ -2288,18 +2624,31 @@ export function GanttView({
         </div>
       )}
 
-      <div style={{ flex: '0 0 auto', minHeight: controlsCollapsed ? 540 : 460, height: controlsCollapsed ? '72vh' : '58vh', border: '1px solid #1e293b', borderRadius: 18, background: '#0b1220', overflow: 'hidden' }}>
+      <div style={{ flex: '0 0 auto', minHeight: controlsCollapsed ? 540 : 460, height: controlsCollapsed ? '74vh' : '60vh', border: '1px solid #1e293b', borderRadius: 8, background: '#0b1220', overflow: 'hidden' }}>
         {loading ? (
           <div style={centerEmptyStyle}>タスクを読み込み中...</div>
         ) : chartGroups.length === 0 ? (
           <div style={centerEmptyStyle}>この期間に表示できる予定タスクはありません。</div>
         ) : (
           <div ref={scrollRef} style={{ height: '100%', overflow: 'auto' }}>
-            <div style={{ minWidth: LEFT_COLUMN_WIDTH + timelineWidth }}>
+            <div style={{ minWidth: leftTableWidth + timelineWidth }}>
               <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 6 }}>
-                <div style={{ position: 'sticky', left: 0, width: LEFT_COLUMN_WIDTH, minWidth: LEFT_COLUMN_WIDTH, background: '#0f172a', borderRight: '1px solid #1e293b', borderBottom: '1px solid #1e293b', padding: '10px 12px' }}>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Task</div>
-                  <div style={{ marginTop: 6, fontSize: '0.85rem', color: '#cbd5e1' }}>Date / Status / Expansion</div>
+                <div style={{ position: 'sticky', left: 0, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0f172a', borderRight: '1px solid #1e293b', borderBottom: '1px solid #1e293b', padding: '6px 8px' }}>
+                  <div style={{ ...leftHeaderGridStyle, gridTemplateColumns: leftGridTemplate }}>
+                    {LEFT_COLUMN_DEFS.map((column) => (
+                      <div key={column.key} style={leftHeaderCellStyle}>
+                        <span style={leftHeaderLabelStyle}>{column.label}</span>
+                        <span
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label={`${column.label}列幅を変更`}
+                          onPointerDown={(event) => beginLeftColumnResize(column.key, event)}
+                          style={leftColumnResizeHandleStyle(resizingLeftColumn?.column === column.key)}
+                          title={`${column.label}列の幅を変更`}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <div style={{ width: timelineWidth, display: 'flex', background: '#0f172a', borderBottom: '1px solid #1e293b' }}>
@@ -2309,14 +2658,14 @@ export function GanttView({
                       style={{
                         width: unitWidth,
                         minWidth: unitWidth,
-                        padding: '8px 0 9px',
+                        padding: '5px 0 6px',
                         textAlign: 'center',
                         background: unit.background,
                         borderRight: '1px solid #1e293b'
                       }}
                     >
-                      <div style={{ fontSize: '0.68rem', color: unit.isCurrent ? '#bfdbfe' : '#64748b' }}>{unit.primaryLabel}</div>
-                      <div style={{ marginTop: 4, fontSize: '0.72rem', color: unit.isCurrent ? '#dbeafe' : '#cbd5e1', fontWeight: unit.isCurrent ? 700 : 500 }}>{unit.secondaryLabel}</div>
+                      <div style={{ fontSize: '0.62rem', color: unit.isCurrent ? '#bfdbfe' : '#64748b' }}>{unit.primaryLabel}</div>
+                      <div style={{ marginTop: 2, fontSize: '0.68rem', color: unit.isCurrent ? '#dbeafe' : '#cbd5e1', fontWeight: unit.isCurrent ? 700 : 500 }}>{unit.secondaryLabel}</div>
                     </div>
                   ))}
                 </div>
@@ -2327,7 +2676,7 @@ export function GanttView({
                   <svg
                     width={timelineWidth}
                     height={rowLayout.totalHeight}
-                    style={{ position: 'absolute', top: 0, left: LEFT_COLUMN_WIDTH, overflow: 'visible', pointerEvents: 'none', zIndex: 1 }}
+                    style={{ position: 'absolute', top: 0, left: leftTableWidth, overflow: 'visible', pointerEvents: 'none', zIndex: 1 }}
                     aria-hidden="true"
                   >
                     <defs>
@@ -2418,8 +2767,9 @@ export function GanttView({
                         opacity: isReorderDragSource ? 0.7 : 1
                       }}
                     >
-                      <div style={{ position: 'sticky', left: 0, zIndex: 4, width: LEFT_COLUMN_WIDTH, minWidth: LEFT_COLUMN_WIDTH, background: '#0f172a', borderRight: '1px solid #1e293b', padding: '9px 12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ position: 'sticky', left: 0, zIndex: 4, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0f172a', borderRight: '1px solid #1e293b', padding: '0 8px', borderLeft: `3px solid ${group.todo.category_color ?? 'transparent'}` }}>
+                        <div style={{ ...leftRowGridStyle, gridTemplateColumns: leftGridTemplate }}>
+                          <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                           {isReorderMode && (
                             <div
                               draggable={!reorderPending}
@@ -2441,57 +2791,124 @@ export function GanttView({
                           >
                             {canToggleSubtasks ? (isExpanded ? '-' : '+') : '.'}
                           </button>
-                          <div style={{ flex: 1, minWidth: 0 }}>
                             <button
-                              onClick={() => {
-                                if (canToggleSubtasks) {
-                                  toggleTodoExpansion(group.todo.id)
-                                  return
-                                }
-                                handleChartItemSelect(group.todo.id)
-                              }}
-                              style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: '#f8fafc', fontSize: '0.8rem', fontWeight: 700, textAlign: 'left', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              onClick={() => handleChartItemSelect(group.todo.id)}
+                              title={[
+                                group.todo.title,
+                                group.todo.category_name ? `カテゴリ: ${group.todo.category_name}` : null,
+                                canToggleSubtasks ? `サブタスク: ${group.datedSubTasks.length}件` : null,
+                                group.undatedSubTaskCount > 0 ? `日付未設定サブタスク: ${group.undatedSubTaskCount}件` : null,
+                                clipped ? '表示範囲外あり' : null
+                              ].filter(Boolean).join('\n')}
+                              style={tableTitleButtonStyle}
                             >
                               {group.todo.title}
                             </button>
-                            <div style={{ marginTop: 5, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.66rem', color: '#94a3b8' }}>
-                              <span>{displayedTodoBar ? `${displayedTodoBar.startDate}${displayedTodoBar.startDate === displayedTodoBar.endDate ? '' : ` - ${displayedTodoBar.endDate}`}` : '未配置'}</span>
-                              <span>{displayedTodoBar ? `${diffCalendarDays(displayedTodoBar.endDate, displayedTodoBar.startDate) + 1}日` : '期間なし'}</span>
-                              <span>{progress}%</span>
-                              {showScheduleSignals && scheduleHealth && (
-                                <span style={scheduleHealthBadgeStyle(scheduleHealth)}>
-                                  {scheduleHealth.label}
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ marginTop: 5, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.66rem' }}>
-                              {group.todo.category_name && <span style={{ color: group.todo.category_color ?? '#a5b4fc' }}>{group.todo.category_name}</span>}
-                              {group.todo.assignee_name && (
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: group.todo.assignee_color ?? '#94a3b8' }}>
-                                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.todo.assignee_color ?? '#64748b' }} />
-                                  {group.todo.assignee_name}
-                                </span>
-                              )}
-                              {(group.todo.co_assignees ?? []).length > 0 && (
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }} title={`サブ担当: ${(group.todo.co_assignees ?? []).map((coAssignee) => coAssignee.display_name).join('、')}`}>
-                                  <span style={{ color: '#64748b' }}>+</span>
-                                  {(group.todo.co_assignees ?? []).map((coAssignee) => (
-                                    <span key={coAssignee.user_id} style={{ width: 8, height: 8, borderRadius: '50%', background: coAssignee.color, flexShrink: 0 }} />
-                                  ))}
-                                </span>
-                              )}
-                              {canToggleSubtasks && (
-                                <span style={{ color: isExpanded ? '#93c5fd' : '#64748b' }}>
-                                  {isExpanded ? `展開 ${group.datedSubTasks.length}件` : `折りたたみ ${group.datedSubTasks.length}件`}
-                                </span>
-                              )}
-                              {clipped && <span style={{ color: '#fbbf24' }}>表示範囲外</span>}
-                              {group.undatedSubTaskCount > 0 && <span style={{ color: '#94a3b8' }}>日付未設定のサブタスク {group.undatedSubTaskCount}件</span>}
-                            </div>
                           </div>
-                          <button onClick={() => handleChartItemSelect(group.todo.id)} style={detailShortcutButtonStyle}>
-                            詳細
-                          </button>
+                          {editingTodoCell?.todoId === group.todo.id && editingTodoCell.field === 'start_date' ? (
+                            <input
+                              autoFocus
+                              type="date"
+                              value={editingTodoCell.value}
+                              onChange={(event) => setEditingTodoCell((previous) => previous ? { ...previous, value: event.target.value } : previous)}
+                              onBlur={() => void commitTodoCellEdit()}
+                              onKeyDown={handleTodoCellEditorKeyDown}
+                              style={{ ...tableInputStyle, width: '100%' }}
+                            />
+                          ) : (
+                            <button onClick={() => beginTodoCellEdit(group.todo, 'start_date')} style={tableCellButtonStyle}>
+                              {displayedTodoBar ? shortDateLabel(displayedTodoBar.startDate) : '-'}
+                            </button>
+                          )}
+                          {editingTodoCell?.todoId === group.todo.id && editingTodoCell.field === 'due_date' ? (
+                            <input
+                              autoFocus
+                              type="date"
+                              value={editingTodoCell.value}
+                              onChange={(event) => setEditingTodoCell((previous) => previous ? { ...previous, value: event.target.value } : previous)}
+                              onBlur={() => void commitTodoCellEdit()}
+                              onKeyDown={handleTodoCellEditorKeyDown}
+                              style={{ ...tableInputStyle, width: '100%' }}
+                            />
+                          ) : (
+                            <button onClick={() => beginTodoCellEdit(group.todo, 'due_date')} style={tableCellButtonStyle}>
+                              {displayedTodoBar ? shortDateLabel(displayedTodoBar.endDate) : '-'}
+                            </button>
+                          )}
+                          {editingTodoCell?.todoId === group.todo.id && editingTodoCell.field === 'progress' ? (
+                            <input
+                              autoFocus
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={editingTodoCell.value}
+                              onChange={(event) => setEditingTodoCell((previous) => previous ? { ...previous, value: event.target.value } : previous)}
+                              onBlur={() => void commitTodoCellEdit()}
+                              onKeyDown={handleTodoCellEditorKeyDown}
+                              style={{ ...tableInputStyle, width: '100%' }}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => beginTodoCellEdit(group.todo, 'progress')}
+                              style={tableCellButtonStyle}
+                              title={showScheduleSignals && scheduleHealth ? scheduleHealth.label : undefined}
+                            >
+                              {showScheduleSignals && scheduleHealth && scheduleHealth.status !== 'onTrack' && (
+                                <span style={{ ...statusDotStyle, background: scheduleHealth.accent }} />
+                              )}
+                              {progress}%
+                            </button>
+                          )}
+                          {editingTodoCell?.todoId === group.todo.id && editingTodoCell.field === 'assignee_id' ? (
+                            <select
+                              autoFocus
+                              value={editingTodoCell.value}
+                              onChange={(event) => {
+                                const value = event.target.value
+                                if (value === (group.todo.assignee_id ?? '')) {
+                                  setEditingTodoCell(null)
+                                  return
+                                }
+                                setEditingTodoCellSaving(true)
+                                void onUpdateTodo(group.todo.id, { assignee_id: value || null }).finally(() => {
+                                  setEditingTodoCell(null)
+                                  setEditingTodoCellSaving(false)
+                                })
+                              }}
+                              onBlur={() => setEditingTodoCell(null)}
+                              onKeyDown={handleTodoCellEditorKeyDown}
+                              style={{ ...tableSelectStyle, width: '100%' }}
+                            >
+                              <option value="">未割り当て</option>
+                              {group.todo.assignee_id && !assigneeOptions.some((user) => user.id === group.todo.assignee_id) && (
+                                <option value={group.todo.assignee_id}>{group.todo.assignee_name ?? '現在の担当'}</option>
+                              )}
+                              {assigneeOptions.map((user) => (
+                                <option key={user.id} value={user.id}>{user.display_name}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <button
+                              onClick={() => beginTodoCellEdit(group.todo, 'assignee_id')}
+                              style={tableCellButtonStyle}
+                              title={[
+                                group.todo.assignee_name ? `担当: ${group.todo.assignee_name}` : null,
+                                (group.todo.co_assignees ?? []).length > 0 ? `サブ担当: ${(group.todo.co_assignees ?? []).map((coAssignee) => coAssignee.display_name).join('、')}` : null
+                              ].filter(Boolean).join('\n') || undefined}
+                            >
+                              {group.todo.assignee_name && (
+                                <span style={assigneeInitialStyle(group.todo.assignee_color, 12)}>{assigneeInitial(group.todo.assignee_name)}</span>
+                              )}
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {group.todo.assignee_name ?? '-'}
+                              </span>
+                              {(group.todo.co_assignees ?? []).map((coAssignee) => (
+                                <span key={coAssignee.user_id} style={assigneeInitialStyle(coAssignee.color, 12)} title={`サブ担当: ${coAssignee.display_name}`}>
+                                  {assigneeInitial(coAssignee.display_name)}
+                                </span>
+                              ))}
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -2502,10 +2919,10 @@ export function GanttView({
                             style={{
                               position: 'absolute',
                               left: baselineStartIndex * unitWidth + 8,
-                              top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2 + 6,
+                              top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2 + 3,
                               width: Math.max((baselineEndIndex - baselineStartIndex + 1) * unitWidth - 16, 12),
-                              height: PARENT_BAR_HEIGHT - 12,
-                              borderRadius: 999,
+                              height: 4,
+                              borderRadius: 3,
                               background: '#94a3b81f',
                               border: '1px dashed #94a3b8',
                               boxSizing: 'border-box',
@@ -2514,8 +2931,8 @@ export function GanttView({
                           />
                         )}
                         {displayedTodoBar && todoVisible && (
-                          <div ref={(node) => setDependencyTargetBarRef(group.todo.id, node)} onClick={() => handleChartItemSelect(group.todo.id)} style={{ position: 'absolute', left: displayStartIndex * unitWidth + 4, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 12, background: tone.background, border: `1px solid ${tone.border}`, boxSizing: 'border-box', overflow: 'hidden', boxShadow: activeState ? '0 10px 24px rgba(15, 23, 42, 0.28)' : isDependencySource || isDependencyTarget ? '0 0 0 2px rgba(56, 189, 248, 0.42), 0 10px 24px rgba(8, 47, 73, 0.24)' : 'none', cursor: !isTimelineEditable ? 'pointer' : 'grab' }}>
-                            <div style={{ position: 'absolute', inset: 0, width: `${progress}%`, background: `${tone.fill}66` }} />
+                          <div ref={(node) => setDependencyTargetBarRef(group.todo.id, node)} onClick={() => handleChartItemSelect(group.todo.id)} style={{ position: 'absolute', left: displayStartIndex * unitWidth + 4, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 4, background: tone.background, border: `1px solid ${tone.border}`, boxSizing: 'border-box', overflow: 'hidden', boxShadow: activeState ? '0 0 0 2px rgba(59, 130, 246, 0.28)' : isDependencySource || isDependencyTarget ? '0 0 0 2px rgba(56, 189, 248, 0.42)' : 'none', cursor: !isTimelineEditable ? 'pointer' : 'grab' }}>
+                            <div style={{ position: 'absolute', inset: 0, width: `${progress}%`, background: `${tone.fill}55` }} />
                             {group.todo.assignee_color && (
                               <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: group.todo.assignee_color, zIndex: 3 }} />
                             )}
@@ -2527,21 +2944,15 @@ export function GanttView({
                                 if (event.button !== 0 || !isTimelineEditable) return
                                 beginInteraction('move', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX)
                               }}
-                              style={{ position: 'absolute', left: 9, right: 9, top: 0, bottom: 0, display: 'flex', alignItems: 'center', gap: 10, cursor: !isTimelineEditable ? 'pointer' : 'grab', color: tone.text, zIndex: 2 }}
+                              style={{ position: 'absolute', left: 8, right: 8, top: 0, bottom: 0, display: 'flex', alignItems: 'center', gap: 6, cursor: !isTimelineEditable ? 'pointer' : 'grab', color: tone.text, zIndex: 2 }}
                             >
-                              <span style={{ fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{barStartLabel(displayedTodoBar.startDate, timeScale)}</span>
-                              <span style={{ fontSize: '0.78rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.todo.title}</span>
-                              {group.todo.assignee_name && barWidth > 150 && (
-                                <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', fontWeight: 600, whiteSpace: 'nowrap', opacity: 0.9 }}>
-                                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: group.todo.assignee_color ?? '#64748b', flexShrink: 0 }} />
-                                  {group.todo.assignee_name}
-                                </span>
-                              )}
+                              {barWidth > 52 && <span style={{ fontSize: '0.64rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{barStartLabel(displayedTodoBar.startDate, timeScale)}</span>}
+                              {barWidth > 96 && <span style={{ fontSize: '0.7rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.todo.title}</span>}
                             </div>
                             {isTimelineEditable && (
                               <>
-                                <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeStart', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX) }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 10, cursor: 'ew-resize', background: '#ffffff12' }} />
-                                <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeEnd', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX) }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 10, cursor: 'ew-resize', background: '#ffffff12' }} />
+                                <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeStart', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX) }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: 'transparent' }} />
+                                <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeEnd', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX) }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: 'transparent' }} />
                               </>
                             )}
                           </div>
@@ -2560,6 +2971,7 @@ export function GanttView({
                                   border: `2px solid ${isDependencyTarget ? '#38bdf8' : '#334155'}`,
                                   background: isDependencyTarget ? '#38bdf8' : '#0b1220',
                                   boxShadow: isDependencyTarget ? '0 0 0 4px rgba(56, 189, 248, 0.18)' : 'none',
+                                  opacity: isDependencyTarget ? 1 : 0.35,
                                   pointerEvents: 'none',
                                   zIndex: 4
                                 }}
@@ -2579,7 +2991,8 @@ export function GanttView({
                                 borderRadius: 999,
                                 border: `2px solid ${isDependencySource ? '#bae6fd' : '#0f172a'}`,
                                 background: isDependencySource ? '#38bdf8' : '#f59e0b',
-                                boxShadow: isDependencySource ? '0 0 0 4px rgba(56, 189, 248, 0.18)' : '0 0 0 2px rgba(15, 23, 42, 0.58)',
+                                boxShadow: isDependencySource ? '0 0 0 4px rgba(56, 189, 248, 0.18)' : 'none',
+                                opacity: isDependencySource ? 1 : 0.5,
                                 cursor: isTimelineEditable ? 'crosshair' : 'default',
                                 zIndex: 4
                               }}
@@ -2606,42 +3019,140 @@ export function GanttView({
                       const baselineStartIndex = baselineBar ? clamp(diffUnits(baselineBar.startDate, timelineStart, timeScale), 0, totalUnits - 1) : 0
                       const baselineEndIndex = baselineBar ? clamp(diffUnits(baselineBar.endDate, timelineStart, timeScale), 0, totalUnits - 1) : 0
                       return (
-                        <div key={subTask.id} style={{ display: 'flex', minHeight: SUBTASK_ROW_HEIGHT, borderTop: '1px solid #0f172a' }}>
-                          <div style={{ position: 'sticky', left: 0, zIndex: 3, width: LEFT_COLUMN_WIDTH, minWidth: LEFT_COLUMN_WIDTH, background: tone.rowBackground, borderRight: '1px solid #1e293b', padding: '8px 12px 8px 24px' }}>
-                            <button
-                              onClick={() => handleChartItemSelect(group.todo.id)}
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                padding: 0,
-                                cursor: 'pointer',
-                                color: tone.text,
-                                fontSize: '0.75rem',
-                                fontWeight: 700,
-                                textAlign: 'left',
-                                width: '100%',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                textDecoration: Boolean(subTask.done) ? 'line-through' : 'none'
-                              }}
-                            >
-                              - {subTask.title}
-                            </button>
-                            <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: tone.metaText }}>
-                              <span>サブタスク</span>
-                              <span>{bar.startDate === bar.endDate ? bar.startDate : `${bar.startDate} - ${bar.endDate}`}</span>
-                              <span
-                                style={{
-                                  padding: '1px 6px',
-                                  borderRadius: 999,
-                                  background: tone.statusBackground,
-                                  color: tone.statusText,
-                                  fontWeight: 700
-                                }}
-                              >
-                                {tone.statusLabel}
-                              </span>
+                        <div key={subTask.id} style={{ display: 'flex', minHeight: SUBTASK_ROW_HEIGHT, borderTop: '1px solid #111827' }}>
+                          <div style={{ position: 'sticky', left: 0, zIndex: 3, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0b1220', borderRight: '1px solid #1e293b', padding: '0 8px 0 24px' }}>
+                            <div style={{ ...leftSubRowGridStyle, gridTemplateColumns: leftGridTemplate }}>
+                              {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'title' ? (
+                                <input
+                                  autoFocus
+                                  value={editingSubTaskCell.value}
+                                  onChange={(event) => setEditingSubTaskCell((previous) => previous ? { ...previous, value: event.target.value } : previous)}
+                                  onBlur={() => void commitSubTaskCellEdit()}
+                                  onKeyDown={handleSubTaskCellEditorKeyDown}
+                                  style={{ ...tableInputStyle, width: '100%' }}
+                                />
+                              ) : (
+                                <button
+                                  onClick={() => beginSubTaskCellEdit(subTask, 'title')}
+                                  title={subTask.title}
+                                  style={{
+                                    ...tableTitleButtonStyle,
+                                    color: tone.text,
+                                    cursor: 'text',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 600,
+                                    textDecoration: Boolean(subTask.done) ? 'line-through' : 'none'
+                                  }}
+                                >
+                                  {subTask.title}
+                                </button>
+                              )}
+                              {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'start_date' ? (
+                                <input
+                                  autoFocus
+                                  type="date"
+                                  value={editingSubTaskCell.value}
+                                  onChange={(event) => setEditingSubTaskCell((previous) => previous ? { ...previous, value: event.target.value } : previous)}
+                                  onBlur={() => void commitSubTaskCellEdit()}
+                                  onKeyDown={handleSubTaskCellEditorKeyDown}
+                                  style={{ ...tableInputStyle, width: '100%' }}
+                                />
+                              ) : (
+                                <button onClick={() => beginSubTaskCellEdit(subTask, 'start_date')} style={{ ...tableCellButtonStyle, ...subTableCellStyle }}>
+                                  {shortDateLabel(displayedBar.startDate)}
+                                </button>
+                              )}
+                              {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'due_date' ? (
+                                <input
+                                  autoFocus
+                                  type="date"
+                                  value={editingSubTaskCell.value}
+                                  onChange={(event) => setEditingSubTaskCell((previous) => previous ? { ...previous, value: event.target.value } : previous)}
+                                  onBlur={() => void commitSubTaskCellEdit()}
+                                  onKeyDown={handleSubTaskCellEditorKeyDown}
+                                  style={{ ...tableInputStyle, width: '100%' }}
+                                />
+                              ) : (
+                                <button onClick={() => beginSubTaskCellEdit(subTask, 'due_date')} style={{ ...tableCellButtonStyle, ...subTableCellStyle }}>
+                                  {shortDateLabel(displayedBar.endDate)}
+                                </button>
+                              )}
+                              {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'done' ? (
+                                <select
+                                  autoFocus
+                                  value={editingSubTaskCell.value}
+                                  onChange={(event) => {
+                                    const value = event.target.value
+                                    const currentValue = Boolean(subTask.done) ? 'done' : 'active'
+                                    if (value === currentValue) {
+                                      setEditingSubTaskCell(null)
+                                      return
+                                    }
+                                    setEditingSubTaskCellSaving(true)
+                                    void window.api.subtaskUpdate(subTask.id, { done: value === 'done' }).then((updated) => {
+                                      setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
+                                    }).finally(() => {
+                                      setEditingSubTaskCell(null)
+                                      setEditingSubTaskCellSaving(false)
+                                    })
+                                  }}
+                                  onBlur={() => setEditingSubTaskCell(null)}
+                                  onKeyDown={handleSubTaskCellEditorKeyDown}
+                                  style={{ ...tableSelectStyle, width: '100%' }}
+                                >
+                                  <option value="active">進行</option>
+                                  <option value="done">完了</option>
+                                </select>
+                              ) : (
+                                <button onClick={() => beginSubTaskCellEdit(subTask, 'done')} style={{ ...tableCellButtonStyle, ...subTableCellStyle }} title={tone.statusLabel}>
+                                  <span style={{ ...statusDotStyle, background: tone.border }} />
+                                  {Boolean(subTask.done) ? '完了' : '進行'}
+                                </button>
+                              )}
+                              {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'assignee_id' ? (
+                                <select
+                                  autoFocus
+                                  value={editingSubTaskCell.value}
+                                  onChange={(event) => {
+                                    const value = event.target.value
+                                    if (value === (subTask.assignee_id ?? '')) {
+                                      setEditingSubTaskCell(null)
+                                      return
+                                    }
+                                    setEditingSubTaskCellSaving(true)
+                                    void window.api.subtaskUpdate(subTask.id, { assignee_id: value || null }).then((updated) => {
+                                      setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
+                                    }).finally(() => {
+                                      setEditingSubTaskCell(null)
+                                      setEditingSubTaskCellSaving(false)
+                                    })
+                                  }}
+                                  onBlur={() => setEditingSubTaskCell(null)}
+                                  onKeyDown={handleSubTaskCellEditorKeyDown}
+                                  style={{ ...tableSelectStyle, width: '100%' }}
+                                >
+                                  <option value="">未割り当て</option>
+                                  {subTask.assignee_id && !assigneeOptions.some((user) => user.id === subTask.assignee_id) && (
+                                    <option value={subTask.assignee_id}>{subTask.assignee_name ?? '現在の担当'}</option>
+                                  )}
+                                  {assigneeOptions.map((user) => (
+                                    <option key={user.id} value={user.id}>{user.display_name}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <button
+                                  onClick={() => beginSubTaskCellEdit(subTask, 'assignee_id')}
+                                  style={{ ...tableCellButtonStyle, ...subTableCellStyle }}
+                                  title={subTask.assignee_name ? `担当: ${subTask.assignee_name}` : undefined}
+                                >
+                                  {subTask.assignee_name ? (
+                                    <>
+                                      <span style={assigneeInitialStyle(subTask.assignee_color, 12)}>{assigneeInitial(subTask.assignee_name)}</span>
+                                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subTask.assignee_name}</span>
+                                    </>
+                                  ) : '-'}
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -2652,10 +3163,10 @@ export function GanttView({
                                 style={{
                                   position: 'absolute',
                                   left: baselineStartIndex * unitWidth + 9,
-                                  top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2 + 4,
+                                  top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2 + 3,
                                   width: Math.max((baselineEndIndex - baselineStartIndex + 1) * unitWidth - 18, 10),
-                                  height: SUBTASK_BAR_HEIGHT - 8,
-                                  borderRadius: 999,
+                                  height: 3,
+                                  borderRadius: 3,
                                   background: '#94a3b81a',
                                   border: '1px dashed #94a3b8',
                                   boxSizing: 'border-box',
@@ -2663,7 +3174,7 @@ export function GanttView({
                                 }}
                               />
                             )}
-                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTask.title} (${displayedBar.startDate}${displayedBar.startDate === displayedBar.endDate ? '' : ` - ${displayedBar.endDate}`})`} style={{ position: 'absolute', left: subTaskStartIndex * unitWidth + 6, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: Math.max((subTaskEndIndex - subTaskStartIndex + 1) * unitWidth - 12, 12), height: SUBTASK_BAR_HEIGHT, borderRadius: 999, background: tone.background, border: `1px ${tone.borderStyle} ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: !isTimelineEditable ? 'pointer' : 'grab', overflow: 'hidden', boxShadow: subTaskActiveState ? '0 8px 18px rgba(15, 23, 42, 0.24)' : Boolean(subTask.done) ? '0 0 0 1px rgba(134, 239, 172, 0.18) inset' : 'none' }}>
+                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTask.title} (${displayedBar.startDate}${displayedBar.startDate === displayedBar.endDate ? '' : ` - ${displayedBar.endDate}`})`} style={{ position: 'absolute', left: subTaskStartIndex * unitWidth + 6, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: Math.max((subTaskEndIndex - subTaskStartIndex + 1) * unitWidth - 12, 12), height: SUBTASK_BAR_HEIGHT, borderRadius: 3, background: tone.background, border: `1px ${tone.borderStyle} ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: !isTimelineEditable ? 'pointer' : 'grab', overflow: 'hidden', boxShadow: subTaskActiveState ? '0 0 0 2px rgba(59, 130, 246, 0.22)' : Boolean(subTask.done) ? '0 0 0 1px rgba(134, 239, 172, 0.18) inset' : 'none' }}>
                               <div
                                 onPointerDown={(event) => {
                                   if (event.button !== 0 || !isTimelineEditable) return
@@ -2671,15 +3182,15 @@ export function GanttView({
                                 }}
                                 style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: !isTimelineEditable ? 'pointer' : 'grab' }}
                               >
-                                <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '0 6px', whiteSpace: 'nowrap', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
+                                <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0 5px', whiteSpace: 'nowrap', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
                                   {Boolean(subTask.done) && unitWidth >= UNIT_WIDTH[timeScale].normal ? '完了 ' : ''}
                                   {unitWidth >= UNIT_WIDTH[timeScale].normal ? subTask.title : barStartLabel(displayedBar.startDate, timeScale)}
                                 </span>
                               </div>
                               {isTimelineEditable && (
                                 <>
-                                  <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeStart', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX) }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: '#ffffff12' }} />
-                                  <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeEnd', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX) }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: '#ffffff12' }} />
+                                  <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeStart', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX) }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'transparent' }} />
+                                  <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeEnd', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX) }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'transparent' }} />
                                 </>
                               )}
                             </div>
@@ -2760,36 +3271,174 @@ const toggleLabelStyle: React.CSSProperties = {
   fontSize: '0.8rem'
 }
 
-const detailShortcutButtonStyle: React.CSSProperties = {
-  padding: '5px 8px',
-  borderRadius: 8,
-  border: '1px solid #334155',
-  background: '#111827',
-  color: '#cbd5e1',
-  cursor: 'pointer',
-  fontSize: '0.68rem',
+const leftHeaderGridStyle: React.CSSProperties = {
+  height: 31,
+  display: 'grid',
+  alignItems: 'center',
+  gap: 8,
+  color: '#94a3b8',
+  fontSize: '0.66rem',
   fontWeight: 700,
+  textTransform: 'uppercase'
+}
+
+const leftRowGridStyle: React.CSSProperties = {
+  height: PARENT_ROW_HEIGHT,
+  display: 'grid',
+  alignItems: 'center',
+  gap: 8,
+  minWidth: 0
+}
+
+const leftSubRowGridStyle: React.CSSProperties = {
+  height: SUBTASK_ROW_HEIGHT,
+  display: 'grid',
+  alignItems: 'center',
+  gap: 8,
+  minWidth: 0
+}
+
+const leftHeaderCellStyle: React.CSSProperties = {
+  position: 'relative',
+  minWidth: 0,
+  height: '100%',
+  display: 'flex',
+  alignItems: 'center'
+}
+
+const leftHeaderLabelStyle: React.CSSProperties = {
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap'
+}
+
+function leftColumnResizeHandleStyle(active: boolean): React.CSSProperties {
+  return {
+    position: 'absolute',
+    top: 2,
+    right: -5,
+    width: 9,
+    height: 27,
+    cursor: 'col-resize',
+    borderRadius: 4,
+    background: active ? '#38bdf8' : '#334155',
+    opacity: active ? 1 : 0.62,
+    boxShadow: active ? '0 0 0 1px rgba(56, 189, 248, 0.35)' : 'none',
+    zIndex: 2
+  }
+}
+
+function assigneeInitial(name: string | null | undefined): string {
+  const trimmed = name?.trim()
+  return trimmed ? trimmed.slice(0, 1) : '?'
+}
+
+function assigneeInitialStyle(color: string | null | undefined, size: number): React.CSSProperties {
+  return {
+    width: size,
+    height: size,
+    borderRadius: '50%',
+    background: color ?? '#64748b',
+    color: '#f8fafc',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    fontSize: `${Math.max(size - 5, 7)}px`,
+    fontWeight: 800,
+    lineHeight: 1
+  }
+}
+
+const tableTitleButtonStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  padding: 0,
+  cursor: 'pointer',
+  color: '#f8fafc',
+  fontSize: '0.75rem',
+  fontWeight: 700,
+  textAlign: 'left',
+  width: '100%',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap'
+}
+
+const tableCellStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  overflow: 'hidden',
+  color: '#cbd5e1',
+  fontSize: '0.68rem',
+  fontVariantNumeric: 'tabular-nums',
+  whiteSpace: 'nowrap'
+}
+
+const tableCellButtonStyle: React.CSSProperties = {
+  ...tableCellStyle,
+  width: '100%',
+  border: '1px solid transparent',
+  borderRadius: 4,
+  background: 'transparent',
+  padding: '2px 3px',
+  cursor: 'text',
+  textAlign: 'left'
+}
+
+const tableInputStyle: React.CSSProperties = {
+  height: 24,
+  minWidth: 0,
+  border: '1px solid #3b82f6',
+  borderRadius: 4,
+  background: '#020617',
+  color: '#e2e8f0',
+  padding: '2px 5px',
+  fontSize: '0.68rem',
+  fontVariantNumeric: 'tabular-nums',
+  outline: 'none',
+  boxSizing: 'border-box'
+}
+
+const tableSelectStyle: React.CSSProperties = {
+  ...tableInputStyle,
+  cursor: 'pointer'
+}
+
+const subTableCellStyle: React.CSSProperties = {
+  ...tableCellStyle,
+  color: '#94a3b8',
+  fontSize: '0.64rem'
+}
+
+const statusDotStyle: React.CSSProperties = {
+  width: 7,
+  height: 7,
+  borderRadius: '50%',
   flexShrink: 0
 }
 
 const headerActionButtonStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  borderRadius: 999,
+  padding: '6px 10px',
+  borderRadius: 6,
   border: '1px solid #2563eb',
   background: '#172554',
   color: '#dbeafe',
   cursor: 'pointer',
-  fontSize: '0.78rem',
+  fontSize: '0.74rem',
   fontWeight: 700
 }
 
 const standaloneBadgeStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  borderRadius: 999,
+  padding: '6px 10px',
+  borderRadius: 6,
   border: '1px solid #334155',
   background: '#111827',
   color: '#cbd5e1',
-  fontSize: '0.78rem',
+  fontSize: '0.74rem',
   fontWeight: 700
 }
 
@@ -2868,12 +3517,12 @@ const selectionEmptyStyle: React.CSSProperties = {
 }
 
 const collapsedSummaryChipStyle: React.CSSProperties = {
-  padding: '6px 10px',
-  borderRadius: 999,
+  padding: '4px 8px',
+  borderRadius: 5,
   background: '#0f172a',
   border: '1px solid #334155',
   color: '#cbd5e1',
-  fontSize: '0.76rem',
+  fontSize: '0.7rem',
   fontWeight: 600
 }
 
@@ -2944,17 +3593,6 @@ const secondaryActionChipStyle: React.CSSProperties = {
   fontWeight: 700
 }
 
-function scheduleHealthBadgeStyle(health: ScheduleHealthInfo): React.CSSProperties {
-  return {
-    padding: '1px 6px',
-    borderRadius: 999,
-    background: health.background,
-    border: `1px solid ${health.accent}`,
-    color: health.text,
-    fontWeight: 700
-  }
-}
-
 function scheduleHealthStripeStyle(health: ScheduleHealthInfo, barWidth: number): React.CSSProperties {
   const innerWidth = Math.max(barWidth - 18, 0)
   const stripeWidth = Math.min(
@@ -2990,9 +3628,9 @@ function chipStyle(active: boolean): React.CSSProperties {
 
 function expandToggleButtonStyle(active: boolean, expanded: boolean): React.CSSProperties {
   return {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 4,
     border: `1px solid ${active ? '#334155' : '#1f2937'}`,
     background: active ? '#111827' : 'transparent',
     color: active ? (expanded ? '#bfdbfe' : '#94a3b8') : '#334155',
@@ -3001,28 +3639,27 @@ function expandToggleButtonStyle(active: boolean, expanded: boolean): React.CSSP
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    marginTop: 1
+    fontSize: '0.66rem'
   }
 }
 
 function reorderHandleStyle(disabled: boolean, dragging: boolean): React.CSSProperties {
   return {
-    width: 20,
-    height: 22,
-    borderRadius: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 4,
     border: `1px solid ${dragging ? '#38bdf8' : '#334155'}`,
     background: dragging ? '#082f49' : '#111827',
     color: dragging ? '#e0f2fe' : '#94a3b8',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '0.76rem',
+    fontSize: '0.68rem',
     lineHeight: 1,
     letterSpacing: '-0.1em',
     userSelect: 'none',
     cursor: disabled ? 'not-allowed' : 'grab',
     flexShrink: 0,
-    marginTop: 1,
     opacity: disabled ? 0.5 : 1
   }
 }

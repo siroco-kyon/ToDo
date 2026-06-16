@@ -257,17 +257,18 @@ function spawnNextRecurrence(source: Todo): void {
     const db = getDb()
     const now = new Date().toISOString()
     const insert = db.prepare(
-      'INSERT INTO SubTasks (id, todo_id, title, description, start_date, due_date, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)'
+      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)'
     )
     const subTasks = db
       .prepare('SELECT * FROM SubTasks WHERE todo_id = ? ORDER BY sort_order ASC, created_at ASC')
-      .all(source.id) as Array<{ title: string; description: string | null; start_date: string | null; due_date: string | null; sort_order: number }>
+      .all(source.id) as Array<{ title: string; description: string | null; assignee_id: string | null; start_date: string | null; due_date: string | null; sort_order: number }>
     for (const sub of subTasks) {
       insert.run(
         crypto.randomUUID(),
         next.id,
         sub.title,
         sub.description ?? '',
+        sub.assignee_id,
         shiftRecurrenceDate(sub.start_date, recurrence),
         shiftRecurrenceDate(sub.due_date, recurrence),
         sub.sort_order,

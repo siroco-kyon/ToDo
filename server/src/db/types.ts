@@ -129,6 +129,9 @@ export interface SubTask {
   todo_id: string
   title: string
   description: string
+  assignee_id: string | null
+  assignee_name: string | null
+  assignee_color: string | null
   start_date: string | null
   due_date: string | null
   done: number
@@ -146,6 +149,7 @@ export interface CalendarSubTask extends SubTask {
 export interface CreateSubTaskInput {
   title: string
   description?: string
+  assignee_id?: string | null
   start_date?: string | null
   due_date?: string | null
 }
@@ -153,6 +157,7 @@ export interface CreateSubTaskInput {
 export interface UpdateSubTaskInput {
   title?: string
   description?: string
+  assignee_id?: string | null
   start_date?: string | null
   due_date?: string | null
   done?: boolean
