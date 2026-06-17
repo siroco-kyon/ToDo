@@ -1,9 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ProgressNote, ProgressNoteComment, PublicUser, Todo } from '../types'
 
+export interface ProgressTimelineFocusTarget {
+  date?: string | null
+  todoId?: string | null
+  noteId?: string | null
+  commentId?: string | null
+  nonce: number
+}
+
 interface Props {
   todos: Todo[]
   currentUser?: PublicUser | null
+  focusTarget?: ProgressTimelineFocusTarget | null
   onSelectTodo: (id: string) => void
   onShowToast: (message: string, type?: 'success' | 'error') => void
 }
@@ -62,11 +71,21 @@ function draftKey(noteId: string, parentCommentId: string | null): string {
   return parentCommentId ? `reply:${parentCommentId}` : `note:${noteId}`
 }
 
-export function ProgressTimeline({ todos, currentUser = null, onSelectTodo, onShowToast }: Props): React.JSX.Element {
+function noteElementId(id: string): string {
+  return `progress-note-${id}`
+}
+
+function commentElementId(id: string): string {
+  return `progress-comment-${id}`
+}
+
+export function ProgressTimeline({ todos, currentUser = null, focusTarget = null, onSelectTodo, onShowToast }: Props): React.JSX.Element {
   const [date, setDate] = useState(getTodayKey)
   const [notes, setNotes] = useState<ProgressNote[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedTodoId, setSelectedTodoId] = useState('')
+  const [focusedNoteId, setFocusedNoteId] = useState<string | null>(null)
+  const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null)
   const [noteDraft, setNoteDraft] = useState('')
   const [savingNote, setSavingNote] = useState(false)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
@@ -109,6 +128,28 @@ export function ProgressTimeline({ todos, currentUser = null, onSelectTodo, onSh
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (!focusTarget) return
+    if (focusTarget.date) setDate(focusTarget.date)
+    if (focusTarget.todoId) setSelectedTodoId(focusTarget.todoId)
+    setFocusedNoteId(focusTarget.noteId ?? null)
+    setFocusedCommentId(focusTarget.commentId ?? null)
+  }, [focusTarget])
+
+  useEffect(() => {
+    if (loading) return
+    const targetId = focusedCommentId
+      ? commentElementId(focusedCommentId)
+      : focusedNoteId
+        ? noteElementId(focusedNoteId)
+        : null
+    if (!targetId) return
+    const timer = window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 80)
+    return () => window.clearTimeout(timer)
+  }, [focusedCommentId, focusedNoteId, loading, notes])
 
   useEffect(() => {
     const unsubscribe = window.api.onDataChanged((scope) => {
@@ -254,7 +295,11 @@ export function ProgressTimeline({ todos, currentUser = null, onSelectTodo, onSh
     const flattenedReplies = depth === 0 ? flattenReplies(replies) : []
 
     return (
-      <div key={comment.id} style={{ ...commentThreadStyle, marginLeft: displayDepth * 18 }}>
+      <div
+        id={commentElementId(comment.id)}
+        key={comment.id}
+        style={{ ...commentThreadStyle, marginLeft: displayDepth * 18 }}
+      >
         <div style={{ position: 'relative', width: 34, display: 'flex', justifyContent: 'center' }}>
           {replies.length > 0 && <div style={verticalLineStyle} />}
           <Avatar name={authorName} color={authorColor} size={30} />
@@ -369,7 +414,7 @@ export function ProgressTimeline({ todos, currentUser = null, onSelectTodo, onSh
             const commentCount = countComments(comments)
 
             return (
-              <article key={note.id} style={postStyle}>
+              <article id={noteElementId(note.id)} key={note.id} style={postStyle}>
                 <div style={{ position: 'relative', width: 52, display: 'flex', justifyContent: 'center' }}>
                   {comments.length > 0 && <div style={{ ...verticalLineStyle, top: 48 }} />}
                   <Avatar name={authorName} color={authorColor} size={42} />

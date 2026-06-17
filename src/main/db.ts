@@ -216,6 +216,11 @@ function migrateDb(): void {
   if (!todoColumns.some((c) => c.name === 'recurrence_copy_subtasks')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN recurrence_copy_subtasks INTEGER DEFAULT 0').run()
   }
+  if (!todoColumns.some((c) => c.name === 'completed_at')) {
+    db.prepare('ALTER TABLE Todos ADD COLUMN completed_at TEXT').run()
+  }
+  db.prepare("UPDATE Todos SET completed_at = updated_at WHERE status = 'done' AND completed_at IS NULL").run()
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_todos_completed ON Todos(status, completed_at)').run()
 
   // SubTasks.description 追加
   if (!subTaskColumns.some((c) => c.name === 'description')) {
@@ -443,7 +448,16 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
   if (data.description !== undefined) { fields.push('description = ?'); values.push(data.description) }
   if (data.memo !== undefined) { fields.push('memo = ?'); values.push(data.memo) }
   if (data.category_id !== undefined) { fields.push('category_id = ?'); values.push(data.category_id) }
-  if (data.status !== undefined) { fields.push('status = ?'); values.push(data.status) }
+  if (data.status !== undefined) {
+    fields.push('status = ?')
+    values.push(data.status)
+    if (data.status === 'done') {
+      fields.push('completed_at = COALESCE(completed_at, ?)')
+      values.push(updatedAt)
+    } else {
+      fields.push('completed_at = NULL')
+    }
+  }
   if (data.priority !== undefined) { fields.push('priority = ?'); values.push(data.priority) }
   if (data.progress !== undefined) { fields.push('progress = ?'); values.push(data.progress) }
   if (data.start_date !== undefined) { fields.push('start_date = ?'); values.push(normalizeDateKey(data.start_date)) }
@@ -662,7 +676,7 @@ export function archiveTodo(id: string): void {
 
 export function unarchiveTodo(id: string): void {
   const now = new Date().toISOString()
-  db.prepare(`UPDATE Todos SET status = 'active', archived_at = NULL, updated_at = ? WHERE id = ?`).run(now, id)
+  db.prepare(`UPDATE Todos SET status = 'active', archived_at = NULL, completed_at = NULL, updated_at = ? WHERE id = ?`).run(now, id)
 }
 
 export function deleteTodo(id: string): void {
@@ -1522,6 +1536,17 @@ export function getProgressDigest(query: ProgressDigestQuery): ProgressDigest {
     )
     .all(from, to) as ProgressDigestTodo[]
 
+  const completedTodos = db
+    .prepare(
+      `SELECT t.id, t.title, t.status, t.progress, t.memo,
+              c.name AS category_name, c.color AS category_color, t.completed_at
+       FROM Todos t LEFT JOIN Categories c ON t.category_id = c.id
+       WHERE t.status = 'done' AND t.completed_at IS NOT NULL
+         AND date(t.completed_at, 'localtime') BETWEEN ? AND ?
+       ORDER BY t.completed_at ASC`
+    )
+    .all(from, to) as ProgressDigestCompletedTodo[]
+
   const addedSubTasks = db
     .prepare(
       `SELECT st.id, st.title, st.todo_id, t.title AS todo_title, st.done, st.created_at
@@ -1540,6 +1565,18 @@ export function getProgressDigest(query: ProgressDigestQuery): ProgressDigest {
     )
     .all(from, to) as ProgressDigestNote[]
 
+  const comments = db
+    .prepare(
+      `SELECT pnc.id, pnc.note_id, pn.todo_id, t.title AS todo_title,
+              pnc.parent_comment_id, pnc.body, pnc.created_at
+       FROM ProgressNoteComments pnc
+       JOIN ProgressNotes pn ON pnc.note_id = pn.id
+       JOIN Todos t ON pn.todo_id = t.id
+       WHERE date(pnc.created_at, 'localtime') BETWEEN ? AND ?
+       ORDER BY pnc.created_at ASC`
+    )
+    .all(from, to) as ProgressDigestComment[]
+
   const work = db
     .prepare(
       `SELECT COALESCE(SUM(duration_seconds), 0) AS seconds, COUNT(*) AS cnt
@@ -1556,8 +1593,10 @@ export function getProgressDigest(query: ProgressDigestQuery): ProgressDigest {
         display_name: '自分',
         color: '#6366f1',
         added_todos: addedTodos,
+        completed_todos: completedTodos,
         added_subtasks: addedSubTasks,
         notes,
+        comments,
         work_minutes: Math.round(work.seconds / 60),
         work_log_count: work.cnt
       }
@@ -1721,6 +1760,17 @@ export interface ProgressDigestTodo {
   created_at: string
 }
 
+export interface ProgressDigestCompletedTodo {
+  id: string
+  title: string
+  status: TodoStatus
+  progress: number
+  memo: string
+  category_name: string | null
+  category_color: string | null
+  completed_at: string
+}
+
 export interface ProgressDigestSubTask {
   id: string
   title: string
@@ -1738,14 +1788,26 @@ export interface ProgressDigestNote {
   created_at: string
 }
 
+export interface ProgressDigestComment {
+  id: string
+  note_id: string
+  todo_id: string
+  todo_title: string
+  parent_comment_id: string | null
+  body: string
+  created_at: string
+}
+
 /** One member's activity within the requested period. Desktop returns a single bucket. */
 export interface ProgressDigestUser {
   user_id: string | null
   display_name: string
   color: string
   added_todos: ProgressDigestTodo[]
+  completed_todos: ProgressDigestCompletedTodo[]
   added_subtasks: ProgressDigestSubTask[]
   notes: ProgressDigestNote[]
+  comments: ProgressDigestComment[]
   work_minutes: number
   work_log_count: number
 }
@@ -1799,6 +1861,7 @@ export interface Todo {
   co_assignees?: TodoCoAssignee[]
   created_at: string
   updated_at: string
+  completed_at: string | null
   archived_at: string | null
 }
 

@@ -95,8 +95,8 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
       `INSERT OR IGNORE INTO Todos
         (id, title, description, memo, category_id, assignee_id, created_by, status,
          priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks,
-         created_at, updated_at, archived_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         created_at, updated_at, completed_at, archived_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     const insertSubTask = webDb.prepare(
       `INSERT OR IGNORE INTO SubTasks
@@ -149,6 +149,9 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
     for (const todo of srcTodos) {
       const srcCategoryId = asNullableText(todo.category_id)
       const mappedCategoryId = srcCategoryId ? categoryMap.get(srcCategoryId) ?? null : null
+      const status = asText(todo.status, 'active')
+      const updatedAt = asText(todo.updated_at, now)
+      const completedAt = asNullableText(todo.completed_at) ?? (status === 'done' ? updatedAt : null)
       const changes = insertTodo.run(
         asText(todo.id),
         asText(todo.title),
@@ -157,7 +160,7 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
         mappedCategoryId,
         targetUserId,
         targetUserId,
-        asText(todo.status, 'active'),
+        status,
         asInt(todo.priority, 3),
         asInt(todo.progress, 0),
         asNullableText(todo.start_date),
@@ -166,7 +169,8 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
         asNullableText(todo.recurrence),
         asInt(todo.recurrence_copy_subtasks, 0),
         asText(todo.created_at, now),
-        asText(todo.updated_at, now),
+        updatedAt,
+        completedAt,
         asNullableText(todo.archived_at)
       ).changes
       result.todos += changes

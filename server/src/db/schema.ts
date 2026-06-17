@@ -49,6 +49,7 @@ export function createSchema(db: Database.Database): void {
       recurrence_copy_subtasks INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      completed_at TEXT,
       archived_at TEXT,
       FOREIGN KEY (category_id) REFERENCES Categories(id),
       FOREIGN KEY (assignee_id) REFERENCES Users(id),
@@ -229,6 +230,11 @@ export function runMigrations(db: Database.Database): void {
   if (!todoColumns.some((c) => c.name === 'recurrence_copy_subtasks')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN recurrence_copy_subtasks INTEGER DEFAULT 0').run()
   }
+  if (!todoColumns.some((c) => c.name === 'completed_at')) {
+    db.prepare('ALTER TABLE Todos ADD COLUMN completed_at TEXT').run()
+  }
+  db.prepare("UPDATE Todos SET completed_at = updated_at WHERE status = 'done' AND completed_at IS NULL").run()
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_todos_completed ON Todos(assignee_id, status, completed_at)').run()
 
   const subTaskColumns = db.prepare('PRAGMA table_info(SubTasks)').all() as { name: string }[]
   if (!subTaskColumns.some((c) => c.name === 'assignee_id')) {

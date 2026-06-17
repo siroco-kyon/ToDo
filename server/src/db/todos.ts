@@ -86,7 +86,16 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
   if (data.memo !== undefined) { fields.push('memo = ?'); values.push(data.memo) }
   if (data.category_id !== undefined) { fields.push('category_id = ?'); values.push(data.category_id) }
   if (data.assignee_id !== undefined) { fields.push('assignee_id = ?'); values.push(data.assignee_id) }
-  if (data.status !== undefined) { fields.push('status = ?'); values.push(data.status) }
+  if (data.status !== undefined) {
+    fields.push('status = ?')
+    values.push(data.status)
+    if (data.status === 'done') {
+      fields.push('completed_at = COALESCE(completed_at, ?)')
+      values.push(updatedAt)
+    } else {
+      fields.push('completed_at = NULL')
+    }
+  }
   if (data.priority !== undefined) { fields.push('priority = ?'); values.push(data.priority) }
   if (data.progress !== undefined) { fields.push('progress = ?'); values.push(data.progress) }
   if (data.start_date !== undefined) { fields.push('start_date = ?'); values.push(normalizeDateKey(data.start_date)) }
@@ -317,7 +326,7 @@ export function archiveTodo(id: string): void {
 export function unarchiveTodo(id: string): void {
   const now = new Date().toISOString()
   getDb()
-    .prepare("UPDATE Todos SET status = 'active', archived_at = NULL, updated_at = ? WHERE id = ?")
+    .prepare("UPDATE Todos SET status = 'active', archived_at = NULL, completed_at = NULL, updated_at = ? WHERE id = ?")
     .run(now, id)
 }
 

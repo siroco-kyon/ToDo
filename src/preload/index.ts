@@ -31,8 +31,10 @@ import type {
   ProgressDigest,
   ProgressDigestUser,
   ProgressDigestTodo,
+  ProgressDigestCompletedTodo,
   ProgressDigestSubTask,
   ProgressDigestNote,
+  ProgressDigestComment,
   ProgressDigestQuery,
   DesktopImportResult
 } from '../main/db'
@@ -69,8 +71,10 @@ export type {
   ProgressDigest,
   ProgressDigestUser,
   ProgressDigestTodo,
+  ProgressDigestCompletedTodo,
   ProgressDigestSubTask,
   ProgressDigestNote,
+  ProgressDigestComment,
   ProgressDigestQuery,
   DesktopImportResult
 }
