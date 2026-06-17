@@ -125,6 +125,10 @@ export function App(): React.JSX.Element {
     setTodayPlanItems(planItems)
   }, [])
 
+  const loadTodayPlan = useCallback(async () => {
+    setTodayPlanItems(await window.api.dailyPlanGetByDate(getTodayKey()))
+  }, [])
+
   const loadCategories = useCallback(async () => {
     const all = await window.api.categoryGetAll()
     setCategories(all)
@@ -184,11 +188,23 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     if (isFirstLaunch !== false) return
 
-    const unsubscribe = window.api.onDataChanged(() => {
-      void loadInitialData()
+    const unsubscribe = window.api.onDataChanged((scope) => {
+      if (scope === 'category') {
+        void Promise.all([loadCategories(), loadTodos()])
+        return
+      }
+
+      if (scope === 'todo') {
+        void loadTodos()
+        return
+      }
+
+      if (scope === 'plan') {
+        void loadTodayPlan()
+      }
     })
     return () => unsubscribe()
-  }, [isFirstLaunch, loadInitialData])
+  }, [isFirstLaunch, loadCategories, loadTodayPlan, loadTodos])
 
   useEffect(() => {
     window.localStorage.setItem('show-plan-rail', String(showPlanRail))
