@@ -68,13 +68,22 @@ function digestToMarkdown(digest: ProgressDigest): string {
   for (const user of digest.users) {
     lines.push(`## ${user.display_name}`)
     lines.push(
-      `- 追加タスク: ${user.added_todos.length}件 / サブタスク: ${user.added_subtasks.length}件 / 進捗メモ: ${user.notes.length}件 / 作業時間: ${formatMinutes(user.work_minutes)}（${user.work_log_count}回）`
+      `- 追加タスク: ${user.added_todos.length}件 / 完了タスク: ${user.completed_todos.length}件 / サブタスク: ${user.added_subtasks.length}件 / 進捗メモ: ${user.notes.length}件 / コメント: ${user.comments.length}件 / 作業時間: ${formatMinutes(user.work_minutes)}（${user.work_log_count}回）`
     )
     lines.push('')
 
     if (user.added_todos.length > 0) {
       lines.push('### 追加したタスク')
       for (const todo of user.added_todos) {
+        const category = todo.category_name ? `［${todo.category_name}］` : ''
+        lines.push(`- [${STATUS_LABEL[todo.status]}] ${category}${todo.title}（${todo.progress}%）`)
+      }
+      lines.push('')
+    }
+
+    if (user.completed_todos.length > 0) {
+      lines.push('### 完了したタスク')
+      for (const todo of user.completed_todos) {
         const category = todo.category_name ? `［${todo.category_name}］` : ''
         lines.push(`- [${STATUS_LABEL[todo.status]}] ${category}${todo.title}（${todo.progress}%）`)
       }
@@ -94,6 +103,16 @@ function digestToMarkdown(digest: ProgressDigest): string {
       for (const note of user.notes) {
         const body = note.body.replace(/\r?\n/g, ' ')
         lines.push(`- ${formatDateTime(note.created_at)}［${note.todo_title}］${body}`)
+      }
+      lines.push('')
+    }
+
+    if (user.comments.length > 0) {
+      lines.push('### コメント・返信')
+      for (const comment of user.comments) {
+        const body = comment.body.replace(/\r?\n/g, ' ')
+        const label = comment.parent_comment_id ? '返信' : 'コメント'
+        lines.push(`- ${formatDateTime(comment.created_at)} ${label}［${comment.todo_title}］${body}`)
       }
       lines.push('')
     }
@@ -286,8 +305,10 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
 function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Element {
   const hasActivity =
     user.added_todos.length > 0 ||
+    user.completed_todos.length > 0 ||
     user.added_subtasks.length > 0 ||
     user.notes.length > 0 ||
+    user.comments.length > 0 ||
     user.work_minutes > 0
 
   return (
@@ -297,8 +318,10 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
         <span style={{ fontSize: '0.95rem', color: '#e2e8f0', fontWeight: 700 }}>{user.display_name}</span>
         <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
           <span style={statBadge}>タスク {user.added_todos.length}</span>
+          <span style={statBadge}>完了 {user.completed_todos.length}</span>
           <span style={statBadge}>サブタスク {user.added_subtasks.length}</span>
           <span style={statBadge}>進捗メモ {user.notes.length}</span>
+          <span style={statBadge}>コメント {user.comments.length}</span>
           <span style={statBadge}>作業 {formatMinutes(user.work_minutes)}</span>
         </div>
       </div>
@@ -324,6 +347,29 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
                     )}
                     <span style={rowTitle}>{todo.title}</span>
                     <span style={rowMeta}>{todo.progress}%・{formatDateTime(todo.created_at)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {user.completed_todos.length > 0 && (
+            <div>
+              <div style={groupLabel}>完了したタスク</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {user.completed_todos.map((todo) => (
+                  <div key={todo.id} style={rowStyle}>
+                    <span style={{ ...statusPill, background: `${STATUS_COLOR[todo.status]}26`, color: STATUS_COLOR[todo.status] }}>
+                      {STATUS_LABEL[todo.status]}
+                    </span>
+                    {todo.category_name && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: todo.category_color ?? '#64748b' }} />
+                        <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{todo.category_name}</span>
+                      </span>
+                    )}
+                    <span style={rowTitle}>{todo.title}</span>
+                    <span style={rowMeta}>{todo.progress}%・{formatDateTime(todo.completed_at)}</span>
                   </div>
                 ))}
               </div>
@@ -364,6 +410,28 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
                       <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{formatDateTime(note.created_at)}</span>
                     </div>
                     <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{note.body}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {user.comments.length > 0 && (
+            <div>
+              <div style={groupLabel}>コメント・返信</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {user.comments.map((comment) => (
+                  <div key={comment.id} style={{ background: '#1e293b', borderRadius: 8, padding: '8px 10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.7rem', color: comment.parent_comment_id ? '#a78bfa' : '#38bdf8', fontWeight: 800 }}>
+                        {comment.parent_comment_id ? '返信' : 'コメント'}
+                      </span>
+                      <span style={{ fontSize: '0.74rem', color: '#93c5fd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360 }}>
+                        {comment.todo_title}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{formatDateTime(comment.created_at)}</span>
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{comment.body}</div>
                   </div>
                 ))}
               </div>

@@ -83,6 +83,7 @@ export interface Todo {
   co_assignees?: TodoCoAssignee[]
   created_at: string
   updated_at: string
+  completed_at: string | null
   archived_at: string | null
 }
 
@@ -386,6 +387,17 @@ export interface ProgressDigestTodo {
   created_at: string
 }
 
+export interface ProgressDigestCompletedTodo {
+  id: string
+  title: string
+  status: TodoStatus
+  progress: number
+  memo: string
+  category_name: string | null
+  category_color: string | null
+  completed_at: string
+}
+
 export interface ProgressDigestSubTask {
   id: string
   title: string
@@ -403,14 +415,26 @@ export interface ProgressDigestNote {
   created_at: string
 }
 
+export interface ProgressDigestComment {
+  id: string
+  note_id: string
+  todo_id: string
+  todo_title: string
+  parent_comment_id: string | null
+  body: string
+  created_at: string
+}
+
 /** One member's activity within the requested period. Desktop returns a single bucket. */
 export interface ProgressDigestUser {
   user_id: string | null
   display_name: string
   color: string
   added_todos: ProgressDigestTodo[]
+  completed_todos: ProgressDigestCompletedTodo[]
   added_subtasks: ProgressDigestSubTask[]
   notes: ProgressDigestNote[]
+  comments: ProgressDigestComment[]
   work_minutes: number
   work_log_count: number
 }

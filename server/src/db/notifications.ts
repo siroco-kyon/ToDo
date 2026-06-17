@@ -36,7 +36,7 @@ function getNotificationForUser(userId: string, id: string): UserNotification | 
 
 export function listNotifications(userId: string, limit = 50): UserNotification[] {
   return getDb()
-    .prepare(`${NOTIFICATION_SELECT} WHERE n.user_id = ? ORDER BY n.created_at DESC LIMIT ?`)
+    .prepare(`${NOTIFICATION_SELECT} WHERE n.user_id = ? AND n.read_at IS NULL ORDER BY n.created_at DESC LIMIT ?`)
     .all(userId, clampLimit(limit)) as UserNotification[]
 }
 
@@ -77,14 +77,15 @@ export function createNotification(input: CreateNotificationInput): UserNotifica
 }
 
 export function markNotificationRead(userId: string, id: string): UserNotification | undefined {
+  const notification = getNotificationForUser(userId, id)
   getDb()
-    .prepare('UPDATE Notifications SET read_at = COALESCE(read_at, ?) WHERE user_id = ? AND id = ?')
-    .run(new Date().toISOString(), userId, id)
-  return getNotificationForUser(userId, id)
+    .prepare('DELETE FROM Notifications WHERE user_id = ? AND id = ?')
+    .run(userId, id)
+  return notification
 }
 
 export function markAllNotificationsRead(userId: string): void {
   getDb()
-    .prepare('UPDATE Notifications SET read_at = COALESCE(read_at, ?) WHERE user_id = ? AND read_at IS NULL')
-    .run(new Date().toISOString(), userId)
+    .prepare('DELETE FROM Notifications WHERE user_id = ?')
+    .run(userId)
 }

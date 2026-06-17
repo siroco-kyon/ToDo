@@ -13,7 +13,7 @@ import { UserManagementModal } from './components/UserManagementModal'
 import { ProgressReportModal } from './components/ProgressReportModal'
 import { DesktopImportModal } from './components/DesktopImportModal'
 import { WorkLogSummary } from './components/WorkLogSummary'
-import { ProgressTimeline } from './components/ProgressTimeline'
+import { ProgressTimeline, type ProgressTimelineFocusTarget } from './components/ProgressTimeline'
 import { SetupWizardModal } from './components/SetupWizardModal'
 import { PlanView } from './components/PlanView'
 import { TodayFlowRail } from './components/TodayFlowRail'
@@ -63,6 +63,13 @@ function getTodayKey(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
+function getDateKeyFromIso(iso: string | null | undefined): string {
+  if (!iso) return getTodayKey()
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return getTodayKey()
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 export function App(): React.JSX.Element {
   const isStandaloneGanttWindow = window.location.hash === '#gantt-only'
   const [isFirstLaunch, setIsFirstLaunch] = useState<boolean | null>(null)
@@ -78,6 +85,7 @@ export function App(): React.JSX.Element {
   const [showNotifications, setShowNotifications] = useState(false)
   const [notifications, setNotifications] = useState<UserNotification[]>([])
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
+  const [progressTimelineFocus, setProgressTimelineFocus] = useState<ProgressTimelineFocusTarget | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null)
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
@@ -424,7 +432,18 @@ export function App(): React.JSX.Element {
         await window.api.notificationMarkRead(notification.id)
       }
       await loadNotifications()
-      if (notification.todo_id) openTodoDetail(notification.todo_id)
+      if (notification.type === 'progress_reply' && notification.progress_note_id) {
+        setProgressTimelineFocus({
+          date: getDateKeyFromIso(notification.created_at),
+          todoId: notification.todo_id,
+          noteId: notification.progress_note_id,
+          commentId: notification.progress_comment_id,
+          nonce: Date.now()
+        })
+        setActiveView('progress')
+      } else if (notification.todo_id) {
+        openTodoDetail(notification.todo_id)
+      }
       setShowNotifications(false)
     } catch (error) {
       showToast(error instanceof Error ? error.message : '通知を更新できませんでした', 'error')
@@ -847,8 +866,9 @@ export function App(): React.JSX.Element {
             <WorkLogSummary />
           ) : activeView === 'progress' ? (
             <ProgressTimeline
-              todos={filteredTodos}
+              todos={todos}
               currentUser={currentUser}
+              focusTarget={progressTimelineFocus}
               onSelectTodo={openTodoDetail}
               onShowToast={showToast}
             />

@@ -59,7 +59,7 @@ import {
   updateProgressNote,
   deleteProgressNote,
   getProgressNoteComment,
-  createProgressNoteComment,
+  createProgressNoteCommentWithId,
   updateProgressNoteComment,
   deleteProgressNoteComment,
   toggleProgressNoteReaction,
@@ -128,7 +128,7 @@ function notifyNewAssignments(actorUserId: string, before: Set<string>, after: T
   notifyUnreadChanged(changed)
 }
 
-function notifyProgressReply(actorUserId: string, note: ProgressNote | undefined): void {
+function notifyProgressReply(actorUserId: string, note: ProgressNote | undefined, commentId: string): void {
   if (!note?.user_id || note.user_id === actorUserId) return
   try {
     const notification = createNotification({
@@ -137,6 +137,7 @@ function notifyProgressReply(actorUserId: string, note: ProgressNote | undefined
       actorUserId,
       todoId: note.todo_id,
       progressNoteId: note.id,
+      progressCommentId: commentId,
       title: '進捗に返信がありました',
       body: `「${note.todo_title}」の進捗に返信がありました`
     })
@@ -288,9 +289,9 @@ dataRouter.delete('/progress-notes/:id', (req, res) =>
 dataRouter.post('/progress-notes/:id/comments', (req, res) =>
   run(res, () => {
     const note = getProgressNote(req.params.id, req.user!.id)
-    const updated = createProgressNoteComment(req.params.id, req.user!.id, req.body.body, req.body.parentCommentId)
-    notifyProgressReply(req.user!.id, note)
-    return updated
+    const created = createProgressNoteCommentWithId(req.params.id, req.user!.id, req.body.body, req.body.parentCommentId)
+    notifyProgressReply(req.user!.id, note, created.commentId)
+    return created.note
   }, 'todo'))
 dataRouter.put('/progress-note-comments/:id', (req, res) =>
   run(res, () => {

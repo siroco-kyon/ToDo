@@ -5,6 +5,8 @@ import type {
   ProgressNoteComment,
   ProgressNoteReaction,
   ProgressDigest,
+  ProgressDigestComment,
+  ProgressDigestCompletedTodo,
   ProgressDigestNote,
   ProgressDigestSubTask,
   ProgressDigestTodo,
@@ -139,7 +141,12 @@ export function getProgressNoteComment(id: string): ProgressNoteComment | undefi
   return getDb().prepare(`${COMMENT_SELECT} WHERE pnc.id = ?`).get(id) as ProgressNoteComment | undefined
 }
 
-export function createProgressNoteComment(noteId: string, userId: string, body: string, parentCommentId?: string | null): ProgressNote {
+export function createProgressNoteCommentWithId(
+  noteId: string,
+  userId: string,
+  body: string,
+  parentCommentId?: string | null
+): { note: ProgressNote; commentId: string } {
   const trimmed = body.trim()
   if (!trimmed) throw new Error('コメントを入力してください')
   const parentId = parentCommentId || null
@@ -152,7 +159,11 @@ export function createProgressNoteComment(noteId: string, userId: string, body: 
   getDb()
     .prepare('INSERT INTO ProgressNoteComments (id, note_id, parent_comment_id, user_id, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .run(id, noteId, parentId, userId, trimmed, now, now)
-  return getProgressNote(noteId, userId) as ProgressNote
+  return { note: getProgressNote(noteId, userId) as ProgressNote, commentId: id }
+}
+
+export function createProgressNoteComment(noteId: string, userId: string, body: string, parentCommentId?: string | null): ProgressNote {
+  return createProgressNoteCommentWithId(noteId, userId, body, parentCommentId).note
 }
 
 export function updateProgressNoteComment(id: string, body: string, currentUserId: string): ProgressNote {
@@ -234,6 +245,16 @@ export function getProgressDigest(from: string, to: string, userIds?: string[]):
      ORDER BY t.created_at ASC`
   )
 
+  const completedTodosStmt = db.prepare(
+    `SELECT t.id, t.title, t.status, t.progress, t.memo,
+            c.name AS category_name, c.color AS category_color, t.completed_at
+     FROM Todos t
+     LEFT JOIN Categories c ON t.category_id = c.id
+     WHERE t.assignee_id = ? AND t.status = 'done' AND t.completed_at IS NOT NULL
+       AND date(t.completed_at, 'localtime') BETWEEN ? AND ?
+     ORDER BY t.completed_at ASC`
+  )
+
   const addedSubTasksStmt = db.prepare(
     `SELECT st.id, st.title, st.todo_id, t.title AS todo_title, st.done, st.created_at
      FROM SubTasks st
@@ -250,6 +271,16 @@ export function getProgressDigest(from: string, to: string, userIds?: string[]):
      ORDER BY pn.created_at ASC`
   )
 
+  const commentsStmt = db.prepare(
+    `SELECT pnc.id, pnc.note_id, pn.todo_id, t.title AS todo_title,
+            pnc.parent_comment_id, pnc.body, pnc.created_at
+     FROM ProgressNoteComments pnc
+     JOIN ProgressNotes pn ON pnc.note_id = pn.id
+     JOIN Todos t ON pn.todo_id = t.id
+     WHERE pnc.user_id = ? AND date(pnc.created_at, 'localtime') BETWEEN ? AND ?
+     ORDER BY pnc.created_at ASC`
+  )
+
   const workStmt = db.prepare(
     `SELECT COALESCE(SUM(duration_seconds), 0) AS seconds, COUNT(*) AS cnt
      FROM WorkLogs
@@ -263,8 +294,10 @@ export function getProgressDigest(from: string, to: string, userIds?: string[]):
       display_name: u.display_name,
       color: u.color,
       added_todos: addedTodosStmt.all(u.id, from, to) as ProgressDigestTodo[],
+      completed_todos: completedTodosStmt.all(u.id, from, to) as ProgressDigestCompletedTodo[],
       added_subtasks: addedSubTasksStmt.all(u.id, from, to) as ProgressDigestSubTask[],
       notes: notesStmt.all(u.id, from, to) as ProgressDigestNote[],
+      comments: commentsStmt.all(u.id, from, to) as ProgressDigestComment[],
       work_minutes: Math.round(work.seconds / 60),
       work_log_count: work.cnt
     }
