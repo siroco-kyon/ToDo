@@ -106,6 +106,7 @@ export function TodoDetail({
   })
   const progressBarRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
+  const initializedTodoIdRef = useRef<string | undefined>(undefined)
 
   const todoId = todo?.id
 
@@ -163,8 +164,17 @@ export function TodoDetail({
     }
   }, [])
 
+  const loadWorkLogs = useCallback(async (id: string) => {
+    try {
+      setLogs(await window.api.worklogGetByTodo(id))
+    } catch (error) {
+      console.error('Failed to load worklogs', error)
+      setLogs([])
+    }
+  }, [])
+
   useEffect(() => {
-    if (!todoId || !todo) {
+    if (!todoId) {
       setLogs([])
       setSubTasks([])
       setDependencies([])
@@ -179,20 +189,51 @@ export function TodoDetail({
       return
     }
 
-    setEditing(false)
-    setEditData(createEditData(todo))
-    setDescriptionDraft(todo.description ?? '')
-    setDescriptionBase(todo.description ?? '')
-    setMemoDraft(todo.memo ?? '')
-    setMemoBase(todo.memo ?? '')
-    setNoteDraft('')
-    setEditingProgressNoteId(null)
-    setEditingProgressNoteDraft('')
-    window.api.worklogGetByTodo(todoId).then(setLogs).catch(console.error)
+    void loadWorkLogs(todoId)
     void loadSubTasks(todoId)
     void loadDependencies(todoId)
     void loadProgressNotes(todoId)
-  }, [createEditData, loadDependencies, loadProgressNotes, loadSubTasks, todo, todoId])
+  }, [loadDependencies, loadProgressNotes, loadSubTasks, loadWorkLogs, todoId])
+
+  useEffect(() => {
+    if (!todoId || !todo) {
+      initializedTodoIdRef.current = undefined
+      setEditing(false)
+      setEditData({})
+      setDescriptionDraft('')
+      setDescriptionBase('')
+      setMemoDraft('')
+      setMemoBase('')
+      return
+    }
+
+    const selectedTodoChanged = initializedTodoIdRef.current !== todoId
+    initializedTodoIdRef.current = todoId
+
+    if (selectedTodoChanged) {
+      setEditing(false)
+      setEditData(createEditData(todo))
+      setDescriptionDraft(todo.description ?? '')
+      setDescriptionBase(todo.description ?? '')
+      setMemoDraft(todo.memo ?? '')
+      setMemoBase(todo.memo ?? '')
+      setNoteDraft('')
+      setEditingProgressNoteId(null)
+      setEditingProgressNoteDraft('')
+      return
+    }
+
+    if (editing) return
+
+    const nextDescription = todo.description ?? ''
+    const nextMemo = todo.memo ?? ''
+
+    setEditData(createEditData(todo))
+    setDescriptionDraft((previous) => previous === descriptionBase ? nextDescription : previous)
+    setDescriptionBase(nextDescription)
+    setMemoDraft((previous) => previous === memoBase ? nextMemo : previous)
+    setMemoBase(nextMemo)
+  }, [createEditData, descriptionBase, editing, memoBase, todo, todoId])
 
   useEffect(() => {
     if (!editing) setEditableSubTasks(createEditableSubTasks(subTasks))
@@ -204,13 +245,14 @@ export function TodoDetail({
     const unsubscribe = window.api.onDataChanged((scope) => {
       if (scope === 'subtask') void loadSubTasks(todoId)
       if (scope === 'todo') {
+        void loadWorkLogs(todoId)
         void loadDependencies(todoId)
         void loadProgressNotes(todoId)
       }
     })
 
     return () => unsubscribe()
-  }, [loadDependencies, loadProgressNotes, loadSubTasks, todoId])
+  }, [loadDependencies, loadProgressNotes, loadSubTasks, loadWorkLogs, todoId])
 
   const calcProgress = useCallback((clientX: number): number => {
     if (!progressBarRef.current) return 0
