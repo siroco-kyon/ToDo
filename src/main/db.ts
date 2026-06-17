@@ -1609,6 +1609,26 @@ export interface UpdateUserInput {
   is_active?: boolean
 }
 
+/** User-specific notification shown in the server build. Desktop returns none. */
+export type NotificationType = 'progress_reply' | 'task_assigned'
+
+export interface UserNotification {
+  id: string
+  user_id: string
+  type: NotificationType
+  actor_user_id: string | null
+  actor_name: string | null
+  actor_color: string | null
+  todo_id: string | null
+  todo_title: string | null
+  progress_note_id: string | null
+  progress_comment_id: string | null
+  title: string
+  body: string
+  created_at: string
+  read_at: string | null
+}
+
 /** A teammate currently running a timer — "who is doing what right now". */
 export interface TeamNowItem {
   user_id: string

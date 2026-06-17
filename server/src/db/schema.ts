@@ -178,6 +178,25 @@ export function createSchema(db: Database.Database): void {
       FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS Notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      actor_user_id TEXT,
+      todo_id TEXT,
+      progress_note_id TEXT,
+      progress_comment_id TEXT,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      read_at TEXT,
+      FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE,
+      FOREIGN KEY (actor_user_id) REFERENCES Users(id) ON DELETE SET NULL,
+      FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE,
+      FOREIGN KEY (progress_note_id) REFERENCES ProgressNotes(id) ON DELETE CASCADE,
+      FOREIGN KEY (progress_comment_id) REFERENCES ProgressNoteComments(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_todos_assignee ON Todos(assignee_id);
     CREATE INDEX IF NOT EXISTS idx_todos_status ON Todos(status);
     CREATE INDEX IF NOT EXISTS idx_worklogs_user ON WorkLogs(user_id);
@@ -190,6 +209,8 @@ export function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_progress_notes_user ON ProgressNotes(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_comments_note ON ProgressNoteComments(note_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_reactions_note ON ProgressNoteReactions(note_id, emoji);
+    CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON Notifications(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON Notifications(user_id, read_at, created_at);
   `)
 }
 

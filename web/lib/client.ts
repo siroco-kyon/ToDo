@@ -20,6 +20,7 @@ import type {
   PublicUser,
   CreateUserInput,
   UpdateUserInput,
+  UserNotification,
   TeamDashboard,
   ProgressNote,
   ProgressDigest,
@@ -93,6 +94,7 @@ const navigateTodoListeners = new Set<(todoId: string) => void>()
 const quickAddListeners = new Set<() => void>()
 const exportListeners = new Set<() => void>()
 const presenceListeners = new Set<(online: string[]) => void>()
+const notificationListeners = new Set<(unreadCount: number) => void>()
 
 let onlineUserIds: string[] = []
 let socket: WebSocket | null = null
@@ -118,7 +120,7 @@ function openSocket(): void {
   socket = ws
 
   ws.onmessage = (event) => {
-    let msg: { type?: string; scope?: DataScope; online?: string[] }
+    let msg: { type?: string; scope?: DataScope; online?: string[]; unreadCount?: number }
     try {
       msg = JSON.parse(event.data as string)
     } catch {
@@ -129,6 +131,8 @@ function openSocket(): void {
     } else if (msg.type === 'presence' && Array.isArray(msg.online)) {
       onlineUserIds = msg.online
       emit(presenceListeners, onlineUserIds)
+    } else if (msg.type === 'notification:changed' && typeof msg.unreadCount === 'number') {
+      emit(notificationListeners, msg.unreadCount)
     }
   }
 
@@ -381,6 +385,14 @@ export const api: Api = {
     return json as DesktopImportResult
   },
 
+  notificationList: () => get<UserNotification[]>('/notifications'),
+  notificationUnreadCount: async () => {
+    const { unread } = await get<{ unread: number }>('/notifications/unread-count')
+    return unread
+  },
+  notificationMarkRead: (id) => post<UserNotification | null>(`/notifications/${id}/read`),
+  notificationMarkAllRead: () => post<void>('/notifications/read-all'),
+
   // ─── Desktop-only surface: stubbed for the web build ─────────
   iconGetDataUrl: async () => DEFAULT_ICON_DATA_URL,
   iconPick: async (): Promise<IconPickResult> => ({ success: false, dataUrl: null }),
@@ -415,6 +427,10 @@ export const api: Api = {
   onDataChanged: (cb) => {
     dataChangedListeners.add(cb)
     return () => dataChangedListeners.delete(cb)
+  },
+  onNotificationsChanged: (cb) => {
+    notificationListeners.add(cb)
+    return () => notificationListeners.delete(cb)
   }
 }
 
