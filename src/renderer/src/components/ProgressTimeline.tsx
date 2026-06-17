@@ -17,57 +17,6 @@ interface Props {
   onShowToast: (message: string, type?: 'success' | 'error') => void
 }
 
-type SortMode = 'newest' | 'oldest' | 'todo' | 'category' | 'author'
-
-const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
-  { value: 'newest', label: '新しい順' },
-  { value: 'oldest', label: '古い順' },
-  { value: 'todo', label: 'タスク別' },
-  { value: 'category', label: 'カテゴリ別' },
-  { value: 'author', label: '投稿者別' }
-]
-
-const SORT_STORAGE_KEY = 'progressTimeline.sortMode'
-
-function loadSortMode(): SortMode {
-  try {
-    const stored = window.localStorage.getItem(SORT_STORAGE_KEY)
-    if (stored && SORT_OPTIONS.some((option) => option.value === stored)) {
-      return stored as SortMode
-    }
-  } catch {
-    // localStorage が使えない環境でも既定値で動作させる
-  }
-  return 'newest'
-}
-
-function compareNewest(a: ProgressNote, b: ProgressNote): number {
-  return b.created_at.localeCompare(a.created_at)
-}
-
-function sortNotes(notes: ProgressNote[], mode: SortMode): ProgressNote[] {
-  const sorted = notes.slice()
-  switch (mode) {
-    case 'oldest':
-      sorted.sort((a, b) => a.created_at.localeCompare(b.created_at))
-      break
-    case 'todo':
-      sorted.sort((a, b) => (a.todo_title ?? '').localeCompare(b.todo_title ?? '', 'ja') || compareNewest(a, b))
-      break
-    case 'category':
-      sorted.sort((a, b) => (a.category_name ?? '').localeCompare(b.category_name ?? '', 'ja') || compareNewest(a, b))
-      break
-    case 'author':
-      sorted.sort((a, b) => getAuthorName(a.author_name).localeCompare(getAuthorName(b.author_name), 'ja') || compareNewest(a, b))
-      break
-    case 'newest':
-    default:
-      sorted.sort(compareNewest)
-      break
-  }
-  return sorted
-}
-
 function getTodayKey(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -133,7 +82,6 @@ function commentElementId(id: string): string {
 export function ProgressTimeline({ todos, currentUser = null, focusTarget = null, onSelectTodo, onShowToast }: Props): React.JSX.Element {
   const [date, setDate] = useState(getTodayKey)
   const [notes, setNotes] = useState<ProgressNote[]>([])
-  const [sortMode, setSortMode] = useState<SortMode>(loadSortMode)
   const [loading, setLoading] = useState(false)
   const [selectedTodoId, setSelectedTodoId] = useState('')
   const [focusedNoteId, setFocusedNoteId] = useState<string | null>(null)
@@ -163,16 +111,6 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
     if (selectedTodoId && taskOptions.some((todo) => todo.id === selectedTodoId)) return
     setSelectedTodoId(taskOptions[0]?.id ?? '')
   }, [selectedTodoId, taskOptions])
-
-  const sortedNotes = useMemo(() => sortNotes(notes, sortMode), [notes, sortMode])
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(SORT_STORAGE_KEY, sortMode)
-    } catch {
-      // localStorage が使えなくても並び替え自体は動く
-    }
-  }, [sortMode])
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true)
@@ -427,16 +365,6 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => setDate(getTodayKey())} style={chipStyle(date === getTodayKey())}>今日</button>
           <input type="date" value={date} onChange={(event) => setDate(event.target.value || getTodayKey())} style={inputStyle} />
-          <select
-            value={sortMode}
-            onChange={(event) => setSortMode(event.target.value as SortMode)}
-            title="並び替え"
-            style={inputStyle}
-          >
-            {SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
           <button onClick={() => void load()} style={secondaryButtonStyle}>更新</button>
         </div>
       </div>
@@ -478,7 +406,7 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
           {loading && <div style={emptyStyle}>読み込み中...</div>}
           {!loading && notes.length === 0 && <div style={emptyStyle}>この日の進捗ログはまだありません。</div>}
 
-          {!loading && sortedNotes.map((note) => {
+          {!loading && notes.map((note) => {
             const authorName = getAuthorName(note.author_name)
             const authorColor = note.author_color ?? '#64748b'
             const editingNote = editingNoteId === note.id
