@@ -16,7 +16,9 @@ interface Props {
   showTeamButton?: boolean
   /** サーバー版のログイン中ユーザー。デスクトップ版は null で何も表示しない */
   currentUser?: PublicUser | null
+  notificationUnreadCount?: number
   onLogout?: () => void
+  onOpenNotifications?: () => void
   onToggleLogView: () => void
   onToggleProgressView: () => void
   onTogglePlanView: () => void
@@ -48,7 +50,9 @@ export function Toolbar({
   showTaskPane,
   showTeamButton = false,
   currentUser = null,
+  notificationUnreadCount = 0,
   onLogout,
+  onOpenNotifications,
   onToggleLogView,
   onToggleProgressView,
   onTogglePlanView,
@@ -130,6 +134,14 @@ export function Toolbar({
 
         {currentUser && (
           <div style={groupStyle}>
+            {onOpenNotifications && (
+              <button onClick={onOpenNotifications} style={notificationButtonStyle(notificationUnreadCount > 0)}>
+                通知
+                {notificationUnreadCount > 0 && (
+                  <span style={notificationBadgeStyle}>{notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}</span>
+                )}
+              </button>
+            )}
             <span
               title={`${currentUser.display_name}（${currentUser.username}）でログイン中`}
               style={{
@@ -180,6 +192,39 @@ const primaryButtonStyle: React.CSSProperties = {
   fontSize: '0.84rem',
   fontWeight: 700,
   whiteSpace: 'nowrap'
+}
+
+function notificationButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 30,
+    padding: '6px 10px',
+    background: active ? '#172554' : '#0f172a',
+    border: `1px solid ${active ? '#2563eb' : '#334155'}`,
+    borderRadius: 8,
+    color: active ? '#dbeafe' : '#cbd5e1',
+    cursor: 'pointer',
+    fontSize: '0.76rem',
+    fontWeight: 700,
+    whiteSpace: 'nowrap'
+  }
+}
+
+const notificationBadgeStyle: React.CSSProperties = {
+  minWidth: 18,
+  height: 18,
+  padding: '0 5px',
+  borderRadius: 99,
+  background: '#ef4444',
+  color: '#fff',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '0.68rem',
+  lineHeight: 1,
+  fontWeight: 800
 }
 
 function viewButtonStyle(active: boolean): React.CSSProperties {

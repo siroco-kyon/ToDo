@@ -56,6 +56,14 @@ export function broadcastDataChanged(scope: DataScope): void {
   }
 }
 
+export function sendNotificationChanged(userId: string, unreadCount: number): void {
+  for (const client of clients) {
+    if (client.user.id === userId) {
+      send(client.socket, { type: 'notification:changed', unreadCount })
+    }
+  }
+}
+
 type AuthedRequest = IncomingMessage & { user?: PublicUser }
 
 export function initRealtime(server: Server): void {

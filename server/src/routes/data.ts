@@ -4,7 +4,7 @@ import path from 'path'
 import crypto from 'crypto'
 import { Router, raw, type Response } from 'express'
 import { requireAuth, requireAdmin } from '../auth'
-import { broadcastDataChanged, type DataScope } from '../realtime'
+import { broadcastDataChanged, sendNotificationChanged, type DataScope } from '../realtime'
 import { generateDailyMarkdown } from '../markdown'
 import {
   getAllCategories,
@@ -15,6 +15,7 @@ import {
 } from '../db/categories'
 import {
   getAllTodos,
+  getTodoById,
   createTodo,
   updateTodo,
   archiveTodo,
@@ -64,6 +65,14 @@ import {
   toggleProgressNoteReaction,
   getProgressDigest
 } from '../db/progress'
+import {
+  listNotifications,
+  countUnreadNotifications,
+  createNotification,
+  markNotificationRead,
+  markAllNotificationsRead
+} from '../db/notifications'
+import type { ProgressNote, Todo } from '../db/types'
 
 export const dataRouter = Router()
 dataRouter.use(requireAuth)
@@ -79,6 +88,64 @@ function run<T>(res: Response, fn: () => T, scope?: DataScope): void {
   }
 }
 
+function assignedUserIds(todo: Todo | null | undefined): Set<string> {
+  const ids = new Set<string>()
+  if (todo?.assignee_id) ids.add(todo.assignee_id)
+  for (const coAssignee of todo?.co_assignees ?? []) {
+    if (coAssignee.user_id) ids.add(coAssignee.user_id)
+  }
+  return ids
+}
+
+function notifyUnreadChanged(userIds: Iterable<string>): void {
+  for (const userId of userIds) {
+    try {
+      sendNotificationChanged(userId, countUnreadNotifications(userId))
+    } catch (error) {
+      console.error('Failed to send notification update', error)
+    }
+  }
+}
+
+function notifyNewAssignments(actorUserId: string, before: Set<string>, after: Todo): void {
+  const changed = new Set<string>()
+  for (const userId of assignedUserIds(after)) {
+    if (before.has(userId) || userId === actorUserId) continue
+    try {
+      const notification = createNotification({
+        userId,
+        type: 'task_assigned',
+        actorUserId,
+        todoId: after.id,
+        title: '担当タスクが追加されました',
+        body: `「${after.title}」の担当に追加されました`
+      })
+      if (notification) changed.add(userId)
+    } catch (error) {
+      console.error('Failed to create assignment notification', error)
+    }
+  }
+  notifyUnreadChanged(changed)
+}
+
+function notifyProgressReply(actorUserId: string, note: ProgressNote | undefined): void {
+  if (!note?.user_id || note.user_id === actorUserId) return
+  try {
+    const notification = createNotification({
+      userId: note.user_id,
+      type: 'progress_reply',
+      actorUserId,
+      todoId: note.todo_id,
+      progressNoteId: note.id,
+      title: '進捗に返信がありました',
+      body: `「${note.todo_title}」の進捗に返信がありました`
+    })
+    if (notification) notifyUnreadChanged([note.user_id])
+  } catch (error) {
+    console.error('Failed to create progress reply notification', error)
+  }
+}
+
 // ─── Categories ───────────────────────────────────────────────
 dataRouter.get('/categories', (_req, res) => run(res, () => getAllCategories()))
 dataRouter.post('/categories', (req, res) => run(res, () => createCategory(req.body.name, req.body.color), 'category'))
@@ -89,8 +156,19 @@ dataRouter.post('/categories/reorder', (req, res) => run(res, () => reorderCateg
 
 // ─── Todos ────────────────────────────────────────────────────
 dataRouter.get('/todos', (_req, res) => run(res, () => getAllTodos()))
-dataRouter.post('/todos', (req, res) => run(res, () => createTodo(req.body, req.user!.id), 'todo'))
-dataRouter.put('/todos/:id', (req, res) => run(res, () => updateTodo(req.params.id, req.body), 'todo'))
+dataRouter.post('/todos', (req, res) =>
+  run(res, () => {
+    const created = createTodo(req.body, req.user!.id)
+    notifyNewAssignments(req.user!.id, new Set(), created)
+    return created
+  }, 'todo'))
+dataRouter.put('/todos/:id', (req, res) =>
+  run(res, () => {
+    const before = assignedUserIds(getTodoById(req.params.id))
+    const updated = updateTodo(req.params.id, req.body)
+    notifyNewAssignments(req.user!.id, before, updated)
+    return updated
+  }, 'todo'))
 dataRouter.post('/todos/reorder', (req, res) => run(res, () => reorderTodos(req.body.orderedIds), 'todo'))
 dataRouter.post('/todos/:id/archive', (req, res) => run(res, () => archiveTodo(req.params.id), 'todo'))
 dataRouter.post('/todos/:id/unarchive', (req, res) => run(res, () => unarchiveTodo(req.params.id), 'todo'))
@@ -163,6 +241,23 @@ dataRouter.put('/settings/:key', (req, res) =>
     else setSetting(key, req.body.value)
   }))
 
+// ─── Notifications (per-user) ─────────────────────────────────
+dataRouter.get('/notifications', (req, res) =>
+  run(res, () => listNotifications(req.user!.id, Number(req.query.limit ?? 50))))
+dataRouter.get('/notifications/unread-count', (req, res) =>
+  run(res, () => ({ unread: countUnreadNotifications(req.user!.id) })))
+dataRouter.post('/notifications/:id/read', (req, res) =>
+  run(res, () => {
+    const notification = markNotificationRead(req.user!.id, req.params.id)
+    notifyUnreadChanged([req.user!.id])
+    return notification ?? null
+  }))
+dataRouter.post('/notifications/read-all', (req, res) =>
+  run(res, () => {
+    markAllNotificationsRead(req.user!.id)
+    notifyUnreadChanged([req.user!.id])
+  }))
+
 // ─── Progress notes (shared) ──────────────────────────────────
 dataRouter.get('/todos/:todoId/progress-notes', (req, res) =>
   run(res, () => getProgressNotesByTodo(req.params.todoId, req.user!.id)))
@@ -191,7 +286,12 @@ dataRouter.delete('/progress-notes/:id', (req, res) =>
 
 // ─── Progress comments/reactions ──────────────────────────────
 dataRouter.post('/progress-notes/:id/comments', (req, res) =>
-  run(res, () => createProgressNoteComment(req.params.id, req.user!.id, req.body.body, req.body.parentCommentId), 'todo'))
+  run(res, () => {
+    const note = getProgressNote(req.params.id, req.user!.id)
+    const updated = createProgressNoteComment(req.params.id, req.user!.id, req.body.body, req.body.parentCommentId)
+    notifyProgressReply(req.user!.id, note)
+    return updated
+  }, 'todo'))
 dataRouter.put('/progress-note-comments/:id', (req, res) =>
   run(res, () => {
     const comment = getProgressNoteComment(req.params.id)

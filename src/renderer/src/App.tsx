@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import type { Category, CreateTodoInput, DailyPlanItem, PublicUser, Todo, UpdateDailyPlanItemInput, UpdateTodoInput } from './types'
+import type { Category, CreateTodoInput, DailyPlanItem, PublicUser, Todo, UpdateDailyPlanItemInput, UpdateTodoInput, UserNotification } from './types'
 import { useTimer } from './hooks/useTimer'
 import { Toolbar } from './components/Toolbar'
 import { CategoryList } from './components/CategoryList'
@@ -19,6 +19,7 @@ import { PlanView } from './components/PlanView'
 import { TodayFlowRail } from './components/TodayFlowRail'
 import { GanttView } from './components/GanttView'
 import { TeamDashboard } from './components/TeamDashboard'
+import { NotificationPanel } from './components/NotificationPanel'
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
 type CenterView = 'detail' | 'log' | 'progress' | 'plan' | 'gantt' | 'team'
@@ -74,6 +75,9 @@ export function App(): React.JSX.Element {
   const [showProgressReport, setShowProgressReport] = useState(false)
   const [showDesktopImport, setShowDesktopImport] = useState(false)
   const [showMySummary, setShowMySummary] = useState(false)
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [notifications, setNotifications] = useState<UserNotification[]>([])
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null)
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
@@ -143,6 +147,15 @@ export function App(): React.JSX.Element {
     setCurrentUser(me)
   }, [])
 
+  const loadNotifications = useCallback(async () => {
+    const [items, unread] = await Promise.all([
+      window.api.notificationList(),
+      window.api.notificationUnreadCount()
+    ])
+    setNotifications(items)
+    setNotificationUnreadCount(unread)
+  }, [])
+
   const loadInitialData = useCallback(async () => {
     const [allTodos, allCategories, planItems, allUsers, me] = await Promise.all([
       window.api.todoGetAll(),
@@ -205,6 +218,24 @@ export function App(): React.JSX.Element {
     })
     return () => unsubscribe()
   }, [isFirstLaunch, loadCategories, loadTodayPlan, loadTodos])
+
+  useEffect(() => {
+    if (!currentUser) {
+      setNotifications([])
+      setNotificationUnreadCount(0)
+      setShowNotifications(false)
+      return
+    }
+
+    void loadNotifications().catch((error) => console.error('Failed to load notifications', error))
+    const unsubscribe = window.api.onNotificationsChanged((unreadCount) => {
+      setNotificationUnreadCount(unreadCount)
+      if (showNotifications) {
+        void loadNotifications().catch((error) => console.error('Failed to load notifications', error))
+      }
+    })
+    return () => unsubscribe()
+  }, [currentUser, loadNotifications, showNotifications])
 
   useEffect(() => {
     window.localStorage.setItem('show-plan-rail', String(showPlanRail))
@@ -378,6 +409,36 @@ export function App(): React.JSX.Element {
     }
     setActiveView('detail')
   }, [activeView])
+
+  const openNotifications = useCallback(() => {
+    setShowNotifications(true)
+    void loadNotifications().catch((error) => {
+      console.error('Failed to load notifications', error)
+      showToast('通知を読み込めませんでした', 'error')
+    })
+  }, [loadNotifications, showToast])
+
+  const handleSelectNotification = useCallback(async (notification: UserNotification): Promise<void> => {
+    try {
+      if (notification.read_at == null) {
+        await window.api.notificationMarkRead(notification.id)
+      }
+      await loadNotifications()
+      if (notification.todo_id) openTodoDetail(notification.todo_id)
+      setShowNotifications(false)
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '通知を更新できませんでした', 'error')
+    }
+  }, [loadNotifications, openTodoDetail, showToast])
+
+  const handleMarkAllNotificationsRead = useCallback(async (): Promise<void> => {
+    try {
+      await window.api.notificationMarkAllRead()
+      await loadNotifications()
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '通知を既読にできませんでした', 'error')
+    }
+  }, [loadNotifications, showToast])
 
   const beginResize = useCallback((key: PaneKey, startWidth: number, event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -619,6 +680,8 @@ export function App(): React.JSX.Element {
         showTaskPane={showTaskPane}
         showTeamButton={multiUser}
         currentUser={currentUser}
+        notificationUnreadCount={notificationUnreadCount}
+        onOpenNotifications={multiUser ? openNotifications : undefined}
         onLogout={multiUser ? () => void window.api.authLogout() : undefined}
         onToggleLogView={() => toggleCenterView('log')}
         onToggleProgressView={() => toggleCenterView('progress')}
@@ -908,6 +971,16 @@ export function App(): React.JSX.Element {
           onProgressReport={isAdmin ? () => { setShowSettings(false); setShowProgressReport(true) } : undefined}
           onDesktopImport={isAdmin && multiUser ? () => { setShowSettings(false); setShowDesktopImport(true) } : undefined}
           onMySummary={() => { setShowSettings(false); setShowMySummary(true) }}
+        />
+      )}
+
+      {showNotifications && currentUser && (
+        <NotificationPanel
+          notifications={notifications}
+          unreadCount={notificationUnreadCount}
+          onClose={() => setShowNotifications(false)}
+          onSelect={(notification) => void handleSelectNotification(notification)}
+          onMarkAllRead={() => void handleMarkAllNotificationsRead()}
         />
       )}
 

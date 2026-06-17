@@ -20,6 +20,7 @@ import type {
   UserRole,
   CreateUserInput,
   UpdateUserInput,
+  UserNotification,
   TeamDashboard,
   TeamNowItem,
   TeamDeadlineItem,
@@ -57,6 +58,7 @@ export type {
   UserRole,
   CreateUserInput,
   UpdateUserInput,
+  UserNotification,
   TeamDashboard,
   TeamNowItem,
   TeamDeadlineItem,
@@ -167,6 +169,12 @@ const api = {
   adminImportDesktopDb: (data: ArrayBuffer, targetUserId: string, dryRun: boolean): Promise<DesktopImportResult> =>
     ipcRenderer.invoke('admin:importDesktopDb', data, targetUserId, dryRun),
 
+  // Notifications are server-only; desktop has no per-account notification inbox.
+  notificationList: async (): Promise<UserNotification[]> => [],
+  notificationUnreadCount: async (): Promise<number> => 0,
+  notificationMarkRead: async (_id: string): Promise<UserNotification | null> => null,
+  notificationMarkAllRead: async (): Promise<void> => {},
+
   // Progress notes (shared) / digest (admin report; desktop returns a single bucket)
   progressNoteGetByTodo: (todoId: string): Promise<ProgressNote[]> =>
     ipcRenderer.invoke('progressNote:getByTodo', todoId),
@@ -235,6 +243,9 @@ const api = {
     const handler = (_event: Electron.IpcRendererEvent, scope: 'category' | 'todo' | 'subtask' | 'plan'): void => cb(scope)
     ipcRenderer.on('data:changed', handler)
     return () => ipcRenderer.removeListener('data:changed', handler)
+  },
+  onNotificationsChanged: (_cb: (unreadCount: number) => void): (() => void) => {
+    return () => {}
   }
 }
 
