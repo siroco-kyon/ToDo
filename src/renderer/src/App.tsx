@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Category, CreateTodoInput, DailyPlanItem, PublicUser, Todo, UpdateDailyPlanItemInput, UpdateTodoInput, UserNotification } from './types'
 import { useTimer } from './hooks/useTimer'
 import { Toolbar } from './components/Toolbar'
@@ -361,17 +361,31 @@ export function App(): React.JSX.Element {
   const q = searchQuery.trim().toLowerCase()
   const multiUser = users.length > 0
   const isAdmin = currentUser?.role === 'admin'
-  const privateCategoryIds = new Set(categories.filter((category) => category.is_private).map((category) => category.id))
-  // 全体レンズ時に進捗タイムラインで隠す、プライベートカテゴリのタスクID
-  const hiddenNoteTodoIds = scopeLens === 'team'
-    ? new Set(todos.filter((todo) => todo.category_id != null && privateCategoryIds.has(todo.category_id)).map((todo) => todo.id))
-    : new Set<string>()
+  const privateCategoryIds = useMemo(
+    () => new Set(categories.filter((category) => category.is_private).map((category) => category.id)),
+    [categories]
+  )
+  const hiddenPrivateTodoIds = useMemo(
+    () => scopeLens === 'team'
+      ? new Set(todos.filter((todo) => todo.category_id != null && privateCategoryIds.has(todo.category_id)).map((todo) => todo.id))
+      : new Set<string>(),
+    [privateCategoryIds, scopeLens, todos]
+  )
+  // レンズ以外の検索・担当・カテゴリ絞り込みとは分離し、詳細や依存候補にも同じ集合を使う。
+  const lensTodos = useMemo(
+    () => hiddenPrivateTodoIds.size === 0 ? todos : todos.filter((todo) => !hiddenPrivateTodoIds.has(todo.id)),
+    [hiddenPrivateTodoIds, todos]
+  )
+  const lensPlanItems = useMemo(
+    () => scopeLens === 'personal'
+      ? todayPlanItems
+      : todayPlanItems.filter((item) => item.category_id == null || !privateCategoryIds.has(item.category_id)),
+    [privateCategoryIds, scopeLens, todayPlanItems]
+  )
 
-  const filteredTodos = todos
+  const filteredTodos = lensTodos
     .filter((todo) => {
       if (!showArchived && todo.status === 'archived') return false
-      // 全体レンズ: プライベートカテゴリのタスクを作業系ビューから除外（自分の画面のみ）
-      if (scopeLens === 'team' && todo.category_id != null && privateCategoryIds.has(todo.category_id)) return false
       if (selectedCategoryId && todo.category_id !== selectedCategoryId) return false
       if (selectedAssigneeId !== null) {
         if (selectedAssigneeId === '' && todo.assignee_id !== null) return false
@@ -420,7 +434,7 @@ export function App(): React.JSX.Element {
       return 0
     })
 
-  const selectedTodo = todos.find((todo) => todo.id === selectedTodoId) ?? null
+  const selectedTodo = lensTodos.find((todo) => todo.id === selectedTodoId) ?? null
 
   const toggleCenterView = useCallback((view: CenterView) => {
     setActiveView((prev) => prev === view ? 'detail' : view)
@@ -904,7 +918,7 @@ export function App(): React.JSX.Element {
           ) : activeView === 'plan' ? (
             <PlanView
               date={getTodayKey()}
-              planItems={todayPlanItems}
+              planItems={lensPlanItems}
               todos={filteredTodos}
               runningTodoId={runningTodoId}
               onSelectTodo={openTodoDetail}
@@ -915,26 +929,26 @@ export function App(): React.JSX.Element {
               onReorder={handleReorderTodayPlan}
             />
           ) : activeView === 'log' ? (
-            <WorkLogSummary />
+            <WorkLogSummary hiddenTodoIds={hiddenPrivateTodoIds} />
           ) : activeView === 'progress' ? (
             <ProgressTimeline
-              todos={todos}
+              todos={lensTodos}
               currentUser={currentUser}
               focusTarget={progressTimelineFocus}
               onSelectTodo={openTodoDetail}
               onShowToast={showToast}
-              hiddenTodoIds={hiddenNoteTodoIds}
+              hiddenTodoIds={hiddenPrivateTodoIds}
             />
           ) : activeView === 'team' ? (
             <TeamDashboard onSelectTodo={openTodoDetail} includePrivate={scopeLens === 'personal'} />
           ) : (
             <TodoDetail
               todo={selectedTodo}
-              allTodos={todos}
+              allTodos={lensTodos}
               categories={categories}
               users={users}
               currentUser={currentUser}
-              todayPlanItems={todayPlanItems}
+              todayPlanItems={lensPlanItems}
               runningTodoId={runningTodoId}
               elapsedSeconds={elapsedSeconds}
               onUpdate={handleUpdate}
@@ -984,11 +998,11 @@ export function App(): React.JSX.Element {
                     {ganttSidePanelMode === 'detail' ? (
                       <TodoDetail
                         todo={selectedTodo}
-                        allTodos={todos}
+                        allTodos={lensTodos}
                         categories={categories}
                         users={users}
                         currentUser={currentUser}
-                        todayPlanItems={todayPlanItems}
+                        todayPlanItems={lensPlanItems}
                         runningTodoId={runningTodoId}
                         elapsedSeconds={elapsedSeconds}
                         onUpdate={handleUpdate}
@@ -1000,7 +1014,7 @@ export function App(): React.JSX.Element {
                     ) : (
                       <TodayFlowRail
                         date={getTodayKey()}
-                        planItems={todayPlanItems}
+                        planItems={lensPlanItems}
                         runningTodoId={runningTodoId}
                         onSelectTodo={openTodoDetail}
                         onOpenPlan={() => setActiveView('plan')}
@@ -1011,7 +1025,7 @@ export function App(): React.JSX.Element {
               ) : (
                 <TodayFlowRail
                   date={getTodayKey()}
-                  planItems={todayPlanItems}
+                  planItems={lensPlanItems}
                   runningTodoId={runningTodoId}
                   onSelectTodo={openTodoDetail}
                   onOpenPlan={() => setActiveView('plan')}
