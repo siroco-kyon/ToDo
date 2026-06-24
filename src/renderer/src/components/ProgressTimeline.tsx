@@ -103,12 +103,6 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
   const taskOptions = useMemo(() => (
     todos
       .filter((todo) => todo.status !== 'archived' && !hiddenTodoIds.has(todo.id))
-      .slice()
-      .sort((a, b) => {
-        if (a.status === 'done' && b.status !== 'done') return 1
-        if (a.status !== 'done' && b.status === 'done') return -1
-        return a.title.localeCompare(b.title, 'ja')
-      })
   ), [hiddenTodoIds, todos])
 
   useEffect(() => {
