@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { copyTextToClipboard } from '../lib/clipboard'
 import type {
   ProgressDigest,
+  ProgressDigestNote,
+  ProgressDigestTaskChange,
   ProgressDigestUser,
   PublicUser,
   TodoStatus
@@ -30,6 +32,44 @@ const STATUS_COLOR: Record<TodoStatus, string> = {
   active: '#3b82f6',
   done: '#22c55e',
   archived: '#475569'
+}
+
+const CHANGE_FIELD_LABEL: Record<string, string> = {
+  title: 'タイトル',
+  description: '説明',
+  memo: 'メモ',
+  category: 'カテゴリ',
+  assignee: '主担当',
+  co_assignees: 'サブ担当',
+  status: 'ステータス',
+  priority: '優先度',
+  progress: '進捗',
+  start_date: '開始日',
+  due_date: '締切日',
+  recurrence: '繰り返し',
+  recurrence_copy_subtasks: 'サブタスク引継ぎ'
+}
+
+const RECURRENCE_LABEL: Record<string, string> = {
+  daily: '毎日',
+  weekly: '毎週',
+  monthly: '毎月'
+}
+
+interface TaskActivityEvent {
+  id: string
+  kind: 'change' | 'note'
+  created_at: string
+  change?: ProgressDigestTaskChange
+  note?: ProgressDigestNote
+}
+
+interface TaskActivityGroup {
+  todo_id: string
+  todo_title: string
+  category_name: string | null
+  category_color: string | null
+  events: TaskActivityEvent[]
 }
 
 function toDateInput(date: Date): string {
@@ -63,14 +103,80 @@ function formatDateTime(iso: string): string {
   return `${m}/${d} ${hh}:${mm}`
 }
 
+function compactText(value: string | null): string {
+  if (!value) return '未設定'
+  const compact = value.replace(/\s+/g, ' ').trim()
+  return compact.length > 120 ? `${compact.slice(0, 117)}…` : compact
+}
+
+function formatChangeValue(field: string, value: string | null): string {
+  if (field === 'status' && value) return STATUS_LABEL[value as TodoStatus] ?? value
+  if (field === 'progress' && value) return `${value}%`
+  if (field === 'priority' && value) return `レベル${value}`
+  if (field === 'recurrence' && value) return RECURRENCE_LABEL[value] ?? value
+  if (field === 'recurrence_copy_subtasks') return value === '1' ? 'する' : 'しない'
+  return compactText(value)
+}
+
+function formatTaskChange(change: ProgressDigestTaskChange): string {
+  const label = CHANGE_FIELD_LABEL[change.field] ?? change.field
+  return `${label}: ${formatChangeValue(change.field, change.old_value)} → ${formatChangeValue(change.field, change.new_value)}`
+}
+
+function buildTaskActivityGroups(user: ProgressDigestUser): TaskActivityGroup[] {
+  const groups = new Map<string, TaskActivityGroup>()
+  const ensureGroup = (
+    todoId: string,
+    todoTitle: string,
+    categoryName: string | null = null,
+    categoryColor: string | null = null
+  ): TaskActivityGroup => {
+    const existing = groups.get(todoId)
+    if (existing) {
+      if (!existing.category_name && categoryName) existing.category_name = categoryName
+      if (!existing.category_color && categoryColor) existing.category_color = categoryColor
+      return existing
+    }
+    const created: TaskActivityGroup = { todo_id: todoId, todo_title: todoTitle, category_name: categoryName, category_color: categoryColor, events: [] }
+    groups.set(todoId, created)
+    return created
+  }
+
+  for (const change of user.task_changes ?? []) {
+    ensureGroup(change.todo_id, change.todo_title, change.category_name, change.category_color).events.push({
+      id: `change:${change.id}`,
+      kind: 'change',
+      created_at: change.created_at,
+      change
+    })
+  }
+  for (const note of user.notes) {
+    ensureGroup(note.todo_id, note.todo_title).events.push({
+      id: `note:${note.id}`,
+      kind: 'note',
+      created_at: note.created_at,
+      note
+    })
+  }
+
+  return [...groups.values()]
+    .map((group) => ({ ...group, events: group.events.sort((a, b) => a.created_at.localeCompare(b.created_at)) }))
+    .sort((a, b) => {
+      const aLatest = a.events[a.events.length - 1]?.created_at ?? ''
+      const bLatest = b.events[b.events.length - 1]?.created_at ?? ''
+      return bLatest.localeCompare(aLatest)
+    })
+}
+
 /** 集計結果を日報・週報に貼れる Markdown に変換する */
 function digestToMarkdown(digest: ProgressDigest): string {
   const lines: string[] = [`# 進捗レポート ${digest.from} ～ ${digest.to}`, '']
 
   for (const user of digest.users) {
+    const taskChangeCount = user.task_changes?.length ?? 0
     lines.push(`## ${user.display_name}`)
     lines.push(
-      `- 追加タスク: ${user.added_todos.length}件 / 完了タスク: ${user.completed_todos.length}件 / サブタスク: ${user.added_subtasks.length}件 / 進捗メモ: ${user.notes.length}件 / コメント: ${user.comments.length}件 / 作業時間: ${formatMinutes(user.work_minutes)}（${user.work_log_count}回）`
+      `- 追加タスク: ${user.added_todos.length}件 / 完了タスク: ${user.completed_todos.length}件 / サブタスク: ${user.added_subtasks.length}件 / 変更: ${taskChangeCount}件 / 進捗ログ: ${user.notes.length}件 / コメント: ${user.comments.length}件 / 作業時間: ${formatMinutes(user.work_minutes)}（${user.work_log_count}回）`
     )
     lines.push('')
 
@@ -100,11 +206,19 @@ function digestToMarkdown(digest: ProgressDigest): string {
       lines.push('')
     }
 
-    if (user.notes.length > 0) {
-      lines.push('### 進捗メモ')
-      for (const note of user.notes) {
-        const body = note.body.replace(/\r?\n/g, ' ')
-        lines.push(`- ${formatDateTime(note.created_at)}［${note.todo_title}］${body}`)
+    const activityGroups = buildTaskActivityGroups(user)
+    if (activityGroups.length > 0) {
+      lines.push('### タスク別の活動ログ')
+      for (const group of activityGroups) {
+        const category = group.category_name ? `［${group.category_name}］` : ''
+        lines.push(`#### ${category}${group.todo_title}`)
+        for (const event of group.events) {
+          if (event.kind === 'change' && event.change) {
+            lines.push(`- ${formatDateTime(event.created_at)} 変更: ${formatTaskChange(event.change)}`)
+          } else if (event.note) {
+            lines.push(`- ${formatDateTime(event.created_at)} 進捗ログ: ${compactText(event.note.body)}`)
+          }
+        }
       }
       lines.push('')
     }
@@ -305,10 +419,13 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
 }
 
 function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Element {
+  const taskActivityGroups = buildTaskActivityGroups(user)
+  const taskChangeCount = user.task_changes?.length ?? 0
   const hasActivity =
     user.added_todos.length > 0 ||
     user.completed_todos.length > 0 ||
     user.added_subtasks.length > 0 ||
+    taskChangeCount > 0 ||
     user.notes.length > 0 ||
     user.comments.length > 0 ||
     user.work_minutes > 0
@@ -322,7 +439,8 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
           <span style={statBadge}>タスク {user.added_todos.length}</span>
           <span style={statBadge}>完了 {user.completed_todos.length}</span>
           <span style={statBadge}>サブタスク {user.added_subtasks.length}</span>
-          <span style={statBadge}>進捗メモ {user.notes.length}</span>
+          <span style={statBadge}>変更 {taskChangeCount}</span>
+          <span style={statBadge}>進捗ログ {user.notes.length}</span>
           <span style={statBadge}>コメント {user.comments.length}</span>
           <span style={statBadge}>作業 {formatMinutes(user.work_minutes)}</span>
         </div>
@@ -399,19 +517,32 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
             </div>
           )}
 
-          {user.notes.length > 0 && (
+          {taskActivityGroups.length > 0 && (
             <div>
-              <div style={groupLabel}>進捗メモ</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {user.notes.map((note) => (
-                  <div key={note.id} style={{ background: '#1e293b', borderRadius: 8, padding: '8px 10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.74rem', color: '#93c5fd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360 }}>
-                        {note.todo_title}
-                      </span>
-                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{formatDateTime(note.created_at)}</span>
+              <div style={groupLabel}>タスク別の活動ログ</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {taskActivityGroups.map((group) => (
+                  <div key={group.todo_id} style={{ background: '#1e293b', borderRadius: 8, padding: '9px 10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6, flexWrap: 'wrap' }}>
+                      {group.category_name && (
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.category_color ?? '#64748b' }} />
+                      )}
+                      <span style={{ fontSize: '0.78rem', color: '#93c5fd', fontWeight: 700 }}>{group.todo_title}</span>
+                      {group.category_name && <span style={{ fontSize: '0.68rem', color: '#64748b' }}>{group.category_name}</span>}
                     </div>
-                    <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{note.body}</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {group.events.map((event) => (
+                        <div key={event.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, fontSize: '0.78rem', lineHeight: 1.45 }}>
+                          <span style={{ color: '#64748b', flexShrink: 0 }}>{formatDateTime(event.created_at)}</span>
+                          <span style={{ color: event.kind === 'change' ? '#fbbf24' : '#4ade80', flexShrink: 0 }}>
+                            {event.kind === 'change' ? '変更' : '進捗'}
+                          </span>
+                          <span style={{ color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>
+                            {event.change ? formatTaskChange(event.change) : event.note?.body}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -166,13 +166,13 @@ dataRouter.post('/todos', (req, res) =>
 dataRouter.put('/todos/:id', (req, res) =>
   run(res, () => {
     const before = assignedUserIds(getTodoById(req.params.id))
-    const updated = updateTodo(req.params.id, req.body)
+    const updated = updateTodo(req.params.id, req.body, req.user!.id)
     notifyNewAssignments(req.user!.id, before, updated)
     return updated
   }, 'todo'))
 dataRouter.post('/todos/reorder', (req, res) => run(res, () => reorderTodos(req.body.orderedIds), 'todo'))
-dataRouter.post('/todos/:id/archive', (req, res) => run(res, () => archiveTodo(req.params.id), 'todo'))
-dataRouter.post('/todos/:id/unarchive', (req, res) => run(res, () => unarchiveTodo(req.params.id), 'todo'))
+dataRouter.post('/todos/:id/archive', (req, res) => run(res, () => archiveTodo(req.params.id, req.user!.id), 'todo'))
+dataRouter.post('/todos/:id/unarchive', (req, res) => run(res, () => unarchiveTodo(req.params.id, req.user!.id), 'todo'))
 dataRouter.delete('/todos/:id', (req, res) => run(res, () => deleteTodo(req.params.id), 'todo'))
 
 // ─── Dependencies ─────────────────────────────────────────────
