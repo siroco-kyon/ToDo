@@ -149,7 +149,7 @@ export interface CreateTodoInput {
   memo?: string
   category_id?: string | null
   assignee_id?: string | null
-  /** 省略時は 'active'。カンバンの列からの追加でその列のステータスを指定する */
+  /** 省略時は 'not_started'。カンバンの列からの追加でその列のステータスを指定する */
   status?: 'not_started' | 'active' | 'done'
   priority?: number
   progress?: number
@@ -419,6 +419,18 @@ export interface ProgressDigestNote {
   created_at: string
 }
 
+export interface ProgressDigestTaskChange {
+  id: string
+  todo_id: string
+  todo_title: string
+  category_name: string | null
+  category_color: string | null
+  field: string
+  old_value: string | null
+  new_value: string | null
+  created_at: string
+}
+
 export interface ProgressDigestComment {
   id: string
   note_id: string
@@ -437,6 +449,7 @@ export interface ProgressDigestUser {
   added_todos: ProgressDigestTodo[]
   completed_todos: ProgressDigestCompletedTodo[]
   added_subtasks: ProgressDigestSubTask[]
+  task_changes: ProgressDigestTaskChange[]
   notes: ProgressDigestNote[]
   comments: ProgressDigestComment[]
   work_minutes: number

@@ -36,7 +36,7 @@ function createTables(): void {
       description TEXT DEFAULT '',
       memo TEXT DEFAULT '',
       category_id TEXT,
-      status TEXT NOT NULL DEFAULT 'active',
+      status TEXT NOT NULL DEFAULT 'not_started',
       priority INTEGER DEFAULT 2,
       progress INTEGER DEFAULT 0,
       start_date TEXT,
@@ -124,6 +124,16 @@ function createTables(): void {
       FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS TodoChangeLogs (
+      id TEXT PRIMARY KEY,
+      todo_id TEXT NOT NULL,
+      field TEXT NOT NULL,
+      old_value TEXT,
+      new_value TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS ProgressNoteComments (
       id TEXT PRIMARY KEY,
       note_id TEXT NOT NULL,
@@ -148,6 +158,7 @@ function createTables(): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_progress_notes_todo ON ProgressNotes(todo_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_todo_changes_todo_created ON TodoChangeLogs(todo_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_comments_note ON ProgressNoteComments(note_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_reactions_note ON ProgressNoteReactions(note_id, emoji);
   `)
@@ -444,6 +455,36 @@ function getTodoById(id: string): Todo {
     .get(id) as Todo
 }
 
+function todoChangeSnapshot(todo: Todo): Record<string, string | null> {
+  return {
+    title: todo.title,
+    description: todo.description,
+    memo: todo.memo,
+    category: todo.category_name,
+    assignee: todo.assignee_name,
+    status: todo.status,
+    priority: String(todo.priority),
+    progress: String(todo.progress),
+    start_date: todo.start_date,
+    due_date: todo.due_date,
+    recurrence: todo.recurrence,
+    recurrence_copy_subtasks: todo.recurrence_copy_subtasks ? '1' : '0',
+    co_assignees: (todo.co_assignees ?? []).map((assignee) => assignee.display_name).sort().join('、')
+  }
+}
+
+function recordTodoChanges(before: Todo, after: Todo, createdAt: string): void {
+  const beforeValues = todoChangeSnapshot(before)
+  const afterValues = todoChangeSnapshot(after)
+  const insert = db.prepare(
+    'INSERT INTO TodoChangeLogs (id, todo_id, field, old_value, new_value, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  )
+  for (const field of Object.keys(afterValues)) {
+    if (beforeValues[field] === afterValues[field]) continue
+    insert.run(crypto.randomUUID(), after.id, field, beforeValues[field], afterValues[field], createdAt)
+  }
+}
+
 function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): void {
   const fields: string[] = ['updated_at = ?']
   const values: unknown[] = [updatedAt]
@@ -556,7 +597,7 @@ function dependencyCreatesCycle(predecessorTodoId: string, successorTodoId: stri
 export function createTodo(data: CreateTodoInput): Todo {
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
-  const status = data.status ?? 'active'
+  const status = data.status ?? 'not_started'
   const startDate = normalizeDateKey(data.start_date)
   const dueDate = normalizeDateKey(data.due_date)
   // 新規タスクはsort_orderを最小値-1にして先頭に表示
@@ -662,6 +703,7 @@ export function updateTodo(id: string, data: UpdateTodoInput): Todo {
     applyTodoUpdate(id, data, now)
     resolveDependencyCascade(id, now)
     const updated = getTodoById(id)
+    recordTodoChanges(before, updated, now)
     if (before.status !== 'done' && updated.status === 'done' && updated.recurrence) {
       spawnNextRecurrence(updated)
     }
@@ -682,16 +724,20 @@ function syncTodoDueDateWithSubTask(todoId: string, subTaskDueDate: string | nul
 
 export function archiveTodo(id: string): void {
   const now = new Date().toISOString()
-  db.prepare(`UPDATE Todos SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ?`).run(
-    now,
-    now,
-    id
-  )
+  const before = getTodoById(id)
+  db.transaction(() => {
+    db.prepare(`UPDATE Todos SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ?`).run(now, now, id)
+    recordTodoChanges(before, getTodoById(id), now)
+  })()
 }
 
 export function unarchiveTodo(id: string): void {
   const now = new Date().toISOString()
-  db.prepare(`UPDATE Todos SET status = 'active', archived_at = NULL, completed_at = NULL, updated_at = ? WHERE id = ?`).run(now, id)
+  const before = getTodoById(id)
+  db.transaction(() => {
+    db.prepare(`UPDATE Todos SET status = 'active', archived_at = NULL, completed_at = NULL, updated_at = ? WHERE id = ?`).run(now, id)
+    recordTodoChanges(before, getTodoById(id), now)
+  })()
 }
 
 export function deleteTodo(id: string): void {
@@ -1593,6 +1639,19 @@ export function getProgressDigest(query: ProgressDigestQuery): ProgressDigest {
     )
     .all(from, to) as ProgressDigestNote[]
 
+  const taskChanges = db
+    .prepare(
+      `SELECT tcl.id, tcl.todo_id, t.title AS todo_title,
+              c.name AS category_name, c.color AS category_color,
+              tcl.field, tcl.old_value, tcl.new_value, tcl.created_at
+       FROM TodoChangeLogs tcl
+       JOIN Todos t ON tcl.todo_id = t.id
+       LEFT JOIN Categories c ON t.category_id = c.id
+       WHERE date(tcl.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
+       ORDER BY tcl.created_at ASC`
+    )
+    .all(from, to) as ProgressDigestTaskChange[]
+
   const comments = db
     .prepare(
       `SELECT pnc.id, pnc.note_id, pn.todo_id, t.title AS todo_title,
@@ -1625,6 +1684,7 @@ export function getProgressDigest(query: ProgressDigestQuery): ProgressDigest {
         added_todos: addedTodos,
         completed_todos: completedTodos,
         added_subtasks: addedSubTasks,
+        task_changes: taskChanges,
         notes,
         comments,
         work_minutes: Math.round(work.seconds / 60),
@@ -1820,6 +1880,18 @@ export interface ProgressDigestNote {
   created_at: string
 }
 
+export interface ProgressDigestTaskChange {
+  id: string
+  todo_id: string
+  todo_title: string
+  category_name: string | null
+  category_color: string | null
+  field: string
+  old_value: string | null
+  new_value: string | null
+  created_at: string
+}
+
 export interface ProgressDigestComment {
   id: string
   note_id: string
@@ -1838,6 +1910,7 @@ export interface ProgressDigestUser {
   added_todos: ProgressDigestTodo[]
   completed_todos: ProgressDigestCompletedTodo[]
   added_subtasks: ProgressDigestSubTask[]
+  task_changes: ProgressDigestTaskChange[]
   notes: ProgressDigestNote[]
   comments: ProgressDigestComment[]
   work_minutes: number
@@ -1959,7 +2032,7 @@ export interface CreateTodoInput {
   memo?: string
   category_id?: string | null
   assignee_id?: string | null
-  /** 省略時は 'active'。カンバンの列からの追加でその列のステータスを指定する */
+  /** 省略時は 'not_started'。カンバンの列からの追加でその列のステータスを指定する */
   status?: 'not_started' | 'active' | 'done'
   priority?: number
   progress?: number

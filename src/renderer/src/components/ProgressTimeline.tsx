@@ -20,6 +20,39 @@ interface Props {
 }
 
 const NO_HIDDEN_TODOS = new Set<string>()
+type SortMode = 'newest' | 'oldest' | 'todo' | 'category' | 'author'
+
+const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
+  { value: 'newest', label: '新しい順' },
+  { value: 'oldest', label: '古い順' },
+  { value: 'todo', label: 'タスク別' },
+  { value: 'category', label: 'カテゴリ別' },
+  { value: 'author', label: '投稿者別' }
+]
+const SORT_STORAGE_KEY = 'progressTimeline.sortMode'
+
+function loadSortMode(): SortMode {
+  try {
+    const stored = window.localStorage.getItem(SORT_STORAGE_KEY)
+    if (SORT_OPTIONS.some((option) => option.value === stored)) return stored as SortMode
+  } catch {
+    // localStorage が使えない環境では既定値を使う
+  }
+  return 'newest'
+}
+
+function compareNewest(a: ProgressNote, b: ProgressNote): number {
+  return b.created_at.localeCompare(a.created_at)
+}
+
+function sortNotes(notes: ProgressNote[], mode: SortMode): ProgressNote[] {
+  const sorted = notes.slice()
+  if (mode === 'oldest') return sorted.sort((a, b) => a.created_at.localeCompare(b.created_at))
+  if (mode === 'todo') return sorted.sort((a, b) => a.todo_title.localeCompare(b.todo_title, 'ja') || compareNewest(a, b))
+  if (mode === 'category') return sorted.sort((a, b) => (a.category_name ?? '').localeCompare(b.category_name ?? '', 'ja') || compareNewest(a, b))
+  if (mode === 'author') return sorted.sort((a, b) => getAuthorName(a.author_name).localeCompare(getAuthorName(b.author_name), 'ja') || compareNewest(a, b))
+  return sorted.sort(compareNewest)
+}
 
 function getTodayKey(): string {
   const now = new Date()
@@ -86,6 +119,7 @@ function commentElementId(id: string): string {
 export function ProgressTimeline({ todos, currentUser = null, focusTarget = null, onSelectTodo, onShowToast, hiddenTodoIds = NO_HIDDEN_TODOS }: Props): React.JSX.Element {
   const [date, setDate] = useState(getTodayKey)
   const [notes, setNotes] = useState<ProgressNote[]>([])
+  const [sortMode, setSortMode] = useState<SortMode>(loadSortMode)
   const [loading, setLoading] = useState(false)
   const [selectedTodoId, setSelectedTodoId] = useState('')
   const [focusedNoteId, setFocusedNoteId] = useState<string | null>(null)
@@ -109,6 +143,14 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
     if (selectedTodoId && taskOptions.some((todo) => todo.id === selectedTodoId)) return
     setSelectedTodoId(taskOptions[0]?.id ?? '')
   }, [selectedTodoId, taskOptions])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SORT_STORAGE_KEY, sortMode)
+    } catch {
+      // 並び替え自体は継続する
+    }
+  }, [sortMode])
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true)
@@ -237,9 +279,14 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
     }
   }
 
+  // 表示対象の絞り込みと並び替えは必ずこの配列に集約する。
+  // notes を直接描画すると全体レンズまたはユーザー指定ソートが失われる。
   const visibleNotes = useMemo(
-    () => (hiddenTodoIds.size === 0 ? notes : notes.filter((note) => !hiddenTodoIds.has(note.todo_id))),
-    [notes, hiddenTodoIds]
+    () => sortNotes(
+      hiddenTodoIds.size === 0 ? notes : notes.filter((note) => !hiddenTodoIds.has(note.todo_id)),
+      sortMode
+    ),
+    [notes, hiddenTodoIds, sortMode]
   )
   const totalComments = visibleNotes.reduce((sum, note) => sum + countComments(note.comments ?? []), 0)
   const currentAuthorName = currentUser?.display_name ?? '自分'
@@ -367,6 +414,9 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => setDate(getTodayKey())} style={chipStyle(date === getTodayKey())}>今日</button>
           <input type="date" value={date} onChange={(event) => setDate(event.target.value || getTodayKey())} style={inputStyle} />
+          <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)} title="並び替え" style={inputStyle}>
+            {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
           <button onClick={() => void load()} style={secondaryButtonStyle}>更新</button>
         </div>
       </div>

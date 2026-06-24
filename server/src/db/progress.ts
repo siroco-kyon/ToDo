@@ -9,6 +9,7 @@ import type {
   ProgressDigestCompletedTodo,
   ProgressDigestNote,
   ProgressDigestSubTask,
+  ProgressDigestTaskChange,
   ProgressDigestTodo,
   ProgressDigestUser
 } from './types'
@@ -216,7 +217,7 @@ export function toggleProgressNoteReaction(noteId: string, userId: string, emoji
 
 /**
  * Admin progress report: for each target member, what they added (tasks +
- * subtasks, grouped by assignee), the progress notes they authored, and the
+ * subtasks, with legacy task creation falling back to the assignee), the progress notes they authored, and the
  * time they logged, all within the inclusive [from, to] local-date range.
  */
 export function getProgressDigest(from: string, to: string, userIds?: string[], includePrivate = true): ProgressDigest {
@@ -244,7 +245,7 @@ export function getProgressDigest(from: string, to: string, userIds?: string[], 
             c.name AS category_name, c.color AS category_color, t.created_at
      FROM Todos t
      LEFT JOIN Categories c ON t.category_id = c.id
-     WHERE t.assignee_id = ? AND date(t.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
+     WHERE COALESCE(t.created_by, t.assignee_id) = ? AND date(t.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
      ORDER BY t.created_at ASC`
   )
 
@@ -276,6 +277,18 @@ export function getProgressDigest(from: string, to: string, userIds?: string[], 
      ORDER BY pn.created_at ASC`
   )
 
+  const taskChangesStmt = db.prepare(
+    `SELECT tcl.id, tcl.todo_id, t.title AS todo_title,
+            c.name AS category_name, c.color AS category_color,
+            tcl.field, tcl.old_value, tcl.new_value, tcl.created_at
+     FROM TodoChangeLogs tcl
+     JOIN Todos t ON tcl.todo_id = t.id
+     LEFT JOIN Categories c ON t.category_id = c.id
+     WHERE (tcl.user_id = ? OR (tcl.user_id IS NULL AND t.assignee_id = ?))
+       AND date(tcl.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
+     ORDER BY tcl.created_at ASC`
+  )
+
   const commentsStmt = db.prepare(
     `SELECT pnc.id, pnc.note_id, pn.todo_id, t.title AS todo_title,
             pnc.parent_comment_id, pnc.body, pnc.created_at
@@ -303,6 +316,7 @@ export function getProgressDigest(from: string, to: string, userIds?: string[], 
       added_todos: addedTodosStmt.all(u.id, from, to) as ProgressDigestTodo[],
       completed_todos: completedTodosStmt.all(u.id, from, to) as ProgressDigestCompletedTodo[],
       added_subtasks: addedSubTasksStmt.all(u.id, from, to) as ProgressDigestSubTask[],
+      task_changes: taskChangesStmt.all(u.id, u.id, from, to) as ProgressDigestTaskChange[],
       notes: notesStmt.all(u.id, from, to) as ProgressDigestNote[],
       comments: commentsStmt.all(u.id, from, to) as ProgressDigestComment[],
       work_minutes: Math.round(work.seconds / 60),

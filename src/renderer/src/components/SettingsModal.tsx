@@ -299,7 +299,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           <section>
             <h3 style={sectionHead}>進捗サマリー</h3>
             <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
-              期間を指定して、自分が追加したタスク・進捗メモ・作業時間を振り返ります。Markdownでコピーして日報・週報に貼れます。
+              期間を指定して、追加タスク・タスク変更・進捗ログ・作業時間を振り返ります。タスク別のMarkdownをコピーして日報・週報に貼れます。
             </p>
             <button onClick={onMySummary} style={secondaryBtn}>📊 自分の進捗サマリーを開く</button>
           </section>

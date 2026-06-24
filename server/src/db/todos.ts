@@ -77,6 +77,36 @@ function replaceCoAssignees(todoId: string, userIds: string[], now: string): voi
   }
 }
 
+function todoChangeSnapshot(todo: Todo): Record<string, string | null> {
+  return {
+    title: todo.title,
+    description: todo.description,
+    memo: todo.memo,
+    category: todo.category_name,
+    assignee: todo.assignee_name,
+    status: todo.status,
+    priority: String(todo.priority),
+    progress: String(todo.progress),
+    start_date: todo.start_date,
+    due_date: todo.due_date,
+    recurrence: todo.recurrence,
+    recurrence_copy_subtasks: todo.recurrence_copy_subtasks ? '1' : '0',
+    co_assignees: (todo.co_assignees ?? []).map((assignee) => assignee.display_name).sort().join('、')
+  }
+}
+
+function recordTodoChanges(before: Todo, after: Todo, userId: string | null, createdAt: string): void {
+  const beforeValues = todoChangeSnapshot(before)
+  const afterValues = todoChangeSnapshot(after)
+  const insert = getDb().prepare(
+    'INSERT INTO TodoChangeLogs (id, todo_id, user_id, field, old_value, new_value, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  )
+  for (const field of Object.keys(afterValues)) {
+    if (beforeValues[field] === afterValues[field]) continue
+    insert.run(crypto.randomUUID(), after.id, userId, field, beforeValues[field], afterValues[field], createdAt)
+  }
+}
+
 function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): void {
   const fields: string[] = ['updated_at = ?']
   const values: unknown[] = [updatedAt]
@@ -191,7 +221,7 @@ export function createTodo(data: CreateTodoInput, createdByUserId: string | null
   const db = getDb()
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
-  const status = data.status ?? 'active'
+  const status = data.status ?? 'not_started'
   const startDate = normalizeDateKey(data.start_date)
   const dueDate = normalizeDateKey(data.due_date)
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) AS m FROM Todos').get() as { m: number }).m
@@ -298,7 +328,7 @@ function spawnNextRecurrence(source: Todo): void {
   }
 }
 
-export function updateTodo(id: string, data: UpdateTodoInput): Todo {
+export function updateTodo(id: string, data: UpdateTodoInput, changedByUserId: string | null = null): Todo {
   const db = getDb()
   const now = new Date().toISOString()
   const before = getTodoById(id)
@@ -309,6 +339,7 @@ export function updateTodo(id: string, data: UpdateTodoInput): Todo {
     }
     resolveDependencyCascade(id, now)
     const updated = getTodoById(id)
+    recordTodoChanges(before, updated, changedByUserId, now)
     if (before.status !== 'done' && updated.status === 'done' && updated.recurrence) {
       spawnNextRecurrence(updated)
     }
@@ -327,18 +358,24 @@ export function syncTodoDueDateWithSubTask(todoId: string, subTaskDueDate: strin
   updateTodo(todoId, { due_date: normalizedSubTaskDueDate })
 }
 
-export function archiveTodo(id: string): void {
+export function archiveTodo(id: string, changedByUserId: string | null = null): void {
+  const db = getDb()
   const now = new Date().toISOString()
-  getDb()
-    .prepare("UPDATE Todos SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ?")
-    .run(now, now, id)
+  const before = getTodoById(id)
+  db.transaction(() => {
+    db.prepare("UPDATE Todos SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ?").run(now, now, id)
+    recordTodoChanges(before, getTodoById(id), changedByUserId, now)
+  })()
 }
 
-export function unarchiveTodo(id: string): void {
+export function unarchiveTodo(id: string, changedByUserId: string | null = null): void {
+  const db = getDb()
   const now = new Date().toISOString()
-  getDb()
-    .prepare("UPDATE Todos SET status = 'active', archived_at = NULL, completed_at = NULL, updated_at = ? WHERE id = ?")
-    .run(now, id)
+  const before = getTodoById(id)
+  db.transaction(() => {
+    db.prepare("UPDATE Todos SET status = 'active', archived_at = NULL, completed_at = NULL, updated_at = ? WHERE id = ?").run(now, id)
+    recordTodoChanges(before, getTodoById(id), changedByUserId, now)
+  })()
 }
 
 export function deleteTodo(id: string): void {
