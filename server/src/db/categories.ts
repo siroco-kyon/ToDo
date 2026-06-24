@@ -8,19 +8,19 @@ export function getAllCategories(): Category[] {
     .all() as Category[]
 }
 
-export function createCategory(name: string, color: string): Category {
+export function createCategory(name: string, color: string, isPrivate = false): Category {
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
   getDb()
-    .prepare('INSERT INTO Categories (id, name, color, created_at) VALUES (?, ?, ?, ?)')
-    .run(id, name, color, now)
+    .prepare('INSERT INTO Categories (id, name, color, is_private, created_at) VALUES (?, ?, ?, ?, ?)')
+    .run(id, name, color, isPrivate ? 1 : 0, now)
   return getDb().prepare('SELECT * FROM Categories WHERE id = ?').get(id) as Category
 }
 
-export function updateCategory(id: string, name: string, color: string, description: string): Category {
+export function updateCategory(id: string, name: string, color: string, description: string, isPrivate = false): Category {
   getDb()
-    .prepare('UPDATE Categories SET name = ?, color = ?, description = ? WHERE id = ?')
-    .run(name, color, description, id)
+    .prepare('UPDATE Categories SET name = ?, color = ?, description = ?, is_private = ? WHERE id = ?')
+    .run(name, color, description, isPrivate ? 1 : 0, id)
   return getDb().prepare('SELECT * FROM Categories WHERE id = ?').get(id) as Category
 }
 

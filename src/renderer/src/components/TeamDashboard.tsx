@@ -4,6 +4,8 @@ import { AssigneeChip } from './AssigneePicker'
 
 interface Props {
   onSelectTodo: (id: string) => void
+  /** false のときプライベートカテゴリのタスクを集計から除外（全体レンズ） */
+  includePrivate?: boolean
 }
 
 const EMPTY: TeamDashboardData = { now: [], overdue: [], dueSoon: [], workloads: [] }
@@ -30,7 +32,7 @@ function dueSoonLabel(days: number): string {
   return `${days}日後`
 }
 
-export function TeamDashboard({ onSelectTodo }: Props): React.JSX.Element {
+export function TeamDashboard({ onSelectTodo, includePrivate = true }: Props): React.JSX.Element {
   const [data, setData] = useState<TeamDashboardData>(EMPTY)
   const [loadedAt, setLoadedAt] = useState<number>(Date.now())
   const [nowMs, setNowMs] = useState<number>(Date.now())
@@ -38,7 +40,7 @@ export function TeamDashboard({ onSelectTodo }: Props): React.JSX.Element {
 
   const load = useCallback(async () => {
     try {
-      const next = await window.api.teamGetDashboard()
+      const next = await window.api.teamGetDashboard(includePrivate)
       setData(next)
       setLoadedAt(Date.now())
       setNowMs(Date.now())
@@ -47,7 +49,7 @@ export function TeamDashboard({ onSelectTodo }: Props): React.JSX.Element {
     } finally {
       setHasLoaded(true)
     }
-  }, [])
+  }, [includePrivate])
 
   useEffect(() => {
     void load()

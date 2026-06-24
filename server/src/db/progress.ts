@@ -219,8 +219,11 @@ export function toggleProgressNoteReaction(noteId: string, userId: string, emoji
  * subtasks, grouped by assignee), the progress notes they authored, and the
  * time they logged, all within the inclusive [from, to] local-date range.
  */
-export function getProgressDigest(from: string, to: string, userIds?: string[]): ProgressDigest {
+export function getProgressDigest(from: string, to: string, userIds?: string[], includePrivate = true): ProgressDigest {
   const db = getDb()
+  // 全体レンズ時はプライベートカテゴリのタスク由来の集計を除外する
+  const catJoin = includePrivate ? '' : 'LEFT JOIN Categories c ON t.category_id = c.id'
+  const catClause = includePrivate ? '' : 'AND COALESCE(c.is_private, 0) = 0'
 
   let targets: Array<{ id: string; display_name: string; color: string }>
   if (userIds && userIds.length > 0) {
@@ -241,7 +244,7 @@ export function getProgressDigest(from: string, to: string, userIds?: string[]):
             c.name AS category_name, c.color AS category_color, t.created_at
      FROM Todos t
      LEFT JOIN Categories c ON t.category_id = c.id
-     WHERE t.assignee_id = ? AND date(t.created_at, 'localtime') BETWEEN ? AND ?
+     WHERE t.assignee_id = ? AND date(t.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
      ORDER BY t.created_at ASC`
   )
 
@@ -251,7 +254,7 @@ export function getProgressDigest(from: string, to: string, userIds?: string[]):
      FROM Todos t
      LEFT JOIN Categories c ON t.category_id = c.id
      WHERE t.assignee_id = ? AND t.status = 'done' AND t.completed_at IS NOT NULL
-       AND date(t.completed_at, 'localtime') BETWEEN ? AND ?
+       AND date(t.completed_at, 'localtime') BETWEEN ? AND ? ${catClause}
      ORDER BY t.completed_at ASC`
   )
 
@@ -259,7 +262,8 @@ export function getProgressDigest(from: string, to: string, userIds?: string[]):
     `SELECT st.id, st.title, st.todo_id, t.title AS todo_title, st.done, st.created_at
      FROM SubTasks st
      JOIN Todos t ON st.todo_id = t.id
-     WHERE t.assignee_id = ? AND date(st.created_at, 'localtime') BETWEEN ? AND ?
+     ${catJoin}
+     WHERE t.assignee_id = ? AND date(st.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
      ORDER BY st.created_at ASC`
   )
 
@@ -267,7 +271,8 @@ export function getProgressDigest(from: string, to: string, userIds?: string[]):
     `SELECT pn.id, pn.todo_id, t.title AS todo_title, pn.body, pn.created_at
      FROM ProgressNotes pn
      JOIN Todos t ON pn.todo_id = t.id
-     WHERE pn.user_id = ? AND date(pn.created_at, 'localtime') BETWEEN ? AND ?
+     ${catJoin}
+     WHERE pn.user_id = ? AND date(pn.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
      ORDER BY pn.created_at ASC`
   )
 
@@ -277,14 +282,16 @@ export function getProgressDigest(from: string, to: string, userIds?: string[]):
      FROM ProgressNoteComments pnc
      JOIN ProgressNotes pn ON pnc.note_id = pn.id
      JOIN Todos t ON pn.todo_id = t.id
-     WHERE pnc.user_id = ? AND date(pnc.created_at, 'localtime') BETWEEN ? AND ?
+     ${catJoin}
+     WHERE pnc.user_id = ? AND date(pnc.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
      ORDER BY pnc.created_at ASC`
   )
 
   const workStmt = db.prepare(
-    `SELECT COALESCE(SUM(duration_seconds), 0) AS seconds, COUNT(*) AS cnt
-     FROM WorkLogs
-     WHERE user_id = ? AND date(start_time, 'localtime') BETWEEN ? AND ?`
+    `SELECT COALESCE(SUM(wl.duration_seconds), 0) AS seconds, COUNT(*) AS cnt
+     FROM WorkLogs wl
+     ${includePrivate ? '' : 'JOIN Todos t ON wl.todo_id = t.id LEFT JOIN Categories c ON t.category_id = c.id'}
+     WHERE wl.user_id = ? AND date(wl.start_time, 'localtime') BETWEEN ? AND ? ${catClause}`
   )
 
   const users: ProgressDigestUser[] = targets.map((u) => {

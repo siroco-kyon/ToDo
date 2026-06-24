@@ -92,10 +92,10 @@ export interface IconPickResult {
 const api = {
   // Categories
   categoryGetAll: (): Promise<Category[]> => ipcRenderer.invoke('category:getAll'),
-  categoryCreate: (name: string, color: string): Promise<Category> =>
-    ipcRenderer.invoke('category:create', name, color),
-  categoryUpdate: (id: string, name: string, color: string, description: string): Promise<Category> =>
-    ipcRenderer.invoke('category:update', id, name, color, description),
+  categoryCreate: (name: string, color: string, isPrivate: boolean): Promise<Category> =>
+    ipcRenderer.invoke('category:create', name, color, isPrivate),
+  categoryUpdate: (id: string, name: string, color: string, description: string, isPrivate: boolean): Promise<Category> =>
+    ipcRenderer.invoke('category:update', id, name, color, description, isPrivate),
   categoryDelete: (id: string): Promise<void> => ipcRenderer.invoke('category:delete', id),
   categoryReorder: (orderedIds: string[]): Promise<void> => ipcRenderer.invoke('category:reorder', orderedIds),
 
@@ -160,7 +160,7 @@ const api = {
 
   // Users & team (multi-user; the Electron build returns empty/no-op values)
   userList: (): Promise<PublicUser[]> => ipcRenderer.invoke('user:list'),
-  teamGetDashboard: (): Promise<TeamDashboard> => ipcRenderer.invoke('team:getDashboard'),
+  teamGetDashboard: (includePrivate: boolean): Promise<TeamDashboard> => ipcRenderer.invoke('team:getDashboard', includePrivate),
   authGetCurrentUser: (): Promise<PublicUser | null> => ipcRenderer.invoke('auth:getCurrentUser'),
   /** サーバー版: セッションを破棄してログイン画面へ戻る。デスクトップ版では何もしない */
   authLogout: (): Promise<void> => ipcRenderer.invoke('auth:logout'),

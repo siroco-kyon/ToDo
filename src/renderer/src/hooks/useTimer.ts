@@ -70,8 +70,11 @@ export function useTimer(onStopped?: () => void): UseTimerReturn {
         startTime: running.start_time
       })
       startInterval(running.start_time)
+      // 別タスク開始時は DB 側が前のタイマーを自動停止し WorkLog を作るため、
+      // 集計（今日の計画・作業ログ）を最新化する。
+      onStopped?.()
     },
-    [startInterval]
+    [startInterval, onStopped]
   )
 
   const stop = useCallback(

@@ -15,7 +15,11 @@ interface Props {
   focusTarget?: ProgressTimelineFocusTarget | null
   onSelectTodo: (id: string) => void
   onShowToast: (message: string, type?: 'success' | 'error') => void
+  /** 全体レンズ時に隠す（プライベートカテゴリの）タスクID。既定は空＝全部表示 */
+  hiddenTodoIds?: Set<string>
 }
+
+const NO_HIDDEN_TODOS = new Set<string>()
 
 function getTodayKey(): string {
   const now = new Date()
@@ -79,7 +83,7 @@ function commentElementId(id: string): string {
   return `progress-comment-${id}`
 }
 
-export function ProgressTimeline({ todos, currentUser = null, focusTarget = null, onSelectTodo, onShowToast }: Props): React.JSX.Element {
+export function ProgressTimeline({ todos, currentUser = null, focusTarget = null, onSelectTodo, onShowToast, hiddenTodoIds = NO_HIDDEN_TODOS }: Props): React.JSX.Element {
   const [date, setDate] = useState(getTodayKey)
   const [notes, setNotes] = useState<ProgressNote[]>([])
   const [loading, setLoading] = useState(false)
@@ -239,7 +243,11 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
     }
   }
 
-  const totalComments = notes.reduce((sum, note) => sum + countComments(note.comments ?? []), 0)
+  const visibleNotes = useMemo(
+    () => (hiddenTodoIds.size === 0 ? notes : notes.filter((note) => !hiddenTodoIds.has(note.todo_id))),
+    [notes, hiddenTodoIds]
+  )
+  const totalComments = visibleNotes.reduce((sum, note) => sum + countComments(note.comments ?? []), 0)
   const currentAuthorName = currentUser?.display_name ?? '自分'
   const currentAuthorColor = currentUser?.color ?? '#6366f1'
 
@@ -359,7 +367,7 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
         <div>
           <div style={{ fontSize: '1rem', color: '#f8fafc', fontWeight: 800 }}>進捗タイムライン</div>
           <div style={{ marginTop: 3, color: '#64748b', fontSize: '0.78rem' }}>
-            投稿 {notes.length}件 / コメント {totalComments}件
+            投稿 {visibleNotes.length}件 / コメント {totalComments}件
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -404,9 +412,9 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
           </div>
 
           {loading && <div style={emptyStyle}>読み込み中...</div>}
-          {!loading && notes.length === 0 && <div style={emptyStyle}>この日の進捗ログはまだありません。</div>}
+          {!loading && visibleNotes.length === 0 && <div style={emptyStyle}>この日の進捗ログはまだありません。</div>}
 
-          {!loading && notes.map((note) => {
+          {!loading && visibleNotes.map((note) => {
             const authorName = getAuthorName(note.author_name)
             const authorColor = note.author_color ?? '#64748b'
             const editingNote = editingNoteId === note.id

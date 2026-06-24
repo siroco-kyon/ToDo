@@ -4,9 +4,12 @@ import type { RunningState, WorkLog } from './types'
 
 export function startTimer(userId: string, todoId: string): RunningState {
   const db = getDb()
-  const existing = db.prepare('SELECT * FROM RunningState WHERE user_id = ?').get(userId)
+  // 実行中のタイマーがあれば自動停止（WorkLog 記録）してから開始する。
+  // 同じタスクを再度開始した場合は計測中のものを維持する（リセットしない）。
+  const existing = db.prepare('SELECT * FROM RunningState WHERE user_id = ?').get(userId) as RunningState | undefined
   if (existing) {
-    throw new Error('既に実行中のタイマーがあります')
+    if (existing.todo_id === todoId) return existing
+    stopTimer(userId)
   }
   const now = new Date().toISOString()
   db.prepare('INSERT INTO RunningState (user_id, todo_id, start_time) VALUES (?, ?, ?)').run(userId, todoId, now)

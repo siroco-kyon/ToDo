@@ -149,9 +149,9 @@ function notifyProgressReply(actorUserId: string, note: ProgressNote | undefined
 
 // ─── Categories ───────────────────────────────────────────────
 dataRouter.get('/categories', (_req, res) => run(res, () => getAllCategories()))
-dataRouter.post('/categories', (req, res) => run(res, () => createCategory(req.body.name, req.body.color), 'category'))
+dataRouter.post('/categories', (req, res) => run(res, () => createCategory(req.body.name, req.body.color, req.body.isPrivate), 'category'))
 dataRouter.put('/categories/:id', (req, res) =>
-  run(res, () => updateCategory(req.params.id, req.body.name, req.body.color, req.body.description), 'category'))
+  run(res, () => updateCategory(req.params.id, req.body.name, req.body.color, req.body.description, req.body.isPrivate), 'category'))
 dataRouter.delete('/categories/:id', (req, res) => run(res, () => deleteCategory(req.params.id), 'category'))
 dataRouter.post('/categories/reorder', (req, res) => run(res, () => reorderCategories(req.body.orderedIds), 'category'))
 
@@ -323,7 +323,8 @@ dataRouter.get('/progress-digest', (req, res) =>
     let userIds =
       typeof rawIds === 'string' && rawIds.length > 0 ? rawIds.split(',').filter(Boolean) : undefined
     if (req.user!.role !== 'admin') userIds = [req.user!.id]
-    return getProgressDigest(from, to, userIds)
+    const includePrivate = req.query.includePrivate !== 'false'
+    return getProgressDigest(from, to, userIds, includePrivate)
   }))
 
 // ─── Desktop DB import (admin) ────────────────────────────────
@@ -370,4 +371,4 @@ dataRouter.post(
 )
 
 // ─── Team dashboard ───────────────────────────────────────────
-dataRouter.get('/team', (_req, res) => run(res, () => getTeamDashboard()))
+dataRouter.get('/team', (req, res) => run(res, () => getTeamDashboard(req.query.includePrivate !== 'false')))

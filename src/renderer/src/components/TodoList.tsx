@@ -145,17 +145,27 @@ function TodoItem({
                   {todo.due_date.slice(0, 10)}
                 </span>
               )}
-              {todo.assignee_name && !isArchived && (
-                <span
-                  title={todo.assignee_name}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 15, height: 15, borderRadius: '50%', flexShrink: 0,
-                    background: todo.assignee_color ?? '#64748b',
-                    color: '#0b1220', fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase'
-                  }}
-                >
-                  {todo.assignee_name.slice(0, 1)}
+              {!isArchived && (todo.assignee_name || (todo.co_assignees?.length ?? 0) > 0) && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                  {todo.assignee_name && (
+                    <span title={`主担当: ${todo.assignee_name}`} style={avatarStyle(todo.assignee_color)}>
+                      {todo.assignee_name.slice(0, 1)}
+                    </span>
+                  )}
+                  {(todo.co_assignees ?? []).slice(0, 3).map((ca) => (
+                    <span
+                      key={ca.user_id}
+                      title={`サブ担当: ${ca.display_name}`}
+                      style={{ ...avatarStyle(ca.color), marginLeft: todo.assignee_name ? -4 : 0 }}
+                    >
+                      {ca.display_name.slice(0, 1)}
+                    </span>
+                  ))}
+                  {(todo.co_assignees?.length ?? 0) > 3 && (
+                    <span style={{ ...avatarStyle('#475569'), marginLeft: -4 }}>
+                      +{(todo.co_assignees?.length ?? 0) - 3}
+                    </span>
+                  )}
                 </span>
               )}
               {!isArchived && prog > 0 && (
@@ -259,5 +269,14 @@ function actionBtn(color: string): React.CSSProperties {
     background: `${color}20`, border: `1px solid ${color}60`,
     borderRadius: 4, color, cursor: 'pointer',
     fontSize: '0.78rem', padding: '2px 5px', lineHeight: 1
+  }
+}
+
+function avatarStyle(color: string | null | undefined): React.CSSProperties {
+  return {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    width: 15, height: 15, borderRadius: '50%', flexShrink: 0,
+    background: color ?? '#64748b', border: '1px solid #0d1525',
+    color: '#0b1220', fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase'
   }
 }

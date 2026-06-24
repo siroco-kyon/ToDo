@@ -4,6 +4,8 @@ export interface Category {
   color: string
   description: string
   sort_order: number
+  /** 1 のとき全体の集計（概要/チーム/進捗レポート）から除外する */
+  is_private: number
   created_at: string
 }
 
@@ -147,6 +149,8 @@ export interface CreateTodoInput {
   memo?: string
   category_id?: string | null
   assignee_id?: string | null
+  /** 省略時は 'active'。カンバンの列からの追加でその列のステータスを指定する */
+  status?: 'not_started' | 'active' | 'done'
   priority?: number
   progress?: number
   start_date?: string | null
@@ -450,6 +454,8 @@ export interface ProgressDigestQuery {
   from: string
   to: string
   userIds?: string[]
+  /** false のときプライベートカテゴリのタスク由来の集計を除外する（既定は含める） */
+  includePrivate?: boolean
 }
 
 /** デスクトップ版 todo.db をサーバー版へ取り込んだ結果の件数（サーバー版のみ） */

@@ -14,6 +14,8 @@ interface Props {
   /** true のとき自分の活動だけを集計する個人サマリーとして動く（メンバー選択を隠す） */
   selfOnly?: boolean
   currentUser?: PublicUser | null
+  /** false のときプライベートカテゴリのタスクを集計から除外（全体レンズ） */
+  includePrivate?: boolean
 }
 
 const STATUS_LABEL: Record<TodoStatus, string> = {
@@ -121,7 +123,7 @@ function digestToMarkdown(digest: ProgressDigest): string {
   return lines.join('\n')
 }
 
-export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = false, currentUser = null }: Props): React.JSX.Element {
+export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = false, currentUser = null, includePrivate = true }: Props): React.JSX.Element {
   const today = new Date()
   const [from, setFrom] = useState(() => toDateInput(addDays(today, -6)))
   const [to, setTo] = useState(() => toDateInput(today))
@@ -146,14 +148,14 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
       const userIds = selfOnly
         ? (currentUser ? [currentUser.id] : undefined)
         : Array.from(selectedIds)
-      const result = await window.api.progressDigestGet({ from, to, userIds })
+      const result = await window.api.progressDigestGet({ from, to, userIds, includePrivate })
       setDigest(result)
     } catch (err) {
       onShowToast(err instanceof Error ? err.message : '進捗レポートの取得に失敗しました', 'error')
     } finally {
       setLoading(false)
     }
-  }, [from, to, selectedIds, selfOnly, currentUser, onShowToast])
+  }, [from, to, selectedIds, selfOnly, currentUser, includePrivate, onShowToast])
 
   const handleCopyMarkdown = useCallback(async (): Promise<void> => {
     if (!digest) return

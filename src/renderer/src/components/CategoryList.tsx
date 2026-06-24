@@ -5,8 +5,8 @@ interface Props {
   categories: Category[]
   selectedId: string | null
   onSelect: (id: string | null) => void
-  onAdd: (name: string, color: string) => Promise<void>
-  onUpdate: (id: string, name: string, color: string, description: string) => Promise<void>
+  onAdd: (name: string, color: string, isPrivate: boolean) => Promise<void>
+  onUpdate: (id: string, name: string, color: string, description: string, isPrivate: boolean) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onReorder: (orderedIds: string[]) => Promise<void>
 }
@@ -17,10 +17,12 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState(COLORS[0])
+  const [newPrivate, setNewPrivate] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editColor, setEditColor] = useState(COLORS[0])
   const [editDesc, setEditDesc] = useState('')
+  const [editPrivate, setEditPrivate] = useState(false)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   // ─── ドラッグ並び替え ──────────────────────────────────────
@@ -47,9 +49,10 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
   const handleAdd = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
     if (!newName.trim()) return
-    await onAdd(newName.trim(), newColor)
+    await onAdd(newName.trim(), newColor, newPrivate)
     setNewName('')
     setNewColor(COLORS[0])
+    setNewPrivate(false)
     setAdding(false)
   }
 
@@ -60,12 +63,13 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
     setEditName(cat.name)
     setEditColor(cat.color)
     setEditDesc(cat.description ?? '')
+    setEditPrivate(!!cat.is_private)
   }
 
   const handleUpdate = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
     if (!editingId || !editName.trim()) return
-    await onUpdate(editingId, editName.trim(), editColor, editDesc)
+    await onUpdate(editingId, editName.trim(), editColor, editDesc, editPrivate)
     setEditingId(null)
   }
 
@@ -127,6 +131,10 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                   rows={2}
                   style={{ ...inputStyle, resize: 'vertical', marginBottom: 4 }}
                 />
+                <label style={privateLabelStyle}>
+                  <input type="checkbox" checked={editPrivate} onChange={(e) => setEditPrivate(e.target.checked)} style={{ accentColor: '#6366f1' }} />
+                  プライベート（全体の集計から除外）
+                </label>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button type="submit" style={btnStyle('#6366f1')}>保存</button>
                   <button type="button" onClick={() => setEditingId(null)} style={btnStyle('#334155')}>×</button>
@@ -154,6 +162,9 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
                     {cat.name}
                   </span>
+                  {cat.is_private ? (
+                    <span title="プライベート（全体の集計から除外）" style={{ marginLeft: 4, fontSize: '0.7rem', flexShrink: 0 }}>🔒</span>
+                  ) : null}
                 </button>
                 {cat.description && hoveredId !== cat.id && (
                   <div style={{
@@ -211,6 +222,10 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
               />
             ))}
           </div>
+          <label style={privateLabelStyle}>
+            <input type="checkbox" checked={newPrivate} onChange={(e) => setNewPrivate(e.target.checked)} style={{ accentColor: '#6366f1' }} />
+            プライベート（全体の集計から除外）
+          </label>
           <div style={{ display: 'flex', gap: 4 }}>
             <button type="submit" style={btnStyle('#6366f1')}>追加</button>
             <button type="button" onClick={() => setAdding(false)} style={btnStyle('#334155')}>×</button>
@@ -262,4 +277,9 @@ function btnStyle(bg: string): React.CSSProperties {
     flex: 1, padding: '4px 8px', background: bg, border: 'none',
     borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: '0.8rem'
   }
+}
+
+const privateLabelStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6, margin: '2px 0 6px',
+  fontSize: '0.72rem', color: '#94a3b8', cursor: 'pointer'
 }

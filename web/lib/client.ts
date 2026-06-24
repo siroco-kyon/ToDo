@@ -254,9 +254,9 @@ const DEFAULT_ICON_DATA_URL =
 export const api: Api = {
   // Categories
   categoryGetAll: () => get<Category[]>('/categories'),
-  categoryCreate: (name, color) => post<Category>('/categories', { name, color }),
-  categoryUpdate: (id, name, color, description) =>
-    put<Category>(`/categories/${id}`, { name, color, description }),
+  categoryCreate: (name, color, isPrivate) => post<Category>('/categories', { name, color, isPrivate }),
+  categoryUpdate: (id, name, color, description, isPrivate) =>
+    put<Category>(`/categories/${id}`, { name, color, description, isPrivate }),
   categoryDelete: (id) => del<void>(`/categories/${id}`),
   categoryReorder: (orderedIds) => post<void>('/categories/reorder', { orderedIds }),
 
@@ -310,7 +310,8 @@ export const api: Api = {
     get<ProgressDigest>('/progress-digest', {
       from: query.from,
       to: query.to,
-      userIds: query.userIds && query.userIds.length > 0 ? query.userIds.join(',') : undefined
+      userIds: query.userIds && query.userIds.length > 0 ? query.userIds.join(',') : undefined,
+      includePrivate: query.includePrivate === false ? 'false' : undefined
     }),
 
   // Daily plan
@@ -345,7 +346,7 @@ export const api: Api = {
 
   // Users & team
   userList: () => get<PublicUser[]>('/users'),
-  teamGetDashboard: () => get<TeamDashboard>('/team'),
+  teamGetDashboard: (includePrivate) => get<TeamDashboard>('/team', { includePrivate: includePrivate === false ? 'false' : undefined }),
   authGetCurrentUser: async (): Promise<PublicUser | null> => {
     const res = await fetch('/api/auth/me', { credentials: 'same-origin' })
     if (res.status === 401) return null
