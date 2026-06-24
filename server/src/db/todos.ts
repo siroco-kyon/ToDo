@@ -191,12 +191,13 @@ export function createTodo(data: CreateTodoInput, createdByUserId: string | null
   const db = getDb()
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
+  const status = data.status ?? 'active'
   const startDate = normalizeDateKey(data.start_date)
   const dueDate = normalizeDateKey(data.due_date)
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) AS m FROM Todos').get() as { m: number }).m
   db.prepare(
-    `INSERT INTO Todos (id, title, description, memo, category_id, assignee_id, created_by, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO Todos (id, title, description, memo, category_id, assignee_id, created_by, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, created_at, updated_at, completed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     data.title,
@@ -205,7 +206,7 @@ export function createTodo(data: CreateTodoInput, createdByUserId: string | null
     data.category_id ?? null,
     data.assignee_id ?? null,
     createdByUserId,
-    data.status ?? 'active',
+    status,
     data.priority ?? 3,
     data.progress ?? 0,
     startDate,
@@ -214,7 +215,8 @@ export function createTodo(data: CreateTodoInput, createdByUserId: string | null
     data.recurrence ?? null,
     data.recurrence_copy_subtasks ? 1 : 0,
     now,
-    now
+    now,
+    status === 'done' ? now : null
   )
   return getTodoById(id)
 }

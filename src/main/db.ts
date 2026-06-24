@@ -556,20 +556,21 @@ function dependencyCreatesCycle(predecessorTodoId: string, successorTodoId: stri
 export function createTodo(data: CreateTodoInput): Todo {
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
+  const status = data.status ?? 'active'
   const startDate = normalizeDateKey(data.start_date)
   const dueDate = normalizeDateKey(data.due_date)
   // 新規タスクはsort_orderを最小値-1にして先頭に表示
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) as m FROM Todos').get() as { m: number }).m
   db.prepare(
-    `INSERT INTO Todos (id, title, description, memo, category_id, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO Todos (id, title, description, memo, category_id, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, created_at, updated_at, completed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     data.title,
     data.description ?? '',
     data.memo ?? '',
     data.category_id ?? null,
-    data.status ?? 'active',
+    status,
     data.priority ?? 3,
     data.progress ?? 0,
     startDate,
@@ -578,7 +579,8 @@ export function createTodo(data: CreateTodoInput): Todo {
     data.recurrence ?? null,
     data.recurrence_copy_subtasks ? 1 : 0,
     now,
-    now
+    now,
+    status === 'done' ? now : null
   )
   return db
     .prepare(
@@ -982,16 +984,22 @@ export function deleteSubTask(id: string): void {
 // ─── Timer ────────────────────────────────────────────────────
 
 export function startTimer(todoId: string): RunningState {
-  // 実行中のタイマーがあれば自動停止（WorkLog 記録）してから開始する。
-  // 同じタスクを再度開始した場合は計測中のものを維持する（リセットしない）。
-  const existing = db.prepare('SELECT * FROM RunningState WHERE id = 1').get() as RunningState | undefined
-  if (existing) {
-    if (existing.todo_id === todoId) return { todo_id: existing.todo_id, start_time: existing.start_time }
-    stopTimer()
-  }
-  const now = new Date().toISOString()
-  db.prepare('INSERT INTO RunningState (id, todo_id, start_time) VALUES (1, ?, ?)').run(todoId, now)
-  return { todo_id: todoId, start_time: now }
+  return db.transaction(() => {
+    // 切替先を先に検証し、旧タイマーの停止だけが確定する部分更新を防ぐ。
+    const target = db.prepare('SELECT id FROM Todos WHERE id = ?').get(todoId) as { id: string } | undefined
+    if (!target) throw new Error('開始するタスクが見つかりません')
+
+    // 実行中のタイマーがあれば自動停止（WorkLog 記録）してから開始する。
+    // 同じタスクを再度開始した場合は計測中のものを維持する（リセットしない）。
+    const existing = db.prepare('SELECT * FROM RunningState WHERE id = 1').get() as RunningState | undefined
+    if (existing) {
+      if (existing.todo_id === todoId) return { todo_id: existing.todo_id, start_time: existing.start_time }
+      stopTimer()
+    }
+    const now = new Date().toISOString()
+    db.prepare('INSERT INTO RunningState (id, todo_id, start_time) VALUES (1, ?, ?)').run(todoId, now)
+    return { todo_id: todoId, start_time: now }
+  })()
 }
 
 export function stopTimer(note?: string): WorkLog {

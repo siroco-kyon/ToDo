@@ -4,16 +4,22 @@ import type { RunningState, WorkLog } from './types'
 
 export function startTimer(userId: string, todoId: string): RunningState {
   const db = getDb()
-  // 実行中のタイマーがあれば自動停止（WorkLog 記録）してから開始する。
-  // 同じタスクを再度開始した場合は計測中のものを維持する（リセットしない）。
-  const existing = db.prepare('SELECT * FROM RunningState WHERE user_id = ?').get(userId) as RunningState | undefined
-  if (existing) {
-    if (existing.todo_id === todoId) return existing
-    stopTimer(userId)
-  }
-  const now = new Date().toISOString()
-  db.prepare('INSERT INTO RunningState (user_id, todo_id, start_time) VALUES (?, ?, ?)').run(userId, todoId, now)
-  return { user_id: userId, todo_id: todoId, start_time: now }
+  return db.transaction(() => {
+    // 切替先を先に検証し、旧タイマーの停止だけが確定する部分更新を防ぐ。
+    const target = db.prepare('SELECT id FROM Todos WHERE id = ?').get(todoId) as { id: string } | undefined
+    if (!target) throw new Error('開始するタスクが見つかりません')
+
+    // 実行中のタイマーがあれば自動停止（WorkLog 記録）してから開始する。
+    // 同じタスクを再度開始した場合は計測中のものを維持する（リセットしない）。
+    const existing = db.prepare('SELECT * FROM RunningState WHERE user_id = ?').get(userId) as RunningState | undefined
+    if (existing) {
+      if (existing.todo_id === todoId) return existing
+      stopTimer(userId)
+    }
+    const now = new Date().toISOString()
+    db.prepare('INSERT INTO RunningState (user_id, todo_id, start_time) VALUES (?, ?, ?)').run(userId, todoId, now)
+    return { user_id: userId, todo_id: todoId, start_time: now }
+  })()
 }
 
 export function stopTimer(userId: string, note?: string): WorkLog {

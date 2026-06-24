@@ -463,8 +463,13 @@ export function TodoDetail({
   const displayProgress = localProgress ?? todo.progress ?? 0
   const doneCount = subTasks.filter((subTask) => subTask.done).length
   const subTaskProgress = subTasks.length > 0 ? Math.round((doneCount / subTasks.length) * 100) : null
-  const predecessorDependencies = dependencies.filter((dependency) => dependency.successor_todo_id === todo.id)
-  const successorDependencies = dependencies.filter((dependency) => dependency.predecessor_todo_id === todo.id)
+  const visibleTodoIds = new Set(allTodos.map((candidate) => candidate.id))
+  const predecessorDependencies = dependencies.filter(
+    (dependency) => dependency.successor_todo_id === todo.id && visibleTodoIds.has(dependency.predecessor_todo_id)
+  )
+  const successorDependencies = dependencies.filter(
+    (dependency) => dependency.predecessor_todo_id === todo.id && visibleTodoIds.has(dependency.successor_todo_id)
+  )
   const blockedCandidateIds = new Set(
     (dependencyDraft.mode === 'predecessor' ? predecessorDependencies : successorDependencies)
       .map((dependency) => dependencyDraft.mode === 'predecessor' ? dependency.predecessor_todo_id : dependency.successor_todo_id)

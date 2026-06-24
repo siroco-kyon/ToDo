@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import type { WorkLogSummaryRow } from '../types'
 
+interface Props {
+  hiddenTodoIds?: Set<string>
+}
+
 interface TaskGroup {
   todo_id: string
   title: string
@@ -18,6 +22,7 @@ const DAY_OPTIONS = [
 ]
 
 const WEEK_DAYS = ['日', '月', '火', '水', '木', '金', '土']
+const NO_HIDDEN_TODOS = new Set<string>()
 
 function formatDate(isoStr: string): string {
   const d = new Date(isoStr)
@@ -64,7 +69,7 @@ function groupByTask(rows: WorkLogSummaryRow[]): TaskGroup[] {
   return [...map.values()].sort((a, b) => b.total_seconds - a.total_seconds)
 }
 
-export function WorkLogSummary(): React.JSX.Element {
+export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): React.JSX.Element {
   const [days, setDays] = useState(7)
   const [groups, setGroups] = useState<TaskGroup[]>([])
   const [loading, setLoading] = useState(false)
@@ -73,9 +78,9 @@ export function WorkLogSummary(): React.JSX.Element {
   const load = useCallback(async (d: number) => {
     setLoading(true)
     const rows = await window.api.worklogGetSummary(d)
-    setGroups(groupByTask(rows))
+    setGroups(groupByTask(rows.filter((row) => !hiddenTodoIds.has(row.todo_id))))
     setLoading(false)
-  }, [])
+  }, [hiddenTodoIds])
 
   useEffect(() => { load(days) }, [days, load])
 
