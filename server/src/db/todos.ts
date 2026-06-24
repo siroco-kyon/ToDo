@@ -97,7 +97,15 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
     }
   }
   if (data.priority !== undefined) { fields.push('priority = ?'); values.push(data.priority) }
-  if (data.progress !== undefined) { fields.push('progress = ?'); values.push(data.progress) }
+  if (data.progress !== undefined) {
+    fields.push('progress = ?'); values.push(data.progress)
+    // 進捗100%で自動完了（status を明示指定していない時のみ）。
+    // updateTodo 側が done 遷移を検知して繰り返し次回分も生成する。
+    if (data.status === undefined && data.progress >= 100) {
+      fields.push('status = ?'); values.push('done')
+      fields.push('completed_at = COALESCE(completed_at, ?)'); values.push(updatedAt)
+    }
+  }
   if (data.start_date !== undefined) { fields.push('start_date = ?'); values.push(normalizeDateKey(data.start_date)) }
   if (data.due_date !== undefined) { fields.push('due_date = ?'); values.push(normalizeDateKey(data.due_date)) }
   if (data.recurrence !== undefined) { fields.push('recurrence = ?'); values.push(data.recurrence) }
@@ -188,7 +196,7 @@ export function createTodo(data: CreateTodoInput, createdByUserId: string | null
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) AS m FROM Todos').get() as { m: number }).m
   db.prepare(
     `INSERT INTO Todos (id, title, description, memo, category_id, assignee_id, created_by, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     data.title,
@@ -197,6 +205,7 @@ export function createTodo(data: CreateTodoInput, createdByUserId: string | null
     data.category_id ?? null,
     data.assignee_id ?? null,
     createdByUserId,
+    data.status ?? 'active',
     data.priority ?? 3,
     data.progress ?? 0,
     startDate,

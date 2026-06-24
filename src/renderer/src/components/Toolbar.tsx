@@ -9,7 +9,9 @@ interface Props {
   showArchived: boolean
   onToggleArchived: () => void
   onOpenSettings: () => void
-  activeView: 'detail' | 'log' | 'progress' | 'plan' | 'gantt' | 'team'
+  activeView: 'detail' | 'log' | 'progress' | 'plan' | 'gantt' | 'team' | 'kanban'
+  scopeLens: 'personal' | 'team'
+  onSetScopeLens: (lens: 'personal' | 'team') => void
   showPlanRail: boolean
   showCategoryPane: boolean
   showTaskPane: boolean
@@ -23,6 +25,7 @@ interface Props {
   onToggleProgressView: () => void
   onTogglePlanView: () => void
   onToggleGanttView: () => void
+  onToggleKanbanView: () => void
   onToggleTeamView: () => void
   onTogglePlanRail: () => void
   onToggleCategoryPane: () => void
@@ -30,7 +33,7 @@ interface Props {
 }
 
 interface ViewButton {
-  key: 'plan' | 'gantt' | 'log' | 'progress' | 'team'
+  key: 'plan' | 'gantt' | 'kanban' | 'log' | 'progress' | 'team'
   label: string
   active: boolean
   onClick: () => void
@@ -45,6 +48,8 @@ export function Toolbar({
   onToggleArchived,
   onOpenSettings,
   activeView,
+  scopeLens,
+  onSetScopeLens,
   showPlanRail,
   showCategoryPane,
   showTaskPane,
@@ -57,6 +62,7 @@ export function Toolbar({
   onToggleProgressView,
   onTogglePlanView,
   onToggleGanttView,
+  onToggleKanbanView,
   onToggleTeamView,
   onTogglePlanRail,
   onToggleCategoryPane,
@@ -64,6 +70,7 @@ export function Toolbar({
 }: Props): React.JSX.Element {
   const viewButtons: ViewButton[] = [
     { key: 'gantt', label: 'ガント', active: activeView === 'gantt', onClick: onToggleGanttView },
+    { key: 'kanban', label: 'カンバン', active: activeView === 'kanban', onClick: onToggleKanbanView },
     ...(showTeamButton ? [{ key: 'team' as const, label: 'チーム', active: activeView === 'team', onClick: onToggleTeamView }] : []),
     { key: 'progress', label: '進捗', active: activeView === 'progress', onClick: onToggleProgressView },
     { key: 'plan', label: '計画', active: activeView === 'plan', onClick: onTogglePlanView },
@@ -101,6 +108,11 @@ export function Toolbar({
             計測中
           </span>
         )}
+
+        <div style={groupStyle} title="全体: プライベートを集計・表示から除外（切替は自分の画面だけ）">
+          <button onClick={() => onSetScopeLens('personal')} style={viewButtonStyle(scopeLens === 'personal')}>個人</button>
+          <button onClick={() => onSetScopeLens('team')} style={viewButtonStyle(scopeLens === 'team')}>全体</button>
+        </div>
 
         <div style={groupStyle}>
           {viewButtons.map((button) => (

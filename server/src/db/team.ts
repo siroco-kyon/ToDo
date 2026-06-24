@@ -8,7 +8,8 @@ import type {
 } from './types'
 
 /** Everyone with a running timer right now, with the task they are on. */
-export function getTeamNow(): TeamNowItem[] {
+export function getTeamNow(includePrivate = true): TeamNowItem[] {
+  const privateClause = includePrivate ? '' : 'WHERE COALESCE(c.is_private, 0) = 0'
   const rows = getDb()
     .prepare(
       `SELECT rs.user_id, rs.todo_id, rs.start_time,
@@ -19,6 +20,7 @@ export function getTeamNow(): TeamNowItem[] {
        JOIN Users u ON rs.user_id = u.id
        JOIN Todos t ON rs.todo_id = t.id
        LEFT JOIN Categories c ON t.category_id = c.id
+       ${privateClause}
        ORDER BY rs.start_time ASC`
     )
     .all() as Array<Omit<TeamNowItem, 'elapsed_seconds'>>
@@ -44,7 +46,8 @@ interface DeadlineRow {
   assignee_color: string | null
 }
 
-function getActiveDatedTodos(): DeadlineRow[] {
+function getActiveDatedTodos(includePrivate = true): DeadlineRow[] {
+  const privateClause = includePrivate ? '' : 'AND COALESCE(c.is_private, 0) = 0'
   return getDb()
     .prepare(
       `SELECT t.id AS todo_id, t.title, t.due_date, t.status, t.priority, t.progress,
@@ -53,19 +56,19 @@ function getActiveDatedTodos(): DeadlineRow[] {
        FROM Todos t
        LEFT JOIN Categories c ON t.category_id = c.id
        LEFT JOIN Users u ON t.assignee_id = u.id
-       WHERE t.status NOT IN ('done', 'archived') AND t.due_date IS NOT NULL
+       WHERE t.status NOT IN ('done', 'archived') AND t.due_date IS NOT NULL ${privateClause}
        ORDER BY t.due_date ASC, t.priority DESC`
     )
     .all() as DeadlineRow[]
 }
 
 /** Overdue + soon-due tasks across the team, each tagged with days until due. */
-export function getTeamDeadlines(): { overdue: TeamDeadlineItem[]; dueSoon: TeamDeadlineItem[] } {
+export function getTeamDeadlines(includePrivate = true): { overdue: TeamDeadlineItem[]; dueSoon: TeamDeadlineItem[] } {
   const todayKey = getTodayKey()
   const overdue: TeamDeadlineItem[] = []
   const dueSoon: TeamDeadlineItem[] = []
 
-  for (const row of getActiveDatedTodos()) {
+  for (const row of getActiveDatedTodos(includePrivate)) {
     const daysUntilDue = diffCalendarDays(row.due_date, todayKey)
     const item: TeamDeadlineItem = { ...row, days_until_due: daysUntilDue }
     if (daysUntilDue < 0) overdue.push(item)
@@ -76,12 +79,13 @@ export function getTeamDeadlines(): { overdue: TeamDeadlineItem[]; dueSoon: Team
 }
 
 /** Per-member load: active tasks, overdue count, minutes logged today (incl. running). */
-export function getTeamWorkloads(): TeamMemberWorkload[] {
+export function getTeamWorkloads(includePrivate = true): TeamMemberWorkload[] {
   const db = getDb()
   const todayKey = getTodayKey()
   const todayStart = new Date()
   todayStart.setHours(0, 0, 0, 0)
   const now = new Date()
+  const privateClause = includePrivate ? '' : 'AND COALESCE(c.is_private, 0) = 0'
 
   const users = db
     .prepare("SELECT id, display_name, color FROM Users WHERE is_active = 1 ORDER BY display_name ASC")
@@ -89,7 +93,8 @@ export function getTeamWorkloads(): TeamMemberWorkload[] {
 
   return users.map((user) => {
     const assigned = db
-      .prepare("SELECT due_date FROM Todos WHERE assignee_id = ? AND status NOT IN ('done', 'archived')")
+      .prepare(`SELECT t.due_date FROM Todos t LEFT JOIN Categories c ON t.category_id = c.id
+                WHERE t.assignee_id = ? AND t.status NOT IN ('done', 'archived') ${privateClause}`)
       .all(user.id) as Array<{ due_date: string | null }>
 
     const overdueTasks = assigned.filter(
@@ -97,11 +102,15 @@ export function getTeamWorkloads(): TeamMemberWorkload[] {
     ).length
 
     const loggedRow = db
-      .prepare('SELECT COALESCE(SUM(duration_seconds), 0) AS total FROM WorkLogs WHERE user_id = ? AND start_time >= ?')
+      .prepare(`SELECT COALESCE(SUM(wl.duration_seconds), 0) AS total FROM WorkLogs wl
+                JOIN Todos t ON wl.todo_id = t.id LEFT JOIN Categories c ON t.category_id = c.id
+                WHERE wl.user_id = ? AND wl.start_time >= ? ${privateClause}`)
       .get(user.id, todayStart.toISOString()) as { total: number }
 
     const running = db
-      .prepare('SELECT start_time FROM RunningState WHERE user_id = ?')
+      .prepare(`SELECT rs.start_time FROM RunningState rs
+                JOIN Todos t ON rs.todo_id = t.id LEFT JOIN Categories c ON t.category_id = c.id
+                WHERE rs.user_id = ? ${privateClause}`)
       .get(user.id) as { start_time: string } | undefined
     const runningToday = running ? clampRunningSeconds(running.start_time, todayStart, now) : 0
 
@@ -116,12 +125,12 @@ export function getTeamWorkloads(): TeamMemberWorkload[] {
   })
 }
 
-export function getTeamDashboard(): TeamDashboard {
-  const { overdue, dueSoon } = getTeamDeadlines()
+export function getTeamDashboard(includePrivate = true): TeamDashboard {
+  const { overdue, dueSoon } = getTeamDeadlines(includePrivate)
   return {
-    now: getTeamNow(),
+    now: getTeamNow(includePrivate),
     overdue,
     dueSoon,
-    workloads: getTeamWorkloads()
+    workloads: getTeamWorkloads(includePrivate)
   }
 }

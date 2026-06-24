@@ -18,11 +18,13 @@ import { SetupWizardModal } from './components/SetupWizardModal'
 import { PlanView } from './components/PlanView'
 import { TodayFlowRail } from './components/TodayFlowRail'
 import { GanttView } from './components/GanttView'
+import { KanbanView } from './components/KanbanView'
 import { TeamDashboard } from './components/TeamDashboard'
 import { NotificationPanel } from './components/NotificationPanel'
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
-type CenterView = 'detail' | 'log' | 'progress' | 'plan' | 'gantt' | 'team'
+type CenterView = 'detail' | 'log' | 'progress' | 'plan' | 'gantt' | 'team' | 'kanban'
+type ScopeLens = 'personal' | 'team'
 type GanttSidePanelMode = 'detail' | 'today'
 type PaneKey = 'category' | 'list' | 'side'
 type ThemeMode = 'dark' | 'light'
@@ -100,6 +102,11 @@ export function App(): React.JSX.Element {
     return saved === 'light' ? 'light' : 'dark'
   })
   const [activeView, setActiveView] = useState<CenterView>(() => 'gantt')
+  // 表示レンズ（個人=全部 / 全体=プライベート除外）。クライアント側のみで保持し、
+  // 他ユーザーの画面には影響しない（サーバーに送らない）。
+  const [scopeLens, setScopeLens] = useState<ScopeLens>(() => {
+    return window.localStorage.getItem('app-scope-lens') === 'team' ? 'team' : 'personal'
+  })
   const [ganttSidePanelMode, setGanttSidePanelMode] = useState<GanttSidePanelMode>('today')
   const [showPlanRail, setShowPlanRail] = useState<boolean>(() => {
     const saved = window.localStorage.getItem('show-plan-rail')
@@ -250,6 +257,10 @@ export function App(): React.JSX.Element {
   }, [showPlanRail])
 
   useEffect(() => {
+    window.localStorage.setItem('app-scope-lens', scopeLens)
+  }, [scopeLens])
+
+  useEffect(() => {
     window.localStorage.setItem('show-category-pane', String(showCategoryPane))
   }, [showCategoryPane])
 
@@ -350,10 +361,17 @@ export function App(): React.JSX.Element {
   const q = searchQuery.trim().toLowerCase()
   const multiUser = users.length > 0
   const isAdmin = currentUser?.role === 'admin'
+  const privateCategoryIds = new Set(categories.filter((category) => category.is_private).map((category) => category.id))
+  // 全体レンズ時に進捗タイムラインで隠す、プライベートカテゴリのタスクID
+  const hiddenNoteTodoIds = scopeLens === 'team'
+    ? new Set(todos.filter((todo) => todo.category_id != null && privateCategoryIds.has(todo.category_id)).map((todo) => todo.id))
+    : new Set<string>()
 
   const filteredTodos = todos
     .filter((todo) => {
       if (!showArchived && todo.status === 'archived') return false
+      // 全体レンズ: プライベートカテゴリのタスクを作業系ビューから除外（自分の画面のみ）
+      if (scopeLens === 'team' && todo.category_id != null && privateCategoryIds.has(todo.category_id)) return false
       if (selectedCategoryId && todo.category_id !== selectedCategoryId) return false
       if (selectedAssigneeId !== null) {
         if (selectedAssigneeId === '' && todo.assignee_id !== null) return false
@@ -520,13 +538,35 @@ export function App(): React.JSX.Element {
     await loadTodos()
   }, [loadTodos, showToast])
 
-  const handleCategoryAdd = useCallback(async (name: string, color: string) => {
-    await window.api.categoryCreate(name, color)
+  // カンバンの列間ドラッグでステータスを変更。完了化したら handleToggleDone と同じく
+  // 繰り返しタスクの次回分作成（DB層が自動生成）を通知する。
+  const handleKanbanMove = useCallback(async (todo: Todo, status: Todo['status']) => {
+    if (todo.status === status) return
+    await window.api.todoUpdate(todo.id, { status })
+    if (status === 'done' && todo.recurrence) {
+      const recurrenceLabel = todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : '毎月'
+      showToast(`${recurrenceLabel}タスクを次回分として作成しました`)
+    }
+    await loadTodos()
+  }, [loadTodos, showToast])
+
+  const handleKanbanCreate = useCallback(async (title: string, status: Todo['status']) => {
+    await window.api.todoCreate({
+      title,
+      status: status === 'archived' ? 'not_started' : status,
+      category_id: selectedCategoryId,
+      assignee_id: currentUser?.id ?? null
+    })
+    await loadTodos()
+  }, [loadTodos, selectedCategoryId, currentUser])
+
+  const handleCategoryAdd = useCallback(async (name: string, color: string, isPrivate: boolean) => {
+    await window.api.categoryCreate(name, color, isPrivate)
     await loadCategories()
   }, [loadCategories])
 
-  const handleCategoryUpdate = useCallback(async (id: string, name: string, color: string, description: string) => {
-    await window.api.categoryUpdate(id, name, color, description)
+  const handleCategoryUpdate = useCallback(async (id: string, name: string, color: string, description: string, isPrivate: boolean) => {
+    await window.api.categoryUpdate(id, name, color, description, isPrivate)
     await loadCategories()
   }, [loadCategories])
 
@@ -694,6 +734,8 @@ export function App(): React.JSX.Element {
         onToggleArchived={() => setShowArchived((prev) => !prev)}
         onOpenSettings={() => setShowSettings(true)}
         activeView={activeView}
+        scopeLens={scopeLens}
+        onSetScopeLens={setScopeLens}
         showPlanRail={showPlanRail}
         showCategoryPane={showCategoryPane}
         showTaskPane={showTaskPane}
@@ -706,6 +748,7 @@ export function App(): React.JSX.Element {
         onToggleProgressView={() => toggleCenterView('progress')}
         onTogglePlanView={() => toggleCenterView('plan')}
         onToggleGanttView={() => toggleCenterView('gantt')}
+        onToggleKanbanView={() => toggleCenterView('kanban')}
         onToggleTeamView={() => toggleCenterView('team')}
         onTogglePlanRail={() => setShowPlanRail((prev) => !prev)}
         onToggleCategoryPane={() => setShowCategoryPane((prev) => !prev)}
@@ -849,6 +892,15 @@ export function App(): React.JSX.Element {
               onReorderTodos={handleReorder}
               onOpenSeparateWindow={handleOpenGanttWindow}
             />
+          ) : activeView === 'kanban' ? (
+            <KanbanView
+              todos={filteredTodos}
+              categories={categories}
+              runningTodoId={runningTodoId}
+              onSelectTodo={openTodoDetail}
+              onChangeStatus={handleKanbanMove}
+              onCreateInColumn={handleKanbanCreate}
+            />
           ) : activeView === 'plan' ? (
             <PlanView
               date={getTodayKey()}
@@ -871,9 +923,10 @@ export function App(): React.JSX.Element {
               focusTarget={progressTimelineFocus}
               onSelectTodo={openTodoDetail}
               onShowToast={showToast}
+              hiddenTodoIds={hiddenNoteTodoIds}
             />
           ) : activeView === 'team' ? (
-            <TeamDashboard onSelectTodo={openTodoDetail} />
+            <TeamDashboard onSelectTodo={openTodoDetail} includePrivate={scopeLens === 'personal'} />
           ) : (
             <TodoDetail
               todo={selectedTodo}
@@ -1016,6 +1069,7 @@ export function App(): React.JSX.Element {
       {showProgressReport && isAdmin && multiUser && (
         <ProgressReportModal
           users={users}
+          includePrivate={scopeLens === 'personal'}
           onClose={() => setShowProgressReport(false)}
           onShowToast={showToast}
         />
@@ -1034,6 +1088,7 @@ export function App(): React.JSX.Element {
           users={users}
           selfOnly
           currentUser={currentUser}
+          includePrivate={scopeLens === 'personal'}
           onClose={() => setShowMySummary(false)}
           onShowToast={showToast}
         />

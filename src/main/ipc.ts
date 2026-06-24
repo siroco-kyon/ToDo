@@ -88,8 +88,8 @@ export function registerIpcHandlers(
 
   // Categories
   ipcMain.handle('category:getAll', () => getAllCategories())
-  ipcMain.handle('category:create', handleMutation('category', (name: string, color: string) => createCategory(name, color)))
-  ipcMain.handle('category:update', handleMutation('category', (id: string, name: string, color: string, description: string) => updateCategory(id, name, color, description)))
+  ipcMain.handle('category:create', handleMutation('category', (name: string, color: string, isPrivate: boolean) => createCategory(name, color, isPrivate)))
+  ipcMain.handle('category:update', handleMutation('category', (id: string, name: string, color: string, description: string, isPrivate: boolean) => updateCategory(id, name, color, description, isPrivate)))
   ipcMain.handle('category:delete', handleMutation('category', (id: string) => deleteCategory(id)))
   ipcMain.handle('category:reorder', handleMutation('category', (orderedIds: string[]) => reorderCategories(orderedIds)))
 

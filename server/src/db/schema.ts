@@ -28,6 +28,7 @@ export function createSchema(db: Database.Database): void {
       color TEXT DEFAULT '#6366f1',
       description TEXT DEFAULT '',
       sort_order INTEGER DEFAULT 0,
+      is_private INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
 
@@ -253,6 +254,11 @@ export function runMigrations(db: Database.Database): void {
     db.prepare('ALTER TABLE ProgressNoteComments ADD COLUMN parent_comment_id TEXT').run()
   }
   db.prepare('CREATE INDEX IF NOT EXISTS idx_progress_comments_parent ON ProgressNoteComments(parent_comment_id, created_at)').run()
+
+  const categoryColumns = db.prepare('PRAGMA table_info(Categories)').all() as { name: string }[]
+  if (!categoryColumns.some((c) => c.name === 'is_private')) {
+    db.prepare('ALTER TABLE Categories ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0').run()
+  }
 }
 
 export function insertDefaultSettings(db: Database.Database): void {

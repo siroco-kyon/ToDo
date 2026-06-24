@@ -191,6 +191,9 @@ function migrateDb(): void {
     const updCat = db.prepare('UPDATE Categories SET sort_order = ? WHERE id = ?')
     db.transaction(() => { cats.forEach((c, i) => updCat.run(i, c.id)) })()
   }
+  if (!catColumns.some((c) => c.name === 'is_private')) {
+    db.prepare('ALTER TABLE Categories ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0').run()
+  }
 
   // Todos.sort_order 追加
   if (!todoColumns.some((c) => c.name === 'sort_order')) {
@@ -388,13 +391,14 @@ export function getAllCategories(): Category[] {
   return db.prepare('SELECT * FROM Categories ORDER BY sort_order ASC, name ASC').all() as Category[]
 }
 
-export function createCategory(name: string, color: string): Category {
+export function createCategory(name: string, color: string, isPrivate = false): Category {
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
-  db.prepare('INSERT INTO Categories (id, name, color, created_at) VALUES (?, ?, ?, ?)').run(
+  db.prepare('INSERT INTO Categories (id, name, color, is_private, created_at) VALUES (?, ?, ?, ?, ?)').run(
     id,
     name,
     color,
+    isPrivate ? 1 : 0,
     now
   )
   return db.prepare('SELECT * FROM Categories WHERE id = ?').get(id) as Category
@@ -410,9 +414,9 @@ export function reorderCategories(orderedIds: string[]): void {
   db.transaction(() => { orderedIds.forEach((id, i) => upd.run(i, id)) })()
 }
 
-export function updateCategory(id: string, name: string, color: string, description: string): Category {
-  db.prepare('UPDATE Categories SET name = ?, color = ?, description = ? WHERE id = ?').run(
-    name, color, description, id
+export function updateCategory(id: string, name: string, color: string, description: string, isPrivate = false): Category {
+  db.prepare('UPDATE Categories SET name = ?, color = ?, description = ?, is_private = ? WHERE id = ?').run(
+    name, color, description, isPrivate ? 1 : 0, id
   )
   return db.prepare('SELECT * FROM Categories WHERE id = ?').get(id) as Category
 }
@@ -459,7 +463,15 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
     }
   }
   if (data.priority !== undefined) { fields.push('priority = ?'); values.push(data.priority) }
-  if (data.progress !== undefined) { fields.push('progress = ?'); values.push(data.progress) }
+  if (data.progress !== undefined) {
+    fields.push('progress = ?'); values.push(data.progress)
+    // 進捗100%で自動完了（status を明示指定していない時のみ）。
+    // updateTodo 側が done 遷移を検知して繰り返し次回分も生成する。
+    if (data.status === undefined && data.progress >= 100) {
+      fields.push('status = ?'); values.push('done')
+      fields.push('completed_at = COALESCE(completed_at, ?)'); values.push(updatedAt)
+    }
+  }
   if (data.start_date !== undefined) { fields.push('start_date = ?'); values.push(normalizeDateKey(data.start_date)) }
   if (data.due_date !== undefined) { fields.push('due_date = ?'); values.push(normalizeDateKey(data.due_date)) }
   if (data.recurrence !== undefined) { fields.push('recurrence = ?'); values.push(data.recurrence) }
@@ -550,13 +562,14 @@ export function createTodo(data: CreateTodoInput): Todo {
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) as m FROM Todos').get() as { m: number }).m
   db.prepare(
     `INSERT INTO Todos (id, title, description, memo, category_id, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     data.title,
     data.description ?? '',
     data.memo ?? '',
     data.category_id ?? null,
+    data.status ?? 'active',
     data.priority ?? 3,
     data.progress ?? 0,
     startDate,
@@ -969,9 +982,12 @@ export function deleteSubTask(id: string): void {
 // ─── Timer ────────────────────────────────────────────────────
 
 export function startTimer(todoId: string): RunningState {
-  const existing = db.prepare('SELECT * FROM RunningState WHERE id = 1').get()
+  // 実行中のタイマーがあれば自動停止（WorkLog 記録）してから開始する。
+  // 同じタスクを再度開始した場合は計測中のものを維持する（リセットしない）。
+  const existing = db.prepare('SELECT * FROM RunningState WHERE id = 1').get() as RunningState | undefined
   if (existing) {
-    throw new Error('既に実行中のタイマーがあります')
+    if (existing.todo_id === todoId) return { todo_id: existing.todo_id, start_time: existing.start_time }
+    stopTimer()
   }
   const now = new Date().toISOString()
   db.prepare('INSERT INTO RunningState (id, todo_id, start_time) VALUES (1, ?, ?)').run(todoId, now)
@@ -1525,13 +1541,17 @@ export function toggleProgressNoteReaction(noteId: string, emoji: string): Progr
 
 export function getProgressDigest(query: ProgressDigestQuery): ProgressDigest {
   const { from, to } = query
+  // 全体レンズ時はプライベートカテゴリのタスク由来の集計を除外する
+  const includePrivate = query.includePrivate !== false
+  const catJoin = includePrivate ? '' : 'LEFT JOIN Categories c ON t.category_id = c.id'
+  const catClause = includePrivate ? '' : 'AND COALESCE(c.is_private, 0) = 0'
 
   const addedTodos = db
     .prepare(
       `SELECT t.id, t.title, t.status, t.progress, t.memo,
               c.name AS category_name, c.color AS category_color, t.created_at
        FROM Todos t LEFT JOIN Categories c ON t.category_id = c.id
-       WHERE date(t.created_at, 'localtime') BETWEEN ? AND ?
+       WHERE date(t.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
        ORDER BY t.created_at ASC`
     )
     .all(from, to) as ProgressDigestTodo[]
@@ -1542,7 +1562,7 @@ export function getProgressDigest(query: ProgressDigestQuery): ProgressDigest {
               c.name AS category_name, c.color AS category_color, t.completed_at
        FROM Todos t LEFT JOIN Categories c ON t.category_id = c.id
        WHERE t.status = 'done' AND t.completed_at IS NOT NULL
-         AND date(t.completed_at, 'localtime') BETWEEN ? AND ?
+         AND date(t.completed_at, 'localtime') BETWEEN ? AND ? ${catClause}
        ORDER BY t.completed_at ASC`
     )
     .all(from, to) as ProgressDigestCompletedTodo[]
@@ -1550,8 +1570,8 @@ export function getProgressDigest(query: ProgressDigestQuery): ProgressDigest {
   const addedSubTasks = db
     .prepare(
       `SELECT st.id, st.title, st.todo_id, t.title AS todo_title, st.done, st.created_at
-       FROM SubTasks st JOIN Todos t ON st.todo_id = t.id
-       WHERE date(st.created_at, 'localtime') BETWEEN ? AND ?
+       FROM SubTasks st JOIN Todos t ON st.todo_id = t.id ${catJoin}
+       WHERE date(st.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
        ORDER BY st.created_at ASC`
     )
     .all(from, to) as ProgressDigestSubTask[]
@@ -1559,8 +1579,8 @@ export function getProgressDigest(query: ProgressDigestQuery): ProgressDigest {
   const notes = db
     .prepare(
       `SELECT pn.id, pn.todo_id, t.title AS todo_title, pn.body, pn.created_at
-       FROM ProgressNotes pn JOIN Todos t ON pn.todo_id = t.id
-       WHERE date(pn.created_at, 'localtime') BETWEEN ? AND ?
+       FROM ProgressNotes pn JOIN Todos t ON pn.todo_id = t.id ${catJoin}
+       WHERE date(pn.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
        ORDER BY pn.created_at ASC`
     )
     .all(from, to) as ProgressDigestNote[]
@@ -1571,16 +1591,18 @@ export function getProgressDigest(query: ProgressDigestQuery): ProgressDigest {
               pnc.parent_comment_id, pnc.body, pnc.created_at
        FROM ProgressNoteComments pnc
        JOIN ProgressNotes pn ON pnc.note_id = pn.id
-       JOIN Todos t ON pn.todo_id = t.id
-       WHERE date(pnc.created_at, 'localtime') BETWEEN ? AND ?
+       JOIN Todos t ON pn.todo_id = t.id ${catJoin}
+       WHERE date(pnc.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
        ORDER BY pnc.created_at ASC`
     )
     .all(from, to) as ProgressDigestComment[]
 
   const work = db
     .prepare(
-      `SELECT COALESCE(SUM(duration_seconds), 0) AS seconds, COUNT(*) AS cnt
-       FROM WorkLogs WHERE date(start_time, 'localtime') BETWEEN ? AND ?`
+      `SELECT COALESCE(SUM(wl.duration_seconds), 0) AS seconds, COUNT(*) AS cnt
+       FROM WorkLogs wl
+       ${includePrivate ? '' : 'JOIN Todos t ON wl.todo_id = t.id LEFT JOIN Categories c ON t.category_id = c.id'}
+       WHERE date(wl.start_time, 'localtime') BETWEEN ? AND ? ${catClause}`
     )
     .get(from, to) as { seconds: number; cnt: number }
 
@@ -1612,6 +1634,8 @@ export interface Category {
   color: string
   description: string
   sort_order: number
+  /** 1 のとき全体の集計（概要/チーム/進捗レポート）から除外する */
+  is_private: number
   created_at: string
 }
 
@@ -1823,6 +1847,8 @@ export interface ProgressDigestQuery {
   from: string
   to: string
   userIds?: string[]
+  /** false のときプライベートカテゴリのタスク由来の集計を除外する（既定は含める） */
+  includePrivate?: boolean
 }
 
 /** デスクトップ版 todo.db をサーバー版へ取り込んだ結果の件数（サーバー版のみ） */
@@ -1925,6 +1951,8 @@ export interface CreateTodoInput {
   memo?: string
   category_id?: string | null
   assignee_id?: string | null
+  /** 省略時は 'active'。カンバンの列からの追加でその列のステータスを指定する */
+  status?: 'not_started' | 'active' | 'done'
   priority?: number
   progress?: number
   start_date?: string | null
