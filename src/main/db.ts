@@ -1492,9 +1492,16 @@ export function getProgressNotesByTodo(todoId: string): ProgressNote[] {
 }
 
 export function getProgressNotesByDate(dateStr: string): ProgressNote[] {
+  return getProgressNotesByRange(dateStr, dateStr)
+}
+
+export function getProgressNotesByRange(from: string, to: string): ProgressNote[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
+    throw new Error('進捗タイムラインの期間が不正です')
+  }
   const notes = db
-    .prepare(`${PROGRESS_NOTE_SELECT} WHERE date(pn.created_at, 'localtime') = ? GROUP BY pn.id ORDER BY pn.created_at DESC`)
-    .all(dateStr) as ProgressNote[]
+    .prepare(`${PROGRESS_NOTE_SELECT} WHERE date(pn.created_at, 'localtime') BETWEEN ? AND ? GROUP BY pn.id ORDER BY pn.created_at DESC`)
+    .all(from, to) as ProgressNote[]
   return hydrateProgressNotes(notes)
 }
 

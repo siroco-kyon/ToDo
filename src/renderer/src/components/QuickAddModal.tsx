@@ -33,6 +33,7 @@ export function QuickAddModal({ categories, users = [], onAdd, onClose }: Props)
   const [memo, setMemo] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [assigneeId, setAssigneeId] = useState<string | null>(null)
+  const [status, setStatus] = useState<NonNullable<CreateTodoInput['status']>>('not_started')
   const [priority, setPriority] = useState(3)
   const [startDate, setStartDate] = useState('')
   const [dueDate, setDueDate] = useState('')
@@ -73,6 +74,7 @@ export function QuickAddModal({ categories, users = [], onAdd, onClose }: Props)
         memo: memo.trim(),
         category_id: categoryId || null,
         assignee_id: assigneeId,
+        status,
         priority,
         start_date: startDate || null,
         due_date: dueDate || null
@@ -170,7 +172,7 @@ export function QuickAddModal({ categories, users = [], onAdd, onClose }: Props)
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(90px, 0.55fr) minmax(90px, 0.55fr)', gap: 10 }}>
             <div>
               <label style={labelStyle}>カテゴリ</label>
               {categories.length > 0 ? (
@@ -183,6 +185,19 @@ export function QuickAddModal({ categories, users = [], onAdd, onClose }: Props)
               ) : (
                 <div style={{ ...selectStyle, color: '#64748b' }}>カテゴリ未登録</div>
               )}
+            </div>
+            <div>
+              <label htmlFor="quick-add-status" style={labelStyle}>状態</label>
+              <select
+                id="quick-add-status"
+                value={status}
+                onChange={(event) => setStatus(event.target.value as NonNullable<CreateTodoInput['status']>)}
+                style={selectStyle}
+              >
+                <option value="not_started">未着手</option>
+                <option value="active">進行中</option>
+                <option value="done">完了</option>
+              </select>
             </div>
             <div>
               <label style={labelStyle}>優先度</label>

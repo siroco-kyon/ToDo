@@ -298,6 +298,7 @@ export const api: Api = {
   // Progress notes (shared) / digest (admin report)
   progressNoteGetByTodo: (todoId) => get<ProgressNote[]>(`/todos/${todoId}/progress-notes`),
   progressNoteGetByDate: (dateStr) => get<ProgressNote[]>('/progress-notes/timeline', { date: dateStr }),
+  progressNoteGetByRange: (from, to) => get<ProgressNote[]>('/progress-notes/timeline', { from, to }),
   progressNoteCreate: (todoId, body) => post<ProgressNote>(`/todos/${todoId}/progress-notes`, { body }),
   progressNoteUpdate: (id, body) => put<ProgressNote>(`/progress-notes/${id}`, { body }),
   progressNoteDelete: (id) => del<void>(`/progress-notes/${id}`),

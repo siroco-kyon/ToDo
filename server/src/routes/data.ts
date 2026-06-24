@@ -53,7 +53,7 @@ import { getSetting, setSetting, getUserSetting, setUserSetting } from '../db/se
 import { getTeamDashboard } from '../db/team'
 import {
   getProgressNotesByTodo,
-  getProgressNotesByDate,
+  getProgressNotesByRange,
   getProgressNote,
   createProgressNote,
   updateProgressNote,
@@ -263,7 +263,12 @@ dataRouter.post('/notifications/read-all', (req, res) =>
 dataRouter.get('/todos/:todoId/progress-notes', (req, res) =>
   run(res, () => getProgressNotesByTodo(req.params.todoId, req.user!.id)))
 dataRouter.get('/progress-notes/timeline', (req, res) =>
-  run(res, () => getProgressNotesByDate(String(req.query.date ?? ''), req.user!.id)))
+  run(res, () => {
+    const date = String(req.query.date ?? '')
+    const from = String(req.query.from ?? date)
+    const to = String(req.query.to ?? date)
+    return getProgressNotesByRange(from, to, req.user!.id)
+  }))
 dataRouter.post('/todos/:todoId/progress-notes', (req, res) =>
   run(res, () => createProgressNote(req.params.todoId, req.user!.id, req.body.body), 'todo'))
 dataRouter.put('/progress-notes/:id', (req, res) =>
