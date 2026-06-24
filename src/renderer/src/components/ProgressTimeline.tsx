@@ -21,6 +21,10 @@ interface Props {
 
 const NO_HIDDEN_TODOS = new Set<string>()
 type SortMode = 'newest' | 'oldest' | 'todo' | 'category' | 'author'
+interface TimelineRange {
+  from: string
+  to: string
+}
 
 const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
   { value: 'newest', label: '新しい順' },
@@ -54,9 +58,33 @@ function sortNotes(notes: ProgressNote[], mode: SortMode): ProgressNote[] {
   return sorted.sort(compareNewest)
 }
 
+function formatDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 function getTodayKey(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return formatDateKey(new Date())
+}
+
+function addDays(dateKey: string, amount: number): string {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + amount)
+  return formatDateKey(date)
+}
+
+function getWeekRange(): TimelineRange {
+  const today = getTodayKey()
+  return { from: addDays(today, -6), to: today }
+}
+
+function getDateKeyFromIso(iso: string): string {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? iso.slice(0, 10) : formatDateKey(date)
+}
+
+function isInRange(dateKey: string, range: TimelineRange): boolean {
+  return range.from <= dateKey && dateKey <= range.to
 }
 
 function formatTime(iso: string): string {
@@ -117,7 +145,7 @@ function commentElementId(id: string): string {
 }
 
 export function ProgressTimeline({ todos, currentUser = null, focusTarget = null, onSelectTodo, onShowToast, hiddenTodoIds = NO_HIDDEN_TODOS }: Props): React.JSX.Element {
-  const [date, setDate] = useState(getTodayKey)
+  const [range, setRange] = useState<TimelineRange>(getWeekRange)
   const [notes, setNotes] = useState<ProgressNote[]>([])
   const [sortMode, setSortMode] = useState<SortMode>(loadSortMode)
   const [loading, setLoading] = useState(false)
@@ -155,7 +183,7 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
   const load = useCallback(async (): Promise<void> => {
     setLoading(true)
     try {
-      const loaded = await window.api.progressNoteGetByDate(date)
+      const loaded = await window.api.progressNoteGetByRange(range.from, range.to)
       setNotes(loaded.map(normalizeNote))
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '進捗タイムラインを読み込めませんでした', 'error')
@@ -163,7 +191,7 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
     } finally {
       setLoading(false)
     }
-  }, [date, onShowToast])
+  }, [onShowToast, range.from, range.to])
 
   useEffect(() => {
     void load()
@@ -171,7 +199,7 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
 
   useEffect(() => {
     if (!focusTarget) return
-    if (focusTarget.date) setDate(focusTarget.date)
+    if (focusTarget.date) setRange({ from: focusTarget.date, to: focusTarget.date })
     if (focusTarget.todoId) setSelectedTodoId(focusTarget.todoId)
     setFocusedNoteId(focusTarget.noteId ?? null)
     setFocusedCommentId(focusTarget.commentId ?? null)
@@ -212,7 +240,9 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
       setSavingNote(true)
       const created = await window.api.progressNoteCreate(selectedTodoId, body)
       setNoteDraft('')
-      if (created.created_at.slice(0, 10) === date) setNotes((previous) => [normalizeNote(created), ...previous])
+      if (isInRange(getDateKeyFromIso(created.created_at), range)) {
+        setNotes((previous) => [normalizeNote(created), ...previous])
+      }
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '進捗ログを追加できませんでした', 'error')
     } finally {
@@ -289,6 +319,10 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
     [notes, hiddenTodoIds, sortMode]
   )
   const totalComments = visibleNotes.reduce((sum, note) => sum + countComments(note.comments ?? []), 0)
+  const today = getTodayKey()
+  const weekRange = getWeekRange()
+  const isTodayRange = range.from === today && range.to === today
+  const isWeekRange = range.from === weekRange.from && range.to === weekRange.to
   const currentAuthorName = currentUser?.display_name ?? '自分'
   const currentAuthorColor = currentUser?.color ?? '#6366f1'
 
@@ -408,12 +442,35 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
         <div>
           <div style={{ fontSize: '1rem', color: '#f8fafc', fontWeight: 800 }}>進捗タイムライン</div>
           <div style={{ marginTop: 3, color: '#64748b', fontSize: '0.78rem' }}>
-            投稿 {visibleNotes.length}件 / コメント {totalComments}件
+            {range.from === range.to ? range.from : `${range.from} ～ ${range.to}`} ・ 投稿 {visibleNotes.length}件 / コメント {totalComments}件
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={() => setDate(getTodayKey())} style={chipStyle(date === getTodayKey())}>今日</button>
-          <input type="date" value={date} onChange={(event) => setDate(event.target.value || getTodayKey())} style={inputStyle} />
+          <button onClick={() => setRange({ from: today, to: today })} style={chipStyle(isTodayRange)}>今日</button>
+          <button onClick={() => setRange(weekRange)} style={chipStyle(isWeekRange)}>1週間</button>
+          <input
+            type="date"
+            aria-label="表示期間の開始日"
+            title="表示期間の開始日"
+            value={range.from}
+            onChange={(event) => {
+              const from = event.target.value || today
+              setRange((previous) => ({ from, to: from > previous.to ? from : previous.to }))
+            }}
+            style={inputStyle}
+          />
+          <span style={{ color: '#64748b', fontSize: '0.8rem' }}>～</span>
+          <input
+            type="date"
+            aria-label="表示期間の終了日"
+            title="表示期間の終了日"
+            value={range.to}
+            onChange={(event) => {
+              const to = event.target.value || today
+              setRange((previous) => ({ from: to < previous.from ? to : previous.from, to }))
+            }}
+            style={inputStyle}
+          />
           <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)} title="並び替え" style={inputStyle}>
             {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
@@ -456,7 +513,7 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
           </div>
 
           {loading && <div style={emptyStyle}>読み込み中...</div>}
-          {!loading && visibleNotes.length === 0 && <div style={emptyStyle}>この日の進捗ログはまだありません。</div>}
+          {!loading && visibleNotes.length === 0 && <div style={emptyStyle}>選択した期間の進捗ログはまだありません。</div>}
 
           {!loading && visibleNotes.map((note) => {
             const authorName = getAuthorName(note.author_name)
