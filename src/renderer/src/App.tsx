@@ -932,7 +932,7 @@ export function App(): React.JSX.Element {
             <WorkLogSummary hiddenTodoIds={hiddenPrivateTodoIds} />
           ) : activeView === 'progress' ? (
             <ProgressTimeline
-              todos={lensTodos}
+              todos={filteredTodos}
               currentUser={currentUser}
               focusTarget={progressTimelineFocus}
               onSelectTodo={openTodoDetail}
