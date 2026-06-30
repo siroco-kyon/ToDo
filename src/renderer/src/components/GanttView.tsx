@@ -194,7 +194,7 @@ const GANTT_LINE = 'rgba(163, 177, 198, 0.22)'
 const GANTT_TEXT = '#edf2f7'
 const GANTT_MUTED = '#bac5d8'
 const STATUS_TONE: Record<TodoStatus, { background: string; border: string; text: string; fill: string; label: string }> = {
-  not_started: { background: '#3f4754', border: '#e2e8f0', text: '#ffffff', fill: '#aeb8c6', label: '未着手' },
+  not_started: { background: '#343b46', border: '#cbd5e1', text: '#ffffff', fill: '#647181', label: '未着手' },
   active: { background: '#4338ca', border: '#a5b4fc', text: '#ffffff', fill: '#818cf8', label: '進行中' },
   done: { background: '#047857', border: '#6ee7b7', text: '#ffffff', fill: '#34d399', label: '完了' },
   archived: { background: '#475569', border: '#94a3b8', text: '#e2e8f0', fill: '#94a3b8', label: 'アーカイブ' }
@@ -3083,7 +3083,7 @@ export function GanttView({
                 const displayEndIndex = displayedTodoBar ? clamp(actualEndIndex, 0, totalUnits - 1) : 0
                 const barWidth = displayedTodoBar ? Math.max((displayEndIndex - displayStartIndex + 1) * unitWidth - 8, 24) : 0
                 const trackBackground = group.todo.status === 'not_started'
-                  ? `linear-gradient(90deg, ${tone.fill}c9, ${tone.border}d9)`
+                  ? `linear-gradient(90deg, ${tone.fill}, #596474)`
                   : `linear-gradient(90deg, ${tone.fill}66, ${tone.border}66)`
                 const baselineVisible = baselineBar
                   ? intersectsRange(baselineBar.startDate, baselineBar.endDate, normalizedRange.start, normalizedRange.end)
