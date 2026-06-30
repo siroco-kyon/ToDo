@@ -94,10 +94,10 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         const [todos, subTasks] = await Promise.all([window.api.todoGetAll(), window.api.subtaskGetAll()])
         const titleById = new Map(todos.map((todo) => [todo.id, todo.title]))
         downloadCsv(`subtasks_${dateStamp()}.csv`, toCsv(
-          ['ID', 'タスク', 'サブタスク', 'メモ', '開始日', '締切日', '完了', '完了日時', '作成日時'],
+          ['ID', 'タスク', 'サブタスク', 'メモ', '開始日', '締切日', '進捗(%)', '完了', '完了日時', '作成日時'],
           subTasks.map((sub) => [
             sub.id, titleById.get(sub.todo_id) ?? sub.todo_id, sub.title, sub.description,
-            sub.start_date, sub.due_date, sub.done ? '済' : '',
+            sub.start_date, sub.due_date, sub.done ? 100 : sub.progress ?? 0, sub.done ? '済' : '',
             sub.completed_at ? formatLocal(sub.completed_at) : '', formatLocal(sub.created_at)
           ])
         ))

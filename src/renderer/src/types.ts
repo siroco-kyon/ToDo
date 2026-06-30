@@ -114,6 +114,7 @@ export interface SubTask {
   assignee_color: string | null
   start_date: string | null
   due_date: string | null
+  progress: number
   done: number  // 0 or 1
   completed_at: string | null
   sort_order: number
@@ -132,6 +133,7 @@ export interface CreateSubTaskInput {
   assignee_id?: string | null
   start_date?: string | null
   due_date?: string | null
+  progress?: number
 }
 
 export interface UpdateSubTaskInput {
@@ -140,6 +142,7 @@ export interface UpdateSubTaskInput {
   assignee_id?: string | null
   start_date?: string | null
   due_date?: string | null
+  progress?: number
   done?: boolean
 }
 
