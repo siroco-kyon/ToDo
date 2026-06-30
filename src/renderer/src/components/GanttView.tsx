@@ -194,7 +194,7 @@ const GANTT_LINE = 'rgba(163, 177, 198, 0.22)'
 const GANTT_TEXT = '#edf2f7'
 const GANTT_MUTED = '#bac5d8'
 const STATUS_TONE: Record<TodoStatus, { background: string; border: string; text: string; fill: string; label: string }> = {
-  not_started: { background: '#5f6878', border: '#cbd5e1', text: '#ffffff', fill: '#d1d5db', label: '未着手' },
+  not_started: { background: '#3f4754', border: '#e2e8f0', text: '#ffffff', fill: '#aeb8c6', label: '未着手' },
   active: { background: '#4338ca', border: '#a5b4fc', text: '#ffffff', fill: '#818cf8', label: '進行中' },
   done: { background: '#047857', border: '#6ee7b7', text: '#ffffff', fill: '#34d399', label: '完了' },
   archived: { background: '#475569', border: '#94a3b8', text: '#e2e8f0', fill: '#94a3b8', label: 'アーカイブ' }
@@ -3082,6 +3082,9 @@ export function GanttView({
                 const displayStartIndex = displayedTodoBar ? clamp(actualStartIndex, 0, totalUnits - 1) : 0
                 const displayEndIndex = displayedTodoBar ? clamp(actualEndIndex, 0, totalUnits - 1) : 0
                 const barWidth = displayedTodoBar ? Math.max((displayEndIndex - displayStartIndex + 1) * unitWidth - 8, 24) : 0
+                const trackBackground = group.todo.status === 'not_started'
+                  ? `linear-gradient(90deg, ${tone.fill}c9, ${tone.border}d9)`
+                  : `linear-gradient(90deg, ${tone.fill}66, ${tone.border}66)`
                 const baselineVisible = baselineBar
                   ? intersectsRange(baselineBar.startDate, baselineBar.endDate, normalizedRange.start, normalizedRange.end)
                   : false
@@ -3301,8 +3304,8 @@ export function GanttView({
                           />
                         )}
                         {displayedTodoBar && todoVisible && (
-                          <div ref={(node) => setDependencyTargetBarRef(group.todo.id, node)} onClick={() => handleChartItemSelect(group.todo.id)} style={{ position: 'absolute', left: displayStartIndex * unitWidth + 4, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 4, background: `linear-gradient(90deg, ${tone.background}, ${tone.background})`, border: `1px solid ${tone.border}`, boxSizing: 'border-box', overflow: 'hidden', boxShadow: activeState ? '0 0 0 2px rgba(59, 130, 246, 0.28)' : isDependencySource || isDependencyTarget ? '0 0 0 2px rgba(56, 189, 248, 0.42)' : 'inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 3px 8px rgba(10, 12, 22, 0.28)', cursor: !isTimelineEditable ? 'pointer' : 'grab' }}>
-                            <div style={{ position: 'absolute', inset: 0, width: `${progress}%`, background: `linear-gradient(90deg, ${tone.fill}, ${tone.border})`, opacity: 0.98 }} />
+                          <div ref={(node) => setDependencyTargetBarRef(group.todo.id, node)} onClick={() => handleChartItemSelect(group.todo.id)} style={{ position: 'absolute', left: displayStartIndex * unitWidth + 4, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 4, background: trackBackground, border: `1px solid ${tone.border}`, boxSizing: 'border-box', overflow: 'hidden', boxShadow: activeState ? '0 0 0 2px rgba(59, 130, 246, 0.28)' : isDependencySource || isDependencyTarget ? '0 0 0 2px rgba(56, 189, 248, 0.42)' : 'inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 3px 8px rgba(10, 12, 22, 0.28)', cursor: !isTimelineEditable ? 'pointer' : 'grab' }}>
+                            <div style={{ position: 'absolute', inset: 0, width: `${progress}%`, background: tone.background }} />
                             {group.todo.assignee_color && (
                               <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: group.todo.assignee_color, zIndex: 3 }} />
                             )}
