@@ -194,10 +194,10 @@ const GANTT_LINE = 'rgba(163, 177, 198, 0.22)'
 const GANTT_TEXT = '#edf2f7'
 const GANTT_MUTED = '#bac5d8'
 const STATUS_TONE: Record<TodoStatus, { background: string; border: string; text: string; fill: string; label: string }> = {
-  not_started: { background: '#9ca3af33', border: '#9ca3af', text: '#ffffff', fill: '#9ca3af', label: '未着手' },
-  active: { background: '#6366f133', border: '#818cf8', text: '#ffffff', fill: '#6366f1', label: '進行中' },
-  done: { background: '#10b98133', border: '#34d399', text: '#ffffff', fill: '#10b981', label: '完了' },
-  archived: { background: '#47556933', border: '#64748b', text: '#cbd5e1', fill: '#64748b', label: 'アーカイブ' }
+  not_started: { background: '#5f6878', border: '#cbd5e1', text: '#ffffff', fill: '#d1d5db', label: '未着手' },
+  active: { background: '#4338ca', border: '#a5b4fc', text: '#ffffff', fill: '#818cf8', label: '進行中' },
+  done: { background: '#047857', border: '#6ee7b7', text: '#ffffff', fill: '#34d399', label: '完了' },
+  archived: { background: '#475569', border: '#94a3b8', text: '#e2e8f0', fill: '#94a3b8', label: 'アーカイブ' }
 }
 
 function getTodayKey(): string {
@@ -3014,7 +3014,7 @@ export function GanttView({
                           minHeight: CATEGORY_HEADER_HEIGHT,
                           marginBottom: TASK_GROUP_GAP,
                           borderRadius: 8,
-                          overflow: 'hidden',
+                          overflow: 'visible',
                           border: `1px solid ${GANTT_LINE}`,
                           background: GANTT_SURFACE_RAISED
                         }}
@@ -3095,7 +3095,7 @@ export function GanttView({
                     style={{
                       marginBottom: groupIndex === section.groups.length - 1 ? CATEGORY_GROUP_GAP : TASK_GROUP_GAP,
                       borderRadius: 8,
-                      overflow: 'hidden',
+                      overflow: 'visible',
                       border: `1px solid ${GANTT_LINE}`,
                       background: GANTT_SURFACE_PRESSED,
                       boxShadow: isReorderDragTarget ? '0 0 0 2px rgba(56, 189, 248, 0.34)' : undefined
@@ -3146,7 +3146,7 @@ export function GanttView({
                               height: 9,
                               borderRadius: '50%',
                               background: tone.fill,
-                              boxShadow: `0 0 0 3px ${tone.background}`,
+                              boxShadow: `0 0 0 3px ${tone.border}33`,
                               flexShrink: 0
                             }}
                           />
@@ -3301,8 +3301,8 @@ export function GanttView({
                           />
                         )}
                         {displayedTodoBar && todoVisible && (
-                          <div ref={(node) => setDependencyTargetBarRef(group.todo.id, node)} onClick={() => handleChartItemSelect(group.todo.id)} style={{ position: 'absolute', left: displayStartIndex * unitWidth + 4, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 4, background: tone.background, border: `1px solid ${tone.border}`, boxSizing: 'border-box', overflow: 'hidden', boxShadow: activeState ? '0 0 0 2px rgba(59, 130, 246, 0.28)' : isDependencySource || isDependencyTarget ? '0 0 0 2px rgba(56, 189, 248, 0.42)' : 'none', cursor: !isTimelineEditable ? 'pointer' : 'grab' }}>
-                            <div style={{ position: 'absolute', inset: 0, width: `${progress}%`, background: `${tone.fill}55` }} />
+                          <div ref={(node) => setDependencyTargetBarRef(group.todo.id, node)} onClick={() => handleChartItemSelect(group.todo.id)} style={{ position: 'absolute', left: displayStartIndex * unitWidth + 4, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 4, background: `linear-gradient(90deg, ${tone.background}, ${tone.background})`, border: `1px solid ${tone.border}`, boxSizing: 'border-box', overflow: 'hidden', boxShadow: activeState ? '0 0 0 2px rgba(59, 130, 246, 0.28)' : isDependencySource || isDependencyTarget ? '0 0 0 2px rgba(56, 189, 248, 0.42)' : 'inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 3px 8px rgba(10, 12, 22, 0.28)', cursor: !isTimelineEditable ? 'pointer' : 'grab' }}>
+                            <div style={{ position: 'absolute', inset: 0, width: `${progress}%`, background: `linear-gradient(90deg, ${tone.fill}, ${tone.border})`, opacity: 0.98 }} />
                             {group.todo.assignee_color && (
                               <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: group.todo.assignee_color, zIndex: 3 }} />
                             )}
@@ -4152,7 +4152,7 @@ const secondaryActionChipStyle: React.CSSProperties = {
 
 function scheduleHealthStripeStyle(health: ScheduleHealthInfo, barWidth: number): React.CSSProperties {
   const innerWidth = Math.max(barWidth - 18, 0)
-  const stripeWidth = Math.min(
+  const markerWidth = Math.min(
     innerWidth,
     Math.max((innerWidth * health.expectedProgress) / 100, health.expectedProgress > 0 ? 10 : 0)
   )
@@ -4161,11 +4161,12 @@ function scheduleHealthStripeStyle(health: ScheduleHealthInfo, barWidth: number)
     position: 'absolute',
     left: 9,
     bottom: 4,
-    width: stripeWidth,
-    height: 4,
+    width: markerWidth,
+    height: 3,
     borderRadius: 999,
-    background: `repeating-linear-gradient(135deg, ${health.accent} 0, ${health.accent} 6px, ${health.background} 6px, ${health.background} 12px)`,
-    opacity: 0.95,
+    background: health.accent,
+    opacity: 0.9,
+    boxShadow: `0 0 0 1px ${health.background}`,
     pointerEvents: 'none'
   }
 }
