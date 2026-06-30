@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from './App'
 import type { Api } from '../../preload/index'
+import './styles/gantt-neumorphic.css'
 
 declare global {
   interface Window {

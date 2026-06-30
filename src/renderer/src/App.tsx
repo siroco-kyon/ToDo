@@ -276,6 +276,8 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     window.localStorage.setItem('app-theme-mode', themeMode)
+    window.localStorage.setItem('wavely-theme', themeMode)
+    document.documentElement.setAttribute('data-theme', themeMode)
     if (themeMode === 'light') document.body.classList.add('theme-light')
     else document.body.classList.remove('theme-light')
   }, [themeMode])
@@ -715,6 +717,7 @@ export function App(): React.JSX.Element {
             }}
             onUpdateTodo={handleUpdate}
             onReorderTodos={handleReorder}
+            groupByCategory={selectedCategoryId === null}
             standalone
           />
         </div>
@@ -905,6 +908,7 @@ export function App(): React.JSX.Element {
               onUpdateTodo={handleUpdate}
               onReorderTodos={handleReorder}
               onOpenSeparateWindow={handleOpenGanttWindow}
+              groupByCategory={selectedCategoryId === null}
             />
           ) : activeView === 'kanban' ? (
             <KanbanView

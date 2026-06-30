@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Category, PublicUser, SubTask, Todo, TodoDependency, UpdateSubTaskInput, UpdateTodoInput } from '../types'
+import type { Category, CreateSubTaskInput, PublicUser, SubTask, Todo, TodoDependency, TodoStatus, UpdateSubTaskInput, UpdateTodoInput } from '../types'
 
 interface Props {
   todos: Todo[]
@@ -10,6 +10,7 @@ interface Props {
   onReorderTodos?: (orderedIds: string[]) => Promise<void>
   onOpenSeparateWindow?: () => void
   standalone?: boolean
+  groupByCategory?: boolean
 }
 
 interface TodoBar {
@@ -20,6 +21,25 @@ interface TodoBar {
 interface DatedSubTask {
   subTask: SubTask
   bar: TodoBar
+}
+
+interface ChartGroup {
+  todo: Todo
+  todoBar: TodoBar | null
+  datedSubTasks: DatedSubTask[]
+  undatedSubTaskCount: number
+  subTaskCount: number
+  anchorDate: string | null
+}
+
+interface ChartCategorySection {
+  key: CategoryFilterKey
+  label: string
+  color: string
+  groups: ChartGroup[]
+  totalCount: number
+  allDone: boolean
+  collapsed: boolean
 }
 
 interface InteractionState {
@@ -73,8 +93,15 @@ interface TodoScheduleSnapshot {
 
 interface SubTaskScheduleSnapshot {
   id: string
+  todoId: string
   startDate: string | null
   dueDate: string | null
+}
+
+interface NewSubTaskDraft {
+  title: string
+  startDate: string
+  dueDate: string
 }
 
 interface UndoEntry {
@@ -110,6 +137,10 @@ const GANTT_SCROLL_STATE_STORAGE_KEY = 'gantt-scroll-state'
 const GANTT_LEFT_COLUMN_WIDTHS_STORAGE_KEY = 'gantt-left-column-widths'
 const PARENT_ROW_HEIGHT = 38
 const SUBTASK_ROW_HEIGHT = 28
+const SUBTASK_ADD_ROW_HEIGHT = 70
+const TASK_GROUP_GAP = 12
+const CATEGORY_HEADER_HEIGHT = 40
+const CATEGORY_GROUP_GAP = 16
 const PARENT_BAR_HEIGHT = 20
 const SUBTASK_BAR_HEIGHT = 14
 const DEPENDENCY_HANDLE_SIZE = 10
@@ -155,6 +186,19 @@ const RANGE_PRESETS: Array<{ key: Exclude<RangePreset, null>; label: string; sta
   { key: '30d', label: '30日', startOffset: -15, endOffset: 15 },
   { key: '90d', label: '90日', startOffset: -45, endOffset: 45 }
 ]
+const GANTT_SURFACE = '#2a2d3e'
+const GANTT_SURFACE_RAISED = '#303449'
+const GANTT_SURFACE_PRESSED = '#242839'
+const GANTT_SURFACE_DARK = '#1d2030'
+const GANTT_LINE = 'rgba(163, 177, 198, 0.22)'
+const GANTT_TEXT = '#edf2f7'
+const GANTT_MUTED = '#bac5d8'
+const STATUS_TONE: Record<TodoStatus, { background: string; border: string; text: string; fill: string; label: string }> = {
+  not_started: { background: '#9ca3af33', border: '#9ca3af', text: '#ffffff', fill: '#9ca3af', label: '未着手' },
+  active: { background: '#6366f133', border: '#818cf8', text: '#ffffff', fill: '#6366f1', label: '進行中' },
+  done: { background: '#10b98133', border: '#34d399', text: '#ffffff', fill: '#10b981', label: '完了' },
+  archived: { background: '#47556933', border: '#64748b', text: '#cbd5e1', fill: '#64748b', label: 'アーカイブ' }
+}
 
 function getTodayKey(): string {
   const now = new Date()
@@ -427,6 +471,32 @@ function shiftDateByScale(dateStr: string, scale: TimeScale, amount: number): st
   return formatDateKey(date)
 }
 
+function shiftOptionalDate(dateStr: string | null, days: number): string | null {
+  return dateStr ? addDays(dateStr, days) : null
+}
+
+function shiftBarByDays(bar: TodoBar, days: number): TodoBar {
+  return {
+    startDate: addDays(bar.startDate, days),
+    endDate: addDays(bar.endDate, days)
+  }
+}
+
+function getPureScheduleShiftDays(previous: TodoScheduleSnapshot, latest: Todo | undefined): number | null {
+  if (!latest) return null
+
+  const nextStart = latest.start_date?.slice(0, 10) ?? null
+  const nextDue = latest.due_date?.slice(0, 10) ?? null
+  const startDelta = previous.startDate && nextStart ? diffCalendarDays(nextStart, previous.startDate) : null
+  const dueDelta = previous.dueDate && nextDue ? diffCalendarDays(nextDue, previous.dueDate) : null
+
+  if (startDelta != null && dueDelta != null) return startDelta === dueDelta && startDelta !== 0 ? startDelta : null
+  if (startDelta != null && previous.dueDate == null && nextDue == null) return startDelta !== 0 ? startDelta : null
+  if (dueDelta != null && previous.startDate == null && nextStart == null) return dueDelta !== 0 ? dueDelta : null
+
+  return null
+}
+
 function isTodoBar(value: unknown): value is TodoBar {
   if (!value || typeof value !== 'object') return false
 
@@ -498,6 +568,15 @@ function getSubTaskBar(subTask: SubTask): TodoBar | null {
   if (start && end) {
     return start <= end ? { startDate: start, endDate: end } : { startDate: end, endDate: start }
   }
+  const singleDay = start ?? end!
+  return { startDate: singleDay, endDate: singleDay }
+}
+
+function getDraftSubTaskBar(draft: NewSubTaskDraft): TodoBar | null {
+  const start = draft.startDate || null
+  const end = draft.dueDate || null
+  if (!start && !end) return null
+  if (start && end) return normalizeBar(start, end)
   const singleDay = start ?? end!
   return { startDate: singleDay, endDate: singleDay }
 }
@@ -637,10 +716,8 @@ function loadGanttScrollState(): PersistedGanttScrollState | null {
   }
 }
 
-function parentTone(todo: Todo): { background: string; border: string; text: string; fill: string } {
-  if (todo.status === 'done') return { background: '#16a34a22', border: '#22c55e', text: '#dcfce7', fill: '#22c55e' }
-  const base = todo.category_color ?? '#6366f1'
-  return { background: `${base}22`, border: `${base}cc`, text: '#e2e8f0', fill: base }
+function parentTone(todo: Todo): { background: string; border: string; text: string; fill: string; label: string } {
+  return STATUS_TONE[todo.status] ?? STATUS_TONE.active
 }
 
 function subTaskTone(subTask: SubTask, todayKey: string): {
@@ -684,15 +761,15 @@ function subTaskTone(subTask: SubTask, todayKey: string): {
       borderStyle: 'solid'
     }
     : {
-      background: '#0f172a',
-      border: '#60a5fa',
-      text: '#dbeafe',
-      rowBackground: '#0c1322',
-      metaText: '#64748b',
-      statusBackground: '#0f172a',
-      statusText: '#93c5fd',
+      background: 'linear-gradient(90deg, #22c55e, #10b981)',
+      border: '#34d399',
+      text: '#ecfdf5',
+      rowBackground: '#182a2a',
+      metaText: '#a7f3d0',
+      statusBackground: '#064e3b',
+      statusText: '#bbf7d0',
       statusLabel: '進行中',
-      borderStyle: 'dashed'
+      borderStyle: 'solid'
     }
 }
 
@@ -702,7 +779,8 @@ function rowTimelineStyle(height: number, unitWidth: number, timelineWidth: numb
     width: timelineWidth,
     minWidth: timelineWidth,
     height,
-    backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent ${unitWidth - 1}px, #162033 ${unitWidth - 1}px, #162033 ${unitWidth}px)`
+    backgroundColor: GANTT_SURFACE,
+    backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent ${unitWidth - 1}px, ${GANTT_LINE} ${unitWidth - 1}px, ${GANTT_LINE} ${unitWidth}px)`
   }
 }
 
@@ -746,7 +824,8 @@ export function GanttView({
   onUpdateTodo,
   onReorderTodos,
   onOpenSeparateWindow,
-  standalone = false
+  standalone = false,
+  groupByCategory = false
 }: Props): React.JSX.Element {
   const initialSettings = useMemo(() => loadGanttViewSettings(), [])
   const initialScrollState = useMemo(() => loadGanttScrollState(), [])
@@ -789,6 +868,10 @@ export function GanttView({
   const [editingTodoCellSaving, setEditingTodoCellSaving] = useState(false)
   const [editingSubTaskCell, setEditingSubTaskCell] = useState<EditingSubTaskCell | null>(null)
   const [editingSubTaskCellSaving, setEditingSubTaskCellSaving] = useState(false)
+  const [collapsedCategoryKeys, setCollapsedCategoryKeys] = useState<CategoryFilterKey[]>([])
+  const [addingSubTaskTodoId, setAddingSubTaskTodoId] = useState<string | null>(null)
+  const [newSubTaskDraft, setNewSubTaskDraft] = useState<NewSubTaskDraft>({ title: '', startDate: '', dueDate: '' })
+  const [creatingSubTask, setCreatingSubTask] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const chartCanvasRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<InteractionState | null>(null)
@@ -943,6 +1026,19 @@ export function GanttView({
       return categories.some((category) => category.id === key)
     }))
   }, [categories, todos])
+
+  useEffect(() => {
+    setCollapsedCategoryKeys((previous) => previous.filter((key) => {
+      if (key === NO_CATEGORY_KEY) return todos.some((todo) => !todo.category_id)
+      return categories.some((category) => category.id === key)
+    }))
+  }, [categories, todos])
+
+  useEffect(() => {
+    if (!addingSubTaskTodoId || todos.some((todo) => todo.id === addingSubTaskTodoId)) return
+    setAddingSubTaskTodoId(null)
+    setNewSubTaskDraft({ title: '', startDate: '', dueDate: '' })
+  }, [addingSubTaskTodoId, todos])
 
   useEffect(() => {
     const handleResize = (): void => {
@@ -1362,7 +1458,7 @@ export function GanttView({
     setManualEnd(addDays(todayKey, after))
   }, [manualEnd, manualStart, normalizedRange.end, normalizedRange.start, rangeMode, todayKey])
 
-  const chartGroups = useMemo(() => (
+  const rangeChartGroups = useMemo<ChartGroup[]>(() => (
     scheduledGroups
       .map((group) => ({
         ...group,
@@ -1376,6 +1472,49 @@ export function GanttView({
         return todoVisible || subTaskVisible
       })
   ), [normalizedRange.end, normalizedRange.start, scheduledGroups, showSubtasks])
+
+  const chartSections = useMemo<ChartCategorySection[]>(() => {
+    const makeSection = (key: CategoryFilterKey, label: string, color: string, groups: ChartGroup[]): ChartCategorySection => ({
+      key,
+      label,
+      color,
+      groups,
+      totalCount: groups.length,
+      allDone: groups.length > 0 && groups.every((group) => group.todo.status === 'done'),
+      collapsed: groupByCategory && collapsedCategoryKeys.includes(key)
+    })
+
+    if (!groupByCategory) {
+      return [makeSection('__all__' as CategoryFilterKey, 'すべて', '#6366f1', rangeChartGroups)]
+    }
+
+    const groupsByKey = new Map<CategoryFilterKey, ChartGroup[]>()
+    for (const group of rangeChartGroups) {
+      const key = (group.todo.category_id ?? NO_CATEGORY_KEY) as CategoryFilterKey
+      const current = groupsByKey.get(key)
+      if (current) current.push(group)
+      else groupsByKey.set(key, [group])
+    }
+
+    const orderedSections = categoryOptions
+      .map((option) => {
+        const groups = groupsByKey.get(option.key) ?? []
+        return groups.length > 0 ? makeSection(option.key, option.label, option.color ?? '#64748b', groups) : null
+      })
+      .filter((section): section is ChartCategorySection => Boolean(section))
+
+    for (const [key, groups] of groupsByKey.entries()) {
+      if (orderedSections.some((section) => section.key === key)) continue
+      orderedSections.push(makeSection(key, key === NO_CATEGORY_KEY ? '未分類' : 'その他', '#64748b', groups))
+    }
+
+    return orderedSections
+  }, [categoryOptions, collapsedCategoryKeys, groupByCategory, rangeChartGroups])
+
+  const showCategoryGrouping = groupByCategory && chartSections.length > 0
+  const chartGroups = useMemo<ChartGroup[]>(() => (
+    chartSections.flatMap((section) => section.collapsed ? [] : section.groups)
+  ), [chartSections])
 
   const canStartReorderMode = Boolean(onReorderTodos) && chartGroups.length > 1
 
@@ -1481,10 +1620,23 @@ export function GanttView({
 
     return {
       id: subTask.id,
+      todoId: subTask.todo_id,
       startDate: subTask.start_date?.slice(0, 10) ?? null,
       dueDate: subTask.due_date?.slice(0, 10) ?? null
     }
   }, [subTaskById])
+
+  const snapshotSubTaskSchedulesForTodos = useCallback((todoIds: string[]): SubTaskScheduleSnapshot[] => {
+    const todoIdSet = new Set(todoIds)
+    return subTasks
+      .filter((subTask) => todoIdSet.has(subTask.todo_id) && (subTask.start_date || subTask.due_date))
+      .map((subTask) => ({
+        id: subTask.id,
+        todoId: subTask.todo_id,
+        startDate: subTask.start_date?.slice(0, 10) ?? null,
+        dueDate: subTask.due_date?.slice(0, 10) ?? null
+      }))
+  }, [subTasks])
 
   const restoreTodoSchedules = useCallback(async (snapshots: TodoScheduleSnapshot[]): Promise<void> => {
     if (snapshots.length === 0) return
@@ -1505,6 +1657,52 @@ export function GanttView({
       start_date: snapshot.startDate,
       due_date: snapshot.dueDate
     })
+  }, [])
+
+  const restoreSubTaskSchedules = useCallback(async (snapshots: SubTaskScheduleSnapshot[]): Promise<void> => {
+    for (const snapshot of snapshots) {
+      await window.api.subtaskUpdate(snapshot.id, {
+        start_date: snapshot.startDate,
+        due_date: snapshot.dueDate
+      })
+    }
+  }, [])
+
+  const shiftSubTasksForMovedTodos = useCallback(async (
+    previousTodoSnapshots: TodoScheduleSnapshot[],
+    previousSubTaskSnapshots: SubTaskScheduleSnapshot[],
+    latestTodos: Todo[]
+  ): Promise<void> => {
+    if (previousSubTaskSnapshots.length === 0) return
+
+    const previousTodoById = new Map(previousTodoSnapshots.map((snapshot) => [snapshot.id, snapshot]))
+    const latestTodoById = new Map(latestTodos.map((todo) => [todo.id, todo]))
+    const updates = previousSubTaskSnapshots
+      .map((snapshot) => {
+        const previousTodo = previousTodoById.get(snapshot.todoId)
+        if (!previousTodo) return null
+        const shiftDays = getPureScheduleShiftDays(previousTodo, latestTodoById.get(snapshot.todoId))
+        if (!shiftDays) return null
+
+        return {
+          snapshot,
+          startDate: shiftOptionalDate(snapshot.startDate, shiftDays),
+          dueDate: shiftOptionalDate(snapshot.dueDate, shiftDays)
+        }
+      })
+      .filter((entry): entry is { snapshot: SubTaskScheduleSnapshot; startDate: string | null; dueDate: string | null } => Boolean(entry))
+
+    for (const update of updates) {
+      await window.api.subtaskUpdate(update.snapshot.id, {
+        start_date: update.startDate,
+        due_date: update.dueDate
+      })
+    }
+
+    if (updates.length > 0) {
+      const latestSubTasks = await window.api.subtaskGetAll()
+      setSubTasks(latestSubTasks)
+    }
   }, [])
 
   const performUndo = useCallback(async (): Promise<void> => {
@@ -1717,18 +1915,21 @@ export function GanttView({
       if (current.targetType === 'todo') {
         const affectedTodoIds = collectDependentTodoIds([current.targetId])
         const previousSnapshots = snapshotTodoSchedules(affectedTodoIds)
+        const previousSubTaskSnapshots = current.mode === 'move' ? snapshotSubTaskSchedulesForTodos(affectedTodoIds) : []
         const todoTitle = todoById.get(current.targetId)?.title ?? 'タスク'
         void onUpdateTodo(current.targetId, {
           start_date: current.previewStartDate,
           due_date: current.previewEndDate
         }).then(async () => {
           const latestTodos = await window.api.todoGetAll()
+          await shiftSubTasksForMovedTodos(previousSnapshots, previousSubTaskSnapshots, latestTodos)
           ensureRangeIncludesTodos(affectedTodoIds, latestTodos)
           if (previousSnapshots.length > 0) {
             setLastUndoEntry({
               label: `タスク移動: ${todoTitle}`,
               run: async () => {
                 await restoreTodoSchedules(previousSnapshots)
+                await restoreSubTaskSchedules(previousSubTaskSnapshots)
               }
             })
           }
@@ -1780,8 +1981,11 @@ export function GanttView({
     isTimelineEditable,
     onUpdateTodo,
     restoreSubTaskSchedule,
+    restoreSubTaskSchedules,
     restoreTodoSchedules,
+    shiftSubTasksForMovedTodos,
     snapshotSubTaskSchedule,
+    snapshotSubTaskSchedulesForTodos,
     snapshotTodoSchedules,
     timeScale,
     todoById,
@@ -1840,6 +2044,80 @@ export function GanttView({
         : [...previous, todoId]
     ))
   }, [])
+
+  const toggleCategorySection = useCallback((key: CategoryFilterKey): void => {
+    setCollapsedCategoryKeys((previous) => (
+      previous.includes(key)
+        ? previous.filter((current) => current !== key)
+        : [...previous, key]
+    ))
+  }, [])
+
+  const beginAddSubTask = useCallback((todo: Todo, todoBar: TodoBar | null): void => {
+    if (creatingSubTask || isReorderMode) return
+
+    setEditingTodoCell(null)
+    setEditingSubTaskCell(null)
+    setShowSubtasks(true)
+    setCollapsedTodoIds((previous) => previous.filter((id) => id !== todo.id))
+    setAddingSubTaskTodoId(todo.id)
+    setNewSubTaskDraft({
+      title: '',
+      startDate: todoBar?.startDate ?? todayKey,
+      dueDate: todoBar?.endDate ?? todoBar?.startDate ?? todayKey
+    })
+  }, [creatingSubTask, isReorderMode, todayKey])
+
+  const cancelAddSubTask = useCallback((): void => {
+    setAddingSubTaskTodoId(null)
+    setNewSubTaskDraft({ title: '', startDate: '', dueDate: '' })
+  }, [])
+
+  const commitNewSubTask = useCallback(async (todo: Todo): Promise<void> => {
+    if (creatingSubTask) return
+
+    const title = newSubTaskDraft.title.trim()
+    if (!title) {
+      setDependencyFeedback('サブタスク名を入力してください。')
+      return
+    }
+    if (newSubTaskDraft.startDate && newSubTaskDraft.dueDate && newSubTaskDraft.startDate > newSubTaskDraft.dueDate) {
+      setDependencyFeedback('サブタスクの開始日は期限以前にしてください。')
+      return
+    }
+
+    const payload: CreateSubTaskInput = {
+      title,
+      start_date: newSubTaskDraft.startDate || null,
+      due_date: newSubTaskDraft.dueDate || null
+    }
+
+    setCreatingSubTask(true)
+    try {
+      const created = await window.api.subtaskCreate(todo.id, payload)
+      setSubTasks((previous) => [...previous, created])
+      setAddingSubTaskTodoId(null)
+      setNewSubTaskDraft({ title: '', startDate: '', dueDate: '' })
+      setDependencyFeedback('サブタスクを追加しました。')
+
+      const createdStart = created.start_date?.slice(0, 10) ?? null
+      const createdDue = created.due_date?.slice(0, 10) ?? null
+      const todoStart = todo.start_date?.slice(0, 10) ?? null
+      const todoDue = todo.due_date?.slice(0, 10) ?? null
+      const todoUpdate: UpdateTodoInput = {}
+      if (createdStart && (!todoStart || createdStart < todoStart)) todoUpdate.start_date = createdStart
+      if (createdDue && (!todoDue || createdDue > todoDue)) todoUpdate.due_date = createdDue
+      if (Object.keys(todoUpdate).length > 0) {
+        await onUpdateTodo(todo.id, todoUpdate)
+        const latestTodos = await window.api.todoGetAll()
+        ensureRangeIncludesTodos([todo.id], latestTodos)
+      }
+    } catch (error) {
+      setDependencyFeedback(error instanceof Error ? error.message : 'サブタスクを追加できませんでした。')
+    } finally {
+      setCreatingSubTask(false)
+    }
+  }, [creatingSubTask, ensureRangeIncludesTodos, newSubTaskDraft, onUpdateTodo])
 
   const captureBaseline = useCallback((): void => {
     const todoEntries = todos
@@ -2030,16 +2308,26 @@ export function GanttView({
     const positions = new Map<string, { centerY: number }>()
     let top = 0
 
-    for (const group of chartGroups) {
-      positions.set(group.todo.id, { centerY: top + PARENT_ROW_HEIGHT / 2 })
-      top += PARENT_ROW_HEIGHT
-      if (showSubtasks && !collapsedTodoIds.includes(group.todo.id)) {
-        top += group.datedSubTasks.length * SUBTASK_ROW_HEIGHT
+    for (const section of chartSections) {
+      if (showCategoryGrouping) {
+        top += CATEGORY_HEADER_HEIGHT + TASK_GROUP_GAP
+      }
+
+      if (!section.collapsed) {
+        section.groups.forEach((group, index) => {
+          positions.set(group.todo.id, { centerY: top + PARENT_ROW_HEIGHT / 2 })
+          top += PARENT_ROW_HEIGHT
+          if (showSubtasks && !collapsedTodoIds.includes(group.todo.id)) {
+            top += group.datedSubTasks.length * SUBTASK_ROW_HEIGHT
+            if (addingSubTaskTodoId === group.todo.id) top += SUBTASK_ADD_ROW_HEIGHT
+          }
+          top += index === section.groups.length - 1 ? CATEGORY_GROUP_GAP : TASK_GROUP_GAP
+        })
       }
     }
 
     return { positions, totalHeight: top }
-  }, [chartGroups, collapsedTodoIds, showSubtasks])
+  }, [addingSubTaskTodoId, chartSections, collapsedTodoIds, showCategoryGrouping, showSubtasks])
   const dependencyGeometryByTodoId = useMemo(() => {
     const next = new Map<string, { sourceX: number; targetX: number; centerY: number }>()
 
@@ -2273,7 +2561,7 @@ export function GanttView({
   }, [createDependency, dependencyDrag, getHoveredDependencyTargetId, getSuggestedDependencyLagDays, isTimelineEditable, leftTableWidth, setDependencyDragState])
 
   return (
-    <div style={{ height: '100%', overflow: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
+    <div className="tarbo-gantt" style={{ height: '100%', overflow: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 8, position: 'relative', background: GANTT_SURFACE, color: GANTT_TEXT }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: '0.95rem', color: '#f8fafc', fontWeight: 700 }}>ガントチャート</div>
@@ -2329,7 +2617,7 @@ export function GanttView({
         <span style={collapsedSummaryChipStyle}>期間 {shortDateLabel(normalizedRange.start)} - {shortDateLabel(normalizedRange.end)}</span>
         <span style={collapsedSummaryChipStyle}>表示単位 {SCALE_LABELS[timeScale]}</span>
         <span style={collapsedSummaryChipStyle}>ズーム {ZOOM_LABELS[zoom]}</span>
-        <span style={collapsedSummaryChipStyle}>表示 {chartGroups.length}件</span>
+        <span style={collapsedSummaryChipStyle}>表示 {rangeChartGroups.length}件</span>
         {isReorderMode && <span style={healthSummaryChipStyle('#14532d', '#16a34a', '#dcfce7')}>並び替えモード</span>}
         <span style={collapsedSummaryChipStyle}>サブタスク {visibleSubTaskCount}/{datedSubTaskCount}</span>
         {expandableTodoIds.length > 0 && (
@@ -2627,7 +2915,7 @@ export function GanttView({
       <div style={{ flex: '0 0 auto', minHeight: controlsCollapsed ? 540 : 460, height: controlsCollapsed ? '74vh' : '60vh', border: '1px solid #1e293b', borderRadius: 8, background: '#0b1220', overflow: 'hidden' }}>
         {loading ? (
           <div style={centerEmptyStyle}>タスクを読み込み中...</div>
-        ) : chartGroups.length === 0 ? (
+        ) : rangeChartGroups.length === 0 ? (
           <div style={centerEmptyStyle}>この期間に表示できる予定タスクはありません。</div>
         ) : (
           <div ref={scrollRef} style={{ height: '100%', overflow: 'auto' }}>
@@ -2716,13 +3004,62 @@ export function GanttView({
                   </svg>
                 )}
 
-                {chartGroups.map((group) => {
+                {chartSections.map((section) => (
+                  <React.Fragment key={section.key}>
+                    {showCategoryGrouping && (
+                      <div
+                        className="nm-raised-sm"
+                        style={{
+                          display: 'flex',
+                          minHeight: CATEGORY_HEADER_HEIGHT,
+                          marginBottom: TASK_GROUP_GAP,
+                          borderRadius: 8,
+                          overflow: 'hidden',
+                          border: `1px solid ${GANTT_LINE}`,
+                          background: GANTT_SURFACE_RAISED
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: 'sticky',
+                            left: 0,
+                            zIndex: 5,
+                            width: leftTableWidth,
+                            minWidth: leftTableWidth,
+                            boxSizing: 'border-box',
+                            backgroundColor: GANTT_SURFACE_RAISED,
+                            backgroundImage: `linear-gradient(90deg, ${section.color}24, transparent 72%)`,
+                            borderRight: `1px solid ${GANTT_LINE}`,
+                            padding: '0 12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10
+                          }}
+                        >
+                          <button
+                            onClick={() => toggleCategorySection(section.key)}
+                            aria-label={section.collapsed ? 'カテゴリを展開する' : 'カテゴリを折りたたむ'}
+                            style={categoryCollapseButtonStyle(section.collapsed)}
+                          >
+                            ▾
+                          </button>
+                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: section.color, flexShrink: 0, boxShadow: `0 0 0 3px ${section.color}24` }} />
+                          <span style={{ color: GANTT_TEXT, fontSize: '0.82rem', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{section.label}</span>
+                          <span className="nm-pressed-xs" style={categoryCountBadgeStyle}>{section.totalCount}</span>
+                          {section.allDone && <span style={{ ...statusDotStyle, width: 8, height: 8, background: STATUS_TONE.done.fill }} title="すべて完了" />}
+                        </div>
+                        <div style={rowTimelineStyle(CATEGORY_HEADER_HEIGHT, unitWidth, timelineWidth)}>
+                          {renderTodayOverlay()}
+                        </div>
+                      </div>
+                    )}
+                    {!section.collapsed && section.groups.map((group, groupIndex) => {
                 const tone = parentTone(group.todo)
                 const progress = clamp(group.todo.status === 'done' ? 100 : group.todo.progress, 0, 100)
                 const todoBar = group.todoBar
                 const baselineBar = showBaseline ? baselineSnapshot?.todos[group.todo.id] ?? null : null
                 const scheduleHealth = scheduleHealthByTodoId.get(group.todo.id) ?? null
-                const canToggleSubtasks = showSubtasks && group.datedSubTasks.length > 0
+                const canToggleSubtasks = showSubtasks && (group.datedSubTasks.length > 0 || addingSubTaskTodoId === group.todo.id)
                 const isExpanded = !collapsedTodoIds.includes(group.todo.id)
                 const activeState = interaction?.targetType === 'todo' && interaction.targetId === group.todo.id ? interaction : null
                 const dependencyGeometry = dependencyGeometryByTodoId.get(group.todo.id) ?? null
@@ -2752,7 +3089,18 @@ export function GanttView({
                 const baselineEndIndex = baselineBar ? clamp(diffUnits(baselineBar.endDate, timelineStart, timeScale), 0, totalUnits - 1) : 0
 
                 return (
-                  <div key={group.todo.id}>
+                  <div
+                    key={group.todo.id}
+                    className="nm-raised-sm"
+                    style={{
+                      marginBottom: groupIndex === section.groups.length - 1 ? CATEGORY_GROUP_GAP : TASK_GROUP_GAP,
+                      borderRadius: 8,
+                      overflow: 'hidden',
+                      border: `1px solid ${GANTT_LINE}`,
+                      background: GANTT_SURFACE_PRESSED,
+                      boxShadow: isReorderDragTarget ? '0 0 0 2px rgba(56, 189, 248, 0.34)' : undefined
+                    }}
+                  >
                     <div
                       onDragOver={(event) => { void handleReorderDragOver(group.todo.id, event) }}
                       onDrop={(event) => { void handleReorderDrop(group.todo.id, event) }}
@@ -2791,6 +3139,17 @@ export function GanttView({
                           >
                             {canToggleSubtasks ? (isExpanded ? '-' : '+') : '.'}
                           </button>
+                          <span
+                            title={tone.label}
+                            style={{
+                              width: 9,
+                              height: 9,
+                              borderRadius: '50%',
+                              background: tone.fill,
+                              boxShadow: `0 0 0 3px ${tone.background}`,
+                              flexShrink: 0
+                            }}
+                          />
                             <button
                               onClick={() => handleChartItemSelect(group.todo.id)}
                               title={[
@@ -2803,6 +3162,17 @@ export function GanttView({
                               style={tableTitleButtonStyle}
                             >
                               {group.todo.title}
+                            </button>
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                beginAddSubTask(group.todo, displayedTodoBar ?? todoBar)
+                              }}
+                              disabled={creatingSubTask || isReorderMode}
+                              title="サブタスクを追加"
+                              style={subTaskAddButtonStyle(creatingSubTask || isReorderMode)}
+                            >
+                              +
                             </button>
                           </div>
                           {editingTodoCell?.todoId === group.todo.id && editingTodoCell.field === 'start_date' ? (
@@ -3006,9 +3376,13 @@ export function GanttView({
                       const tone = subTaskTone(subTask, todayKey)
                       const baselineBar = showBaseline ? baselineSnapshot?.subTasks[subTask.id] ?? null : null
                       const subTaskActiveState = interaction?.targetType === 'subtask' && interaction.targetId === subTask.id ? interaction : null
+                      const parentMoveState = interaction?.targetType === 'todo' && interaction.targetId === group.todo.id && interaction.mode === 'move' ? interaction : null
+                      const parentShiftDays = parentMoveState ? diffCalendarDays(parentMoveState.previewStartDate, parentMoveState.originalStartDate) : 0
                       const displayedBar = subTaskActiveState
                         ? normalizeBar(subTaskActiveState.previewStartDate, subTaskActiveState.previewEndDate)
-                        : bar
+                        : parentShiftDays !== 0
+                          ? shiftBarByDays(bar, parentShiftDays)
+                          : bar
                       const actualSubTaskStartIndex = diffUnits(displayedBar.startDate, timelineStart, timeScale)
                       const actualSubTaskEndIndex = diffUnits(displayedBar.endDate, timelineStart, timeScale)
                       const subTaskStartIndex = clamp(actualSubTaskStartIndex, 0, totalUnits - 1)
@@ -3198,9 +3572,109 @@ export function GanttView({
                         </div>
                       )
                     })}
+                    {showSubtasks && isExpanded && addingSubTaskTodoId === group.todo.id && (() => {
+                      const draftBar = getDraftSubTaskBar(newSubTaskDraft)
+                      const draftVisible = draftBar
+                        ? intersectsRange(draftBar.startDate, draftBar.endDate, normalizedRange.start, normalizedRange.end)
+                        : false
+                      const draftStartIndex = draftBar ? clamp(diffUnits(draftBar.startDate, timelineStart, timeScale), 0, totalUnits - 1) : 0
+                      const draftEndIndex = draftBar ? clamp(diffUnits(draftBar.endDate, timelineStart, timeScale), 0, totalUnits - 1) : 0
+
+                      return (
+                        <div style={{ display: 'flex', minHeight: SUBTASK_ADD_ROW_HEIGHT, borderTop: `1px solid ${GANTT_LINE}` }}>
+                          <div
+                            style={{
+                              position: 'sticky',
+                              left: 0,
+                              zIndex: 3,
+                              width: leftTableWidth,
+                              minWidth: leftTableWidth,
+                              boxSizing: 'border-box',
+                              background: GANTT_SURFACE_DARK,
+                              borderRight: `1px solid ${GANTT_LINE}`,
+                              padding: '8px 10px 8px 32px'
+                            }}
+                          >
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) 116px 116px auto auto', gap: 8, alignItems: 'center', height: '100%' }}>
+                              <input
+                                autoFocus
+                                value={newSubTaskDraft.title}
+                                onChange={(event) => setNewSubTaskDraft((previous) => ({ ...previous, title: event.target.value }))}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault()
+                                    void commitNewSubTask(group.todo)
+                                  } else if (event.key === 'Escape') {
+                                    event.preventDefault()
+                                    cancelAddSubTask()
+                                  }
+                                }}
+                                placeholder="サブタスク名"
+                                style={{ ...tableInputStyle, height: 32, fontSize: '0.76rem' }}
+                              />
+                              <input
+                                type="date"
+                                value={newSubTaskDraft.startDate}
+                                onChange={(event) => setNewSubTaskDraft((previous) => ({ ...previous, startDate: event.target.value }))}
+                                style={{ ...tableInputStyle, height: 32 }}
+                              />
+                              <input
+                                type="date"
+                                value={newSubTaskDraft.dueDate}
+                                onChange={(event) => setNewSubTaskDraft((previous) => ({ ...previous, dueDate: event.target.value }))}
+                                style={{ ...tableInputStyle, height: 32 }}
+                              />
+                              <button
+                                onClick={() => void commitNewSubTask(group.todo)}
+                                disabled={creatingSubTask}
+                                style={inlineConfirmButtonStyle(creatingSubTask)}
+                              >
+                                追加
+                              </button>
+                              <button
+                                onClick={cancelAddSubTask}
+                                disabled={creatingSubTask}
+                                style={inlineCancelButtonStyle(creatingSubTask)}
+                              >
+                                取消
+                              </button>
+                            </div>
+                          </div>
+                          <div style={rowTimelineStyle(SUBTASK_ADD_ROW_HEIGHT, unitWidth, timelineWidth)}>
+                            {renderTodayOverlay()}
+                            {draftBar && draftVisible && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  left: draftStartIndex * unitWidth + 6,
+                                  top: (SUBTASK_ADD_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2,
+                                  width: Math.max((draftEndIndex - draftStartIndex + 1) * unitWidth - 12, 14),
+                                  height: SUBTASK_BAR_HEIGHT,
+                                  borderRadius: 999,
+                                  background: 'linear-gradient(90deg, #22c55e, #10b981)',
+                                  border: '1px solid #34d399',
+                                  color: '#ecfdf5',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '0.6rem',
+                                  fontWeight: 800,
+                                  opacity: 0.82,
+                                  overflow: 'hidden'
+                                }}
+                              >
+                                {newSubTaskDraft.title.trim() || '新規'}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
-                })}
+                    })}
+                  </React.Fragment>
+                ))}
               </div>
             </div>
           </div>
@@ -3419,6 +3893,89 @@ const statusDotStyle: React.CSSProperties = {
   height: 7,
   borderRadius: '50%',
   flexShrink: 0
+}
+
+const categoryCountBadgeStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: 22,
+  height: 20,
+  padding: '0 7px',
+  borderRadius: 999,
+  color: GANTT_MUTED,
+  fontSize: '0.68rem',
+  fontWeight: 800,
+  lineHeight: 1
+}
+
+function categoryCollapseButtonStyle(collapsed: boolean): React.CSSProperties {
+  return {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    border: `1px solid ${GANTT_LINE}`,
+    background: GANTT_SURFACE_PRESSED,
+    color: GANTT_MUTED,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+    transition: 'transform 120ms ease, color 120ms ease',
+    flexShrink: 0,
+    fontSize: '0.72rem',
+    lineHeight: 1
+  }
+}
+
+function subTaskAddButtonStyle(disabled: boolean): React.CSSProperties {
+  return {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    border: `1px solid ${disabled ? '#475569' : GANTT_LINE}`,
+    background: disabled ? GANTT_SURFACE_PRESSED : GANTT_SURFACE_RAISED,
+    color: disabled ? '#64748b' : '#c7d2fe',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    fontSize: '0.9rem',
+    fontWeight: 800,
+    boxShadow: disabled ? 'none' : '3px 3px 8px rgba(16, 19, 31, 0.42), -2px -2px 6px rgba(78, 83, 112, 0.45)'
+  }
+}
+
+function inlineConfirmButtonStyle(disabled: boolean): React.CSSProperties {
+  return {
+    height: 32,
+    padding: '0 11px',
+    borderRadius: 8,
+    border: '1px solid #22c55e',
+    background: disabled ? '#064e3b' : '#047857',
+    color: '#dcfce7',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontSize: '0.72rem',
+    fontWeight: 800,
+    whiteSpace: 'nowrap'
+  }
+}
+
+function inlineCancelButtonStyle(disabled: boolean): React.CSSProperties {
+  return {
+    height: 32,
+    padding: '0 11px',
+    borderRadius: 8,
+    border: `1px solid ${GANTT_LINE}`,
+    background: GANTT_SURFACE_PRESSED,
+    color: disabled ? '#64748b' : GANTT_MUTED,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontSize: '0.72rem',
+    fontWeight: 800,
+    whiteSpace: 'nowrap'
+  }
 }
 
 const headerActionButtonStyle: React.CSSProperties = {

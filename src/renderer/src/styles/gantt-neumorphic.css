@@ -1,0 +1,100 @@
+.tarbo-gantt {
+  --nm-bg: #2a2d3e;
+  --nm-bg-soft: #303449;
+  --nm-bg-pressed: #242839;
+  --nm-bg-dark: #1d2030;
+  --nm-text: #edf2f7;
+  --nm-muted: #bac5d8;
+  --nm-line: rgba(163, 177, 198, 0.22);
+  --nm-highlight: rgba(255, 255, 255, 0.08);
+  --nm-shadow-dark: rgba(16, 19, 31, 0.56);
+  --nm-shadow-light: rgba(78, 83, 112, 0.48);
+  font-family: "Noto Sans JP", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  scrollbar-color: #545b78 #242839;
+}
+
+.tarbo-gantt *,
+.tarbo-gantt *::before,
+.tarbo-gantt *::after {
+  box-sizing: border-box;
+}
+
+.tarbo-gantt .nm-raised {
+  background: var(--nm-bg-soft);
+  box-shadow: 8px 8px 18px var(--nm-shadow-dark), -6px -6px 16px var(--nm-shadow-light);
+}
+
+.tarbo-gantt .nm-raised-sm {
+  background: var(--nm-bg-soft);
+  box-shadow: 5px 5px 12px var(--nm-shadow-dark), -4px -4px 10px var(--nm-shadow-light);
+}
+
+.tarbo-gantt .nm-raised-xs {
+  background: var(--nm-bg-soft);
+  box-shadow: 3px 3px 8px var(--nm-shadow-dark), -2px -2px 6px var(--nm-shadow-light);
+}
+
+.tarbo-gantt .nm-pressed,
+.tarbo-gantt .nm-pressed-sm,
+.tarbo-gantt .nm-pressed-xs {
+  background: var(--nm-bg-pressed);
+  box-shadow: inset 3px 3px 8px var(--nm-shadow-dark), inset -2px -2px 6px var(--nm-shadow-light);
+}
+
+.tarbo-gantt .nm-btn,
+.tarbo-gantt button {
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background-color 120ms ease;
+}
+
+.tarbo-gantt button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.tarbo-gantt button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -2px -2px 5px var(--nm-shadow-light);
+}
+
+.tarbo-gantt .nm-input,
+.tarbo-gantt input:not([type="checkbox"]),
+.tarbo-gantt select {
+  background: var(--nm-bg-pressed) !important;
+  border-color: var(--nm-line) !important;
+  color: var(--nm-text) !important;
+  box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -2px -2px 5px rgba(77, 83, 112, 0.32);
+}
+
+.tarbo-gantt input::placeholder {
+  color: rgba(186, 197, 216, 0.62);
+}
+
+.tarbo-gantt input[type="checkbox"] {
+  accent-color: #6366f1;
+}
+
+.tarbo-gantt::-webkit-scrollbar,
+.tarbo-gantt *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.tarbo-gantt::-webkit-scrollbar-track,
+.tarbo-gantt *::-webkit-scrollbar-track {
+  background: var(--nm-bg-pressed);
+}
+
+.tarbo-gantt::-webkit-scrollbar-thumb,
+.tarbo-gantt *::-webkit-scrollbar-thumb {
+  background: #545b78;
+  border: 2px solid var(--nm-bg-pressed);
+  border-radius: 999px;
+}
+
+.tarbo-gantt::-webkit-scrollbar-thumb:hover,
+.tarbo-gantt *::-webkit-scrollbar-thumb:hover {
+  background: #636b8a;
+}
+
+body.theme-light .tarbo-gantt {
+  color-scheme: dark;
+}
