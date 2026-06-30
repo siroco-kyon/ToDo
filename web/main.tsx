@@ -4,6 +4,7 @@ import { App } from '@renderer/App'
 import type { Api } from '@preload'
 import { api } from './lib/client'
 import { AuthGate } from './auth/AuthGate'
+import '@renderer/styles/gantt-neumorphic.css'
 
 declare global {
   interface Window {
