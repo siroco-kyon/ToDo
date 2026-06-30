@@ -65,6 +65,7 @@ export function createSchema(db: Database.Database): void {
       assignee_id TEXT,
       start_date TEXT,
       due_date TEXT,
+      progress INTEGER DEFAULT 0,
       done INTEGER DEFAULT 0,
       completed_at TEXT,
       sort_order INTEGER DEFAULT 0,
@@ -254,6 +255,10 @@ export function runMigrations(db: Database.Database): void {
   const subTaskColumns = db.prepare('PRAGMA table_info(SubTasks)').all() as { name: string }[]
   if (!subTaskColumns.some((c) => c.name === 'assignee_id')) {
     db.prepare('ALTER TABLE SubTasks ADD COLUMN assignee_id TEXT').run()
+  }
+  if (!subTaskColumns.some((c) => c.name === 'progress')) {
+    db.prepare('ALTER TABLE SubTasks ADD COLUMN progress INTEGER DEFAULT 0').run()
+    db.prepare('UPDATE SubTasks SET progress = CASE WHEN done = 1 THEN 100 ELSE 0 END WHERE progress IS NULL OR progress = 0').run()
   }
   db.prepare('CREATE INDEX IF NOT EXISTS idx_subtasks_assignee ON SubTasks(assignee_id)').run()
 

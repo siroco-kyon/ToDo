@@ -25,6 +25,7 @@ interface EditableSubTask {
   description: string
   start_date: string | null
   due_date: string | null
+  progress: number
   done: boolean
 }
 
@@ -93,7 +94,8 @@ export function TodoDetail({
     title: '',
     description: '',
     start_date: null,
-    due_date: null
+    due_date: null,
+    progress: 0
   })
   const [dependencyDraft, setDependencyDraft] = useState<{
     mode: 'predecessor' | 'successor'
@@ -132,6 +134,7 @@ export function TodoDetail({
       description: item.description ?? '',
       start_date: item.start_date ?? null,
       due_date: item.due_date ?? null,
+      progress: Boolean(item.done) ? 100 : clampProgress(item.progress ?? 0),
       done: Boolean(item.done)
     }))
   ), [])
@@ -315,6 +318,7 @@ export function TodoDetail({
         || (current.description ?? '') !== draft.description.trim()
         || (current.start_date ?? null) !== draft.start_date
         || (current.due_date ?? null) !== draft.due_date
+        || clampProgress(current.progress ?? 0) !== clampProgress(draft.progress)
         || Boolean(current.done) !== draft.done
     })
 
@@ -324,6 +328,7 @@ export function TodoDetail({
       description: subTask.description.trim(),
       start_date: subTask.start_date ?? null,
       due_date: subTask.due_date ?? null,
+      progress: clampProgress(subTask.done ? 100 : subTask.progress),
       done: subTask.done
     })))
     setDescriptionDraft(editData.description ?? '')
@@ -378,9 +383,10 @@ export function TodoDetail({
       title,
       description: newSubTask.description?.trim() ?? '',
       start_date: newSubTask.start_date ?? null,
-      due_date: newSubTask.due_date ?? null
+      due_date: newSubTask.due_date ?? null,
+      progress: clampProgress(newSubTask.progress ?? 0)
     })
-    setNewSubTask({ title: '', description: '', start_date: null, due_date: null })
+    setNewSubTask({ title: '', description: '', start_date: null, due_date: null, progress: 0 })
     setSubTasks((previous) => [...previous, created])
     if (editing) {
       setEditableSubTasks((previous) => [...previous, {
@@ -389,6 +395,7 @@ export function TodoDetail({
         description: created.description ?? '',
         start_date: created.start_date ?? null,
         due_date: created.due_date ?? null,
+        progress: clampProgress(created.progress ?? 0),
         done: Boolean(created.done)
       }])
     }
@@ -462,7 +469,9 @@ export function TodoDetail({
   const totalMinutes = Math.round((logs.reduce((sum, log) => sum + log.duration_seconds, 0) + (isRunning ? elapsedSeconds : 0)) / 60)
   const displayProgress = localProgress ?? todo.progress ?? 0
   const doneCount = subTasks.filter((subTask) => subTask.done).length
-  const subTaskProgress = subTasks.length > 0 ? Math.round((doneCount / subTasks.length) * 100) : null
+  const subTaskProgress = subTasks.length > 0
+    ? Math.round(subTasks.reduce((sum, subTask) => sum + clampProgress(Boolean(subTask.done) ? 100 : subTask.progress ?? 0), 0) / subTasks.length)
+    : null
   const visibleTodoIds = new Set(allTodos.map((candidate) => candidate.id))
   const predecessorDependencies = dependencies.filter(
     (dependency) => dependency.successor_todo_id === todo.id && visibleTodoIds.has(dependency.predecessor_todo_id)
@@ -786,6 +795,18 @@ export function TodoDetail({
             <input type="date" value={newSubTask.start_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
             <input type="date" value={newSubTask.due_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, due_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
           </div>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: '#94a3b8' }}>
+            <span>進捗 {clampProgress(newSubTask.progress ?? 0)}%</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={clampProgress(newSubTask.progress ?? 0)}
+              onChange={(event) => setNewSubTask((previous) => ({ ...previous, progress: clampProgress(Number(event.target.value)) }))}
+              style={{ width: '100%', accentColor: progressColor(clampProgress(newSubTask.progress ?? 0)) }}
+            />
+          </label>
           <button type="submit" style={buttonStyle('#6366f1')}>追加</button>
         </form>
       </section>
@@ -860,9 +881,11 @@ function DependencyList({ title, items, getTodoId, getTitle, reload }: { title: 
 }
 
 function EditableSubTaskItem({ subTask, onChange, onDelete }: { subTask: EditableSubTask; onChange: (data: Partial<EditableSubTask>) => void; onDelete: () => void }): React.JSX.Element {
+  const progress = clampProgress(subTask.done ? 100 : subTask.progress)
+
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, background: '#1e293b' }}>
-      <button onClick={() => onChange({ done: !subTask.done })} style={{ width: 16, height: 16, borderRadius: 3, marginTop: 8, border: `2px solid ${subTask.done ? '#4ade80' : '#475569'}`, background: subTask.done ? '#4ade80' : 'transparent', cursor: 'pointer' }} />
+      <button onClick={() => onChange({ done: !subTask.done, progress: subTask.done ? Math.min(progress, 99) : 100 })} style={{ width: 16, height: 16, borderRadius: 3, marginTop: 8, border: `2px solid ${subTask.done ? '#4ade80' : '#475569'}`, background: subTask.done ? '#4ade80' : 'transparent', cursor: 'pointer' }} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <input value={subTask.title} onChange={(event) => onChange({ title: event.target.value })} placeholder="サブタスク名" style={{ ...inputStyle, fontSize: '0.82rem', padding: '6px 8px' }} />
         <textarea value={subTask.description} onChange={(event) => onChange({ description: event.target.value })} placeholder="メモ..." rows={2} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
@@ -870,6 +893,21 @@ function EditableSubTaskItem({ subTask, onChange, onDelete }: { subTask: Editabl
           <input type="date" value={subTask.start_date ?? ''} onChange={(event) => onChange({ start_date: event.target.value || null })} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
           <input type="date" value={subTask.due_date ?? ''} onChange={(event) => onChange({ due_date: event.target.value || null })} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
         </div>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: '#94a3b8' }}>
+          <span>進捗 {progress}%</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={progress}
+            onChange={(event) => {
+              const nextProgress = clampProgress(Number(event.target.value))
+              onChange({ progress: nextProgress, done: nextProgress >= 100 })
+            }}
+            style={{ width: '100%', accentColor: progressColor(progress) }}
+          />
+        </label>
       </div>
       <button onClick={onDelete} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>削除</button>
     </div>
@@ -881,6 +919,7 @@ interface SubTaskDraft {
   description: string
   start_date: string | null
   due_date: string | null
+  progress: number
 }
 
 // 閲覧モードでもサブタスク単体をその場で編集できる項目。
@@ -893,15 +932,21 @@ function ReadonlySubTaskItem({ subTask, onToggle, onSave, onDelete, onShowToast 
   onShowToast: (message: string, type?: 'success' | 'error') => void
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState<SubTaskDraft>({ title: '', description: '', start_date: null, due_date: null })
+  const [draft, setDraft] = useState<SubTaskDraft>({ title: '', description: '', start_date: null, due_date: null, progress: 0 })
+  const [localProgress, setLocalProgress] = useState<number | null>(null)
+  const progressBarRef = useRef<HTMLDivElement>(null)
+  const draggingRef = useRef(false)
   const [saving, setSaving] = useState(false)
+  const progress = clampProgress(Boolean(subTask.done) ? 100 : subTask.progress ?? 0)
+  const displayProgress = localProgress ?? progress
 
   const startEditing = (): void => {
     setDraft({
       title: subTask.title,
       description: subTask.description ?? '',
       start_date: subTask.start_date ?? null,
-      due_date: subTask.due_date ?? null
+      due_date: subTask.due_date ?? null,
+      progress: Boolean(subTask.done) ? 100 : clampProgress(subTask.progress ?? 0)
     })
     setEditing(true)
   }
@@ -927,6 +972,45 @@ function ReadonlySubTaskItem({ subTask, onToggle, onSave, onDelete, onShowToast 
     }
   }
 
+  const calcProgress = (clientX: number): number => {
+    if (!progressBarRef.current) return displayProgress
+    const rect = progressBarRef.current.getBoundingClientRect()
+    const raw = ((clientX - rect.left) / rect.width) * 100
+    return clampProgress(Math.round(raw / 5) * 5)
+  }
+
+  const handleProgressMouseDown = (event: React.MouseEvent): void => {
+    if (saving) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    draggingRef.current = true
+    setLocalProgress(calcProgress(event.clientX))
+
+    const handleMove = (moveEvent: MouseEvent): void => {
+      if (draggingRef.current) setLocalProgress(calcProgress(moveEvent.clientX))
+    }
+    const handleUp = (upEvent: MouseEvent): void => {
+      draggingRef.current = false
+      const nextProgress = calcProgress(upEvent.clientX)
+      setLocalProgress(null)
+      void onSave({
+        title: subTask.title,
+        description: subTask.description ?? '',
+        start_date: subTask.start_date ?? null,
+        due_date: subTask.due_date ?? null,
+        progress: nextProgress
+      }).catch((error) => {
+        onShowToast(error instanceof Error ? error.message : 'サブタスクの進捗を更新できませんでした', 'error')
+      })
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+    }
+
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleUp)
+  }
+
   if (editing) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', borderRadius: 8, background: '#1e293b', border: '1px solid #6366f1' }}>
@@ -943,6 +1027,18 @@ function ReadonlySubTaskItem({ subTask, onToggle, onSave, onDelete, onShowToast 
           <input type="date" value={draft.start_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
           <input type="date" value={draft.due_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, due_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
         </div>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: '#94a3b8' }}>
+          <span>進捗 {draft.progress}%</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={draft.progress}
+            onChange={(event) => setDraft((previous) => ({ ...previous, progress: clampProgress(Number(event.target.value)) }))}
+            style={{ width: '100%', accentColor: progressColor(draft.progress) }}
+          />
+        </label>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
           <button onClick={() => setEditing(false)} style={buttonStyle('#334155')}>キャンセル</button>
           <button onClick={() => void handleSave()} disabled={saving} style={buttonStyle('#6366f1')}>{saving ? '保存中...' : '保存'}</button>
@@ -958,6 +1054,17 @@ function ReadonlySubTaskItem({ subTask, onToggle, onSave, onDelete, onShowToast 
         <div style={{ fontSize: '0.85rem', color: subTask.done ? '#475569' : '#cbd5e1', textDecoration: subTask.done ? 'line-through' : 'none' }}>{subTask.title}</div>
         {(subTask.start_date || subTask.due_date) && <div style={{ marginTop: 4, fontSize: '0.68rem', color: '#94a3b8' }}>{subTask.start_date ?? ''}{subTask.start_date && subTask.due_date ? ' - ' : ''}{subTask.due_date ?? ''}</div>}
         {subTask.description && <div style={{ marginTop: 2, fontSize: '0.75rem', color: subTask.done ? '#334155' : '#64748b', whiteSpace: 'pre-wrap' }}>{subTask.description}</div>}
+        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div
+            ref={progressBarRef}
+            onMouseDown={handleProgressMouseDown}
+            title="ドラッグで進捗を変更"
+            style={{ flex: 1, height: 7, borderRadius: 999, background: '#0f172a', overflow: 'hidden', cursor: saving ? 'wait' : 'ew-resize', userSelect: 'none' }}
+          >
+            <div style={{ width: `${displayProgress}%`, height: '100%', borderRadius: 999, background: progressColor(displayProgress), pointerEvents: 'none' }} />
+          </div>
+          <span style={{ minWidth: 34, textAlign: 'right', fontSize: '0.68rem', color: progressColor(displayProgress), fontWeight: 700 }}>{displayProgress}%</span>
+        </div>
       </div>
       <button onClick={startEditing} title="編集" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>✎</button>
       <button onClick={onDelete} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>削除</button>
@@ -978,6 +1085,11 @@ function progressColor(progress: number): string {
   if (progress >= 70) return '#6366f1'
   if (progress >= 30) return '#818cf8'
   return '#475569'
+}
+
+function clampProgress(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, Math.round(value)))
 }
 
 function clampLag(value: number): number {

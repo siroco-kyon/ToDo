@@ -307,7 +307,7 @@ function spawnNextRecurrence(source: Todo): void {
     const db = getDb()
     const now = new Date().toISOString()
     const insert = db.prepare(
-      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)'
+      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?)'
     )
     const subTasks = db
       .prepare('SELECT * FROM SubTasks WHERE todo_id = ? ORDER BY sort_order ASC, created_at ASC')

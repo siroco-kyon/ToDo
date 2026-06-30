@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { getDb } from './connection'
-import { normalizeDateKey } from './helpers'
+import { clampProgress, normalizeDateKey } from './helpers'
 import { syncTodoDueDateWithSubTask } from './todos'
 import type { CalendarSubTask, CreateSubTaskInput, SubTask, UpdateSubTaskInput } from './types'
 
@@ -50,9 +50,11 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
   const maxOrder = (db.prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM SubTasks WHERE todo_id = ?').get(todoId) as { m: number }).m
   const startDate = normalizeDateKey(data.start_date)
   const dueDate = normalizeDateKey(data.due_date)
+  const progress = clampProgress(data.progress)
+  const done = progress >= 100 ? 1 : 0
   db.prepare(
-    'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)'
-  ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, maxOrder + 1, now)
+    'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now)
   const created = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
   syncTodoDueDateWithSubTask(todoId, created.due_date)
   return created
@@ -60,7 +62,7 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
 
 export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
   const db = getDb()
-  const current = db.prepare('SELECT done FROM SubTasks WHERE id = ?').get(id) as { done: number } | undefined
+  const current = db.prepare('SELECT done, progress, completed_at FROM SubTasks WHERE id = ?').get(id) as { done: number; progress: number; completed_at: string | null } | undefined
 
   if (data.title !== undefined) {
     db.prepare('UPDATE SubTasks SET title = ? WHERE id = ?').run(data.title, id)
@@ -77,12 +79,20 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
   if (data.due_date !== undefined) {
     db.prepare('UPDATE SubTasks SET due_date = ? WHERE id = ?').run(normalizeDateKey(data.due_date), id)
   }
-  if (data.done !== undefined && current) {
-    if (data.done && current.done === 0) {
-      db.prepare('UPDATE SubTasks SET done = 1, completed_at = ? WHERE id = ?').run(new Date().toISOString(), id)
-    } else if (!data.done && current.done === 1) {
-      db.prepare('UPDATE SubTasks SET done = 0, completed_at = NULL WHERE id = ?').run(id)
-    }
+  if ((data.done !== undefined || data.progress !== undefined) && current) {
+    const progressFromInput = data.progress !== undefined
+      ? clampProgress(Number(data.progress))
+      : current.progress
+    const nextProgress = data.done !== undefined
+      ? data.done ? 100 : Math.min(progressFromInput, 99)
+      : progressFromInput
+    const nextDone = data.done !== undefined
+      ? data.done
+      : nextProgress >= 100
+    const nextCompletedAt = nextDone
+      ? current.done ? current.completed_at ?? new Date().toISOString() : new Date().toISOString()
+      : null
+    db.prepare('UPDATE SubTasks SET progress = ?, done = ?, completed_at = ? WHERE id = ?').run(nextProgress, nextDone ? 1 : 0, nextCompletedAt, id)
   }
   const updated = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
   syncTodoDueDateWithSubTask(updated.todo_id, updated.due_date)

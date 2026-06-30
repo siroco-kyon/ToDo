@@ -100,8 +100,8 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
     )
     const insertSubTask = webDb.prepare(
       `INSERT OR IGNORE INTO SubTasks
-        (id, todo_id, title, description, assignee_id, start_date, due_date, done, completed_at, sort_order, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     const insertDependency = webDb.prepare(
       `INSERT OR IGNORE INTO TodoDependencies
@@ -191,6 +191,7 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
         targetUserId,
         asNullableText(sub.start_date),
         asNullableText(sub.due_date),
+        asInt(sub.progress, asInt(sub.done, 0) ? 100 : 0),
         asInt(sub.done, 0),
         asNullableText(sub.completed_at),
         asInt(sub.sort_order, 0),

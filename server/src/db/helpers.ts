@@ -86,6 +86,11 @@ export function clampDependencyLagDays(value: number | null | undefined): number
   return Math.max(0, Math.min(60, Math.round(value)))
 }
 
+export function clampProgress(value: number | null | undefined): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 0
+  return Math.max(0, Math.min(100, Math.round(value)))
+}
+
 export interface TodoBar {
   startDate: string
   endDate: string

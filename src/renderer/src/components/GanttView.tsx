@@ -110,7 +110,7 @@ interface UndoEntry {
 }
 
 type EditableTodoField = 'start_date' | 'due_date' | 'progress' | 'assignee_id'
-type EditableSubTaskField = 'title' | 'start_date' | 'due_date' | 'done' | 'assignee_id'
+type EditableSubTaskField = 'title' | 'start_date' | 'due_date' | 'progress' | 'done' | 'assignee_id'
 type GanttLeftColumnKey = 'title' | 'start' | 'due' | 'progress' | 'assignee'
 type ZoomMode = 'compact' | 'normal' | 'detail' | 'focus'
 type StatusFilter = 'active' | 'done' | 'all'
@@ -750,7 +750,7 @@ function subTaskTone(subTask: SubTask, todayKey: string): {
 
   return overdue
     ? {
-      background: 'linear-gradient(90deg, #7f1d1d, #991b1b)',
+      background: '#3f1d1d',
       border: '#fca5a5',
       text: '#fef2f2',
       rowBackground: '#1f1315',
@@ -761,7 +761,7 @@ function subTaskTone(subTask: SubTask, todayKey: string): {
       borderStyle: 'solid'
     }
     : {
-      background: 'linear-gradient(90deg, #22c55e, #10b981)',
+      background: '#334155',
       border: '#34d399',
       text: '#ecfdf5',
       rowBackground: '#182a2a',
@@ -1254,6 +1254,8 @@ export function GanttView({
         ? subTask.start_date?.slice(0, 10) ?? ''
         : field === 'due_date'
           ? subTask.due_date?.slice(0, 10) ?? ''
+          : field === 'progress'
+            ? String(clamp(Boolean(subTask.done) ? 100 : subTask.progress ?? 0, 0, 100))
           : field === 'done'
             ? Boolean(subTask.done) ? 'done' : 'active'
             : subTask.assignee_id ?? ''
@@ -1300,6 +1302,14 @@ export function GanttView({
         return
       }
       update.due_date = next
+    } else if (edit.field === 'progress') {
+      const progress = clamp(Math.round(Number(edit.value)), 0, 100)
+      const current = clamp(Boolean(subTask.done) ? 100 : subTask.progress ?? 0, 0, 100)
+      if (!Number.isFinite(progress) || progress === current) {
+        setEditingSubTaskCell(null)
+        return
+      }
+      update.progress = progress
     } else if (edit.field === 'done') {
       const done = edit.value === 'done'
       if (done === Boolean(subTask.done)) {
@@ -3377,6 +3387,7 @@ export function GanttView({
 
                     {showSubtasks && isExpanded && group.datedSubTasks.map(({ subTask, bar }) => {
                       const tone = subTaskTone(subTask, todayKey)
+                      const subTaskProgress = clamp(Boolean(subTask.done) ? 100 : subTask.progress ?? 0, 0, 100)
                       const baselineBar = showBaseline ? baselineSnapshot?.subTasks[subTask.id] ?? null : null
                       const subTaskActiveState = interaction?.targetType === 'subtask' && interaction.targetId === subTask.id ? interaction : null
                       const parentMoveState = interaction?.targetType === 'todo' && interaction.targetId === group.todo.id && interaction.mode === 'move' ? interaction : null
@@ -3454,36 +3465,22 @@ export function GanttView({
                                   {shortDateLabel(displayedBar.endDate)}
                                 </button>
                               )}
-                              {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'done' ? (
-                                <select
+                              {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'progress' ? (
+                                <input
                                   autoFocus
+                                  type="number"
+                                  min={0}
+                                  max={100}
                                   value={editingSubTaskCell.value}
-                                  onChange={(event) => {
-                                    const value = event.target.value
-                                    const currentValue = Boolean(subTask.done) ? 'done' : 'active'
-                                    if (value === currentValue) {
-                                      setEditingSubTaskCell(null)
-                                      return
-                                    }
-                                    setEditingSubTaskCellSaving(true)
-                                    void window.api.subtaskUpdate(subTask.id, { done: value === 'done' }).then((updated) => {
-                                      setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
-                                    }).finally(() => {
-                                      setEditingSubTaskCell(null)
-                                      setEditingSubTaskCellSaving(false)
-                                    })
-                                  }}
-                                  onBlur={() => setEditingSubTaskCell(null)}
+                                  onChange={(event) => setEditingSubTaskCell((previous) => previous ? { ...previous, value: event.target.value } : previous)}
+                                  onBlur={() => void commitSubTaskCellEdit()}
                                   onKeyDown={handleSubTaskCellEditorKeyDown}
-                                  style={{ ...tableSelectStyle, width: '100%' }}
-                                >
-                                  <option value="active">進行</option>
-                                  <option value="done">完了</option>
-                                </select>
+                                  style={{ ...tableInputStyle, width: '100%' }}
+                                />
                               ) : (
-                                <button onClick={() => beginSubTaskCellEdit(subTask, 'done')} style={{ ...tableCellButtonStyle, ...subTableCellStyle }} title={tone.statusLabel}>
-                                  <span style={{ ...statusDotStyle, background: tone.border }} />
-                                  {Boolean(subTask.done) ? '完了' : '進行'}
+                                <button onClick={() => beginSubTaskCellEdit(subTask, 'progress')} style={{ ...tableCellButtonStyle, ...subTableCellStyle }} title={`${tone.statusLabel}: ${subTaskProgress}%`}>
+                                  <span style={{ ...statusDotStyle, background: subTaskProgress >= 100 ? '#86efac' : tone.border }} />
+                                  {subTaskProgress}%
                                 </button>
                               )}
                               {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'assignee_id' ? (
@@ -3551,7 +3548,20 @@ export function GanttView({
                                 }}
                               />
                             )}
-                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTask.title} (${displayedBar.startDate}${displayedBar.startDate === displayedBar.endDate ? '' : ` - ${displayedBar.endDate}`})`} style={{ position: 'absolute', left: subTaskStartIndex * unitWidth + 6, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: Math.max((subTaskEndIndex - subTaskStartIndex + 1) * unitWidth - 12, 12), height: SUBTASK_BAR_HEIGHT, borderRadius: 3, background: tone.background, border: `1px ${tone.borderStyle} ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: !isTimelineEditable ? 'pointer' : 'grab', overflow: 'hidden', boxShadow: subTaskActiveState ? '0 0 0 2px rgba(59, 130, 246, 0.22)' : Boolean(subTask.done) ? '0 0 0 1px rgba(134, 239, 172, 0.18) inset' : 'none' }}>
+                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTask.title} ${subTaskProgress}% (${displayedBar.startDate}${displayedBar.startDate === displayedBar.endDate ? '' : ` - ${displayedBar.endDate}`})`} style={{ position: 'absolute', left: subTaskStartIndex * unitWidth + 6, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: Math.max((subTaskEndIndex - subTaskStartIndex + 1) * unitWidth - 12, 12), height: SUBTASK_BAR_HEIGHT, borderRadius: 3, background: tone.background, border: `1px ${tone.borderStyle} ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: !isTimelineEditable ? 'pointer' : 'grab', overflow: 'hidden', boxShadow: subTaskActiveState ? '0 0 0 2px rgba(59, 130, 246, 0.22)' : Boolean(subTask.done) ? '0 0 0 1px rgba(134, 239, 172, 0.18) inset' : 'none' }}>
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  bottom: 0,
+                                  left: 0,
+                                  width: `${subTaskProgress}%`,
+                                  background: Boolean(subTask.done)
+                                    ? 'linear-gradient(90deg, #166534, #15803d)'
+                                    : 'linear-gradient(90deg, #22c55e, #10b981)',
+                                  pointerEvents: 'none'
+                                }}
+                              />
                               <div
                                 onPointerDown={(event) => {
                                   if (event.button !== 0 || !isTimelineEditable) return
@@ -3561,7 +3571,7 @@ export function GanttView({
                               >
                                 <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0 5px', whiteSpace: 'nowrap', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
                                   {Boolean(subTask.done) && unitWidth >= UNIT_WIDTH[timeScale].normal ? '完了 ' : ''}
-                                  {unitWidth >= UNIT_WIDTH[timeScale].normal ? subTask.title : barStartLabel(displayedBar.startDate, timeScale)}
+                                  {unitWidth >= UNIT_WIDTH[timeScale].normal ? `${subTaskProgress}% ${subTask.title}` : barStartLabel(displayedBar.startDate, timeScale)}
                                 </span>
                               </div>
                               {isTimelineEditable && (
