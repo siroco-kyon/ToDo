@@ -317,7 +317,7 @@ dataRouter.get('/progress-notes/timeline', (req, res) =>
     return getProgressNotesByRange(from, to, req.user!.id)
   }))
 dataRouter.post('/todos/:todoId/progress-notes', (req, res) =>
-  run(res, () => createProgressNote(req.params.todoId, req.user!.id, req.body.body), 'todo'))
+  run(res, () => createProgressNote(req.params.todoId, req.user!.id, req.body.body), 'progress'))
 dataRouter.put('/progress-notes/:id', (req, res) =>
   run(res, () => {
     const note = getProgressNote(req.params.id, req.user!.id)
@@ -326,7 +326,7 @@ dataRouter.put('/progress-notes/:id', (req, res) =>
       throw new Error('この進捗ログを編集する権限がありません')
     }
     return updateProgressNote(req.params.id, req.body.body, req.user!.id)
-  }, 'todo'))
+  }, 'progress'))
 dataRouter.delete('/progress-notes/:id', (req, res) =>
   run(res, () => {
     const note = getProgressNote(req.params.id, req.user!.id)
@@ -335,7 +335,7 @@ dataRouter.delete('/progress-notes/:id', (req, res) =>
       throw new Error('この進捗ログを削除する権限がありません')
     }
     deleteProgressNote(req.params.id)
-  }, 'todo'))
+  }, 'progress'))
 
 // ─── Progress comments/reactions ──────────────────────────────
 dataRouter.post('/progress-notes/:id/comments', (req, res) =>
@@ -344,7 +344,7 @@ dataRouter.post('/progress-notes/:id/comments', (req, res) =>
     const created = createProgressNoteCommentWithId(req.params.id, req.user!.id, req.body.body, req.body.parentCommentId)
     notifyProgressReply(req.user!.id, note, created.commentId)
     return created.note
-  }, 'todo'))
+  }, 'progress'))
 dataRouter.put('/progress-note-comments/:id', (req, res) =>
   run(res, () => {
     const comment = getProgressNoteComment(req.params.id)
@@ -353,7 +353,7 @@ dataRouter.put('/progress-note-comments/:id', (req, res) =>
       throw new Error('このコメントを編集する権限がありません')
     }
     return updateProgressNoteComment(req.params.id, req.body.body, req.user!.id)
-  }, 'todo'))
+  }, 'progress'))
 dataRouter.delete('/progress-note-comments/:id', (req, res) =>
   run(res, () => {
     const comment = getProgressNoteComment(req.params.id)
@@ -362,14 +362,14 @@ dataRouter.delete('/progress-note-comments/:id', (req, res) =>
       throw new Error('このコメントを削除する権限がありません')
     }
     return deleteProgressNoteComment(req.params.id, req.user!.id)
-  }, 'todo'))
+  }, 'progress'))
 dataRouter.post('/progress-notes/:id/reactions', (req, res) =>
   run(res, () => {
     const updated = toggleProgressNoteReaction(req.params.id, req.user!.id, req.body.emoji)
     const liked = updated.reactions.find((reaction) => reaction.emoji === req.body.emoji)?.reacted_by_me
     if (liked) notifyProgressReaction(req.user!.id, updated)
     return updated
-  }, 'todo'))
+  }, 'progress'))
 dataRouter.post('/progress-note-comments/:id/reactions', (req, res) =>
   run(res, () => {
     const updated = toggleProgressNoteCommentReaction(req.params.id, req.user!.id, req.body.emoji)
@@ -377,7 +377,7 @@ dataRouter.post('/progress-note-comments/:id/reactions', (req, res) =>
     const liked = comment?.reactions.find((reaction) => reaction.emoji === req.body.emoji)?.reacted_by_me
     if (liked) notifyCommentReaction(req.user!.id, updated, comment)
     return updated
-  }, 'todo'))
+  }, 'progress'))
 
 // ─── Progress digest (admin: anyone / member: self only) ──────
 dataRouter.get('/progress-digest', (req, res) =>
@@ -424,6 +424,7 @@ dataRouter.post(
           broadcastDataChanged('todo')
           broadcastDataChanged('subtask')
           broadcastDataChanged('plan')
+          broadcastDataChanged('progress')
         }
         res.json(result)
       } finally {

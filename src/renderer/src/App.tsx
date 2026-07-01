@@ -745,8 +745,10 @@ export function App(): React.JSX.Element {
       <Toolbar
         isTimerRunning={isRunning}
         onOpenQuickAdd={() => setShowQuickAdd(true)}
-        onExportClipboard={handleExportClipboard}
-        onExportFile={handleExportFile}
+        onOpenProgressReport={() => {
+          if (isAdmin && multiUser) setShowProgressReport(true)
+          else setShowMySummary(true)
+        }}
         showArchived={showArchived}
         onToggleArchived={() => setShowArchived((prev) => !prev)}
         onOpenSettings={() => setShowSettings(true)}
@@ -1062,6 +1064,8 @@ export function App(): React.JSX.Element {
           onProgressReport={isAdmin ? () => { setShowSettings(false); setShowProgressReport(true) } : undefined}
           onDesktopImport={isAdmin && multiUser ? () => { setShowSettings(false); setShowDesktopImport(true) } : undefined}
           onMySummary={() => { setShowSettings(false); setShowMySummary(true) }}
+          onExportClipboard={handleExportClipboard}
+          onExportFile={handleExportFile}
         />
       )}
 

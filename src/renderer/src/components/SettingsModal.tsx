@@ -12,6 +12,8 @@ interface Props {
   onProgressReport?: () => void
   onDesktopImport?: () => void
   onMySummary?: () => void
+  onExportClipboard: () => Promise<void>
+  onExportFile: () => Promise<void>
 }
 
 const STATUS_LABEL: Record<Todo['status'], string> = {
@@ -70,7 +72,7 @@ function captureKeyEvent(e: React.KeyboardEvent): string | null {
   return modifiers.join('+')
 }
 
-export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, canManageUsers = false, onManageUsers, onProgressReport, onDesktopImport, onMySummary }: Props): React.JSX.Element {
+export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, canManageUsers = false, onManageUsers, onProgressReport, onDesktopImport, onMySummary, onExportClipboard, onExportFile }: Props): React.JSX.Element {
   const [exporting, setExporting] = useState(false)
 
   const exportCsv = async (kind: 'todos' | 'subtasks' | 'worklogs'): Promise<void> => {
@@ -315,6 +317,13 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             <button onClick={() => void exportCsv('todos')} disabled={exporting} style={secondaryBtn}>📋 タスクCSV</button>
             <button onClick={() => void exportCsv('subtasks')} disabled={exporting} style={secondaryBtn}>📑 サブタスクCSV</button>
             <button onClick={() => void exportCsv('worklogs')} disabled={exporting} style={secondaryBtn}>⏱ 作業ログCSV</button>
+          </div>
+          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '14px 0 12px' }}>
+            Markdown形式でタスク一覧を出力します（クリップボードへのコピーは Ctrl+Alt+E でも可能）。
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => void onExportClipboard()} style={secondaryBtn}>📝 Markdownをコピー</button>
+            <button onClick={() => void onExportFile()} style={secondaryBtn}>💾 Markdownを書き出し</button>
           </div>
         </section>
 

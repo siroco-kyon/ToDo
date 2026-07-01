@@ -73,14 +73,14 @@ export function registerIpcHandlers(
   openGanttWindow: () => void,
   openTodoInMainWindow: (todoId: string) => void
 ): void {
-  const broadcastDataChange = (scope: 'category' | 'todo' | 'subtask' | 'plan'): void => {
+  const broadcastDataChange = (scope: 'category' | 'todo' | 'subtask' | 'plan' | 'progress'): void => {
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send('data:changed', scope)
     }
   }
 
   const handleMutation = <TArgs extends unknown[], TResult>(
-    scope: 'category' | 'todo' | 'subtask' | 'plan',
+    scope: 'category' | 'todo' | 'subtask' | 'plan' | 'progress',
     action: (...args: TArgs) => TResult
   ) => (_event: Electron.IpcMainInvokeEvent, ...args: TArgs): TResult => {
     const result = action(...args)
@@ -159,14 +159,14 @@ export function registerIpcHandlers(
   ipcMain.handle('progressNote:getByTodo', (_, todoId: string) => getProgressNotesByTodo(todoId))
   ipcMain.handle('progressNote:getByDate', (_, dateStr: string) => getProgressNotesByDate(dateStr))
   ipcMain.handle('progressNote:getByRange', (_, from: string, to: string) => getProgressNotesByRange(from, to))
-  ipcMain.handle('progressNote:create', handleMutation('todo', (todoId: string, body: string) => createProgressNote(todoId, body)))
-  ipcMain.handle('progressNote:update', handleMutation('todo', (id: string, body: string) => updateProgressNote(id, body)))
-  ipcMain.handle('progressNote:delete', handleMutation('todo', (id: string) => deleteProgressNote(id)))
-  ipcMain.handle('progressNoteComment:create', handleMutation('todo', (noteId: string, body: string, parentCommentId?: string | null) => createProgressNoteComment(noteId, body, parentCommentId)))
-  ipcMain.handle('progressNoteComment:update', handleMutation('todo', (id: string, body: string) => updateProgressNoteComment(id, body)))
-  ipcMain.handle('progressNoteComment:delete', handleMutation('todo', (id: string) => deleteProgressNoteComment(id)))
-  ipcMain.handle('progressNoteReaction:toggle', handleMutation('todo', (noteId: string, emoji: string) => toggleProgressNoteReaction(noteId, emoji)))
-  ipcMain.handle('progressNoteCommentReaction:toggle', handleMutation('todo', (commentId: string, emoji: string) => toggleProgressNoteCommentReaction(commentId, emoji)))
+  ipcMain.handle('progressNote:create', handleMutation('progress', (todoId: string, body: string) => createProgressNote(todoId, body)))
+  ipcMain.handle('progressNote:update', handleMutation('progress', (id: string, body: string) => updateProgressNote(id, body)))
+  ipcMain.handle('progressNote:delete', handleMutation('progress', (id: string) => deleteProgressNote(id)))
+  ipcMain.handle('progressNoteComment:create', handleMutation('progress', (noteId: string, body: string, parentCommentId?: string | null) => createProgressNoteComment(noteId, body, parentCommentId)))
+  ipcMain.handle('progressNoteComment:update', handleMutation('progress', (id: string, body: string) => updateProgressNoteComment(id, body)))
+  ipcMain.handle('progressNoteComment:delete', handleMutation('progress', (id: string) => deleteProgressNoteComment(id)))
+  ipcMain.handle('progressNoteReaction:toggle', handleMutation('progress', (noteId: string, emoji: string) => toggleProgressNoteReaction(noteId, emoji)))
+  ipcMain.handle('progressNoteCommentReaction:toggle', handleMutation('progress', (commentId: string, emoji: string) => toggleProgressNoteCommentReaction(commentId, emoji)))
   ipcMain.handle('progressDigest:get', (_, query: ProgressDigestQuery) => getProgressDigest(query))
 
   // Settings

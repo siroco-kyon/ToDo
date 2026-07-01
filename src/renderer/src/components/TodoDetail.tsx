@@ -247,10 +247,10 @@ export function TodoDetail({
 
     const unsubscribe = window.api.onDataChanged((scope) => {
       if (scope === 'subtask') void loadSubTasks(todoId)
+      if (scope === 'progress') void loadProgressNotes(todoId)
       if (scope === 'todo') {
         void loadWorkLogs(todoId)
         void loadDependencies(todoId)
-        void loadProgressNotes(todoId)
       }
     })
 

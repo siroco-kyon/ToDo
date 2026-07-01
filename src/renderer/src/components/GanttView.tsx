@@ -919,7 +919,9 @@ export function GanttView({
   }, [loadGanttData])
 
   useEffect(() => {
-    const unsubscribe = window.api.onDataChanged(() => {
+    const unsubscribe = window.api.onDataChanged((scope) => {
+      // 進捗ノートの投稿・いいねはガントに影響しない
+      if (scope === 'progress') return
       void loadGanttData()
     })
     return () => unsubscribe()
