@@ -199,6 +199,8 @@ const api = {
     ipcRenderer.invoke('progressNoteComment:delete', id),
   progressNoteReactionToggle: (noteId: string, emoji: string): Promise<ProgressNote> =>
     ipcRenderer.invoke('progressNoteReaction:toggle', noteId, emoji),
+  progressNoteCommentReactionToggle: (commentId: string, emoji: string): Promise<ProgressNote> =>
+    ipcRenderer.invoke('progressNoteCommentReaction:toggle', commentId, emoji),
   progressDigestGet: (query: ProgressDigestQuery): Promise<ProgressDigest> =>
     ipcRenderer.invoke('progressDigest:get', query),
 

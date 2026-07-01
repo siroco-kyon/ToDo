@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import type { ProgressNote, ProgressNoteComment, PublicUser, Todo } from '../types'
+import type { ProgressNote, ProgressNoteComment, ProgressNoteReaction, PublicUser, Todo } from '../types'
 
 export interface ProgressTimelineFocusTarget {
   date?: string | null
@@ -34,6 +34,7 @@ const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
   { value: 'author', label: '投稿者別' }
 ]
 const SORT_STORAGE_KEY = 'progressTimeline.sortMode'
+const LIKE_EMOJI = '👍'
 
 function loadSortMode(): SortMode {
   try {
@@ -105,7 +106,7 @@ function patchNote(notes: ProgressNote[], updated: ProgressNote): ProgressNote[]
 }
 
 function normalizeComment(comment: ProgressNoteComment): ProgressNoteComment {
-  return { ...comment, replies: (comment.replies ?? []).map(normalizeComment) }
+  return { ...comment, replies: (comment.replies ?? []).map(normalizeComment), reactions: comment.reactions ?? [] }
 }
 
 function normalizeNote(note: ProgressNote): ProgressNote {
@@ -118,6 +119,10 @@ function normalizeNote(note: ProgressNote): ProgressNote {
 
 function countComments(comments: ProgressNoteComment[] = []): number {
   return comments.reduce((sum, comment) => sum + 1 + countComments(comment.replies ?? []), 0)
+}
+
+function getLikeReaction(entity: { reactions: ProgressNoteReaction[] }) {
+  return entity.reactions.find((reaction) => reaction.emoji === LIKE_EMOJI)
 }
 
 function flattenReplies(comments: ProgressNoteComment[] = []): ProgressNoteComment[] {
@@ -272,6 +277,24 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
     }
   }
 
+  const handleToggleReaction = async (noteId: string): Promise<void> => {
+    try {
+      const updated = await window.api.progressNoteReactionToggle(noteId, LIKE_EMOJI)
+      setNotes((previous) => patchNote(previous, updated))
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : 'いいねを更新できませんでした', 'error')
+    }
+  }
+
+  const handleToggleCommentReaction = async (commentId: string): Promise<void> => {
+    try {
+      const updated = await window.api.progressNoteCommentReactionToggle(commentId, LIKE_EMOJI)
+      setNotes((previous) => patchNote(previous, updated))
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : 'いいねを更新できませんでした', 'error')
+    }
+  }
+
   const handleCreateComment = async (noteId: string, parentCommentId: string | null = null): Promise<void> => {
     const key = draftKey(noteId, parentCommentId)
     const body = (commentDrafts[key] ?? '').trim()
@@ -414,6 +437,9 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
 
           {!editingThisComment && (
             <div style={commentActionRowStyle}>
+              <button onClick={() => void handleToggleCommentReaction(comment.id)} style={likeButtonStyle(Boolean(getLikeReaction(comment)?.reacted_by_me))}>
+                {LIKE_EMOJI} {getLikeReaction(comment)?.count ?? 0}
+              </button>
               <button onClick={() => setReplyingToCommentId(comment.id)} style={inlineActionStyle}>返信</button>
               {replies.length > 0 && <span style={actionMetaStyle}>返信 {countComments(replies)}</span>}
               {canModifyComment(comment) && (
@@ -555,6 +581,9 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
 
                   {!editingNote && (
                     <div style={postActionRowStyle}>
+                      <button onClick={() => void handleToggleReaction(note.id)} style={likeButtonStyle(Boolean(getLikeReaction(note)?.reacted_by_me))}>
+                        {LIKE_EMOJI} {getLikeReaction(note)?.count ?? 0}
+                      </button>
                       <span style={actionMetaStyle}>コメント {commentCount}</span>
                       <button onClick={() => setCommentingOnNoteId(note.id)} style={inlineActionStyle}>返信</button>
                       {canModifyNote(note) && (
@@ -709,6 +738,18 @@ function pillButtonStyle(active: boolean): React.CSSProperties {
     cursor: active ? 'pointer' : 'not-allowed',
     fontSize: '0.76rem',
     fontWeight: 900
+  }
+}
+
+function likeButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    background: 'transparent',
+    border: 'none',
+    color: active ? '#60a5fa' : '#94a3b8',
+    cursor: 'pointer',
+    fontSize: '0.72rem',
+    fontWeight: 800,
+    padding: 0
   }
 }
 

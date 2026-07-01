@@ -466,7 +466,7 @@ export function App(): React.JSX.Element {
         await window.api.notificationMarkRead(notification.id)
       }
       await loadNotifications()
-      if (notification.type === 'progress_reply' && notification.progress_note_id) {
+      if ((notification.type === 'progress_reply' || notification.type === 'progress_reaction') && notification.progress_note_id) {
         setProgressTimelineFocus({
           date: getDateKeyFromIso(notification.created_at),
           todoId: notification.todo_id,

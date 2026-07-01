@@ -193,6 +193,18 @@ export function createSchema(db: Database.Database): void {
       FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS ProgressCommentReactions (
+      id TEXT PRIMARY KEY,
+      comment_id TEXT NOT NULL,
+      user_id TEXT,
+      actor_key TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(comment_id, actor_key, emoji),
+      FOREIGN KEY (comment_id) REFERENCES ProgressNoteComments(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS Notifications (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -226,6 +238,7 @@ export function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_progress_notes_user ON ProgressNotes(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_comments_note ON ProgressNoteComments(note_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_reactions_note ON ProgressNoteReactions(note_id, emoji);
+    CREATE INDEX IF NOT EXISTS idx_comment_reactions_comment ON ProgressCommentReactions(comment_id, emoji);
     CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON Notifications(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON Notifications(user_id, read_at, created_at);
   `)

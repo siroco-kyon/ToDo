@@ -49,6 +49,7 @@ import {
   updateProgressNoteComment,
   deleteProgressNoteComment,
   toggleProgressNoteReaction,
+  toggleProgressNoteCommentReaction,
   getProgressDigest,
   getSetting,
   setSetting,
@@ -165,6 +166,7 @@ export function registerIpcHandlers(
   ipcMain.handle('progressNoteComment:update', handleMutation('todo', (id: string, body: string) => updateProgressNoteComment(id, body)))
   ipcMain.handle('progressNoteComment:delete', handleMutation('todo', (id: string) => deleteProgressNoteComment(id)))
   ipcMain.handle('progressNoteReaction:toggle', handleMutation('todo', (noteId: string, emoji: string) => toggleProgressNoteReaction(noteId, emoji)))
+  ipcMain.handle('progressNoteCommentReaction:toggle', handleMutation('todo', (commentId: string, emoji: string) => toggleProgressNoteCommentReaction(commentId, emoji)))
   ipcMain.handle('progressDigest:get', (_, query: ProgressDigestQuery) => getProgressDigest(query))
 
   // Settings
