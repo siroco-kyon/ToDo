@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProgressNote, ProgressNoteComment, ProgressNoteReaction, PublicUser, Todo } from '../types'
 
 export interface ProgressTimelineFocusTarget {
@@ -185,21 +185,29 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
     }
   }, [sortMode])
 
-  const load = useCallback(async (): Promise<void> => {
-    setLoading(true)
+  // リロードの世代番号。古いレスポンスが新しい表示を上書きしないようにする
+  const loadSeqRef = useRef(0)
+
+  // mode: 'initial' は期間変更などリスト全体を作り直す時だけ使う。
+  // 'refresh' はリストを表示したまま裏で差し替える(スクロール位置を保つため)
+  const load = useCallback(async (mode: 'initial' | 'refresh' = 'refresh'): Promise<void> => {
+    const seq = ++loadSeqRef.current
+    if (mode === 'initial') setLoading(true)
     try {
       const loaded = await window.api.progressNoteGetByRange(range.from, range.to)
+      if (seq !== loadSeqRef.current) return
       setNotes(loaded.map(normalizeNote))
     } catch (error) {
+      if (seq !== loadSeqRef.current) return
       onShowToast(error instanceof Error ? error.message : '進捗タイムラインを読み込めませんでした', 'error')
-      setNotes([])
+      if (mode === 'initial') setNotes([])
     } finally {
-      setLoading(false)
+      if (mode === 'initial') setLoading(false)
     }
   }, [onShowToast, range.from, range.to])
 
   useEffect(() => {
-    void load()
+    void load('initial')
   }, [load])
 
   useEffect(() => {
@@ -219,14 +227,20 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
         : null
     if (!targetId) return
     const timer = window.setTimeout(() => {
-      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const element = document.getElementById(targetId)
+      if (!element) return
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      // フォーカスは一度だけ。クリアしないと notes 更新のたびに再スクロールする
+      setFocusedNoteId(null)
+      setFocusedCommentId(null)
     }, 80)
     return () => window.clearTimeout(timer)
   }, [focusedCommentId, focusedNoteId, loading, notes])
 
   useEffect(() => {
     const unsubscribe = window.api.onDataChanged((scope) => {
-      if (scope === 'todo') void load()
+      // 'todo' はタスク名やカテゴリの変更をノート表示に反映するために必要
+      if (scope === 'progress' || scope === 'todo') void load()
     })
     return () => unsubscribe()
   }, [load])
@@ -277,23 +291,30 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
     }
   }
 
-  const handleToggleReaction = async (noteId: string): Promise<void> => {
+  // 送信中のいいね対象。連打で toggle が交錯しないようガードする
+  const pendingReactionsRef = useRef<Set<string>>(new Set())
+
+  const toggleReactionGuarded = async (
+    id: string,
+    action: (id: string, emoji: string) => Promise<ProgressNote>
+  ): Promise<void> => {
+    if (pendingReactionsRef.current.has(id)) return
+    pendingReactionsRef.current.add(id)
     try {
-      const updated = await window.api.progressNoteReactionToggle(noteId, LIKE_EMOJI)
+      const updated = await action(id, LIKE_EMOJI)
       setNotes((previous) => patchNote(previous, updated))
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : 'いいねを更新できませんでした', 'error')
+    } finally {
+      pendingReactionsRef.current.delete(id)
     }
   }
 
-  const handleToggleCommentReaction = async (commentId: string): Promise<void> => {
-    try {
-      const updated = await window.api.progressNoteCommentReactionToggle(commentId, LIKE_EMOJI)
-      setNotes((previous) => patchNote(previous, updated))
-    } catch (error) {
-      onShowToast(error instanceof Error ? error.message : 'いいねを更新できませんでした', 'error')
-    }
-  }
+  const handleToggleReaction = (noteId: string): Promise<void> =>
+    toggleReactionGuarded(noteId, (id, emoji) => window.api.progressNoteReactionToggle(id, emoji))
+
+  const handleToggleCommentReaction = (commentId: string): Promise<void> =>
+    toggleReactionGuarded(commentId, (id, emoji) => window.api.progressNoteCommentReactionToggle(id, emoji))
 
   const handleCreateComment = async (noteId: string, parentCommentId: string | null = null): Promise<void> => {
     const key = draftKey(noteId, parentCommentId)

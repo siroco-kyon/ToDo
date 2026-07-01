@@ -247,8 +247,8 @@ const api = {
     ipcRenderer.on('navigation:openTodo', handler)
     return () => ipcRenderer.removeListener('navigation:openTodo', handler)
   },
-  onDataChanged: (cb: (scope: 'category' | 'todo' | 'subtask' | 'plan') => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, scope: 'category' | 'todo' | 'subtask' | 'plan'): void => cb(scope)
+  onDataChanged: (cb: (scope: 'category' | 'todo' | 'subtask' | 'plan' | 'progress') => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, scope: 'category' | 'todo' | 'subtask' | 'plan' | 'progress'): void => cb(scope)
     ipcRenderer.on('data:changed', handler)
     return () => ipcRenderer.removeListener('data:changed', handler)
   },

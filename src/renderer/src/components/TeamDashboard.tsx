@@ -56,7 +56,11 @@ export function TeamDashboard({ onSelectTodo, includePrivate = true }: Props): R
   }, [load])
 
   useEffect(() => {
-    const unsubscribe = window.api.onDataChanged(() => void load())
+    const unsubscribe = window.api.onDataChanged((scope) => {
+      // 進捗ノートの投稿・いいねはダッシュボードの集計に影響しない
+      if (scope === 'progress') return
+      void load()
+    })
     return () => unsubscribe()
   }, [load])
 

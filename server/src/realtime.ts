@@ -47,7 +47,7 @@ function broadcastPresence(): void {
   }
 }
 
-export type DataScope = 'category' | 'todo' | 'subtask' | 'plan'
+export type DataScope = 'category' | 'todo' | 'subtask' | 'plan' | 'progress'
 
 /** Mirror of the desktop app's `data:changed` IPC signal: tells every client to refetch. */
 export function broadcastDataChanged(scope: DataScope): void {

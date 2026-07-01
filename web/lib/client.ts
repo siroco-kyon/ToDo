@@ -87,7 +87,7 @@ const del = <T>(path: string): Promise<T> => request<T>('DELETE', path)
 
 // ─── Realtime + local event bus ───────────────────────────────
 
-type DataScope = 'category' | 'todo' | 'subtask' | 'plan'
+type DataScope = 'category' | 'todo' | 'subtask' | 'plan' | 'progress'
 
 const dataChangedListeners = new Set<(scope: DataScope) => void>()
 const navigateTodoListeners = new Set<(todoId: string) => void>()

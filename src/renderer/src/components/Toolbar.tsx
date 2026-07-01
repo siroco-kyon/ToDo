@@ -4,8 +4,7 @@ import type { PublicUser } from '../types'
 interface Props {
   isTimerRunning: boolean
   onOpenQuickAdd: () => void
-  onExportClipboard: () => Promise<void>
-  onExportFile: () => Promise<void>
+  onOpenProgressReport: () => void
   showArchived: boolean
   onToggleArchived: () => void
   onOpenSettings: () => void
@@ -42,8 +41,7 @@ interface ViewButton {
 export function Toolbar({
   isTimerRunning,
   onOpenQuickAdd,
-  onExportClipboard,
-  onExportFile,
+  onOpenProgressReport,
   showArchived,
   onToggleArchived,
   onOpenSettings,
@@ -139,8 +137,7 @@ export function Toolbar({
           <button onClick={onToggleArchived} style={utilityButtonStyle(showArchived)}>
             {showArchived ? 'アーカイブ表示中' : 'アーカイブ'}
           </button>
-          <button onClick={onExportClipboard} style={utilityButtonStyle(false)}>コピー</button>
-          <button onClick={onExportFile} style={utilityButtonStyle(false)}>書き出し</button>
+          <button onClick={onOpenProgressReport} style={utilityButtonStyle(false)}>進捗レポート</button>
           <button onClick={onOpenSettings} style={utilityButtonStyle(false)}>設定</button>
         </div>
 
