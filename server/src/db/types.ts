@@ -35,7 +35,7 @@ export interface Session {
 
 // ─── User notifications ───────────────────────────────────────
 
-export type NotificationType = 'progress_reply' | 'task_assigned'
+export type NotificationType = 'progress_reply' | 'task_assigned' | 'progress_reaction'
 
 export interface UserNotification {
   id: string
@@ -405,6 +405,7 @@ export interface ProgressNoteComment {
   created_at: string
   updated_at: string
   replies: ProgressNoteComment[]
+  reactions: ProgressNoteReaction[]
 }
 
 export interface ProgressNoteReaction {

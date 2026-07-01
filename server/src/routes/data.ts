@@ -63,6 +63,7 @@ import {
   updateProgressNoteComment,
   deleteProgressNoteComment,
   toggleProgressNoteReaction,
+  toggleProgressNoteCommentReaction,
   getProgressDigest
 } from '../db/progress'
 import {
@@ -72,7 +73,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead
 } from '../db/notifications'
-import type { ProgressNote, Todo } from '../db/types'
+import type { ProgressNote, ProgressNoteComment, Todo } from '../db/types'
 
 export const dataRouter = Router()
 dataRouter.use(requireAuth)
@@ -144,6 +145,52 @@ function notifyProgressReply(actorUserId: string, note: ProgressNote | undefined
     if (notification) notifyUnreadChanged([note.user_id])
   } catch (error) {
     console.error('Failed to create progress reply notification', error)
+  }
+}
+
+function findCommentInTree(comments: ProgressNoteComment[], commentId: string): ProgressNoteComment | undefined {
+  for (const comment of comments) {
+    if (comment.id === commentId) return comment
+    const found = findCommentInTree(comment.replies, commentId)
+    if (found) return found
+  }
+  return undefined
+}
+
+function notifyProgressReaction(actorUserId: string, note: ProgressNote | undefined): void {
+  if (!note?.user_id || note.user_id === actorUserId) return
+  try {
+    const notification = createNotification({
+      userId: note.user_id,
+      type: 'progress_reaction',
+      actorUserId,
+      todoId: note.todo_id,
+      progressNoteId: note.id,
+      title: '進捗にいいねがありました',
+      body: `「${note.todo_title}」の進捗にいいねがありました`
+    })
+    if (notification) notifyUnreadChanged([note.user_id])
+  } catch (error) {
+    console.error('Failed to create progress reaction notification', error)
+  }
+}
+
+function notifyCommentReaction(actorUserId: string, note: ProgressNote | undefined, comment: ProgressNoteComment | undefined): void {
+  if (!comment?.user_id || comment.user_id === actorUserId) return
+  try {
+    const notification = createNotification({
+      userId: comment.user_id,
+      type: 'progress_reaction',
+      actorUserId,
+      todoId: note?.todo_id ?? null,
+      progressNoteId: note?.id ?? null,
+      progressCommentId: comment.id,
+      title: '返信にいいねがありました',
+      body: `「${note?.todo_title ?? ''}」の返信にいいねがありました`
+    })
+    if (notification) notifyUnreadChanged([comment.user_id])
+  } catch (error) {
+    console.error('Failed to create comment reaction notification', error)
   }
 }
 
@@ -317,7 +364,20 @@ dataRouter.delete('/progress-note-comments/:id', (req, res) =>
     return deleteProgressNoteComment(req.params.id, req.user!.id)
   }, 'todo'))
 dataRouter.post('/progress-notes/:id/reactions', (req, res) =>
-  run(res, () => toggleProgressNoteReaction(req.params.id, req.user!.id, req.body.emoji), 'todo'))
+  run(res, () => {
+    const updated = toggleProgressNoteReaction(req.params.id, req.user!.id, req.body.emoji)
+    const liked = updated.reactions.find((reaction) => reaction.emoji === req.body.emoji)?.reacted_by_me
+    if (liked) notifyProgressReaction(req.user!.id, updated)
+    return updated
+  }, 'todo'))
+dataRouter.post('/progress-note-comments/:id/reactions', (req, res) =>
+  run(res, () => {
+    const updated = toggleProgressNoteCommentReaction(req.params.id, req.user!.id, req.body.emoji)
+    const comment = findCommentInTree(updated.comments, req.params.id)
+    const liked = comment?.reactions.find((reaction) => reaction.emoji === req.body.emoji)?.reacted_by_me
+    if (liked) notifyCommentReaction(req.user!.id, updated, comment)
+    return updated
+  }, 'todo'))
 
 // ─── Progress digest (admin: anyone / member: self only) ──────
 dataRouter.get('/progress-digest', (req, res) =>

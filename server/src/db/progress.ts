@@ -42,7 +42,7 @@ function hydrateNotes(notes: ProgressNote[], currentUserId?: string | null): Pro
 
   const commentRows = db
     .prepare(`${COMMENT_SELECT} WHERE pnc.note_id IN (${placeholders}) ORDER BY pnc.created_at ASC`)
-    .all(...noteIds) as Array<Omit<ProgressNoteComment, 'replies'>>
+    .all(...noteIds) as Array<Omit<ProgressNoteComment, 'replies' | 'reactions'>>
 
   const reactionRows = db
     .prepare(
@@ -55,9 +55,33 @@ function hydrateNotes(notes: ProgressNote[], currentUserId?: string | null): Pro
     )
     .all(actorKey(currentUserId), ...noteIds) as Array<ProgressNoteReaction & { note_id: string }>
 
+  const commentIds = commentRows.map((row) => row.id)
+  const commentReactionRows = commentIds.length === 0 ? [] : db
+    .prepare(
+      `SELECT comment_id, emoji, COUNT(*) AS count,
+              SUM(CASE WHEN actor_key = ? THEN 1 ELSE 0 END) AS reacted_by_me
+       FROM ProgressCommentReactions
+       WHERE comment_id IN (${commentIds.map(() => '?').join(', ')})
+       GROUP BY comment_id, emoji
+       ORDER BY emoji ASC`
+    )
+    .all(actorKey(currentUserId), ...commentIds) as Array<ProgressNoteReaction & { comment_id: string }>
+
+  const commentReactionsByComment = new Map<string, ProgressNoteReaction[]>()
+  for (const row of commentReactionRows) {
+    const reaction: ProgressNoteReaction = {
+      emoji: row.emoji,
+      count: Number(row.count),
+      reacted_by_me: Boolean(row.reacted_by_me)
+    }
+    const list = commentReactionsByComment.get(row.comment_id)
+    if (list) list.push(reaction)
+    else commentReactionsByComment.set(row.comment_id, [reaction])
+  }
+
   const commentById = new Map<string, ProgressNoteComment>()
   for (const row of commentRows) {
-    commentById.set(row.id, { ...row, replies: [] })
+    commentById.set(row.id, { ...row, replies: [], reactions: commentReactionsByComment.get(row.id) ?? [] })
   }
 
   const commentsByNote = new Map<string, ProgressNoteComment[]>()
@@ -220,6 +244,27 @@ export function toggleProgressNoteReaction(noteId: string, userId: string, emoji
   }
 
   return getProgressNote(noteId, userId) as ProgressNote
+}
+
+export function toggleProgressNoteCommentReaction(commentId: string, userId: string, emoji: string): ProgressNote {
+  const normalizedEmoji = emoji.trim()
+  if (!normalizedEmoji) throw new Error('リアクションを選択してください')
+  const comment = getProgressNoteComment(commentId)
+  if (!comment) throw new Error('コメントが見つかりません')
+  const key = actorKey(userId)
+  const db = getDb()
+  const existing = db
+    .prepare('SELECT id FROM ProgressCommentReactions WHERE comment_id = ? AND actor_key = ? AND emoji = ?')
+    .get(commentId, key, normalizedEmoji) as { id: string } | undefined
+
+  if (existing) {
+    db.prepare('DELETE FROM ProgressCommentReactions WHERE id = ?').run(existing.id)
+  } else {
+    db.prepare('INSERT INTO ProgressCommentReactions (id, comment_id, user_id, actor_key, emoji, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(crypto.randomUUID(), commentId, userId, key, normalizedEmoji, new Date().toISOString())
+  }
+
+  return getProgressNote(comment.note_id, userId) as ProgressNote
 }
 
 /**

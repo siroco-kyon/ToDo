@@ -307,6 +307,7 @@ export const api: Api = {
   progressNoteCommentUpdate: (id, body) => put<ProgressNote>(`/progress-note-comments/${id}`, { body }),
   progressNoteCommentDelete: (id) => del<ProgressNote>(`/progress-note-comments/${id}`),
   progressNoteReactionToggle: (noteId, emoji) => post<ProgressNote>(`/progress-notes/${noteId}/reactions`, { emoji }),
+  progressNoteCommentReactionToggle: (commentId, emoji) => post<ProgressNote>(`/progress-note-comments/${commentId}/reactions`, { emoji }),
   progressDigestGet: (query: ProgressDigestQuery) =>
     get<ProgressDigest>('/progress-digest', {
       from: query.from,

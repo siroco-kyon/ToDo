@@ -158,10 +158,22 @@ function createTables(): void {
       FOREIGN KEY (note_id) REFERENCES ProgressNotes(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS ProgressCommentReactions (
+      id TEXT PRIMARY KEY,
+      comment_id TEXT NOT NULL,
+      user_id TEXT,
+      actor_key TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(comment_id, actor_key, emoji),
+      FOREIGN KEY (comment_id) REFERENCES ProgressNoteComments(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_progress_notes_todo ON ProgressNotes(todo_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_todo_changes_todo_created ON TodoChangeLogs(todo_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_comments_note ON ProgressNoteComments(note_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_reactions_note ON ProgressNoteReactions(note_id, emoji);
+    CREATE INDEX IF NOT EXISTS idx_comment_reactions_comment ON ProgressCommentReactions(comment_id, emoji);
   `)
 }
 
@@ -1455,7 +1467,7 @@ function hydrateProgressNotes(notes: ProgressNote[]): ProgressNote[] {
   const placeholders = noteIds.map(() => '?').join(', ')
   const commentRows = db
     .prepare(`${PROGRESS_COMMENT_SELECT} WHERE note_id IN (${placeholders}) ORDER BY created_at ASC`)
-    .all(...noteIds) as Array<Omit<ProgressNoteComment, 'replies'>>
+    .all(...noteIds) as Array<Omit<ProgressNoteComment, 'replies' | 'reactions'>>
   const reactionRows = db
     .prepare(
       `SELECT note_id, emoji, COUNT(*) AS count,
@@ -1467,9 +1479,33 @@ function hydrateProgressNotes(notes: ProgressNote[]): ProgressNote[] {
     )
     .all(...noteIds) as Array<ProgressNoteReaction & { note_id: string }>
 
+  const commentIds = commentRows.map((row) => row.id)
+  const commentReactionRows = commentIds.length === 0 ? [] : db
+    .prepare(
+      `SELECT comment_id, emoji, COUNT(*) AS count,
+              SUM(CASE WHEN actor_key = 'desktop' THEN 1 ELSE 0 END) AS reacted_by_me
+       FROM ProgressCommentReactions
+       WHERE comment_id IN (${commentIds.map(() => '?').join(', ')})
+       GROUP BY comment_id, emoji
+       ORDER BY emoji ASC`
+    )
+    .all(...commentIds) as Array<ProgressNoteReaction & { comment_id: string }>
+
+  const commentReactionsByComment = new Map<string, ProgressNoteReaction[]>()
+  for (const row of commentReactionRows) {
+    const reaction: ProgressNoteReaction = {
+      emoji: row.emoji,
+      count: Number(row.count),
+      reacted_by_me: Boolean(row.reacted_by_me)
+    }
+    const list = commentReactionsByComment.get(row.comment_id)
+    if (list) list.push(reaction)
+    else commentReactionsByComment.set(row.comment_id, [reaction])
+  }
+
   const commentById = new Map<string, ProgressNoteComment>()
   for (const row of commentRows) {
-    commentById.set(row.id, { ...row, replies: [] })
+    commentById.set(row.id, { ...row, replies: [], reactions: commentReactionsByComment.get(row.id) ?? [] })
   }
 
   const commentsByNote = new Map<string, ProgressNoteComment[]>()
@@ -1620,6 +1656,23 @@ export function toggleProgressNoteReaction(noteId: string, emoji: string): Progr
   return getProgressNote(noteId) as ProgressNote
 }
 
+export function toggleProgressNoteCommentReaction(commentId: string, emoji: string): ProgressNote {
+  const normalizedEmoji = emoji.trim()
+  if (!normalizedEmoji) throw new Error('リアクションを選択してください')
+  const comment = getProgressNoteComment(commentId)
+  if (!comment) throw new Error('コメントが見つかりません')
+  const existing = db
+    .prepare("SELECT id FROM ProgressCommentReactions WHERE comment_id = ? AND actor_key = 'desktop' AND emoji = ?")
+    .get(commentId, normalizedEmoji) as { id: string } | undefined
+  if (existing) {
+    db.prepare('DELETE FROM ProgressCommentReactions WHERE id = ?').run(existing.id)
+  } else {
+    db.prepare('INSERT INTO ProgressCommentReactions (id, comment_id, user_id, actor_key, emoji, created_at) VALUES (?, ?, NULL, ?, ?, ?)')
+      .run(crypto.randomUUID(), commentId, 'desktop', normalizedEmoji, new Date().toISOString())
+  }
+  return getProgressNote(comment.note_id) as ProgressNote
+}
+
 export function getProgressDigest(query: ProgressDigestQuery): ProgressDigest {
   const { from, to } = query
   // 全体レンズ時はプライベートカテゴリのタスク由来の集計を除外する
@@ -1768,7 +1821,7 @@ export interface UpdateUserInput {
 }
 
 /** User-specific notification shown in the server build. Desktop returns none. */
-export type NotificationType = 'progress_reply' | 'task_assigned'
+export type NotificationType = 'progress_reply' | 'task_assigned' | 'progress_reaction'
 
 export interface UserNotification {
   id: string
@@ -1860,6 +1913,7 @@ export interface ProgressNoteComment {
   created_at: string
   updated_at: string
   replies: ProgressNoteComment[]
+  reactions: ProgressNoteReaction[]
 }
 
 export interface ProgressNoteReaction {
