@@ -85,6 +85,11 @@ interface DependencyDragState {
   hoverSuccessorTodoId: string | null
 }
 
+interface PanDragState {
+  originClientX: number
+  originScrollLeft: number
+}
+
 interface TodoScheduleSnapshot {
   id: string
   startDate: string | null
@@ -780,7 +785,8 @@ function rowTimelineStyle(height: number, unitWidth: number, timelineWidth: numb
     minWidth: timelineWidth,
     height,
     backgroundColor: GANTT_SURFACE,
-    backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent ${unitWidth - 1}px, ${GANTT_LINE} ${unitWidth - 1}px, ${GANTT_LINE} ${unitWidth}px)`
+    backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent ${unitWidth - 1}px, ${GANTT_LINE} ${unitWidth - 1}px, ${GANTT_LINE} ${unitWidth}px)`,
+    cursor: 'grab'
   }
 }
 
@@ -864,6 +870,7 @@ export function GanttView({
   const [scrollStateReady, setScrollStateReady] = useState(false)
   const [leftColumnWidths, setLeftColumnWidths] = useState<GanttLeftColumnWidths>(() => loadGanttLeftColumnWidths())
   const [resizingLeftColumn, setResizingLeftColumn] = useState<LeftColumnResizeState | null>(null)
+  const [panDrag, setPanDrag] = useState<PanDragState | null>(null)
   const [editingTodoCell, setEditingTodoCell] = useState<EditingTodoCell | null>(null)
   const [editingTodoCellSaving, setEditingTodoCellSaving] = useState(false)
   const [editingSubTaskCell, setEditingSubTaskCell] = useState<EditingSubTaskCell | null>(null)
@@ -881,9 +888,11 @@ export function GanttView({
   const suppressSelectionRef = useRef(false)
   const lastAutoScrollKeyRef = useRef<string | null>(null)
   const initialScrollStateRef = useRef<PersistedGanttScrollState | null>(initialScrollState)
+  const panDragRef = useRef<PanDragState | null>(null)
 
   interactionRef.current = interaction
   dependencyDragRef.current = dependencyDrag
+  panDragRef.current = panDrag
 
   const leftGridTemplate = useMemo(() => leftGridTemplateFor(leftColumnWidths), [leftColumnWidths])
   const leftTableWidth = useMemo(() => leftTableWidthFor(leftColumnWidths), [leftColumnWidths])
@@ -1021,6 +1030,38 @@ export function GanttView({
   }, [resizingLeftColumn])
 
   useEffect(() => {
+    if (!panDrag) return
+    const container = scrollRef.current
+    if (!container) return
+
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.cursor = 'grabbing'
+    document.body.style.userSelect = 'none'
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      const current = panDragRef.current
+      if (!current) return
+      container.scrollLeft = current.originScrollLeft - (event.clientX - current.originClientX)
+    }
+
+    const handlePointerUp = (): void => {
+      setPanDrag(null)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+    return () => {
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+  }, [panDrag])
+
+  useEffect(() => {
     setSelectedCategoryKeys((previous) => previous.filter((key) => {
       if (key === NO_CATEGORY_KEY) return todos.some((todo) => !todo.category_id)
       return categories.some((category) => category.id === key)
@@ -1065,6 +1106,14 @@ export function GanttView({
       originalWidth: leftColumnWidths[column]
     })
   }, [leftColumnWidths])
+
+  const beginPan = useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
+    if (event.target !== event.currentTarget) return
+    if (event.button !== 0) return
+    const container = scrollRef.current
+    if (!container) return
+    setPanDrag({ originClientX: event.clientX, originScrollLeft: container.scrollLeft })
+  }, [])
 
   const applyManualPreset = useCallback((preset: Exclude<RangePreset, null>) => {
     const config = RANGE_PRESETS.find((item) => item.key === preset)
@@ -1791,6 +1840,8 @@ export function GanttView({
     centerRangeOnToday()
   }, [centerRangeOnToday, getTodayScrollLeft, todayIndex, totalUnits])
 
+  const hasScrollableChart = !loading && rangeChartGroups.length > 0
+
   useLayoutEffect(() => {
     if (scrollStateReady) return
 
@@ -1818,7 +1869,7 @@ export function GanttView({
     }
 
     setScrollStateReady(true)
-  }, [autoScrollKey, loading, scrollStateReady, timeScale, timelineStart, unitWidth])
+  }, [autoScrollKey, hasScrollableChart, loading, scrollStateReady, timeScale, timelineStart, unitWidth])
 
   useEffect(() => {
     if (!scrollStateReady) return
@@ -2492,7 +2543,8 @@ export function GanttView({
           width: unitWidth,
           background: '#2563eb12',
           borderLeft: '1px solid #3b82f6',
-          borderRight: '1px solid #3b82f655'
+          borderRight: '1px solid #3b82f655',
+          pointerEvents: 'none'
         }}
       />
     )
@@ -3058,7 +3110,7 @@ export function GanttView({
                           <span className="nm-pressed-xs" style={categoryCountBadgeStyle}>{section.totalCount}</span>
                           {section.allDone && <span style={{ ...statusDotStyle, width: 8, height: 8, background: STATUS_TONE.done.fill }} title="すべて完了" />}
                         </div>
-                        <div style={rowTimelineStyle(CATEGORY_HEADER_HEIGHT, unitWidth, timelineWidth)}>
+                        <div style={rowTimelineStyle(CATEGORY_HEADER_HEIGHT, unitWidth, timelineWidth)} onPointerDown={beginPan}>
                           {renderTodayOverlay()}
                         </div>
                       </div>
@@ -3295,7 +3347,7 @@ export function GanttView({
                         </div>
                       </div>
 
-                      <div style={rowTimelineStyle(PARENT_ROW_HEIGHT, unitWidth, timelineWidth)}>
+                      <div style={rowTimelineStyle(PARENT_ROW_HEIGHT, unitWidth, timelineWidth)} onPointerDown={beginPan}>
                         {renderTodayOverlay()}
                         {baselineBar && baselineVisible && (
                           <div
@@ -3530,7 +3582,7 @@ export function GanttView({
                             </div>
                           </div>
 
-                          <div style={rowTimelineStyle(SUBTASK_ROW_HEIGHT, unitWidth, timelineWidth)}>
+                          <div style={rowTimelineStyle(SUBTASK_ROW_HEIGHT, unitWidth, timelineWidth)} onPointerDown={beginPan}>
                             {renderTodayOverlay()}
                             {baselineBar && baselineVisible && (
                               <div
@@ -3653,7 +3705,7 @@ export function GanttView({
                               </button>
                             </div>
                           </div>
-                          <div style={rowTimelineStyle(SUBTASK_ADD_ROW_HEIGHT, unitWidth, timelineWidth)}>
+                          <div style={rowTimelineStyle(SUBTASK_ADD_ROW_HEIGHT, unitWidth, timelineWidth)} onPointerDown={beginPan}>
                             {renderTodayOverlay()}
                             {draftBar && draftVisible && (
                               <div
