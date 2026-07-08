@@ -123,7 +123,7 @@ function getDueDateColor(dueDate: string | null): string {
   const diffDays = (parseDateOnly(dueDate).getTime() - today.getTime()) / 86400000
   if (diffDays < 0) return '#ef4444'
   if (diffDays < 1) return '#f97316'
-  if (diffDays < 3) return '#f59e0b'
+  if (diffDays <= 3) return '#f59e0b'
   return ''
 }
 
