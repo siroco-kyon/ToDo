@@ -19,9 +19,17 @@ interface Props {
   onStopTimer: (note?: string) => Promise<void>
 }
 
+/** 日付のみの文字列（YYYY-MM-DD）をローカル日付の0時としてパースする */
+function parseDateOnly(dateKey: string): Date {
+  const [y, m, d] = dateKey.slice(0, 10).split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
 function getDueDateColor(dueDate: string | null): string {
   if (!dueDate) return ''
-  const diffDays = (new Date(dueDate).getTime() - Date.now()) / 86400000
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const diffDays = (parseDateOnly(dueDate).getTime() - today.getTime()) / 86400000
   if (diffDays < 0) return '#ef4444'
   if (diffDays < 1) return '#f97316'
   if (diffDays < 3) return '#f59e0b'
