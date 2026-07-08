@@ -1,10 +1,12 @@
 import React, { useState, useRef } from 'react'
 import type { Todo } from '../types'
+import { TimerDisplay } from './TimerDisplay'
 
 interface Props {
   todos: Todo[]
   selectedId: string | null
   runningTodoId: string | null
+  elapsedSeconds: number
   isManualSort: boolean
   searchQuery: string
   onSelect: (id: string) => void
@@ -49,12 +51,12 @@ function Highlight({ text, query }: { text: string; query: string }): React.JSX.
 }
 
 function TodoItem({
-  todo, isSelected, isRunning, isManualSort, searchQuery,
+  todo, isSelected, isRunning, elapsedSeconds, isManualSort, searchQuery,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete,
   onStartTimer, onStopTimer,
   onDragStart, onDragOver, onDrop, isDragOver
 }: {
-  todo: Todo; isSelected: boolean; isRunning: boolean
+  todo: Todo; isSelected: boolean; isRunning: boolean; elapsedSeconds: number
   isManualSort: boolean; searchQuery: string
   onSelect: () => void; onToggleDone: () => void
   onArchive: () => void; onUnarchive: () => void; onDelete: () => void
@@ -121,7 +123,9 @@ function TodoItem({
                 <Highlight text={todo.title} query={searchQuery} />
               </span>
               {isRunning && (
-                <span style={{ fontSize: '0.65rem', background: '#4ade8020', color: '#4ade80', padding: '1px 5px', borderRadius: 99, flexShrink: 0 }}>●</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', background: '#4ade8020', color: '#4ade80', padding: '1px 5px', borderRadius: 99, flexShrink: 0 }}>
+                  ●<TimerDisplay elapsedSeconds={elapsedSeconds} isRunning />
+                </span>
               )}
               {todo.recurrence && !isArchived && (
                 <span title={`繰り返し: ${todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : '毎月'}`}
@@ -217,7 +221,7 @@ function TodoItem({
 }
 
 export function TodoList({
-  todos, selectedId, runningTodoId, isManualSort, searchQuery,
+  todos, selectedId, runningTodoId, elapsedSeconds, isManualSort, searchQuery,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete, onReorder,
   onStartTimer, onStopTimer
 }: Props): React.JSX.Element {
@@ -259,6 +263,7 @@ export function TodoList({
           todo={todo}
           isSelected={selectedId === todo.id}
           isRunning={runningTodoId === todo.id}
+          elapsedSeconds={runningTodoId === todo.id ? elapsedSeconds : 0}
           isManualSort={isManualSort}
           searchQuery={searchQuery}
           isDragOver={dragOverId === todo.id}
