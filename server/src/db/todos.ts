@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import HolidayJp from '@holiday-jp/holiday_jp'
 import { getDb } from './connection'
 import {
   addDays,
@@ -140,6 +141,8 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
   if (data.due_date !== undefined) { fields.push('due_date = ?'); values.push(normalizeDateKey(data.due_date)) }
   if (data.recurrence !== undefined) { fields.push('recurrence = ?'); values.push(data.recurrence) }
   if (data.recurrence_copy_subtasks !== undefined) { fields.push('recurrence_copy_subtasks = ?'); values.push(data.recurrence_copy_subtasks ? 1 : 0) }
+  if (data.recurrence_skip_weekends !== undefined) { fields.push('recurrence_skip_weekends = ?'); values.push(data.recurrence_skip_weekends ? 1 : 0) }
+  if (data.recurrence_skip_holidays !== undefined) { fields.push('recurrence_skip_holidays = ?'); values.push(data.recurrence_skip_holidays ? 1 : 0) }
 
   values.push(id)
   getDb().prepare(`UPDATE Todos SET ${fields.join(', ')} WHERE id = ?`).run(...values)
@@ -226,8 +229,8 @@ export function createTodo(data: CreateTodoInput, createdByUserId: string | null
   const dueDate = normalizeDateKey(data.due_date)
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) AS m FROM Todos').get() as { m: number }).m
   db.prepare(
-    `INSERT INTO Todos (id, title, description, memo, category_id, assignee_id, created_by, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, created_at, updated_at, completed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO Todos (id, title, description, memo, category_id, assignee_id, created_by, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, recurrence_skip_weekends, recurrence_skip_holidays, created_at, updated_at, completed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     data.title,
@@ -244,6 +247,8 @@ export function createTodo(data: CreateTodoInput, createdByUserId: string | null
     minOrder - 1,
     data.recurrence ?? null,
     data.recurrence_copy_subtasks ? 1 : 0,
+    data.recurrence_skip_weekends ? 1 : 0,
+    data.recurrence_skip_holidays ? 1 : 0,
     now,
     now,
     status === 'done' ? now : null
@@ -275,11 +280,36 @@ function shiftRecurrenceDate(value: string | null, recurrence: 'daily' | 'weekly
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+// 土日・祝日をスキップする設定に応じて、候補日が有効な日になるまで1日ずつ進める
+function applySkipRules(
+  dateKey: string | null,
+  skipWeekends: boolean,
+  skipHolidays: boolean
+): string | null {
+  if (!dateKey) return null
+  if (!skipWeekends && !skipHolidays) return dateKey
+
+  let result = dateKey
+  while (true) {
+    const day = parseDateKey(result).getDay()
+    const isWeekend = day === 0 || day === 6
+    const isHoliday = skipHolidays && HolidayJp.isHoliday(parseDateKey(result))
+    if (!(skipWeekends && isWeekend) && !isHoliday) break
+    result = addDays(result, 1)
+  }
+  return result
+}
+
 // 完了した繰り返しタスクの次回分を作成する。recurrence_copy_subtasks が
 // 立っていればサブタスクも未完了状態・日付シフトつきで複製する。
 function spawnNextRecurrence(source: Todo): void {
   const recurrence = source.recurrence
   if (!recurrence) return
+
+  const skipWeekends = !!source.recurrence_skip_weekends
+  const skipHolidays = !!source.recurrence_skip_holidays
+  const shiftAndSkip = (value: string | null): string | null =>
+    applySkipRules(shiftRecurrenceDate(value, recurrence), skipWeekends, skipHolidays)
 
   const next = createTodo(
     {
@@ -289,10 +319,12 @@ function spawnNextRecurrence(source: Todo): void {
       category_id: source.category_id,
       assignee_id: source.assignee_id,
       priority: source.priority,
-      start_date: shiftRecurrenceDate(source.start_date, recurrence),
-      due_date: shiftRecurrenceDate(source.due_date, recurrence),
+      start_date: shiftAndSkip(source.start_date),
+      due_date: shiftAndSkip(source.due_date),
       recurrence,
-      recurrence_copy_subtasks: source.recurrence_copy_subtasks
+      recurrence_copy_subtasks: source.recurrence_copy_subtasks,
+      recurrence_skip_weekends: source.recurrence_skip_weekends,
+      recurrence_skip_holidays: source.recurrence_skip_holidays
     },
     source.created_by
   )
@@ -319,8 +351,8 @@ function spawnNextRecurrence(source: Todo): void {
         sub.title,
         sub.description ?? '',
         sub.assignee_id,
-        shiftRecurrenceDate(sub.start_date, recurrence),
-        shiftRecurrenceDate(sub.due_date, recurrence),
+        shiftAndSkip(sub.start_date),
+        shiftAndSkip(sub.due_date),
         sub.sort_order,
         now
       )

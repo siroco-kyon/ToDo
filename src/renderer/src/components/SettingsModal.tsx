@@ -7,6 +7,8 @@ interface Props {
   onShowToast: (message: string, type?: 'success' | 'error') => void
   themeMode: ThemeMode
   onThemeChange: (mode: ThemeMode) => Promise<void>
+  fontFamily: string
+  onFontFamilyChange: (value: string) => Promise<void>
   canManageUsers?: boolean
   onManageUsers?: () => void
   onProgressReport?: () => void
@@ -33,6 +35,16 @@ function formatLocal(iso: string): string {
 }
 
 type ThemeMode = 'dark' | 'light'
+
+export const FONT_FAMILY_DEFAULT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+
+export const FONT_PRESETS: Array<{ value: string; label: string }> = [
+  { value: FONT_FAMILY_DEFAULT, label: 'デフォルト' },
+  { value: '"Yu Gothic UI", "Yu Gothic", sans-serif', label: '游ゴシック' },
+  { value: '"Meiryo", "Meiryo UI", sans-serif', label: 'メイリオ' },
+  { value: '"BIZ UDGothic", sans-serif', label: 'BIZ UDゴシック' },
+  { value: '"UD Digi Kyokasho N-R", sans-serif', label: 'UDデジタル教科書体' }
+]
 
 interface ShortcutConfig {
   key: string       // Settings DBのキー
@@ -72,7 +84,7 @@ function captureKeyEvent(e: React.KeyboardEvent): string | null {
   return modifiers.join('+')
 }
 
-export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, canManageUsers = false, onManageUsers, onProgressReport, onDesktopImport, onMySummary, onExportClipboard, onExportFile }: Props): React.JSX.Element {
+export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, fontFamily, onFontFamilyChange, canManageUsers = false, onManageUsers, onProgressReport, onDesktopImport, onMySummary, onExportClipboard, onExportFile }: Props): React.JSX.Element {
   const [exporting, setExporting] = useState(false)
 
   const exportCsv = async (kind: 'todos' | 'subtasks' | 'worklogs'): Promise<void> => {
@@ -240,6 +252,16 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
     }
   }
 
+  const handleFontSelect = async (nextFont: string): Promise<void> => {
+    if (nextFont === fontFamily) return
+    try {
+      await onFontFamilyChange(nextFont)
+      onShowToast('フォントを変更しました')
+    } catch {
+      onShowToast('フォントの変更に失敗しました', 'error')
+    }
+  }
+
   const editingIndex = shortcuts.findIndex((s) => s.editing)
 
   useEffect(() => {
@@ -356,6 +378,31 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             >
               ライト
             </button>
+          </div>
+        </section>
+
+        {/* ─── フォント ─── */}
+        <section>
+          <h3 style={sectionHead}>フォント</h3>
+          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+            アプリ全体の表示フォントを切り替えます。設定は保存され、次回起動時も維持されます。
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {FONT_PRESETS.map((preset) => (
+              <button
+                key={preset.value}
+                onClick={() => { void handleFontSelect(preset.value) }}
+                style={{
+                  ...secondaryBtn,
+                  fontFamily: preset.value,
+                  border: `1px solid ${fontFamily === preset.value ? '#2563eb' : '#334155'}`,
+                  background: fontFamily === preset.value ? '#1d4ed8' : '#334155',
+                  color: fontFamily === preset.value ? '#eff6ff' : '#cbd5e1'
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
           </div>
         </section>
 

@@ -123,6 +123,8 @@ export function TodoDetail({
     due_date: source.due_date ?? undefined,
     recurrence: source.recurrence ?? undefined,
     recurrence_copy_subtasks: source.recurrence_copy_subtasks ?? 0,
+    recurrence_skip_weekends: source.recurrence_skip_weekends ?? 0,
+    recurrence_skip_holidays: source.recurrence_skip_holidays ?? 0,
     assignee_id: source.assignee_id,
     co_assignee_ids: (source.co_assignees ?? []).map((coAssignee) => coAssignee.user_id)
   }), [])
@@ -576,6 +578,28 @@ export function TodoDetail({
                 style={{ accentColor: '#6366f1' }}
               />
               サブタスクも次回分に引き継ぐ（未完了状態で複製）
+            </label>
+          )}
+          {editData.recurrence && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={(editData.recurrence_skip_weekends ?? 0) === 1}
+                onChange={(event) => setEditData((previous) => ({ ...previous, recurrence_skip_weekends: event.target.checked ? 1 : 0 }))}
+                style={{ accentColor: '#6366f1' }}
+              />
+              土日をスキップする
+            </label>
+          )}
+          {editData.recurrence && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={(editData.recurrence_skip_holidays ?? 0) === 1}
+                onChange={(event) => setEditData((previous) => ({ ...previous, recurrence_skip_holidays: event.target.checked ? 1 : 0 }))}
+                style={{ accentColor: '#6366f1' }}
+              />
+              日本の祝日をスキップする
             </label>
           )}
           <div><label style={labelStyle}>状態</label><select value={editData.status ?? 'active'} onChange={(event) => setEditData((previous) => ({ ...previous, status: event.target.value as 'not_started' | 'active' | 'done' | 'archived' }))} style={inputStyle}><option value="not_started">未着手</option><option value="active">進行中</option><option value="done">完了</option><option value="archived">アーカイブ</option></select></div>

@@ -5,7 +5,10 @@ import type {
   ProgressDigestNote,
   ProgressDigestTaskChange,
   ProgressDigestUser,
+  ProgressNote,
+  ProgressNoteComment,
   PublicUser,
+  Todo,
   TodoStatus
 } from '../types'
 
@@ -18,6 +21,8 @@ interface Props {
   currentUser?: PublicUser | null
   /** false のときプライベートカテゴリのタスクを集計から除外（全体レンズ） */
   includePrivate?: boolean
+  /** 現在のタスク一覧（フィルタ・ソート済み）。タスク別レポートをこの並び順で出す */
+  visibleTodos: Todo[]
 }
 
 const STATUS_LABEL: Record<TodoStatus, string> = {
@@ -168,9 +173,54 @@ function buildTaskActivityGroups(user: ProgressDigestUser): TaskActivityGroup[] 
     })
 }
 
+interface TaskReportRow {
+  todo: Todo
+  notes: ProgressNote[]
+}
+
+/** タスク一覧の表示順そのままに、各タスクの進捗ノート（コメント込み）を紐付ける */
+function buildPerTaskReport(todos: Todo[], notes: ProgressNote[]): TaskReportRow[] {
+  return todos
+    .filter((todo) => todo.status !== 'archived')
+    .map((todo) => ({
+      todo,
+      notes: notes.filter((note) => note.todo_id === todo.id)
+    }))
+}
+
+function renderCommentThread(comments: ProgressNoteComment[], depth: number): string[] {
+  const lines: string[] = []
+  for (const comment of comments) {
+    lines.push(`${'  '.repeat(depth)}- ↳ ${comment.author_name ?? '不明'}: ${compactText(comment.body)}`)
+    lines.push(...renderCommentThread(comment.replies, depth + 1))
+  }
+  return lines
+}
+
 /** 集計結果を日報・週報に貼れる Markdown に変換する */
-function digestToMarkdown(digest: ProgressDigest): string {
+function digestToMarkdown(digest: ProgressDigest, perTaskReport: TaskReportRow[]): string {
   const lines: string[] = [`# 進捗レポート ${digest.from} ～ ${digest.to}`, '']
+
+  if (perTaskReport.length > 0) {
+    lines.push('## タスク別レポート')
+    for (const row of perTaskReport) {
+      const category = row.todo.category_name ? `［${row.todo.category_name}］` : ''
+      const due = row.todo.due_date ? `期限 ${row.todo.due_date.slice(0, 10)}` : '期限なし'
+      lines.push(`### ${category}${row.todo.title}（${row.todo.progress}%・${due}）`)
+      if (row.todo.memo) {
+        lines.push(`> ${row.todo.memo.replace(/\r?\n/g, ' ')}`)
+      }
+      if (row.notes.length === 0) {
+        lines.push('- 進捗記録なし')
+      } else {
+        for (const note of row.notes) {
+          lines.push(`- ${formatDateTime(note.created_at)} ${note.author_name ?? '不明'}: ${compactText(note.body)}`)
+          lines.push(...renderCommentThread(note.comments, 1))
+        }
+      }
+      lines.push('')
+    }
+  }
 
   for (const user of digest.users) {
     const taskChangeCount = user.task_changes?.length ?? 0
@@ -237,7 +287,7 @@ function digestToMarkdown(digest: ProgressDigest): string {
   return lines.join('\n')
 }
 
-export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = false, currentUser = null, includePrivate = true }: Props): React.JSX.Element {
+export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = false, currentUser = null, includePrivate = true, visibleTodos }: Props): React.JSX.Element {
   const today = new Date()
   const [from, setFrom] = useState(() => toDateInput(addDays(today, -6)))
   const [to, setTo] = useState(() => toDateInput(today))
@@ -245,6 +295,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
     () => new Set(users.filter((u) => u.is_active === 1).map((u) => u.id))
   )
   const [digest, setDigest] = useState<ProgressDigest | null>(null)
+  const [taskNotes, setTaskNotes] = useState<ProgressNote[] | null>(null)
   const [loading, setLoading] = useState(false)
 
   const fetchDigest = useCallback(async (): Promise<void> => {
@@ -262,8 +313,12 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
       const userIds = selfOnly
         ? (currentUser ? [currentUser.id] : undefined)
         : Array.from(selectedIds)
-      const result = await window.api.progressDigestGet({ from, to, userIds, includePrivate })
+      const [result, notes] = await Promise.all([
+        window.api.progressDigestGet({ from, to, userIds, includePrivate }),
+        window.api.progressNoteGetByRange(from, to)
+      ])
       setDigest(result)
+      setTaskNotes(notes)
     } catch (err) {
       onShowToast(err instanceof Error ? err.message : '進捗レポートの取得に失敗しました', 'error')
     } finally {
@@ -271,15 +326,17 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
     }
   }, [from, to, selectedIds, selfOnly, currentUser, includePrivate, onShowToast])
 
+  const perTaskReport = buildPerTaskReport(visibleTodos, taskNotes ?? [])
+
   const handleCopyMarkdown = useCallback(async (): Promise<void> => {
     if (!digest) return
     try {
-      await copyTextToClipboard(digestToMarkdown(digest))
+      await copyTextToClipboard(digestToMarkdown(digest, perTaskReport))
       onShowToast('Markdownをコピーしました')
     } catch {
       onShowToast('クリップボードへのコピーに失敗しました', 'error')
     }
-  }, [digest, onShowToast])
+  }, [digest, perTaskReport, onShowToast])
 
   // 初回オープン時に直近7日・全員で自動集計する。
   useEffect(() => {
@@ -401,8 +458,25 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
           )}
         </div>
 
+        {/* ─── タスク別レポート ─── */}
+        {digest && (
+          <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <h3 style={sectionHead}>タスク別レポート（一覧の表示順）</h3>
+            {perTaskReport.length === 0 ? (
+              <div style={{ color: '#64748b', fontSize: '0.84rem' }}>表示中のタスクがありません。</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {perTaskReport.map((row) => (
+                  <TaskReportCard key={row.todo.id} row={row} />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
         {/* ─── 結果 ─── */}
         <section style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <h3 style={sectionHead}>メンバー別の活動集計</h3>
           {loading && !digest && (
             <div style={{ color: '#64748b', fontSize: '0.84rem' }}>読み込み中…</div>
           )}
@@ -415,6 +489,59 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
         </section>
       </div>
     </div>
+  )
+}
+
+function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Element {
+  const { todo, notes } = row
+  return (
+    <div style={{ border: '1px solid #334155', borderRadius: 10, background: '#0f172a', padding: '10px 12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {todo.category_name && (
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: todo.category_color ?? '#64748b', flexShrink: 0 }} />
+        )}
+        <span style={{ fontSize: '0.88rem', color: '#e2e8f0', fontWeight: 700 }}>{todo.title}</span>
+        <span style={{ ...statBadge, marginLeft: 'auto' }}>{todo.progress}%</span>
+        <span style={statBadge}>{todo.due_date ? `期限 ${todo.due_date.slice(0, 10)}` : '期限なし'}</span>
+      </div>
+      {todo.memo && (
+        <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 6, whiteSpace: 'pre-wrap' }}>{todo.memo}</div>
+      )}
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {notes.length === 0 ? (
+          <div style={{ color: '#475569', fontSize: '0.78rem' }}>進捗記録なし</div>
+        ) : (
+          notes.map((note) => (
+            <div key={note.id} style={{ background: '#1e293b', borderRadius: 8, padding: '7px 9px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.72rem', color: '#64748b', marginBottom: 3 }}>
+                <span>{formatDateTime(note.created_at)}</span>
+                <span style={{ color: '#93c5fd' }}>{note.author_name ?? '不明'}</span>
+              </div>
+              <div style={{ fontSize: '0.82rem', color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>{note.body}</div>
+              {note.comments.length > 0 && (
+                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <CommentThread comments={note.comments} depth={0} />
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CommentThread({ comments, depth }: { comments: ProgressNoteComment[]; depth: number }): React.JSX.Element {
+  return (
+    <>
+      {comments.map((comment) => (
+        <div key={comment.id} style={{ marginLeft: depth * 16, fontSize: '0.78rem', color: '#cbd5e1' }}>
+          <span style={{ color: '#a78bfa' }}>↳ {comment.author_name ?? '不明'}: </span>
+          {comment.body}
+          {comment.replies.length > 0 && <CommentThread comments={comment.replies} depth={depth + 1} />}
+        </div>
+      ))}
+    </>
   )
 }
 

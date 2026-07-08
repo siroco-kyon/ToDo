@@ -92,6 +92,10 @@ export interface Todo {
   recurrence: 'daily' | 'weekly' | 'monthly' | null
   /** 1 のとき、繰り返しの次回分にサブタスクを未完了状態で複製する */
   recurrence_copy_subtasks: number
+  /** 1 のとき、繰り返しの次回分が土日に当たる場合は平日にずらす */
+  recurrence_skip_weekends: number
+  /** 1 のとき、繰り返しの次回分が日本の祝日に当たる場合はずらす */
+  recurrence_skip_holidays: number
   /** サブ担当（主担当 assignee_id とは別に複数登録できる）。取得系で付与される */
   co_assignees?: TodoCoAssignee[]
   created_at: string
@@ -120,6 +124,8 @@ export interface CreateTodoInput {
   due_date?: string | null
   recurrence?: 'daily' | 'weekly' | 'monthly' | null
   recurrence_copy_subtasks?: number
+  recurrence_skip_weekends?: number
+  recurrence_skip_holidays?: number
 }
 
 export interface UpdateTodoInput {
@@ -135,6 +141,8 @@ export interface UpdateTodoInput {
   due_date?: string | null
   recurrence?: 'daily' | 'weekly' | 'monthly' | null
   recurrence_copy_subtasks?: number
+  recurrence_skip_weekends?: number
+  recurrence_skip_holidays?: number
   /** 指定された場合、サブ担当をこのユーザーID群で置き換える */
   co_assignee_ids?: string[]
 }
