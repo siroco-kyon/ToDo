@@ -230,6 +230,7 @@ const api = {
     ipcRenderer.invoke('app:completeSetup', newDir),
   windowOpenGantt: (): Promise<void> => ipcRenderer.invoke('window:openGantt'),
   windowOpenTodo: (todoId: string): Promise<void> => ipcRenderer.invoke('window:openTodo', todoId),
+  windowOpenTaskReport: (): Promise<void> => ipcRenderer.invoke('window:openTaskReport'),
 
   // イベントリスナー
   onShortcutQuickAdd: (cb: () => void): (() => void) => {

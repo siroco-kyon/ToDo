@@ -11,6 +11,7 @@ import type { ToastMessage } from './components/Toast'
 import { SettingsModal, FONT_FAMILY_DEFAULT, FONT_SCALE_DEFAULT } from './components/SettingsModal'
 import { UserManagementModal } from './components/UserManagementModal'
 import { ProgressReportModal } from './components/ProgressReportModal'
+import { TaskReportWindow } from './components/TaskReportWindow'
 import { DesktopImportModal } from './components/DesktopImportModal'
 import { WorkLogSummary } from './components/WorkLogSummary'
 import { ProgressTimeline, type ProgressTimelineFocusTarget } from './components/ProgressTimeline'
@@ -74,6 +75,7 @@ function getDateKeyFromIso(iso: string | null | undefined): string {
 
 export function App(): React.JSX.Element {
   const isStandaloneGanttWindow = window.location.hash === '#gantt-only'
+  const isStandaloneTaskReportWindow = window.location.hash === '#task-report-only'
   const [isFirstLaunch, setIsFirstLaunch] = useState<boolean | null>(null)
   const [todos, setTodos] = useState<Todo[]>([])
   const [todayPlanItems, setTodayPlanItems] = useState<DailyPlanItem[]>([])
@@ -758,6 +760,10 @@ export function App(): React.JSX.Element {
         <Toast toasts={toasts} onRemove={removeToast} />
       </div>
     )
+  }
+
+  if (isStandaloneTaskReportWindow) {
+    return <TaskReportWindow />
   }
 
   const isManualSort = sortField === 'sort_order'
