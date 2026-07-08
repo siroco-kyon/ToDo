@@ -8,6 +8,7 @@ import type {
   ProgressNote,
   ProgressNoteComment,
   PublicUser,
+  SubTask,
   Todo,
   TodoStatus
 } from '../types'
@@ -176,16 +177,51 @@ function buildTaskActivityGroups(user: ProgressDigestUser): TaskActivityGroup[] 
 interface TaskReportRow {
   todo: Todo
   notes: ProgressNote[]
+  subTasks: SubTask[]
 }
 
-/** タスク一覧の表示順そのままに、各タスクの進捗ノート（コメント込み）を紐付ける */
-function buildPerTaskReport(todos: Todo[], notes: ProgressNote[]): TaskReportRow[] {
+/** タスク一覧の表示順そのままに、各タスクの進捗ノート（コメント込み）とサブタスクを紐付ける */
+function buildPerTaskReport(todos: Todo[], notes: ProgressNote[], subTasks: SubTask[]): TaskReportRow[] {
   return todos
     .filter((todo) => todo.status !== 'archived')
     .map((todo) => ({
       todo,
-      notes: notes.filter((note) => note.todo_id === todo.id)
+      notes: notes.filter((note) => note.todo_id === todo.id),
+      subTasks: subTasks
+        .filter((sub) => sub.todo_id === todo.id)
+        .sort((a, b) => a.sort_order - b.sort_order)
     }))
+}
+
+interface TaskReportCategoryGroup {
+  category_name: string | null
+  category_color: string | null
+  rows: TaskReportRow[]
+}
+
+/** カテゴリごとに見出しでまとめる。初出順を保ち、未分類は最後に回す */
+function groupPerTaskReportByCategory(rows: TaskReportRow[]): TaskReportCategoryGroup[] {
+  const groups = new Map<string, TaskReportCategoryGroup>()
+  let uncategorized: TaskReportCategoryGroup | null = null
+
+  for (const row of rows) {
+    const key = row.todo.category_id
+    if (!key) {
+      if (!uncategorized) uncategorized = { category_name: '未分類', category_color: null, rows: [] }
+      uncategorized.rows.push(row)
+      continue
+    }
+    let group = groups.get(key)
+    if (!group) {
+      group = { category_name: row.todo.category_name, category_color: row.todo.category_color, rows: [] }
+      groups.set(key, group)
+    }
+    group.rows.push(row)
+  }
+
+  const ordered = [...groups.values()]
+  if (uncategorized) ordered.push(uncategorized)
+  return ordered
 }
 
 function renderCommentThread(comments: ProgressNoteComment[], depth: number): string[] {
@@ -197,28 +233,49 @@ function renderCommentThread(comments: ProgressNoteComment[], depth: number): st
   return lines
 }
 
+const PRIORITY_LABEL: Record<number, string> = { 1: '最高', 2: '高', 3: '中', 4: '低', 5: '最低' }
+
+/** 担当・サブ担当をまとめて「担当: X（副: Y、Z）」の形にする。誰もいなければ null */
+function formatAssignees(todo: Todo): string | null {
+  const co = (todo.co_assignees ?? []).map((c) => c.display_name)
+  if (!todo.assignee_name && co.length === 0) return null
+  const main = todo.assignee_name ? `担当: ${todo.assignee_name}` : '担当: 未割り当て'
+  return co.length > 0 ? `${main}（副: ${co.join('、')}）` : main
+}
+
 /** 集計結果を日報・週報に貼れる Markdown に変換する */
 function digestToMarkdown(digest: ProgressDigest, perTaskReport: TaskReportRow[]): string {
   const lines: string[] = [`# 進捗レポート ${digest.from} ～ ${digest.to}`, '']
 
   if (perTaskReport.length > 0) {
     lines.push('## タスク別レポート')
-    for (const row of perTaskReport) {
-      const category = row.todo.category_name ? `［${row.todo.category_name}］` : ''
-      const due = row.todo.due_date ? `期限 ${row.todo.due_date.slice(0, 10)}` : '期限なし'
-      lines.push(`### ${category}${row.todo.title}（${row.todo.progress}%・${due}）`)
-      if (row.todo.memo) {
-        lines.push(`> ${row.todo.memo.replace(/\r?\n/g, ' ')}`)
-      }
-      if (row.notes.length === 0) {
-        lines.push('- 進捗記録なし')
-      } else {
-        for (const note of row.notes) {
-          lines.push(`- ${formatDateTime(note.created_at)} ${note.author_name ?? '不明'}: ${compactText(note.body)}`)
-          lines.push(...renderCommentThread(note.comments, 1))
+    for (const group of groupPerTaskReportByCategory(perTaskReport)) {
+      lines.push(`### ${group.category_name ?? '未分類'}`)
+      for (const row of group.rows) {
+        const due = row.todo.due_date ? `期限 ${row.todo.due_date.slice(0, 10)}` : '期限なし'
+        const priority = row.todo.priority >= 4 ? `・優先度${PRIORITY_LABEL[row.todo.priority] ?? row.todo.priority}` : ''
+        const assignees = formatAssignees(row.todo)
+        lines.push(`#### ${row.todo.title}（${row.todo.progress}%・${due}${priority}）`)
+        if (assignees) lines.push(`- ${assignees}`)
+        if (row.todo.memo) {
+          lines.push(`> ${row.todo.memo.replace(/\r?\n/g, ' ')}`)
         }
+        if (row.subTasks.length > 0) {
+          for (const sub of row.subTasks) {
+            const subDue = sub.due_date ? `期限 ${sub.due_date.slice(0, 10)}` : ''
+            lines.push(`- [${sub.done ? 'x' : ' '}] ${sub.title}（${sub.progress}%${subDue ? `・${subDue}` : ''}）`)
+          }
+        }
+        if (row.notes.length === 0) {
+          lines.push('- 進捗記録なし')
+        } else {
+          for (const note of row.notes) {
+            lines.push(`- ${formatDateTime(note.created_at)} ${note.author_name ?? '不明'}: ${compactText(note.body)}`)
+            lines.push(...renderCommentThread(note.comments, 1))
+          }
+        }
+        lines.push('')
       }
-      lines.push('')
     }
   }
 
@@ -296,6 +353,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
   )
   const [digest, setDigest] = useState<ProgressDigest | null>(null)
   const [taskNotes, setTaskNotes] = useState<ProgressNote[] | null>(null)
+  const [taskSubTasks, setTaskSubTasks] = useState<SubTask[] | null>(null)
   const [loading, setLoading] = useState(false)
 
   const fetchDigest = useCallback(async (): Promise<void> => {
@@ -313,12 +371,14 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
       const userIds = selfOnly
         ? (currentUser ? [currentUser.id] : undefined)
         : Array.from(selectedIds)
-      const [result, notes] = await Promise.all([
+      const [result, notes, subTasks] = await Promise.all([
         window.api.progressDigestGet({ from, to, userIds, includePrivate }),
-        window.api.progressNoteGetByRange(from, to)
+        window.api.progressNoteGetByRange(from, to),
+        window.api.subtaskGetAll()
       ])
       setDigest(result)
       setTaskNotes(notes)
+      setTaskSubTasks(subTasks)
     } catch (err) {
       onShowToast(err instanceof Error ? err.message : '進捗レポートの取得に失敗しました', 'error')
     } finally {
@@ -326,7 +386,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
     }
   }, [from, to, selectedIds, selfOnly, currentUser, includePrivate, onShowToast])
 
-  const perTaskReport = buildPerTaskReport(visibleTodos, taskNotes ?? [])
+  const perTaskReport = buildPerTaskReport(visibleTodos, taskNotes ?? [], taskSubTasks ?? [])
 
   const handleCopyMarkdown = useCallback(async (): Promise<void> => {
     if (!digest) return
@@ -465,9 +525,19 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
             {perTaskReport.length === 0 ? (
               <div style={{ color: '#64748b', fontSize: '0.84rem' }}>表示中のタスクがありません。</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {perTaskReport.map((row) => (
-                  <TaskReportCard key={row.todo.id} row={row} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {groupPerTaskReportByCategory(perTaskReport).map((group) => (
+                  <div key={group.category_name ?? '未分類'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {group.category_color && (
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.category_color, flexShrink: 0 }} />
+                      )}
+                      <span style={groupLabel}>{group.category_name}</span>
+                    </div>
+                    {group.rows.map((row) => (
+                      <TaskReportCard key={row.todo.id} row={row} />
+                    ))}
+                  </div>
                 ))}
               </div>
             )}
@@ -493,19 +563,38 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
 }
 
 function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Element {
-  const { todo, notes } = row
+  const { todo, notes, subTasks } = row
+  const assignees = formatAssignees(todo)
   return (
     <div style={{ border: '1px solid #334155', borderRadius: 10, background: '#0f172a', padding: '10px 12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        {todo.category_name && (
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: todo.category_color ?? '#64748b', flexShrink: 0 }} />
-        )}
         <span style={{ fontSize: '0.88rem', color: '#e2e8f0', fontWeight: 700 }}>{todo.title}</span>
+        {todo.priority >= 4 && (
+          <span style={{ fontSize: '0.68rem', color: todo.priority === 5 ? '#ef4444' : '#f59e0b', fontWeight: 700 }}>
+            {'!'.repeat(todo.priority - 3)}優先度{PRIORITY_LABEL[todo.priority]}
+          </span>
+        )}
         <span style={{ ...statBadge, marginLeft: 'auto' }}>{todo.progress}%</span>
         <span style={statBadge}>{todo.due_date ? `期限 ${todo.due_date.slice(0, 10)}` : '期限なし'}</span>
       </div>
+      {assignees && (
+        <div style={{ fontSize: '0.74rem', color: '#93c5fd', marginTop: 4 }}>{assignees}</div>
+      )}
       {todo.memo && (
         <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 6, whiteSpace: 'pre-wrap' }}>{todo.memo}</div>
+      )}
+      {subTasks.length > 0 && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {subTasks.map((sub) => (
+            <div key={sub.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.78rem' }}>
+              <span style={{ color: sub.done ? '#22c55e' : '#475569', flexShrink: 0 }}>{sub.done ? '✓' : '○'}</span>
+              <span style={{ color: sub.done ? '#64748b' : '#cbd5e1', textDecoration: sub.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                {sub.title}
+              </span>
+              <span style={rowMeta}>{sub.progress}%{sub.due_date ? `・${sub.due_date.slice(0, 10)}` : ''}</span>
+            </div>
+          ))}
+        </div>
       )}
       <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {notes.length === 0 ? (
