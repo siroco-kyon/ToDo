@@ -425,11 +425,15 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
   }, [digest, displayedTaskReport, onShowToast])
 
   const handleOpenTaskReportWindow = useCallback(async (): Promise<void> => {
+    if (!digest) return
     try {
+      // from/to（入力欄の現在値）ではなく digest.from/to（実際に集計した範囲）を使う。
+      // 集計後に日付欄だけ変更して再集計せずにこのボタンを押した場合、
+      // perTaskReport はまだ古い期間のデータのままなので、ラベルもそれに揃える。
       writeTaskReportSnapshot({
         version: 1,
-        from,
-        to,
+        from: digest.from,
+        to: digest.to,
         showOnlyActiveTasks,
         generatedAt: new Date().toISOString(),
         rows: perTaskReport
@@ -439,7 +443,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
       return
     }
     await window.api.windowOpenTaskReport()
-  }, [from, to, showOnlyActiveTasks, perTaskReport, onShowToast])
+  }, [digest, showOnlyActiveTasks, perTaskReport, onShowToast])
 
   // 初回オープン時に直近7日・全員で自動集計する。
   useEffect(() => {
