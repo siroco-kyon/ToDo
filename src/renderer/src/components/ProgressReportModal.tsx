@@ -109,10 +109,18 @@ function formatDateTime(iso: string): string {
   return `${m}/${d} ${hh}:${mm}`
 }
 
-/** タスク一覧と同じ配色規約: 期限切れは赤、当日は橙、3日以内は黄 */
+/** 日付のみの文字列（YYYY-MM-DD）をローカル日付の0時としてパースする */
+function parseDateOnly(dateKey: string): Date {
+  const [y, m, d] = dateKey.slice(0, 10).split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+/** タスク一覧と同じ配色規約: 期限切れは赤、当日は橙、3日以内は黄。時刻ではなく暦日で比較する */
 function getDueDateColor(dueDate: string | null): string {
   if (!dueDate) return ''
-  const diffDays = (new Date(dueDate).getTime() - Date.now()) / 86400000
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const diffDays = (parseDateOnly(dueDate).getTime() - today.getTime()) / 86400000
   if (diffDays < 0) return '#ef4444'
   if (diffDays < 1) return '#f97316'
   if (diffDays < 3) return '#f59e0b'
@@ -243,8 +251,6 @@ function renderCommentThread(comments: ProgressNoteComment[], depth: number): st
   return lines
 }
 
-const PRIORITY_LABEL: Record<number, string> = { 1: '最高', 2: '高', 3: '中', 4: '低', 5: '最低' }
-
 /** 担当・サブ担当をまとめて「担当: X（副: Y、Z）」の形にする。誰もいなければ null */
 function formatAssignees(todo: Todo): string | null {
   const co = (todo.co_assignees ?? []).map((c) => c.display_name)
@@ -263,7 +269,7 @@ function digestToMarkdown(digest: ProgressDigest, perTaskReport: TaskReportRow[]
       lines.push(`### ${group.category_name ?? '未分類'}`)
       for (const row of group.rows) {
         const due = row.todo.due_date ? `期限 ${row.todo.due_date.slice(0, 10)}` : '期限なし'
-        const priority = row.todo.priority >= 4 ? `・優先度${PRIORITY_LABEL[row.todo.priority] ?? row.todo.priority}` : ''
+        const priority = row.todo.priority >= 4 ? `・${'!'.repeat(row.todo.priority - 3)}` : ''
         const assignees = formatAssignees(row.todo)
         lines.push(`#### ${row.todo.title}（${row.todo.progress}%・${due}${priority}）`)
         if (assignees) lines.push(`- ${assignees}`)
@@ -597,7 +603,7 @@ function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Element {
         <span style={{ fontSize: '0.88rem', color: '#e2e8f0', fontWeight: 700 }}>{todo.title}</span>
         {todo.priority >= 4 && (
           <span style={{ fontSize: '0.68rem', color: todo.priority === 5 ? '#ef4444' : '#f59e0b', fontWeight: 700 }}>
-            {'!'.repeat(todo.priority - 3)}優先度{PRIORITY_LABEL[todo.priority]}
+            {'!'.repeat(todo.priority - 3)}
           </span>
         )}
         <span style={{ ...statBadge, marginLeft: 'auto' }}>{todo.progress}%</span>
