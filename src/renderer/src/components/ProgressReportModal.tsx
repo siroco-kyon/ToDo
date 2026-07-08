@@ -109,6 +109,16 @@ function formatDateTime(iso: string): string {
   return `${m}/${d} ${hh}:${mm}`
 }
 
+/** タスク一覧と同じ配色規約: 期限切れは赤、当日は橙、3日以内は黄 */
+function getDueDateColor(dueDate: string | null): string {
+  if (!dueDate) return ''
+  const diffDays = (new Date(dueDate).getTime() - Date.now()) / 86400000
+  if (diffDays < 0) return '#ef4444'
+  if (diffDays < 1) return '#f97316'
+  if (diffDays < 3) return '#f59e0b'
+  return ''
+}
+
 function compactText(value: string | null): string {
   if (!value) return '未設定'
   const compact = value.replace(/\s+/g, ' ').trim()
@@ -355,6 +365,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
   const [taskNotes, setTaskNotes] = useState<ProgressNote[] | null>(null)
   const [taskSubTasks, setTaskSubTasks] = useState<SubTask[] | null>(null)
   const [loading, setLoading] = useState(false)
+  const [showOnlyActiveTasks, setShowOnlyActiveTasks] = useState(false)
 
   const fetchDigest = useCallback(async (): Promise<void> => {
     if (from > to) {
@@ -387,16 +398,17 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
   }, [from, to, selectedIds, selfOnly, currentUser, includePrivate, onShowToast])
 
   const perTaskReport = buildPerTaskReport(visibleTodos, taskNotes ?? [], taskSubTasks ?? [])
+  const displayedTaskReport = showOnlyActiveTasks ? perTaskReport.filter((row) => row.notes.length > 0) : perTaskReport
 
   const handleCopyMarkdown = useCallback(async (): Promise<void> => {
     if (!digest) return
     try {
-      await copyTextToClipboard(digestToMarkdown(digest, perTaskReport))
+      await copyTextToClipboard(digestToMarkdown(digest, displayedTaskReport))
       onShowToast('Markdownをコピーしました')
     } catch {
       onShowToast('クリップボードへのコピーに失敗しました', 'error')
     }
-  }, [digest, perTaskReport, onShowToast])
+  }, [digest, displayedTaskReport, onShowToast])
 
   // 初回オープン時に直近7日・全員で自動集計する。
   useEffect(() => {
@@ -521,12 +533,25 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
         {/* ─── タスク別レポート ─── */}
         {digest && (
           <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <h3 style={sectionHead}>タスク別レポート（一覧の表示順）</h3>
-            {perTaskReport.length === 0 ? (
-              <div style={{ color: '#64748b', fontSize: '0.84rem' }}>表示中のタスクがありません。</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+              <h3 style={sectionHead}>タスク別レポート（一覧の表示順）</h3>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.76rem', color: '#94a3b8', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={showOnlyActiveTasks}
+                  onChange={(e) => setShowOnlyActiveTasks(e.target.checked)}
+                  style={{ accentColor: '#6366f1' }}
+                />
+                活動があったタスクのみ表示
+              </label>
+            </div>
+            {displayedTaskReport.length === 0 ? (
+              <div style={{ color: '#64748b', fontSize: '0.84rem' }}>
+                {showOnlyActiveTasks ? 'この期間に進捗記録があるタスクがありません。' : '表示中のタスクがありません。'}
+              </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {groupPerTaskReportByCategory(perTaskReport).map((group) => (
+                {groupPerTaskReportByCategory(displayedTaskReport).map((group) => (
                   <div key={group.category_name ?? '未分類'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       {group.category_color && (
@@ -565,6 +590,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
 function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Element {
   const { todo, notes, subTasks } = row
   const assignees = formatAssignees(todo)
+  const dueColor = getDueDateColor(todo.due_date)
   return (
     <div style={{ border: '1px solid #334155', borderRadius: 10, background: '#0f172a', padding: '10px 12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -575,7 +601,9 @@ function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Element {
           </span>
         )}
         <span style={{ ...statBadge, marginLeft: 'auto' }}>{todo.progress}%</span>
-        <span style={statBadge}>{todo.due_date ? `期限 ${todo.due_date.slice(0, 10)}` : '期限なし'}</span>
+        <span style={{ ...statBadge, ...(dueColor ? { color: dueColor, borderColor: `${dueColor}60` } : {}) }}>
+          {todo.due_date ? `期限 ${todo.due_date.slice(0, 10)}` : '期限なし'}
+        </span>
       </div>
       {assignees && (
         <div style={{ fontSize: '0.74rem', color: '#93c5fd', marginTop: 4 }}>{assignees}</div>

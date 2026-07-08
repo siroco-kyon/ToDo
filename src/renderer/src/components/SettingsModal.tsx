@@ -9,6 +9,8 @@ interface Props {
   onThemeChange: (mode: ThemeMode) => Promise<void>
   fontFamily: string
   onFontFamilyChange: (value: string) => Promise<void>
+  fontScale: string
+  onFontScaleChange: (value: string) => Promise<void>
   canManageUsers?: boolean
   onManageUsers?: () => void
   onProgressReport?: () => void
@@ -44,6 +46,15 @@ export const FONT_PRESETS: Array<{ value: string; label: string }> = [
   { value: '"Meiryo", "Meiryo UI", sans-serif', label: 'メイリオ' },
   { value: '"BIZ UDGothic", sans-serif', label: 'BIZ UDゴシック' },
   { value: '"UD Digi Kyokasho N-R", sans-serif', label: 'UDデジタル教科書体' }
+]
+
+export const FONT_SCALE_DEFAULT = '100%'
+
+export const FONT_SCALE_PRESETS: Array<{ value: string; label: string }> = [
+  { value: '87.5%', label: '小' },
+  { value: FONT_SCALE_DEFAULT, label: '標準' },
+  { value: '112.5%', label: '大' },
+  { value: '125%', label: '特大' }
 ]
 
 interface ShortcutConfig {
@@ -84,7 +95,7 @@ function captureKeyEvent(e: React.KeyboardEvent): string | null {
   return modifiers.join('+')
 }
 
-export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, fontFamily, onFontFamilyChange, canManageUsers = false, onManageUsers, onProgressReport, onDesktopImport, onMySummary, onExportClipboard, onExportFile }: Props): React.JSX.Element {
+export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, fontFamily, onFontFamilyChange, fontScale, onFontScaleChange, canManageUsers = false, onManageUsers, onProgressReport, onDesktopImport, onMySummary, onExportClipboard, onExportFile }: Props): React.JSX.Element {
   const [exporting, setExporting] = useState(false)
 
   const exportCsv = async (kind: 'todos' | 'subtasks' | 'worklogs'): Promise<void> => {
@@ -262,6 +273,16 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
     }
   }
 
+  const handleFontScaleSelect = async (nextScale: string): Promise<void> => {
+    if (nextScale === fontScale) return
+    try {
+      await onFontScaleChange(nextScale)
+      onShowToast('文字サイズを変更しました')
+    } catch {
+      onShowToast('文字サイズの変更に失敗しました', 'error')
+    }
+  }
+
   const editingIndex = shortcuts.findIndex((s) => s.editing)
 
   useEffect(() => {
@@ -398,6 +419,30 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
                   border: `1px solid ${fontFamily === preset.value ? '#2563eb' : '#334155'}`,
                   background: fontFamily === preset.value ? '#1d4ed8' : '#334155',
                   color: fontFamily === preset.value ? '#eff6ff' : '#cbd5e1'
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* ─── 文字サイズ ─── */}
+        <section>
+          <h3 style={sectionHead}>文字サイズ</h3>
+          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+            アプリ全体の文字サイズを切り替えます。設定は保存され、次回起動時も維持されます。
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {FONT_SCALE_PRESETS.map((preset) => (
+              <button
+                key={preset.value}
+                onClick={() => { void handleFontScaleSelect(preset.value) }}
+                style={{
+                  ...secondaryBtn,
+                  border: `1px solid ${fontScale === preset.value ? '#2563eb' : '#334155'}`,
+                  background: fontScale === preset.value ? '#1d4ed8' : '#334155',
+                  color: fontScale === preset.value ? '#eff6ff' : '#cbd5e1'
                 }}
               >
                 {preset.label}

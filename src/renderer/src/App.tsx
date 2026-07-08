@@ -8,7 +8,7 @@ import { TodoDetail } from './components/TodoDetail'
 import { QuickAddModal } from './components/QuickAddModal'
 import { Toast } from './components/Toast'
 import type { ToastMessage } from './components/Toast'
-import { SettingsModal, FONT_FAMILY_DEFAULT } from './components/SettingsModal'
+import { SettingsModal, FONT_FAMILY_DEFAULT, FONT_SCALE_DEFAULT } from './components/SettingsModal'
 import { UserManagementModal } from './components/UserManagementModal'
 import { ProgressReportModal } from './components/ProgressReportModal'
 import { DesktopImportModal } from './components/DesktopImportModal'
@@ -103,6 +103,9 @@ export function App(): React.JSX.Element {
   })
   const [fontFamily, setFontFamily] = useState<string>(() => (
     window.localStorage.getItem('app-font-family') ?? FONT_FAMILY_DEFAULT
+  ))
+  const [fontScale, setFontScale] = useState<string>(() => (
+    window.localStorage.getItem('app-font-scale') ?? FONT_SCALE_DEFAULT
   ))
   const [activeView, setActiveView] = useState<CenterView>(() => 'gantt')
   // 表示レンズ（個人=全部 / 全体=プライベート除外）。クライアント側のみで保持し、
@@ -207,6 +210,10 @@ export function App(): React.JSX.Element {
       if (disposed) return
       if (value) setFontFamily(value)
     })
+    window.api.settingsGet('fontScale').then((value) => {
+      if (disposed) return
+      if (value) setFontScale(value)
+    })
     return () => {
       disposed = true
     }
@@ -295,6 +302,11 @@ export function App(): React.JSX.Element {
   }, [fontFamily])
 
   useEffect(() => {
+    window.localStorage.setItem('app-font-scale', fontScale)
+    document.documentElement.style.fontSize = fontScale
+  }, [fontScale])
+
+  useEffect(() => {
     window.localStorage.setItem('app-pane-widths', JSON.stringify(paneWidths))
   }, [paneWidths])
 
@@ -366,6 +378,11 @@ export function App(): React.JSX.Element {
   const handleFontFamilyChange = useCallback(async (value: string) => {
     setFontFamily(value)
     await window.api.settingsSet('fontFamily', value)
+  }, [])
+
+  const handleFontScaleChange = useCallback(async (value: string) => {
+    setFontScale(value)
+    await window.api.settingsSet('fontScale', value)
   }, [])
 
   useEffect(() => {
@@ -900,6 +917,7 @@ export function App(): React.JSX.Element {
               todos={filteredTodos}
               selectedId={selectedTodoId}
               runningTodoId={runningTodoId}
+              elapsedSeconds={elapsedSeconds}
               isManualSort={isManualSort}
               searchQuery={q}
               onSelect={openTodoDetail}
@@ -1080,6 +1098,8 @@ export function App(): React.JSX.Element {
           onThemeChange={handleThemeModeChange}
           fontFamily={fontFamily}
           onFontFamilyChange={handleFontFamilyChange}
+          fontScale={fontScale}
+          onFontScaleChange={handleFontScaleChange}
           canManageUsers={isAdmin}
           onManageUsers={() => { setShowSettings(false); setShowUserManagement(true) }}
           onProgressReport={isAdmin ? () => { setShowSettings(false); setShowProgressReport(true) } : undefined}

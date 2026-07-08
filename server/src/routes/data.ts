@@ -270,8 +270,8 @@ dataRouter.delete('/plan/:id', (req, res) => run(res, () => deleteDailyPlanItem(
 // ─── Markdown export ──────────────────────────────────────────
 dataRouter.get('/markdown', (req, res) => run(res, () => ({ markdown: generateDailyMarkdown(req.user!.id) })))
 
-// ─── Settings (themeMode/fontFamily are per-user; everything else is global) ──
-const PER_USER_SETTING_KEYS = new Set(['themeMode', 'fontFamily'])
+// ─── Settings (themeMode/fontFamily/fontScale are per-user; everything else is global) ──
+const PER_USER_SETTING_KEYS = new Set(['themeMode', 'fontFamily', 'fontScale'])
 
 dataRouter.get('/settings/:key', (req, res) =>
   run(res, () => {
