@@ -27,6 +27,7 @@ import type {
   ProgressDigestQuery,
   DesktopImportResult
 } from '@preload'
+import { TASK_REPORT_SNAPSHOT_KEY } from '@renderer/lib/taskReportSnapshot'
 
 // ─── HTTP plumbing ────────────────────────────────────────────
 
@@ -359,6 +360,9 @@ export const api: Api = {
   authLogout: async (): Promise<void> => {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
     disconnectRealtime()
+    // 共有PCでの次ユーザーへのデータ漏えいを防ぐため、localStorageに残る
+    // 別ウィンドウ用レポートスナップショットをログアウト時に消す
+    window.localStorage.removeItem(TASK_REPORT_SNAPSHOT_KEY)
     // AuthGate が /auth/me を取り直してログイン画面に戻す
     window.location.reload()
   },
