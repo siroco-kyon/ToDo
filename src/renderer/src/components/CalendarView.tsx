@@ -46,7 +46,7 @@ function getDueDateColor(dateStr: string): string {
   const diffDays = (parseDateKey(dateStr).getTime() - parseDateKey(getTodayKey()).getTime()) / 86400000
   if (diffDays < 0) return '#ef4444'
   if (diffDays < 1) return '#f97316'
-  if (diffDays < 3) return '#f59e0b'
+  if (diffDays <= 3) return '#f59e0b'
   return ''
 }
 
