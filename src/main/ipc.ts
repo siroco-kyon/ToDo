@@ -71,7 +71,8 @@ export function registerIpcHandlers(
   mainWindow: BrowserWindow,
   updateTray: (img: NativeImage) => void,
   openGanttWindow: () => void,
-  openTodoInMainWindow: (todoId: string) => void
+  openTodoInMainWindow: (todoId: string) => void,
+  openTaskReportWindow: () => void
 ): void {
   const broadcastDataChange = (scope: 'category' | 'todo' | 'subtask' | 'plan' | 'progress'): void => {
     for (const window of BrowserWindow.getAllWindows()) {
@@ -246,5 +247,8 @@ export function registerIpcHandlers(
   })
   ipcMain.handle('window:openTodo', (_, todoId: string) => {
     openTodoInMainWindow(todoId)
+  })
+  ipcMain.handle('window:openTaskReport', () => {
+    openTaskReportWindow()
   })
 }

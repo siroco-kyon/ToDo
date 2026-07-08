@@ -413,6 +413,9 @@ export const api: Api = {
   windowOpenTodo: async (todoId) => {
     emit(navigateTodoListeners, todoId)
   },
+  windowOpenTaskReport: async () => {
+    window.open(`${location.pathname}#task-report-only`, '_blank', 'noopener')
+  },
 
   // ─── Event listeners ─────────────────────────────────────────
   onShortcutQuickAdd: (cb) => {

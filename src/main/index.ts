@@ -13,6 +13,7 @@ import { checkDueNotifications } from './notifications'
 
 let mainWindow: BrowserWindow | null = null
 let ganttWindow: BrowserWindow | null = null
+let taskReportWindow: BrowserWindow | null = null
 const DEV_USER_DATA_DIR = join(app.getPath('appData'), 'ToDo-dev')
 const DEV_RENDERER_RETRY_LIMIT = 20
 const DEV_RENDERER_RETRY_DELAY_MS = 500
@@ -216,6 +217,53 @@ function openGanttWindow(): void {
   loadRendererWindow(ganttWindow, 'gantt-only')
 }
 
+function openTaskReportWindow(): void {
+  debugLog('openTaskReportWindow')
+  if (taskReportWindow && !taskReportWindow.isDestroyed()) {
+    if (is.dev) {
+      loadRendererWindow(taskReportWindow, 'task-report-only')
+    }
+    if (taskReportWindow.isMinimized()) taskReportWindow.restore()
+    taskReportWindow.show()
+    taskReportWindow.focus()
+    return
+  }
+
+  const icon = loadAppIcon()
+
+  taskReportWindow = new BrowserWindow({
+    width: 1000,
+    height: 960,
+    minWidth: 720,
+    minHeight: 560,
+    show: is.dev,
+    autoHideMenuBar: true,
+    title: 'タスク別レポート',
+    icon,
+    backgroundColor: '#0f172a',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+
+  taskReportWindow.on('ready-to-show', () => {
+    debugLog('taskReport ready-to-show')
+    taskReportWindow?.show()
+  })
+
+  taskReportWindow.on('closed', () => {
+    debugLog('taskReport closed')
+    taskReportWindow = null
+  })
+
+  attachExternalLinkGuard(taskReportWindow)
+  attachWindowDiagnostics(taskReportWindow, 'task-report-only')
+  loadRendererWindow(taskReportWindow, 'task-report-only')
+}
+
 function openTodoInMainWindow(todoId: string): void {
   const revealMainWindow = (): void => {
     if (!mainWindow) return
@@ -285,7 +333,7 @@ if (!gotSingleInstanceLock) {
     if (mainWindow) {
       const icon = loadAppIcon()
       createTray(mainWindow, icon)
-      registerIpcHandlers(mainWindow, updateTrayIcon, openGanttWindow, openTodoInMainWindow)
+      registerIpcHandlers(mainWindow, updateTrayIcon, openGanttWindow, openTodoInMainWindow, openTaskReportWindow)
       registerShortcuts(mainWindow)
     }
 

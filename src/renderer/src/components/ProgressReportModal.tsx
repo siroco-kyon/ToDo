@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { copyTextToClipboard } from '../lib/clipboard'
+import { writeTaskReportSnapshot } from '../lib/taskReportSnapshot'
 import type {
   ProgressDigest,
   ProgressDigestNote,
@@ -99,7 +100,7 @@ function formatMinutes(min: number): string {
   return `${m}分`
 }
 
-function formatDateTime(iso: string): string {
+export function formatDateTime(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso
   const m = date.getMonth() + 1
@@ -192,7 +193,7 @@ function buildTaskActivityGroups(user: ProgressDigestUser): TaskActivityGroup[] 
     })
 }
 
-interface TaskReportRow {
+export interface TaskReportRow {
   todo: Todo
   notes: ProgressNote[]
   subTasks: SubTask[]
@@ -211,14 +212,14 @@ function buildPerTaskReport(todos: Todo[], notes: ProgressNote[], subTasks: SubT
     }))
 }
 
-interface TaskReportCategoryGroup {
+export interface TaskReportCategoryGroup {
   category_name: string | null
   category_color: string | null
   rows: TaskReportRow[]
 }
 
 /** カテゴリごとに見出しでまとめる。初出順を保ち、未分類は最後に回す */
-function groupPerTaskReportByCategory(rows: TaskReportRow[]): TaskReportCategoryGroup[] {
+export function groupPerTaskReportByCategory(rows: TaskReportRow[]): TaskReportCategoryGroup[] {
   const groups = new Map<string, TaskReportCategoryGroup>()
   let uncategorized: TaskReportCategoryGroup | null = null
 
@@ -260,39 +261,46 @@ function formatAssignees(todo: Todo): string | null {
 }
 
 /** 集計結果を日報・週報に貼れる Markdown に変換する */
+/** タスク別レポートの行をMarkdownに変換する（別ウィンドウのコピー機能でも使う） */
+export function perTaskReportToMarkdown(rows: TaskReportRow[]): string {
+  const lines: string[] = []
+  for (const group of groupPerTaskReportByCategory(rows)) {
+    lines.push(`### ${group.category_name ?? '未分類'}`)
+    for (const row of group.rows) {
+      const due = row.todo.due_date ? `期限 ${row.todo.due_date.slice(0, 10)}` : '期限なし'
+      const priority = row.todo.priority >= 4 ? `・${'!'.repeat(row.todo.priority - 3)}` : ''
+      const assignees = formatAssignees(row.todo)
+      lines.push(`#### ${row.todo.title}（${row.todo.progress}%・${due}${priority}）`)
+      if (assignees) lines.push(`- ${assignees}`)
+      if (row.todo.memo) {
+        lines.push(`> ${row.todo.memo.replace(/\r?\n/g, ' ')}`)
+      }
+      if (row.subTasks.length > 0) {
+        for (const sub of row.subTasks) {
+          const subDue = sub.due_date ? `期限 ${sub.due_date.slice(0, 10)}` : ''
+          lines.push(`- [${sub.done ? 'x' : ' '}] ${sub.title}（${sub.progress}%${subDue ? `・${subDue}` : ''}）`)
+        }
+      }
+      if (row.notes.length === 0) {
+        lines.push('- 進捗記録なし')
+      } else {
+        for (const note of row.notes) {
+          lines.push(`- ${formatDateTime(note.created_at)} ${note.author_name ?? '不明'}: ${compactText(note.body)}`)
+          lines.push(...renderCommentThread(note.comments, 1))
+        }
+      }
+      lines.push('')
+    }
+  }
+  return lines.join('\n')
+}
+
 function digestToMarkdown(digest: ProgressDigest, perTaskReport: TaskReportRow[]): string {
   const lines: string[] = [`# 進捗レポート ${digest.from} ～ ${digest.to}`, '']
 
   if (perTaskReport.length > 0) {
     lines.push('## タスク別レポート')
-    for (const group of groupPerTaskReportByCategory(perTaskReport)) {
-      lines.push(`### ${group.category_name ?? '未分類'}`)
-      for (const row of group.rows) {
-        const due = row.todo.due_date ? `期限 ${row.todo.due_date.slice(0, 10)}` : '期限なし'
-        const priority = row.todo.priority >= 4 ? `・${'!'.repeat(row.todo.priority - 3)}` : ''
-        const assignees = formatAssignees(row.todo)
-        lines.push(`#### ${row.todo.title}（${row.todo.progress}%・${due}${priority}）`)
-        if (assignees) lines.push(`- ${assignees}`)
-        if (row.todo.memo) {
-          lines.push(`> ${row.todo.memo.replace(/\r?\n/g, ' ')}`)
-        }
-        if (row.subTasks.length > 0) {
-          for (const sub of row.subTasks) {
-            const subDue = sub.due_date ? `期限 ${sub.due_date.slice(0, 10)}` : ''
-            lines.push(`- [${sub.done ? 'x' : ' '}] ${sub.title}（${sub.progress}%${subDue ? `・${subDue}` : ''}）`)
-          }
-        }
-        if (row.notes.length === 0) {
-          lines.push('- 進捗記録なし')
-        } else {
-          for (const note of row.notes) {
-            lines.push(`- ${formatDateTime(note.created_at)} ${note.author_name ?? '不明'}: ${compactText(note.body)}`)
-            lines.push(...renderCommentThread(note.comments, 1))
-          }
-        }
-        lines.push('')
-      }
-    }
+    lines.push(perTaskReportToMarkdown(perTaskReport))
   }
 
   for (const user of digest.users) {
@@ -415,6 +423,23 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
       onShowToast('クリップボードへのコピーに失敗しました', 'error')
     }
   }, [digest, displayedTaskReport, onShowToast])
+
+  const handleOpenTaskReportWindow = useCallback(async (): Promise<void> => {
+    try {
+      writeTaskReportSnapshot({
+        version: 1,
+        from,
+        to,
+        showOnlyActiveTasks,
+        generatedAt: new Date().toISOString(),
+        rows: perTaskReport
+      })
+    } catch {
+      onShowToast('レポートの保存に失敗しました', 'error')
+      return
+    }
+    await window.api.windowOpenTaskReport()
+  }, [from, to, showOnlyActiveTasks, perTaskReport, onShowToast])
 
   // 初回オープン時に直近7日・全員で自動集計する。
   useEffect(() => {
@@ -541,15 +566,20 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
           <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
               <h3 style={sectionHead}>タスク別レポート（一覧の表示順）</h3>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.76rem', color: '#94a3b8', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={showOnlyActiveTasks}
-                  onChange={(e) => setShowOnlyActiveTasks(e.target.checked)}
-                  style={{ accentColor: '#6366f1' }}
-                />
-                活動があったタスクのみ表示
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.76rem', color: '#94a3b8', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={showOnlyActiveTasks}
+                    onChange={(e) => setShowOnlyActiveTasks(e.target.checked)}
+                    style={{ accentColor: '#6366f1' }}
+                  />
+                  活動があったタスクのみ表示
+                </label>
+                <button onClick={() => void handleOpenTaskReportWindow()} style={copyBtn}>
+                  🗔 別ウィンドウで開く
+                </button>
+              </div>
             </div>
             {displayedTaskReport.length === 0 ? (
               <div style={{ color: '#64748b', fontSize: '0.84rem' }}>
@@ -593,7 +623,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
   )
 }
 
-function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Element {
+export function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Element {
   const { todo, notes, subTasks } = row
   const assignees = formatAssignees(todo)
   const dueColor = getDueDateColor(todo.due_date)
