@@ -8,7 +8,7 @@ import { TodoDetail } from './components/TodoDetail'
 import { QuickAddModal } from './components/QuickAddModal'
 import { Toast } from './components/Toast'
 import type { ToastMessage } from './components/Toast'
-import { SettingsModal } from './components/SettingsModal'
+import { SettingsModal, FONT_FAMILY_DEFAULT } from './components/SettingsModal'
 import { UserManagementModal } from './components/UserManagementModal'
 import { ProgressReportModal } from './components/ProgressReportModal'
 import { DesktopImportModal } from './components/DesktopImportModal'
@@ -101,6 +101,9 @@ export function App(): React.JSX.Element {
     const saved = window.localStorage.getItem('app-theme-mode')
     return saved === 'light' ? 'light' : 'dark'
   })
+  const [fontFamily, setFontFamily] = useState<string>(() => (
+    window.localStorage.getItem('app-font-family') ?? FONT_FAMILY_DEFAULT
+  ))
   const [activeView, setActiveView] = useState<CenterView>(() => 'gantt')
   // 表示レンズ（個人=全部 / 全体=プライベート除外）。クライアント側のみで保持し、
   // 他ユーザーの画面には影響しない（サーバーに送らない）。
@@ -200,6 +203,10 @@ export function App(): React.JSX.Element {
       if (disposed) return
       if (value === 'dark' || value === 'light') setThemeMode(value)
     })
+    window.api.settingsGet('fontFamily').then((value) => {
+      if (disposed) return
+      if (value) setFontFamily(value)
+    })
     return () => {
       disposed = true
     }
@@ -283,6 +290,11 @@ export function App(): React.JSX.Element {
   }, [themeMode])
 
   useEffect(() => {
+    window.localStorage.setItem('app-font-family', fontFamily)
+    document.documentElement.style.setProperty('--font-family', fontFamily)
+  }, [fontFamily])
+
+  useEffect(() => {
     window.localStorage.setItem('app-pane-widths', JSON.stringify(paneWidths))
   }, [paneWidths])
 
@@ -349,6 +361,11 @@ export function App(): React.JSX.Element {
   const handleThemeModeChange = useCallback(async (mode: ThemeMode) => {
     setThemeMode(mode)
     await window.api.settingsSet('themeMode', mode)
+  }, [])
+
+  const handleFontFamilyChange = useCallback(async (value: string) => {
+    setFontFamily(value)
+    await window.api.settingsSet('fontFamily', value)
   }, [])
 
   useEffect(() => {
@@ -891,6 +908,8 @@ export function App(): React.JSX.Element {
               onUnarchive={handleUnarchive}
               onDelete={handleDelete}
               onReorder={handleReorder}
+              onStartTimer={start}
+              onStopTimer={stop}
             />
           </div>
         </div>
@@ -1059,6 +1078,8 @@ export function App(): React.JSX.Element {
           onShowToast={showToast}
           themeMode={themeMode}
           onThemeChange={handleThemeModeChange}
+          fontFamily={fontFamily}
+          onFontFamilyChange={handleFontFamilyChange}
           canManageUsers={isAdmin}
           onManageUsers={() => { setShowSettings(false); setShowUserManagement(true) }}
           onProgressReport={isAdmin ? () => { setShowSettings(false); setShowProgressReport(true) } : undefined}
@@ -1092,6 +1113,7 @@ export function App(): React.JSX.Element {
         <ProgressReportModal
           users={users}
           includePrivate={scopeLens === 'personal'}
+          visibleTodos={filteredTodos}
           onClose={() => setShowProgressReport(false)}
           onShowToast={showToast}
         />
@@ -1111,6 +1133,7 @@ export function App(): React.JSX.Element {
           selfOnly
           currentUser={currentUser}
           includePrivate={scopeLens === 'personal'}
+          visibleTodos={filteredTodos}
           onClose={() => setShowMySummary(false)}
           onShowToast={showToast}
         />

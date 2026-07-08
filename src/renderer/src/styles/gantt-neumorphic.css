@@ -9,7 +9,7 @@
   --nm-highlight: rgba(255, 255, 255, 0.08);
   --nm-shadow-dark: rgba(16, 19, 31, 0.56);
   --nm-shadow-light: rgba(78, 83, 112, 0.48);
-  font-family: "Noto Sans JP", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  font-family: var(--font-family, "Noto Sans JP", "Yu Gothic UI", "Meiryo", system-ui, sans-serif);
   scrollbar-color: #545b78 #242839;
 }
 

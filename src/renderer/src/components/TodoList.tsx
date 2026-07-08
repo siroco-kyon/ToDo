@@ -13,6 +13,8 @@ interface Props {
   onUnarchive: (id: string) => void
   onDelete: (id: string) => void
   onReorder: (orderedIds: string[]) => Promise<void>
+  onStartTimer: (todoId: string) => Promise<void>
+  onStopTimer: (note?: string) => Promise<void>
 }
 
 function getDueDateColor(dueDate: string | null): string {
@@ -49,12 +51,14 @@ function Highlight({ text, query }: { text: string; query: string }): React.JSX.
 function TodoItem({
   todo, isSelected, isRunning, isManualSort, searchQuery,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete,
+  onStartTimer, onStopTimer,
   onDragStart, onDragOver, onDrop, isDragOver
 }: {
   todo: Todo; isSelected: boolean; isRunning: boolean
   isManualSort: boolean; searchQuery: string
   onSelect: () => void; onToggleDone: () => void
   onArchive: () => void; onUnarchive: () => void; onDelete: () => void
+  onStartTimer: () => void; onStopTimer: () => void
   onDragStart: () => void; onDragOver: () => void; onDrop: () => void
   isDragOver: boolean
 }): React.JSX.Element {
@@ -188,7 +192,14 @@ function TodoItem({
                   >🗑</button>
                 </>
               ) : (
-                <button onClick={onArchive} title="アーカイブ" style={actionBtn('#64748b')}>📦</button>
+                <>
+                  {todo.status !== 'done' && (
+                    isRunning
+                      ? <button onClick={onStopTimer} title="計測停止" style={actionBtn('#ef4444')}>■</button>
+                      : <button onClick={onStartTimer} title="計測開始" style={actionBtn('#4ade80')}>▶</button>
+                  )}
+                  <button onClick={onArchive} title="アーカイブ" style={actionBtn('#64748b')}>📦</button>
+                </>
               )}
             </div>
           )}
@@ -207,7 +218,8 @@ function TodoItem({
 
 export function TodoList({
   todos, selectedId, runningTodoId, isManualSort, searchQuery,
-  onSelect, onToggleDone, onArchive, onUnarchive, onDelete, onReorder
+  onSelect, onToggleDone, onArchive, onUnarchive, onDelete, onReorder,
+  onStartTimer, onStopTimer
 }: Props): React.JSX.Element {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
@@ -255,6 +267,8 @@ export function TodoList({
           onArchive={() => onArchive(todo.id)}
           onUnarchive={() => onUnarchive(todo.id)}
           onDelete={() => onDelete(todo.id)}
+          onStartTimer={() => { void onStartTimer(todo.id) }}
+          onStopTimer={() => { void onStopTimer() }}
           onDragStart={() => { setDraggedId(todo.id); dragging.current = true }}
           onDragOver={() => { if (dragging.current) setDragOverId(todo.id) }}
           onDrop={() => handleDrop(todo.id)}

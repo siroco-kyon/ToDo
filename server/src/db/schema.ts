@@ -48,6 +48,8 @@ export function createSchema(db: Database.Database): void {
       sort_order INTEGER DEFAULT 0,
       recurrence TEXT DEFAULT NULL,
       recurrence_copy_subtasks INTEGER DEFAULT 0,
+      recurrence_skip_weekends INTEGER DEFAULT 0,
+      recurrence_skip_holidays INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       completed_at TEXT,
@@ -258,6 +260,12 @@ export function runMigrations(db: Database.Database): void {
   }
   if (!todoColumns.some((c) => c.name === 'recurrence_copy_subtasks')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN recurrence_copy_subtasks INTEGER DEFAULT 0').run()
+  }
+  if (!todoColumns.some((c) => c.name === 'recurrence_skip_weekends')) {
+    db.prepare('ALTER TABLE Todos ADD COLUMN recurrence_skip_weekends INTEGER DEFAULT 0').run()
+  }
+  if (!todoColumns.some((c) => c.name === 'recurrence_skip_holidays')) {
+    db.prepare('ALTER TABLE Todos ADD COLUMN recurrence_skip_holidays INTEGER DEFAULT 0').run()
   }
   if (!todoColumns.some((c) => c.name === 'completed_at')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN completed_at TEXT').run()

@@ -95,8 +95,9 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
       `INSERT OR IGNORE INTO Todos
         (id, title, description, memo, category_id, assignee_id, created_by, status,
          priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks,
+         recurrence_skip_weekends, recurrence_skip_holidays,
          created_at, updated_at, completed_at, archived_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     const insertSubTask = webDb.prepare(
       `INSERT OR IGNORE INTO SubTasks
@@ -168,6 +169,8 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
         asInt(todo.sort_order, 0),
         asNullableText(todo.recurrence),
         asInt(todo.recurrence_copy_subtasks, 0),
+        asInt(todo.recurrence_skip_weekends, 0),
+        asInt(todo.recurrence_skip_holidays, 0),
         asText(todo.created_at, now),
         updatedAt,
         completedAt,
