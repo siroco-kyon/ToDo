@@ -48,7 +48,7 @@ export function TaskReportWindow(): React.JSX.Element {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f172a', color: '#e2e8f0' }}>
+    <div style={{ height: '100vh', overflowY: 'auto', background: '#0f172a', color: '#e2e8f0' }}>
       <div style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
