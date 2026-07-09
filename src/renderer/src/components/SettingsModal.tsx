@@ -45,7 +45,11 @@ export const FONT_PRESETS: Array<{ value: string; label: string }> = [
   { value: '"Yu Gothic UI", "Yu Gothic", sans-serif', label: '游ゴシック' },
   { value: '"Meiryo", "Meiryo UI", sans-serif', label: 'メイリオ' },
   { value: '"BIZ UDGothic", sans-serif', label: 'BIZ UDゴシック' },
-  { value: '"UD Digi Kyokasho N-R", sans-serif', label: 'UDデジタル教科書体' }
+  { value: '"BIZ UDPGothic", sans-serif', label: 'BIZ UDPゴシック' },
+  { value: '"UD Digi Kyokasho N-R", sans-serif', label: 'UDデジタル教科書体' },
+  { value: '"Yu Mincho", "YuMincho", serif', label: '游明朝' },
+  { value: '"MS PGothic", sans-serif', label: 'MS Pゴシック' },
+  { value: '"Noto Sans JP", sans-serif', label: 'Noto Sans JP' }
 ]
 
 export const FONT_SCALE_DEFAULT = '100%'
