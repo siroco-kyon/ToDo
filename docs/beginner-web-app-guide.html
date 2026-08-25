@@ -1,0 +1,893 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="C#経験者がToDoガントWebアプリを題材に、Webアプリ開発を0から学ぶための詳細ガイド">
+  <title>0から学ぶWebアプリ開発 — ToDoガントアプリを題材に</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --surface: #ffffff;
+      --surface-2: #eef2ff;
+      --ink: #172033;
+      --muted: #5f6b7c;
+      --line: #dbe2ee;
+      --primary: #4f46e5;
+      --primary-dark: #3730a3;
+      --cyan: #0891b2;
+      --green: #15803d;
+      --amber: #b45309;
+      --red: #b91c1c;
+      --code: #111827;
+      --code-ink: #e5e7eb;
+      --shadow: 0 10px 30px rgba(40, 52, 79, .08);
+      --radius: 16px;
+      --sidebar: 282px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: "Yu Gothic UI", "Hiragino Kaku Gothic ProN", Meiryo, system-ui, sans-serif;
+      line-height: 1.8;
+    }
+    a { color: var(--primary-dark); }
+    code, pre { font-family: Consolas, "SFMono-Regular", Menlo, monospace; }
+    code { font-size: .92em; }
+    :not(pre) > code {
+      color: #312e81;
+      background: #eef2ff;
+      border: 1px solid #dfe3ff;
+      border-radius: 5px;
+      padding: .08em .32em;
+    }
+    pre {
+      margin: 16px 0;
+      padding: 18px 20px;
+      color: var(--code-ink);
+      background: var(--code);
+      border-radius: 12px;
+      overflow: auto;
+      line-height: 1.55;
+      font-size: .86rem;
+    }
+    h1, h2, h3, h4 { line-height: 1.35; letter-spacing: .01em; }
+    h1 { margin: 0; font-size: clamp(2rem, 4vw, 3.5rem); }
+    h2 {
+      margin: 0 0 24px;
+      padding-bottom: 12px;
+      font-size: clamp(1.55rem, 2.5vw, 2.15rem);
+      border-bottom: 2px solid var(--line);
+    }
+    h3 { margin: 34px 0 12px; font-size: 1.28rem; }
+    h4 { margin: 26px 0 8px; font-size: 1.06rem; }
+    p { margin: 10px 0; }
+    ul, ol { padding-left: 1.4rem; }
+    li + li { margin-top: 6px; }
+    strong { color: #111827; }
+
+    .reading-progress {
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 50;
+      height: 4px;
+      background: linear-gradient(90deg, var(--primary), var(--cyan));
+      transform: scaleX(0);
+      transform-origin: left;
+    }
+    .layout { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); }
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 28px 18px;
+      overflow-y: auto;
+      color: #dbeafe;
+      background: #111827;
+    }
+    .brand { padding: 0 10px 18px; border-bottom: 1px solid #334155; }
+    .brand b { display: block; color: #fff; font-size: 1rem; }
+    .brand span { color: #94a3b8; font-size: .78rem; }
+    .nav-group { margin-top: 18px; }
+    .nav-title { padding: 0 10px 6px; color: #64748b; font-size: .69rem; font-weight: 700; letter-spacing: .12em; }
+    .sidebar a {
+      display: block;
+      padding: 7px 10px;
+      color: #cbd5e1;
+      border-left: 3px solid transparent;
+      border-radius: 4px;
+      text-decoration: none;
+      font-size: .79rem;
+      line-height: 1.45;
+    }
+    .sidebar a:hover, .sidebar a.active { color: #fff; background: #1e293b; border-left-color: #818cf8; }
+    main { min-width: 0; }
+    .hero {
+      padding: 76px max(30px, 7vw) 62px;
+      color: #f8fafc;
+      background:
+        radial-gradient(circle at 88% 15%, rgba(34,211,238,.2), transparent 30%),
+        radial-gradient(circle at 10% 70%, rgba(129,140,248,.28), transparent 30%),
+        #172033;
+    }
+    .eyebrow { color: #a5b4fc; font-weight: 700; letter-spacing: .12em; }
+    .hero-lead { max-width: 850px; margin: 22px 0 28px; color: #cbd5e1; font-size: 1.08rem; }
+    .hero strong { color: #fff; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; }
+    .hero-meta span { padding: 6px 10px; color: #e0e7ff; background: rgba(79,70,229,.28); border: 1px solid rgba(165,180,252,.3); border-radius: 999px; font-size: .78rem; }
+    .content { width: min(1120px, calc(100% - 48px)); margin: 0 auto; padding: 42px 0 100px; }
+    section { scroll-margin-top: 24px; margin: 30px 0; padding: 36px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+    .part-label { display: inline-block; margin-bottom: 12px; color: var(--primary); font-size: .74rem; font-weight: 800; letter-spacing: .15em; }
+    .lead { color: #344054; font-size: 1.06rem; }
+    .callout { margin: 18px 0; padding: 16px 18px; border-left: 5px solid var(--primary); background: #f5f7ff; border-radius: 8px; }
+    .callout.tip { border-left-color: var(--green); background: #f0fdf4; }
+    .callout.warn { border-left-color: var(--amber); background: #fffbeb; }
+    .callout.danger { border-left-color: var(--red); background: #fef2f2; }
+    .callout-title { display: block; margin-bottom: 3px; font-weight: 800; }
+    .grid-2, .grid-3, .grid-4 { display: grid; gap: 16px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .card { padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+    .card h3, .card h4 { margin-top: 0; }
+    .number { display: inline-grid; place-items: center; width: 30px; height: 30px; margin-right: 8px; color: #fff; background: var(--primary); border-radius: 50%; font-weight: 800; }
+    .tag { display: inline-block; margin: 2px; padding: 3px 8px; color: #3730a3; background: #eef2ff; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+    .checklist { list-style: none; padding-left: 0; }
+    .checklist li { position: relative; padding-left: 30px; }
+    .checklist li::before { content: "□"; position: absolute; left: 2px; top: 0; color: var(--primary); font-weight: 800; }
+    .table-wrap { overflow-x: auto; margin: 16px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    th, td { padding: 11px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    th { color: #334155; background: #f8fafc; white-space: nowrap; }
+    tr:last-child td { border-bottom: 0; }
+    .fit { white-space: nowrap; }
+    .diagram { margin: 22px 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: #fbfdff; overflow-x: auto; }
+    .diagram svg { display: block; width: 100%; min-width: 680px; height: auto; }
+    .diagram figcaption { margin-top: 10px; color: var(--muted); font-size: .8rem; text-align: center; }
+    .file-tree { padding: 18px 20px; color: #d1fae5; background: #0b1f18; border-radius: 12px; overflow-x: auto; font-size: .84rem; line-height: 1.55; }
+    .path { color: #312e81; font-family: Consolas, monospace; font-weight: 700; }
+    .phase { position: relative; padding: 20px 20px 20px 76px; border: 1px solid var(--line); border-radius: 14px; }
+    .phase + .phase { margin-top: 14px; }
+    .phase-id { position: absolute; left: 18px; top: 18px; display: grid; place-items: center; width: 42px; height: 42px; color: #fff; background: var(--primary); border-radius: 12px; font-weight: 800; }
+    .phase h3 { margin: 0 0 6px; }
+    .phase p { margin: 4px 0; }
+    .done { color: var(--green); font-weight: 700; }
+    .exercise { border: 2px dashed #a5b4fc; background: #fafaff; }
+    details { margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+    summary { padding: 12px 16px; cursor: pointer; font-weight: 700; }
+    details > div { padding: 0 16px 16px; }
+    .small { color: var(--muted); font-size: .83rem; }
+    .center { text-align: center; }
+    .kbd { display: inline-block; padding: 1px 6px; border: 1px solid #cbd5e1; border-bottom-width: 2px; border-radius: 4px; background: #fff; font: .8rem Consolas, monospace; }
+    footer { padding: 32px; color: #94a3b8; background: #111827; text-align: center; font-size: .82rem; }
+
+    @media (max-width: 980px) {
+      .layout { display: block; }
+      .sidebar { position: relative; width: 100%; height: auto; max-height: 360px; }
+      .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 700px) {
+      .content { width: min(100% - 24px, 1120px); }
+      .hero { padding: 58px 22px 44px; }
+      section { padding: 24px 18px; }
+      .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+      pre { font-size: .78rem; }
+      .phase { padding-left: 20px; padding-top: 72px; }
+    }
+    @media print {
+      .reading-progress, .sidebar { display: none; }
+      .layout { display: block; }
+      body { background: #fff; font-size: 10.5pt; }
+      .hero { color: #111827; background: #fff; border-bottom: 2px solid #111827; }
+      .hero-lead, .eyebrow { color: #334155; }
+      .hero strong { color: #111827; }
+      .content { width: 100%; padding: 0; }
+      section { break-inside: avoid; margin: 0; padding: 22px 0; border: 0; border-radius: 0; box-shadow: none; }
+      pre { white-space: pre-wrap; }
+      a { color: inherit; text-decoration: none; }
+      .diagram { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="reading-progress" id="readingProgress" aria-hidden="true"></div>
+  <div class="layout">
+    <aside class="sidebar" aria-label="目次">
+      <div class="brand"><b>Webアプリ開発入門</b><span>ToDo / Gantt を0から作る</span></div>
+      <nav>
+        <div class="nav-group"><div class="nav-title">START</div>
+          <a href="#guide">この資料の使い方</a><a href="#goal">最初に結論</a><a href="#web-basics">Webの基本</a><a href="#framework">技術選定</a>
+        </div>
+        <div class="nav-group"><div class="nav-title">BUILD FROM ZERO</div>
+          <a href="#roadmap">段階ロードマップ</a><a href="#phase0">準備</a><a href="#phase1">最小画面</a><a href="#phase2">CRUD</a><a href="#phase3">API</a><a href="#phase4">DB</a><a href="#phase5">ガント</a><a href="#phase6">発展機能</a>
+        </div>
+        <div class="nav-group"><div class="nav-title">READ THIS APP</div>
+          <a href="#architecture">全体構成</a><a href="#folders">ファイル接続</a><a href="#startup">起動順序</a><a href="#task-flow">タスク保存の旅</a><a href="#react">Reactの考え方</a><a href="#api-contract">window.api</a><a href="#database">データベース</a><a href="#auth">認証</a><a href="#realtime">リアルタイム</a><a href="#gantt">ガントと依存関係</a>
+        </div>
+        <div class="nav-group"><div class="nav-title">PRACTICE</div>
+          <a href="#feature">機能追加手順</a><a href="#debug">デバッグ</a><a href="#test">テスト</a><a href="#security">公開と安全性</a><a href="#csharp">C#との対応</a><a href="#study">学習計画</a><a href="#glossary">用語集</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main>
+      <header class="hero">
+        <div class="eyebrow">BEGINNER'S ARCHITECTURE GUIDE</div>
+        <h1>0から学ぶ<br>Webアプリの作り方</h1>
+        <p class="hero-lead">このリポジトリのToDo・ガントアプリを題材に、<strong>「何から作るか」「なぜそのファイルが必要か」「クリックからDB保存までどうつながるか」</strong>を、C#などのプログラミング経験はあるがWebは初めて、という人向けに順番から解説します。</p>
+        <div class="hero-meta"><span>React + TypeScript</span><span>Express</span><span>SQLite</span><span>HTTP / WebSocket</span><span>Electron共有</span><span>インラインSVG図解</span></div>
+      </header>
+
+      <div class="content">
+        <section id="guide">
+          <span class="part-label">はじめに</span>
+          <h2>この資料の使い方</h2>
+          <p class="lead">この資料は「完成版コードの説明書」と「初心者が同じ種類のアプリを0から作る教科書」の二つを兼ねています。先頭から通読しても、目的の章だけ読んでも構いません。</p>
+          <div class="grid-3">
+            <div class="card"><h3>初めて作る人</h3><p><a href="#goal">最初に結論</a> → <a href="#web-basics">Webの基本</a> → <a href="#roadmap">段階ロードマップ</a>の順に進み、各フェーズの「完成条件」を満たしてから次へ進みます。</p></div>
+            <div class="card"><h3>このアプリを理解したい人</h3><p><a href="#architecture">全体構成</a> → <a href="#folders">ファイル接続</a> → <a href="#task-flow">タスク保存の旅</a>の順に読むと、コードの入口が分かります。</p></div>
+            <div class="card"><h3>教える人</h3><p>最初に完成版を見せ、次にフェーズ1の小さなアプリを一緒に作ります。答えを貼るより「ブラウザのNetwork欄で通信を見る」時間を多く取ります。</p></div>
+          </div>
+          <div class="callout warn"><span class="callout-title">大切な前提</span>現行アプリは成熟した完成形です。中心ファイルの <code>GanttView.tsx</code> は約4,300行、<code>App.tsx</code> は約1,200行あります。初心者がこれを最初から再現しようとすると、React・通信・DB・認証・ガント計算を同時に学ぶことになります。必ず機能を薄く切って作ります。</div>
+        </section>
+
+        <section id="goal">
+          <span class="part-label">方針</span>
+          <h2>最初に結論：画面ではなく「細い1本」を作る</h2>
+          <p>Webアプリを作るとき、先に全画面を描くのではなく、まず<strong>1件のタスクを入力し、保存し、再読み込みしても残る</strong>ところまでを縦に貫通させます。これを「縦切り」や vertical slice と呼びます。</p>
+          <figure class="diagram">
+            <svg viewBox="0 0 1000 310" role="img" aria-labelledby="sliceTitle sliceDesc">
+              <title id="sliceTitle">縦切り開発と横切り開発の比較</title><desc id="sliceDesc">入力、通信、保存、再表示をまず一本つなぎ、その後機能を横へ増やす。</desc>
+              <defs><marker id="arrowSlice" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#4f46e5"/></marker></defs>
+              <text x="40" y="38" font-size="20" font-weight="700" fill="#172033">最初に作る細い1本</text>
+              <g font-size="15" text-anchor="middle">
+                <rect x="35" y="70" width="160" height="70" rx="12" fill="#eef2ff" stroke="#4f46e5"/><text x="115" y="100" fill="#172033">入力フォーム</text><text x="115" y="123" fill="#5f6b7c">title</text>
+                <rect x="235" y="70" width="160" height="70" rx="12" fill="#ecfeff" stroke="#0891b2"/><text x="315" y="100" fill="#172033">HTTP API</text><text x="315" y="123" fill="#5f6b7c">POST /todos</text>
+                <rect x="435" y="70" width="160" height="70" rx="12" fill="#f0fdf4" stroke="#15803d"/><text x="515" y="100" fill="#172033">SQLite</text><text x="515" y="123" fill="#5f6b7c">INSERT</text>
+                <rect x="635" y="70" width="160" height="70" rx="12" fill="#fff7ed" stroke="#b45309"/><text x="715" y="100" fill="#172033">JSON応答</text><text x="715" y="123" fill="#5f6b7c">作成したTodo</text>
+                <rect x="835" y="70" width="130" height="70" rx="12" fill="#fdf2f8" stroke="#be185d"/><text x="900" y="100" fill="#172033">一覧更新</text><text x="900" y="123" fill="#5f6b7c">再表示</text>
+              </g>
+              <g stroke="#4f46e5" stroke-width="3" marker-end="url(#arrowSlice)"><path d="M195 105 H225"/><path d="M395 105 H425"/><path d="M595 105 H625"/><path d="M795 105 H825"/></g>
+              <path d="M115 180 V225 H900 V180" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 6"/>
+              <text x="507" y="260" text-anchor="middle" fill="#5f6b7c" font-size="16">ここが動いてから、編集・削除・カテゴリ・ガント・認証を横へ追加する</text>
+            </svg>
+            <figcaption>最初の成功体験は「きれいな画面」ではなく「データが往復した」です。</figcaption>
+          </figure>
+          <div class="grid-2">
+            <div class="card"><h3>最初に入れるもの</h3><ul><li>タイトル入力</li><li>追加ボタン</li><li>タスク一覧</li><li>GET / POST のAPI</li><li>Todosテーブル1個</li></ul></div>
+            <div class="card"><h3>最初は入れないもの</h3><ul><li>ログインと権限</li><li>WebSocket</li><li>ドラッグ操作</li><li>繰り返し・通知・集計</li><li>Electronとの共通化</li></ul></div>
+          </div>
+        </section>
+
+        <section id="web-basics">
+          <span class="part-label">基礎知識</span>
+          <h2>Webアプリを構成する5つの役者</h2>
+          <p>「Webアプリ」という一つのプログラムがあるように見えますが、実際には役割の違うプログラムが協力しています。C#経験者なら、UI・Controller・Service・Repository・DBを別層に分ける感覚に近いです。</p>
+          <div class="grid-3">
+            <div class="card"><h3>1. ブラウザ</h3><p>HTMLを構造、CSSを見た目、JavaScriptを動作として実行します。Reactも最終的にはブラウザで動くJavaScriptになります。</p></div>
+            <div class="card"><h3>2. フロントエンド</h3><p>入力を受け、状態を持ち、画面を再描画します。このアプリでは React + TypeScript です。</p></div>
+            <div class="card"><h3>3. HTTP API</h3><p>フロントとサーバーの約束です。URL・メソッド・JSONの形・ステータスコードを決めます。</p></div>
+            <div class="card"><h3>4. サーバー</h3><p>認証、入力検証、業務ルール、DB操作を担当します。このアプリでは Express + TypeScript です。</p></div>
+            <div class="card"><h3>5. データベース</h3><p>ブラウザを閉じても残す情報を保存します。このアプリではファイル型DBの SQLite です。</p></div>
+            <div class="card"><h3>+ WebSocket</h3><p>サーバーからブラウザへ変更を知らせる常時接続です。最初からは不要で、複数人同期の段階で追加します。</p></div>
+          </div>
+          <h3>HTTPは「注文票」と考える</h3>
+          <div class="table-wrap"><table><thead><tr><th>目的</th><th>HTTP</th><th>例</th><th>C#の感覚</th></tr></thead><tbody>
+            <tr><td>一覧を読む</td><td><code>GET</code></td><td><code>GET /api/todos</code></td><td>Query / Select</td></tr>
+            <tr><td>新規作成</td><td><code>POST</code></td><td><code>POST /api/todos</code></td><td>Create command</td></tr>
+            <tr><td>変更</td><td><code>PUT</code></td><td><code>PUT /api/todos/{id}</code></td><td>Update command</td></tr>
+            <tr><td>削除</td><td><code>DELETE</code></td><td><code>DELETE /api/todos/{id}</code></td><td>Delete command</td></tr>
+          </tbody></table></div>
+          <pre><code>// ブラウザから送るJSON（リクエスト本文）
+{ "title": "仕様書を書く", "priority": 2 }
+
+// サーバーから返るJSON（レスポンス本文）
+{ "id": "a1b2...", "title": "仕様書を書く", "priority": 2, "status": "not_started" }</code></pre>
+          <div class="callout tip"><span class="callout-title">最重要の観察方法</span>ブラウザで <span class="kbd">F12</span> → Network を開き、ボタンを押したときに「どのURLへ、どのメソッドで、どんなJSONを送り、何が返ったか」を毎回見ます。Web開発の理解が急に具体的になります。</div>
+        </section>
+
+        <section id="framework">
+          <span class="part-label">技術選定</span>
+          <h2>フレームワークはどう選ぶか</h2>
+          <p class="lead">最適解は言語の好みだけでなく、誰が保守するか、リアルタイム性、配布方法、既存コードの有無で決まります。このアプリを学ぶ目的なら現行構成を使うのが自然ですが、C#中心のチームなら別案も十分に合理的です。</p>
+          <div class="table-wrap"><table><thead><tr><th>候補</th><th>向いている状況</th><th>長所</th><th>注意点</th><th>今回</th></tr></thead><tbody>
+            <tr><td class="fit"><strong>React + TypeScript<br>Express + SQLite</strong></td><td>現行アプリを理解・拡張したい</td><td>既存コードを直接読める。UI部品とWeb/Electronを共有しやすい</td><td>JavaScript系の非同期・Nodeの作法を学ぶ必要</td><td><span class="tag">採用済み</span></td></tr>
+            <tr><td class="fit"><strong>ASP.NET Core<br>+ React</strong></td><td>C#でサーバーを書き、豊かなUIも欲しい</td><td>Controller/DI/EF Coreが使える。C#経験を活かせる</td><td>フロントは結局TypeScript。2言語構成</td><td>新規作成なら有力</td></tr>
+            <tr><td class="fit"><strong>ASP.NET Core<br>Razor Pages</strong></td><td>フォーム中心で、JSを少なくしたい</td><td>C#中心、仕組みが単純、初学者に優しい</td><td>高度なドラッグやガントUIは追加JSが必要</td><td>最初のCRUD教材に良い</td></tr>
+            <tr><td class="fit"><strong>Blazor</strong></td><td>クライアント側もC#を優先したい</td><td>型とC#知識を共有しやすい</td><td>現行React資産を再利用できず、求人・ライブラリ事情も確認が必要</td><td>別プロジェクト向け</td></tr>
+            <tr><td class="fit"><strong>Next.js</strong></td><td>公開サイト、SSR、クラウド運用まで統合したい</td><td>Reactのフルスタック機能が揃う</td><td>社内LANの小規模アプリには概念が増えやすい</td><td>今回は過剰</td></tr>
+          </tbody></table></div>
+          <h3>このアプリで現行スタックを選ぶ理由</h3>
+          <ol>
+            <li>ガント、ドラッグ、複数パネルなど、ブラウザ内の状態が多いのでReactが合う。</li>
+            <li>TypeScriptにより <code>Todo</code> やAPI引数の形をコンパイル時に確認できる。</li>
+            <li>6人規模・社内LAN想定なので、運用が軽い Express + SQLite で十分。</li>
+            <li>Electron版もReact画面を使うため、画面部品を二重に作らずに済む。</li>
+          </ol>
+          <div class="callout"><span class="callout-title">初心者への推奨</span>このリポジトリを教材にするなら React + TypeScript + Express + SQLite。Web一般を最短で学びたいC#経験者なら、最初の1週間だけ ASP.NET Core Razor Pages でCRUDを作るのも良いです。ただし途中で技術を混ぜず、ひとつの小作品を完成させてから比較します。</div>
+        </section>
+
+        <section id="roadmap">
+          <span class="part-label">PART 1 — 0から作る</span>
+          <h2>完成版までの段階ロードマップ</h2>
+          <p>各段階は「前の段階が動く状態」を保ったまま進めます。大きな改修前にGitでコミットしておくと、失敗しても戻れます。</p>
+          <figure class="diagram">
+            <svg viewBox="0 0 1100 330" role="img" aria-labelledby="roadTitle roadDesc">
+              <title id="roadTitle">Webアプリ開発の段階ロードマップ</title><desc id="roadDesc">静的画面からCRUD、API、DB、ガント、認証、同期、配布へ進む。</desc>
+              <defs><marker id="arrowRoad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#64748b"/></marker></defs>
+              <path d="M70 150 H1030" stroke="#cbd5e1" stroke-width="8" stroke-linecap="round"/>
+              <g font-size="14" text-anchor="middle" fill="#172033">
+                <g><circle cx="90" cy="150" r="34" fill="#eef2ff" stroke="#4f46e5" stroke-width="3"/><text x="90" y="155" font-weight="700">0</text><text x="90" y="210">準備</text></g>
+                <g><circle cx="215" cy="150" r="34" fill="#eef2ff" stroke="#4f46e5" stroke-width="3"/><text x="215" y="155" font-weight="700">1</text><text x="215" y="210">静的UI</text></g>
+                <g><circle cx="340" cy="150" r="34" fill="#ecfeff" stroke="#0891b2" stroke-width="3"/><text x="340" y="155" font-weight="700">2</text><text x="340" y="210">React CRUD</text></g>
+                <g><circle cx="465" cy="150" r="34" fill="#ecfeff" stroke="#0891b2" stroke-width="3"/><text x="465" y="155" font-weight="700">3</text><text x="465" y="210">HTTP API</text></g>
+                <g><circle cx="590" cy="150" r="34" fill="#f0fdf4" stroke="#15803d" stroke-width="3"/><text x="590" y="155" font-weight="700">4</text><text x="590" y="210">SQLite</text></g>
+                <g><circle cx="715" cy="150" r="34" fill="#fff7ed" stroke="#b45309" stroke-width="3"/><text x="715" y="155" font-weight="700">5</text><text x="715" y="210">ガント</text></g>
+                <g><circle cx="840" cy="150" r="34" fill="#fdf2f8" stroke="#be185d" stroke-width="3"/><text x="840" y="155" font-weight="700">6</text><text x="840" y="210">認証・同期</text></g>
+                <g><circle cx="965" cy="150" r="34" fill="#f5f3ff" stroke="#7c3aed" stroke-width="3"/><text x="965" y="155" font-weight="700">7</text><text x="965" y="210">配布・運用</text></g>
+              </g>
+              <text x="275" y="75" text-anchor="middle" fill="#4f46e5" font-size="16">ブラウザだけで理解</text><path d="M90 90 H465" stroke="#4f46e5" stroke-width="2" marker-end="url(#arrowRoad)"/>
+              <text x="770" y="285" text-anchor="middle" fill="#15803d" font-size="16">サーバー・DB・チーム機能へ拡張</text><path d="M590 255 H965" stroke="#15803d" stroke-width="2" marker-end="url(#arrowRoad)"/>
+            </svg>
+            <figcaption>一つずつ動かすと、問題のある層を特定できます。</figcaption>
+          </figure>
+        </section>
+
+        <section id="phase0">
+          <span class="part-label">PHASE 0</span><h2>準備：道具とプロジェクトの作り方</h2>
+          <div class="phase"><div class="phase-id">0</div><h3>環境を確認する</h3><p>Node.js 20以上、Git、VS Code、ChromeまたはEdgeを用意します。PowerShellで次を確認します。</p></div>
+          <pre><code>node -v
+npm -v
+git --version
+
+# このリポジトリを動かす場合
+cd D:\Github\ToDo
+npm install
+npm --prefix server install</code></pre>
+          <h3>最初の練習プロジェクトは別フォルダにする</h3>
+          <p>完成版を壊さないため、学習用に <code>todo-learning</code> を別途作るのがおすすめです。Viteは開発サーバーとビルドを担当します。</p>
+          <pre><code>npm create vite@latest todo-learning -- --template react-ts
+cd todo-learning
+npm install
+npm run dev</code></pre>
+          <ul class="checklist"><li>ブラウザで初期画面が開く</li><li>ファイルを編集すると自動で画面が変わる</li><li>F12のConsoleに赤いエラーがない</li><li>Gitで最初のコミットを作る</li></ul>
+          <div class="callout tip"><span class="callout-title">分からないエラーへの基本姿勢</span>エラーメッセージの最初の1行、対象ファイル、行番号を読む。全文を消そうとせず「最初に起きたエラー」を直します。</div>
+        </section>
+
+        <section id="phase1">
+          <span class="part-label">PHASE 1</span><h2>最小画面：HTML・CSS・Reactの役割を分ける</h2>
+          <p>最初はサーバーもDBも使いません。入力欄、ボタン、固定のタスク一覧を描きます。</p>
+          <pre><code>// src/App.tsx — まずは固定表示だけ
+export function App() {
+  return (
+    &lt;main&gt;
+      &lt;h1&gt;My ToDo&lt;/h1&gt;
+      &lt;form&gt;
+        &lt;input placeholder="タスク名" /&gt;
+        &lt;button&gt;追加&lt;/button&gt;
+      &lt;/form&gt;
+      &lt;ul&gt;
+        &lt;li&gt;Webの仕組みを学ぶ&lt;/li&gt;
+      &lt;/ul&gt;
+    &lt;/main&gt;
+  )
+}</code></pre>
+          <div class="grid-3"><div class="card"><h3>JSX</h3><p>HTMLに似た記法で「画面の構造」を宣言します。<code>class</code> ではなく <code>className</code> を使います。</p></div><div class="card"><h3>Component</h3><p>画面の一部分を関数にしたもの。最初はApp一つでよく、繰り返しや責務が見えたら分割します。</p></div><div class="card"><h3>CSS</h3><p>余白・色・レイアウトを担当します。動作と見た目を同時に直さず、一度に一種類の問題を扱います。</p></div></div>
+          <p class="done">完成条件：通信なしで、入力欄・追加ボタン・固定の1件が見える。</p>
+        </section>
+
+        <section id="phase2">
+          <span class="part-label">PHASE 2</span><h2>ブラウザ内CRUD：状態が変わる感覚をつかむ</h2>
+          <p>CRUDは Create（作成）、Read（読取）、Update（更新）、Delete（削除）の頭文字です。まずReactのメモリ内だけで完成させます。再読み込みすると消えて構いません。</p>
+          <pre><code>type Todo = { id: string; title: string; done: boolean }
+
+const [title, setTitle] = useState("")
+const [todos, setTodos] = useState&lt;Todo[]&gt;([])
+
+function addTodo() {
+  if (!title.trim()) return
+  setTodos(current =&gt; [
+    ...current,
+    { id: crypto.randomUUID(), title: title.trim(), done: false }
+  ])
+  setTitle("")
+}
+
+function toggleTodo(id: string) {
+  setTodos(current =&gt;
+    current.map(todo =&gt; todo.id === id ? { ...todo, done: !todo.done } : todo)
+  )
+}</code></pre>
+          <h3>Reactの状態更新で守ること</h3>
+          <ul><li>配列に直接 <code>push</code> せず、新しい配列を作る。</li><li>入力欄は <code>value={title}</code> と <code>onChange</code> をセットにする。</li><li><code>map</code> で一覧を描き、各要素に安定した <code>key={todo.id}</code> を付ける。</li><li>表示用の絞り込みは、可能なら元データを書き換えず <code>filter</code> で計算する。</li></ul>
+          <div class="exercise card"><h3>練習課題</h3><ol><li>追加</li><li>完了/未完了の切替</li><li>削除</li><li>未完了だけ表示</li><li>空タイトルをエラー表示</li></ol></div>
+          <p class="done">完成条件：ページを再読み込みするまでは、追加・完了・削除が正しく動く。</p>
+        </section>
+
+        <section id="phase3">
+          <span class="part-label">PHASE 3</span><h2>HTTP API：画面とサーバーを分離する</h2>
+          <p>Expressサーバーを作り、最初はサーバーの配列に保存します。ここでは「通信」を理解することが目的なので、DBはまだ足しません。</p>
+          <pre><code>// server/src/index.ts — 学習用の最小例
+import express from "express"
+import crypto from "node:crypto"
+
+const app = express()
+app.use(express.json())
+
+const todos: { id: string; title: string; done: boolean }[] = []
+
+app.get("/api/todos", (_req, res) =&gt; res.json(todos))
+
+app.post("/api/todos", (req, res) =&gt; {
+  if (typeof req.body.title !== "string" || !req.body.title.trim()) {
+    return res.status(400).json({ error: "タイトルは必須です" })
+  }
+  const todo = { id: crypto.randomUUID(), title: req.body.title.trim(), done: false }
+  todos.push(todo)
+  res.status(201).json(todo)
+})
+
+app.listen(4577, () =&gt; console.log("http://localhost:4577"))</code></pre>
+          <pre><code>// フロント側
+async function loadTodos() {
+  const response = await fetch("/api/todos")
+  if (!response.ok) throw new Error("読込に失敗しました")
+  setTodos(await response.json())
+}
+
+async function addTodo(title: string) {
+  const response = await fetch("/api/todos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title })
+  })
+  if (!response.ok) throw new Error((await response.json()).error)
+  await loadTodos()
+}</code></pre>
+          <div class="callout warn"><span class="callout-title">CORSより開発プロキシ</span>フロントが5273、サーバーが4577ならオリジンが違います。現行の <code>vite.web.config.ts</code> は <code>/api</code> と <code>/ws</code> を4577へ代理転送します。初心者はまず同じ方式を使うと混乱が減ります。</div>
+          <p class="done">完成条件：Network欄にGET/POSTが見え、サーバーを止めると通信エラーになる理由を説明できる。</p>
+        </section>
+
+        <section id="phase4">
+          <span class="part-label">PHASE 4</span><h2>SQLite：再起動しても残るようにする</h2>
+          <p>サーバー配列をSQLiteへ置き換えます。SQLをReactから直接実行してはいけません。ブラウザ → API → DB層の順を守ります。</p>
+          <pre><code>CREATE TABLE IF NOT EXISTS Todos (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  done INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);</code></pre>
+          <pre><code>// DB層の考え方（better-sqlite3）
+const insertTodo = db.prepare(
+  "INSERT INTO Todos (id, title, done, created_at) VALUES (?, ?, 0, ?)"
+)
+
+export function createTodo(title: string) {
+  const id = crypto.randomUUID()
+  const now = new Date().toISOString()
+  insertTodo.run(id, title, now)       // 値は ? に渡す
+  return db.prepare("SELECT * FROM Todos WHERE id = ?").get(id)
+}</code></pre>
+          <h3>ここで覚えるDB原則</h3>
+          <ul><li><strong>主キー</strong>：行を一意に識別するID。</li><li><strong>外部キー</strong>：別テーブルのIDを参照する関係。</li><li><strong>制約</strong>：<code>NOT NULL</code> や <code>UNIQUE</code> で壊れたデータを防ぐ。</li><li><strong>トランザクション</strong>：複数更新を全部成功または全部失敗にする。</li><li><strong>プレースホルダー</strong>：文字列連結でSQLを作らず、<code>?</code> に値を渡してSQLインジェクションを防ぐ。</li><li><strong>マイグレーション</strong>：既存データを保ったまま列・テーブルを増やす手順。</li></ul>
+          <p class="done">完成条件：サーバーを停止・再起動してもタスクが残り、DBファイルの場所を説明できる。</p>
+        </section>
+
+        <section id="phase5">
+          <span class="part-label">PHASE 5</span><h2>ガント：まず日付を幅に変換する</h2>
+          <p>ガントは魔法の部品ではなく、日付の差をピクセルへ変換した横棒です。最初はドラッグなし、依存線なしで表示だけ作ります。</p>
+          <pre><code>const DAY_WIDTH = 32
+const msPerDay = 24 * 60 * 60 * 1000
+
+function diffDays(from: Date, to: Date) {
+  return Math.round((to.getTime() - from.getTime()) / msPerDay)
+}
+
+const left = diffDays(viewStart, taskStart) * DAY_WIDTH
+const width = (diffDays(taskStart, taskEnd) + 1) * DAY_WIDTH</code></pre>
+          <figure class="diagram">
+            <svg viewBox="0 0 1000 300" role="img" aria-labelledby="ganttBasicTitle ganttBasicDesc">
+              <title id="ganttBasicTitle">日付をガントバーへ変換</title><desc id="ganttBasicDesc">表示開始日との差を左位置、開始日と終了日の差を幅にする。</desc>
+              <g font-size="14" fill="#172033">
+                <text x="40" y="45" font-size="18" font-weight="700">表示開始日 8/1　　1日 = 80px</text>
+                <g stroke="#cbd5e1"><path d="M250 70 V240"/><path d="M330 70 V240"/><path d="M410 70 V240"/><path d="M490 70 V240"/><path d="M570 70 V240"/><path d="M650 70 V240"/><path d="M730 70 V240"/><path d="M810 70 V240"/><path d="M890 70 V240"/></g>
+                <g text-anchor="middle" fill="#5f6b7c"><text x="290" y="90">8/1</text><text x="370" y="90">8/2</text><text x="450" y="90">8/3</text><text x="530" y="90">8/4</text><text x="610" y="90">8/5</text><text x="690" y="90">8/6</text><text x="770" y="90">8/7</text><text x="850" y="90">8/8</text></g>
+                <text x="45" y="150">設計</text><rect x="410" y="120" width="240" height="48" rx="10" fill="#4f46e5"/><text x="530" y="150" text-anchor="middle" fill="#fff">8/3 → 8/5</text>
+                <text x="45" y="215">実装</text><rect x="650" y="185" width="240" height="48" rx="10" fill="#0891b2"/><text x="770" y="215" text-anchor="middle" fill="#fff">8/6 → 8/8</text>
+                <text x="410" y="275" fill="#4f46e5">left = 2日 × 80px</text><text x="650" y="275" fill="#0891b2">width = 3日 × 80px</text>
+              </g>
+            </svg>
+            <figcaption>図では見やすさのため目盛り間隔を80pxで描画しています。</figcaption>
+          </figure>
+          <h3>実装順</h3>
+          <ol><li>横軸の日付ヘッダー</li><li>1タスク1行</li><li>日付からバー位置を計算</li><li>今日線</li><li>ズーム</li><li>ドラッグ移動</li><li>左右端のリサイズ</li><li>依存線</li><li>循環チェックと後続日程の再計算</li></ol>
+          <div class="callout danger"><span class="callout-title">日付の落とし穴</span><code>YYYY-MM-DD</code> の日付だけを扱う処理と、時刻・タイムゾーンを持つISO日時を混ぜないこと。現行実装は日付キーを正規化するヘルパーを持ちます。ガントの日数計算は特に、夏時間のある地域で24時間割り算だけに頼るとずれることがあります。</div>
+          <p class="done">完成条件：開始日と終了日を変えるとバー位置と幅が変わる。ドラッグは次の小目標に分ける。</p>
+        </section>
+
+        <section id="phase6">
+          <span class="part-label">PHASE 6–7</span><h2>発展機能は価値の高い順に追加する</h2>
+          <div class="table-wrap"><table><thead><tr><th>順</th><th>機能</th><th>追加する概念</th><th>完了の判断</th></tr></thead><tbody>
+            <tr><td>1</td><td>カテゴリ</td><td>1対多、外部キー、絞り込み</td><td>カテゴリ削除時の扱いを決めた</td></tr>
+            <tr><td>2</td><td>サブタスク</td><td>親子関係、集約進捗</td><td>親の期限との整合が取れる</td></tr>
+            <tr><td>3</td><td>タイマー・作業ログ</td><td>開始状態と確定履歴を別テーブル化</td><td>二重開始できず、停止で履歴になる</td></tr>
+            <tr><td>4</td><td>依存関係</td><td>グラフ、循環検出、トランザクション</td><td>A→B→Aを拒否できる</td></tr>
+            <tr><td>5</td><td>ログイン</td><td>ハッシュ、Cookie、401/403</td><td>未ログインでデータAPIを読めない</td></tr>
+            <tr><td>6</td><td>複数ユーザー</td><td>所有者・担当者・権限</td><td>他人の非公開データ規則が明確</td></tr>
+            <tr><td>7</td><td>リアルタイム同期</td><td>WebSocket、再接続、再取得</td><td>2ブラウザで変更が反映される</td></tr>
+            <tr><td>8</td><td>配布・バックアップ</td><td>ビルド、環境変数、サービス</td><td>別PCから利用・復元できる</td></tr>
+          </tbody></table></div>
+          <div class="callout"><span class="callout-title">機能追加の判断基準</span>「楽しそう」よりも「ユーザーの次の困りごとを解くか」「データモデルを壊さず追加できるか」「失敗時に戻せるか」で順番を決めます。</div>
+        </section>
+
+        <section id="architecture">
+          <span class="part-label">PART 2 — 現行アプリを読む</span>
+          <h2>現在のアプリの全体構成</h2>
+          <p class="lead">最大の特徴は、React画面をデスクトップ版とWeb版で共有し、画面から見えるAPIの実装だけを差し替える点です。</p>
+          <figure class="diagram">
+            <svg viewBox="0 0 1120 620" role="img" aria-labelledby="archTitle archDesc">
+              <title id="archTitle">現行ToDoアプリの二つの実行経路</title><desc id="archDesc">共通React UIからwindow.apiを経て、Electron IPCまたはHTTPとWebSocketを通り、それぞれSQLiteへ接続する。</desc>
+              <defs><marker id="arrowArch" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#475569"/></marker></defs>
+              <rect x="250" y="35" width="620" height="96" rx="18" fill="#eef2ff" stroke="#4f46e5" stroke-width="2"/>
+              <text x="560" y="75" text-anchor="middle" font-size="22" font-weight="700" fill="#172033">共通 React UI</text><text x="560" y="105" text-anchor="middle" font-size="15" fill="#5f6b7c">src/renderer/src/App.tsx + components/*</text>
+              <rect x="340" y="165" width="440" height="78" rx="16" fill="#fff" stroke="#7c3aed" stroke-width="2"/>
+              <text x="560" y="198" text-anchor="middle" font-size="19" font-weight="700" fill="#172033">window.api（共通契約）</text><text x="560" y="225" text-anchor="middle" font-size="14" fill="#5f6b7c">Api = typeof api / src/preload/index.ts</text>
+              <path d="M560 131 V155" stroke="#475569" stroke-width="3" marker-end="url(#arrowArch)"/>
+              <text x="215" y="300" text-anchor="middle" font-size="19" font-weight="700" fill="#1e3a8a">デスクトップ版</text><text x="905" y="300" text-anchor="middle" font-size="19" font-weight="700" fill="#0f766e">Web版</text>
+              <path d="M440 243 C390 275 300 275 245 325" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowArch)"/>
+              <path d="M680 243 C730 275 820 275 875 325" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrowArch)"/>
+              <g text-anchor="middle"><rect x="65" y="330" width="300" height="75" rx="14" fill="#eff6ff" stroke="#2563eb"/><text x="215" y="362" font-size="17" font-weight="700" fill="#172033">Electron preload</text><text x="215" y="388" font-size="14" fill="#5f6b7c">ipcRenderer.invoke(...)</text>
+              <rect x="65" y="440" width="300" height="75" rx="14" fill="#eff6ff" stroke="#2563eb"/><text x="215" y="472" font-size="17" font-weight="700" fill="#172033">Main process + IPC</text><text x="215" y="498" font-size="14" fill="#5f6b7c">src/main/ipc.ts / db.ts</text>
+              <rect x="65" y="550" width="300" height="55" rx="14" fill="#f0fdf4" stroke="#15803d"/><text x="215" y="583" font-size="17" font-weight="700" fill="#172033">ローカル SQLite</text>
+              <rect x="755" y="330" width="300" height="75" rx="14" fill="#ecfeff" stroke="#0891b2"/><text x="905" y="362" font-size="17" font-weight="700" fill="#172033">HTTP / WebSocket client</text><text x="905" y="388" font-size="14" fill="#5f6b7c">web/lib/client.ts</text>
+              <rect x="755" y="440" width="300" height="75" rx="14" fill="#ecfeff" stroke="#0891b2"/><text x="905" y="472" font-size="17" font-weight="700" fill="#172033">Express routes + DB層</text><text x="905" y="498" font-size="14" fill="#5f6b7c">server/src/routes + db</text>
+              <rect x="755" y="550" width="300" height="55" rx="14" fill="#f0fdf4" stroke="#15803d"/><text x="905" y="583" font-size="17" font-weight="700" fill="#172033">共有 SQLite</text></g>
+              <g stroke="#475569" stroke-width="3" marker-end="url(#arrowArch)"><path d="M215 405 V430"/><path d="M215 515 V540"/><path d="M905 405 V430"/><path d="M905 515 V540"/></g>
+              <path d="M385 375 H735" stroke="#94a3b8" stroke-dasharray="7 7"/><text x="560" y="363" text-anchor="middle" font-size="13" fill="#64748b">UIから見れば同じメソッド名・同じ戻り値</text>
+            </svg>
+            <figcaption>差し替え可能な境界があるため、画面は保存先や通信方式を意識しません。</figcaption>
+          </figure>
+          <div class="callout tip"><span class="callout-title">設計上の核心</span><code>App.tsx</code> は <code>fetch</code> も <code>ipcRenderer</code> も直接呼びません。常に <code>window.api.todoGetAll()</code> のような共通メソッドを呼びます。これが二つの動作モードを共存させる鍵です。</div>
+        </section>
+
+        <section id="folders">
+          <span class="part-label">ファイル地図</span><h2>フォルダとファイルはどうつながるか</h2>
+          <pre class="file-tree"><code>ToDo/
+├─ package.json                       ルートのコマンドとデスクトップ/フロント依存
+├─ vite.web.config.ts                Web版の入口・alias・開発プロキシ・出力先
+├─ web/                              Web版だけの入口
+│  ├─ main.tsx                       window.api をHTTP版にして AuthGate → App を描画
+│  ├─ lib/client.ts                  共通Apiを fetch / WebSocket で実装
+│  └─ auth/                          ログイン画面、セッション確認、UserContext
+├─ src/
+│  ├─ renderer/src/                  Web版とElectron版で共有するReact画面
+│  │  ├─ App.tsx                     状態・読込・画面切替・各部品の接着点
+│  │  ├─ types.ts                    画面が扱うTodo等の型
+│  │  ├─ hooks/useTimer.ts           タイマー状態ロジック
+│  │  └─ components/                 GanttView, TodoDetail, PlanView など
+│  ├─ preload/index.ts               window.api のElectron実装 + Api型の定義元
+│  └─ main/
+│     ├─ ipc.ts                      IPC名をDB関数へ結び付ける
+│     └─ db.ts                       デスクトップ版SQLiteアクセス
+└─ server/                           Webサーバー専用の独立Nodeパッケージ
+   ├─ package.json                   Node版better-sqlite3等（Electron版と分離）
+   └─ src/
+      ├─ index.ts                    DB初期化 → middleware → route → 静的配信 → listen
+      ├─ auth.ts                     bcrypt、Session Cookie、認証middleware
+      ├─ realtime.ts                 /ws、presence、data:changed通知
+      ├─ routes/
+      │  ├─ auth.ts                  /api/auth/login, /logout, /me
+      │  ├─ users.ts                 ユーザー管理
+      │  └─ data.ts                  Todo等のREST API
+      └─ db/
+         ├─ connection.ts            SQLite接続、WAL、foreign_keys
+         ├─ schema.ts                CREATE TABLE、migration、初期設定
+         ├─ types.ts                 サーバー側の型
+         ├─ todos.ts                 Todo CRUD・繰返し・依存連鎖
+         └─ categories.ts ...        機能別のDB処理</code></pre>
+          <h3>迷ったときの読み順</h3>
+          <ol><li><span class="path">README.md</span> — 何ができるか</li><li><span class="path">src/renderer/src/App.tsx</span> のreturn付近 — 画面の配置</li><li><span class="path">src/preload/index.ts</span> — 画面が呼べる全操作</li><li><span class="path">web/lib/client.ts</span> — その操作がどのURLになるか</li><li><span class="path">server/src/routes/data.ts</span> — URLがどのDB関数を呼ぶか</li><li><span class="path">server/src/db/todos.ts</span> — SQLと業務ルール</li><li><span class="path">server/src/db/schema.ts</span> — 保存構造</li></ol>
+          <h3>主要な画面コンポーネント</h3>
+          <div class="table-wrap"><table><thead><tr><th>ファイル</th><th>責務</th><th>初心者が見るポイント</th></tr></thead><tbody>
+            <tr><td><code>Toolbar.tsx</code></td><td>画面切替、設定、通知、ログアウト</td><td>propsで親へイベントを返す</td></tr>
+            <tr><td><code>CategoryList.tsx</code></td><td>カテゴリ一覧・編集・並替</td><td>一覧部品とコールバック</td></tr>
+            <tr><td><code>TodoList.tsx</code></td><td>左側タスク一覧</td><td>filter後の表示、選択、完了</td></tr>
+            <tr><td><code>TodoDetail.tsx</code></td><td>詳細編集、サブタスク、依存、ログ</td><td>大きい部品の責務分割候補</td></tr>
+            <tr><td><code>GanttView.tsx</code></td><td>日付軸、バー、ドラッグ、依存線</td><td>座標計算とpointer event</td></tr>
+            <tr><td><code>PlanView.tsx</code></td><td>今日の予定を時間レーンへ配置</td><td>時間→座標変換</td></tr>
+            <tr><td><code>ProgressTimeline.tsx</code></td><td>進捗投稿・コメント・反応</td><td>非同期再取得と権限</td></tr>
+            <tr><td><code>TeamDashboard.tsx</code></td><td>稼働中・期限・負荷</td><td>集計はサーバーで行う</td></tr>
+          </tbody></table></div>
+        </section>
+
+        <section id="startup">
+          <span class="part-label">起動処理</span><h2>開発時と本番時で何が起きるか</h2>
+          <div class="grid-2">
+            <div class="card"><h3>開発時：2プロセス</h3><pre><code># ターミナル1
+npm run dev:server   # :4577
+
+# ターミナル2
+npm run dev:web      # :5273</code></pre><p>ブラウザは5273へアクセス。Viteが <code>/api</code> と <code>/ws</code> を4577へ転送します。コード変更は即時反映されます。</p></div>
+            <div class="card"><h3>本番時：1プロセス</h3><pre><code>npm run build:web     # dist-web/
+npm run start:server # :4577</code></pre><p>Expressが <code>dist-web</code> の静的HTML/JS/CSSとAPIの両方を同じ4577で配信します。</p></div>
+          </div>
+          <h3>サーバー起動の正確な順序</h3>
+          <ol><li><code>server/src/index.ts</code> が <code>initDb()</code> を呼ぶ。</li><li>DBフォルダを作り、SQLiteを開き、WAL・外部キーを有効化。</li><li>テーブル作成、既存DBのマイグレーション、既定設定を挿入。</li><li>期限切れSessionを掃除し、ユーザー0人なら管理者を作る。</li><li><code>express.json</code>、Cookie解析、ユーザー付与middlewareを登録。</li><li>health、auth、users、dataのrouteを登録。</li><li><code>dist-web</code> があれば静的ファイルを配信。</li><li>HTTPサーバーにWebSocketを追加し、4577で待ち受ける。</li></ol>
+          <div class="callout"><span class="callout-title">なぜ server/package.json が別にあるのか</span><code>better-sqlite3</code> はネイティブモジュールです。Electron用ABIと通常のNode.js用ABIが異なるため、依存フォルダを混ぜない設計です。これは単なる整理ではなく、実行環境の互換性を守る境界です。</div>
+        </section>
+
+        <section id="task-flow">
+          <span class="part-label">データフロー</span><h2>「タスク追加」を押してから全員に見えるまで</h2>
+          <figure class="diagram">
+            <svg viewBox="0 0 1120 760" role="img" aria-labelledby="seqTitle seqDesc">
+              <title id="seqTitle">タスク作成のシーケンス</title><desc id="seqDesc">ユーザー、React、HTTPクライアント、Express route、DB層、SQLite、WebSocket間の処理順。</desc>
+              <defs><marker id="arrowSeq" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#475569"/></marker></defs>
+              <g font-size="13" text-anchor="middle" fill="#172033">
+                <rect x="20" y="25" width="120" height="50" rx="9" fill="#fff7ed" stroke="#b45309"/><text x="80" y="55">利用者</text>
+                <rect x="175" y="25" width="130" height="50" rx="9" fill="#eef2ff" stroke="#4f46e5"/><text x="240" y="48">React</text><text x="240" y="65" font-size="11">App / Modal</text>
+                <rect x="345" y="25" width="140" height="50" rx="9" fill="#ecfeff" stroke="#0891b2"/><text x="415" y="48">client.ts</text><text x="415" y="65" font-size="11">window.api</text>
+                <rect x="525" y="25" width="140" height="50" rx="9" fill="#fdf2f8" stroke="#be185d"/><text x="595" y="48">data.ts</text><text x="595" y="65" font-size="11">Express route</text>
+                <rect x="705" y="25" width="140" height="50" rx="9" fill="#f0fdf4" stroke="#15803d"/><text x="775" y="48">todos.ts</text><text x="775" y="65" font-size="11">DB layer</text>
+                <rect x="885" y="25" width="105" height="50" rx="9" fill="#f0fdf4" stroke="#15803d"/><text x="937" y="55">SQLite</text>
+                <rect x="1010" y="25" width="95" height="50" rx="9" fill="#f5f3ff" stroke="#7c3aed"/><text x="1057" y="55">WS</text>
+              </g>
+              <g stroke="#cbd5e1" stroke-dasharray="6 6"><path d="M80 75 V725"/><path d="M240 75 V725"/><path d="M415 75 V725"/><path d="M595 75 V725"/><path d="M775 75 V725"/><path d="M937 75 V725"/><path d="M1057 75 V725"/></g>
+              <g fill="#172033" font-size="13"><text x="95" y="119">① 追加</text><text x="255" y="179">② 入力検証・handleAdd</text><text x="430" y="239">③ POST /api/todos + JSON</text><text x="610" y="299">④ requireAuth → route</text><text x="790" y="359">⑤ createTodo(data, userId)</text><text x="952" y="419">⑥ INSERT / SELECT</text><text x="790" y="479">⑦ 作成Todo</text><text x="610" y="539">⑧ JSON応答</text><text x="610" y="599">⑨ broadcastDataChanged('todo')</text><text x="255" y="659">⑩ loadTodos() / 再描画</text></g>
+              <g stroke="#475569" stroke-width="2.5" marker-end="url(#arrowSeq)"><path d="M80 130 H230"/><path d="M240 190 H405"/><path d="M415 250 H585"/><path d="M595 310 H765"/><path d="M775 370 H927"/><path d="M937 430 H785"/><path d="M775 490 H605"/><path d="M595 550 H425"/><path d="M595 610 H1047"/><path d="M1057 670 H250"/></g>
+              <rect x="165" y="690" width="150" height="34" rx="7" fill="#eef2ff"/><text x="240" y="712" text-anchor="middle" fill="#3730a3" font-size="13">一覧が最新になる</text>
+            </svg>
+            <figcaption>現行Web版は変更内容そのものをWebSocketで送らず、「todoが変わった」と通知し、各クライアントが再取得します。</figcaption>
+          </figure>
+          <h3>対応する実ファイル</h3>
+          <ol><li><code>QuickAddModal.tsx</code> が入力を集め、親のコールバックを呼ぶ。</li><li><code>App.tsx</code> の <code>handleAdd</code> が <code>window.api.todoCreate(data)</code> を呼ぶ。</li><li><code>web/lib/client.ts</code> が <code>POST /todos</code>（共通prefixは <code>/api</code>）へ変換。</li><li><code>server/src/routes/data.ts</code> が認証済みユーザーIDを付けて <code>createTodo</code> を呼ぶ。</li><li><code>server/src/db/todos.ts</code> がUUID、日時、既定値を決めてINSERTし、作成結果を読む。</li><li>routeの <code>run(..., 'todo')</code> が成功後にWebSocket通知。</li><li><code>App.tsx</code> の <code>onDataChanged</code> 購読が一覧を再読込する。</li></ol>
+        </section>
+
+        <section id="react">
+          <span class="part-label">フロントエンド</span><h2>Reactの状態・props・effectをこのアプリで理解する</h2>
+          <div class="grid-3"><div class="card"><h3>State</h3><p>その画面が現在覚えている値。例：<code>todos</code>、選択中ID、検索語、表示ビュー、モーダル開閉。</p></div><div class="card"><h3>Props</h3><p>親から子へ渡す値と関数。例：AppがTodoListへ <code>todos</code> と <code>onSelect</code> を渡す。</p></div><div class="card"><h3>Effect</h3><p>画面外との同期。例：初回のAPI読込、WebSocketイベント購読、解除処理。</p></div></div>
+          <figure class="diagram">
+            <svg viewBox="0 0 960 400" role="img" aria-labelledby="reactTitle reactDesc">
+              <title id="reactTitle">Reactの単方向データフロー</title><desc id="reactDesc">Appの状態がpropsとして子へ流れ、子の操作がcallbackとして親へ戻り、API結果で状態が更新される。</desc>
+              <defs><marker id="arrowReact" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#4f46e5"/></marker></defs>
+              <rect x="330" y="35" width="300" height="95" rx="16" fill="#eef2ff" stroke="#4f46e5" stroke-width="2"/><text x="480" y="75" text-anchor="middle" font-size="20" font-weight="700" fill="#172033">App.tsx</text><text x="480" y="104" text-anchor="middle" fill="#5f6b7c">todos / selectedId / activeView</text>
+              <g text-anchor="middle" font-size="15" fill="#172033"><rect x="45" y="245" width="190" height="75" rx="12" fill="#fff" stroke="#94a3b8"/><text x="140" y="279">TodoList</text><text x="140" y="301" fill="#5f6b7c">一覧・選択</text><rect x="290" y="245" width="190" height="75" rx="12" fill="#fff" stroke="#94a3b8"/><text x="385" y="279">GanttView</text><text x="385" y="301" fill="#5f6b7c">バー・日程変更</text><rect x="535" y="245" width="190" height="75" rx="12" fill="#fff" stroke="#94a3b8"/><text x="630" y="279">TodoDetail</text><text x="630" y="301" fill="#5f6b7c">詳細編集</text><rect x="780" y="245" width="140" height="75" rx="12" fill="#fff" stroke="#94a3b8"/><text x="850" y="279">PlanView</text><text x="850" y="301" fill="#5f6b7c">今日の計画</text></g>
+              <g stroke="#4f46e5" stroke-width="2.5" marker-end="url(#arrowReact)"><path d="M420 130 C360 180 190 180 145 235"/><path d="M460 130 C440 180 400 190 390 235"/><path d="M510 130 C540 180 610 190 625 235"/><path d="M550 130 C650 170 820 185 845 235"/></g>
+              <g fill="#3730a3" font-size="13"><text x="250" y="174">props ↓</text><text x="665" y="174">データとcallback</text></g>
+              <path d="M140 320 C200 380 400 370 450 140" fill="none" stroke="#0891b2" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrowReact)"/><text x="285" y="372" fill="#0e7490" font-size="13">操作 → callback → API → setState</text>
+            </svg>
+            <figcaption>データは親から子へ、操作の通知は子から親へ。これを崩すと「誰が状態を持つか」が分からなくなります。</figcaption>
+          </figure>
+          <h3><code>App.tsx</code> が担っているもの</h3>
+          <ul><li>タスク・カテゴリ・ユーザー・今日の計画を読み込む。</li><li>選択、検索、並び順、表示中ビューなどUI状態を持つ。</li><li>作成・更新・削除後にデータを再取得する。</li><li>Toolbar、カテゴリ欄、タスク一覧、中央ビュー、右サイド欄を組み立てる。</li><li>WebSocket由来の <code>data:changed</code> を購読して必要な範囲を更新する。</li></ul>
+          <div class="callout warn"><span class="callout-title">現行コードを読むとき</span><code>App.tsx</code> を上から全部暗記しません。①state宣言、②load系関数、③handle系関数、④return内の画面配置、の4ブロックに分けて読みます。</div>
+        </section>
+
+        <section id="api-contract">
+          <span class="part-label">境界設計</span><h2><code>window.api</code> が画面と実行環境を切り離す</h2>
+          <p><code>src/preload/index.ts</code> の <code>api</code> オブジェクトが契約の定義元で、<code>export type Api = typeof api</code> によりメソッド名・引数・戻り値の型が決まります。Web版の <code>api: Api</code> は同じ全メソッドを実装しなければ型チェックを通りません。</p>
+          <div class="table-wrap"><table><thead><tr><th>画面からの呼び方</th><th>Electron版</th><th>Web版</th></tr></thead><tbody>
+            <tr><td><code>todoGetAll()</code></td><td><code>ipcRenderer.invoke('todo:getAll')</code></td><td><code>GET /api/todos</code></td></tr>
+            <tr><td><code>todoCreate(data)</code></td><td><code>ipcRenderer.invoke('todo:create', data)</code></td><td><code>POST /api/todos</code></td></tr>
+            <tr><td><code>settingsSet(key, value)</code></td><td><code>ipcRenderer.invoke('settings:set', ...)</code></td><td><code>PUT /api/settings/:key</code></td></tr>
+            <tr><td><code>onDataChanged(cb)</code></td><td>IPC eventを購読</td><td>WebSocket eventを購読</td></tr>
+          </tbody></table></div>
+          <h3>新しいAPIを一つ追加するときの左右対称チェック</h3>
+          <ol><li>入力・出力の型を決める。</li><li><code>src/preload/index.ts</code> の <code>api</code> にElectron実装を追加。</li><li><code>src/main/ipc.ts</code> に対応するhandlerを追加。</li><li>デスクトップDB関数を追加・更新。</li><li><code>web/lib/client.ts</code> に同じメソッドのHTTP実装を追加。</li><li><code>server/src/routes</code> にendpointを追加。</li><li><code>server/src/db</code> にサーバーDB処理を追加。</li><li>rendererの独立した型コピーも同じ構造へ合わせる。</li></ol>
+          <div class="callout danger"><span class="callout-title">このリポジトリ特有の注意</span>型と依存連鎖ロジックはデスクトップ版とサーバー版に重複箇所があります。片側だけ直すと、ビルド失敗または動作差になります。共通化には価値がありますが、大きな再設計になるため別課題として慎重に行います。</div>
+        </section>
+
+        <section id="database">
+          <span class="part-label">永続化</span><h2>データベースを「機能の関係図」として読む</h2>
+          <p>現行サーバー版のスキーマは <code>server/src/db/schema.ts</code> にあります。最初に中心の6テーブルを理解し、その後に進捗・通知系を読みます。</p>
+          <figure class="diagram">
+            <svg viewBox="0 0 1160 720" role="img" aria-labelledby="erTitle erDesc">
+              <title id="erTitle">主要テーブルのER図</title><desc id="erDesc">Users、Todos、Categories、SubTasks、WorkLogs、DailyPlanItems、Dependencies、ProgressNotes、Sessionsなどの関係。</desc>
+              <defs><marker id="arrowEr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#64748b"/></marker></defs>
+              <g font-size="13" fill="#172033">
+                <g><rect x="440" y="35" width="280" height="150" rx="12" fill="#eef2ff" stroke="#4f46e5" stroke-width="2"/><text x="460" y="62" font-size="17" font-weight="700">Todos</text><text x="460" y="88">PK id</text><text x="460" y="109">title / status / progress</text><text x="460" y="130">start_date / due_date</text><text x="460" y="151">FK category_id / assignee_id</text><text x="460" y="172">recurrence / archived_at</text></g>
+                <g><rect x="40" y="55" width="245" height="118" rx="12" fill="#ecfeff" stroke="#0891b2"/><text x="60" y="82" font-size="17" font-weight="700">Categories</text><text x="60" y="108">PK id</text><text x="60" y="129">name / color / sort_order</text><text x="60" y="150">is_private</text></g>
+                <g><rect x="875" y="35" width="245" height="150" rx="12" fill="#fff7ed" stroke="#b45309"/><text x="895" y="62" font-size="17" font-weight="700">Users</text><text x="895" y="88">PK id / username</text><text x="895" y="109">password_hash / role</text><text x="895" y="130">display_name / color</text><text x="895" y="151">is_active</text></g>
+                <g><rect x="55" y="285" width="250" height="135" rx="12" fill="#f0fdf4" stroke="#15803d"/><text x="75" y="312" font-size="17" font-weight="700">SubTasks</text><text x="75" y="338">PK id / FK todo_id</text><text x="75" y="359">title / progress / done</text><text x="75" y="380">start_date / due_date</text><text x="75" y="401">FK assignee_id</text></g>
+                <g><rect x="335" y="285" width="250" height="135" rx="12" fill="#f0fdf4" stroke="#15803d"/><text x="355" y="312" font-size="17" font-weight="700">WorkLogs</text><text x="355" y="338">PK id / FK todo_id</text><text x="355" y="359">FK user_id</text><text x="355" y="380">start_time / end_time</text><text x="355" y="401">duration_seconds / note</text></g>
+                <g><rect x="615" y="285" width="250" height="135" rx="12" fill="#f0fdf4" stroke="#15803d"/><text x="635" y="312" font-size="17" font-weight="700">DailyPlanItems</text><text x="635" y="338">PK id / FK todo_id</text><text x="635" y="359">FK user_id / plan_date</text><text x="635" y="380">scheduled_start</text><text x="635" y="401">estimated_minutes / lane</text></g>
+                <g><rect x="895" y="285" width="225" height="135" rx="12" fill="#f5f3ff" stroke="#7c3aed"/><text x="915" y="312" font-size="17" font-weight="700">TodoDependencies</text><text x="915" y="338">predecessor_todo_id</text><text x="915" y="359">successor_todo_id</text><text x="915" y="380">finish_to_start</text><text x="915" y="401">lag_days</text></g>
+                <g><rect x="80" y="535" width="230" height="120" rx="12" fill="#fdf2f8" stroke="#be185d"/><text x="100" y="562" font-size="17" font-weight="700">ProgressNotes</text><text x="100" y="588">FK todo_id / user_id</text><text x="100" y="609">body / created_at</text></g>
+                <g><rect x="370" y="535" width="250" height="120" rx="12" fill="#fdf2f8" stroke="#be185d"/><text x="390" y="562" font-size="17" font-weight="700">Comments / Reactions</text><text x="390" y="588">FK note_id / comment_id</text><text x="390" y="609">user_id / emoji / body</text></g>
+                <g><rect x="680" y="535" width="210" height="120" rx="12" fill="#fff7ed" stroke="#b45309"/><text x="700" y="562" font-size="17" font-weight="700">Sessions</text><text x="700" y="588">PK token / FK user_id</text><text x="700" y="609">expires_at</text></g>
+                <g><rect x="940" y="535" width="180" height="120" rx="12" fill="#fff7ed" stroke="#b45309"/><text x="960" y="562" font-size="17" font-weight="700">Notifications</text><text x="960" y="588">FK user_id</text><text x="960" y="609">type / read_at</text></g>
+              </g>
+              <g fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrowEr)"><path d="M285 115 H430"/><path d="M875 110 H730"/><path d="M510 185 C420 230 230 220 185 275"/><path d="M560 185 C540 230 480 230 465 275"/><path d="M610 185 C650 230 715 230 735 275"/><path d="M720 110 C805 210 980 215 1000 275"/><path d="M460 185 C380 430 235 440 195 525"/><path d="M310 595 H360"/><path d="M997 185 C920 420 810 440 790 525"/><path d="M1005 185 V525"/></g>
+              <g fill="#64748b" font-size="12"><text x="350" y="105">1 : N</text><text x="785" y="100">担当者</text><text x="310" y="228">親 : 子</text><text x="850" y="250">N : Nに近い自己関係</text></g>
+            </svg>
+            <figcaption>図は学習のため主要関係に絞っています。実際には設定、変更履歴、サブ担当などもあります。</figcaption>
+          </figure>
+          <h3>テーブルを分ける理由</h3>
+          <ul><li><code>RunningState</code> は「現在1件だけの状態」、<code>WorkLogs</code> は「確定した履歴」。意味が違うため分ける。</li><li><code>TodoCoAssignees</code> は一つのTodoに複数ユーザーを付ける中間テーブル。</li><li><code>UserSettings</code> はテーマなどユーザー固有、<code>Settings</code> は全体設定。</li><li><code>TodoChangeLogs</code> は上書き前後を残し、進捗レポートに使う。</li></ul>
+          <h3>現行DBの安全策</h3>
+          <ul><li><code>journal_mode = WAL</code> で読書きの並行性を改善。</li><li><code>foreign_keys = ON</code> で参照整合性を有効化。</li><li><code>ON DELETE CASCADE</code> で親削除時に従属行を整理。</li><li>更新・依存連鎖・繰り返し生成などをtransactionでまとめる。</li><li>起動時migrationを冪等に実行し、古いDBへ不足列を追加。</li></ul>
+        </section>
+
+        <section id="auth">
+          <span class="part-label">認証</span><h2>ログインはパスワードを毎回送る仕組みではない</h2>
+          <figure class="diagram">
+            <svg viewBox="0 0 1000 360" role="img" aria-labelledby="authTitle authDesc">
+              <title id="authTitle">Session Cookie認証の流れ</title><desc id="authDesc">ログイン時にbcrypt照合し、ランダムtokenをDBとHttpOnly Cookieへ保存、以後tokenで認証する。</desc>
+              <defs><marker id="arrowAuth" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#475569"/></marker></defs>
+              <g text-anchor="middle" fill="#172033"><rect x="35" y="45" width="200" height="75" rx="12" fill="#eef2ff" stroke="#4f46e5"/><text x="135" y="78" font-size="17" font-weight="700">LoginScreen</text><text x="135" y="101" font-size="13">username + password</text><rect x="400" y="45" width="200" height="75" rx="12" fill="#fff7ed" stroke="#b45309"/><text x="500" y="78" font-size="17" font-weight="700">POST /auth/login</text><text x="500" y="101" font-size="13">bcrypt.compare</text><rect x="765" y="45" width="200" height="75" rx="12" fill="#f0fdf4" stroke="#15803d"/><text x="865" y="78" font-size="17" font-weight="700">Sessions</text><text x="865" y="101" font-size="13">random token + expires</text></g>
+              <g stroke="#475569" stroke-width="2.5" marker-end="url(#arrowAuth)"><path d="M235 82 H390"/><path d="M600 82 H755"/><path d="M765 150 H610"/><path d="M400 150 H245"/></g>
+              <text x="686" y="142" text-anchor="middle" fill="#5f6b7c" font-size="13">Set-Cookie: todo_session=...</text><text x="320" y="142" text-anchor="middle" fill="#5f6b7c" font-size="13">HttpOnly / SameSite=Lax</text>
+              <rect x="80" y="230" width="840" height="80" rx="14" fill="#ecfeff" stroke="#0891b2"/><text x="500" y="260" text-anchor="middle" fill="#172033" font-size="17" font-weight="700">以後の /api/* と /ws</text><text x="500" y="288" text-anchor="middle" fill="#5f6b7c" font-size="14">ブラウザがCookieを自動送信 → attachUser → requireAuth / requireAdmin</text>
+              <path d="M500 180 V220" stroke="#475569" stroke-width="2.5" marker-end="url(#arrowAuth)"/>
+            </svg>
+            <figcaption>クライアントへ返すPublicUserにはpassword_hashを含めません。</figcaption>
+          </figure>
+          <h3>401と403の違い</h3>
+          <ul><li><strong>401 Unauthorized</strong>：ログインが必要、Sessionがない・期限切れ。</li><li><strong>403 Forbidden</strong>：ログイン済みだが管理者権限などが足りない。</li></ul>
+          <h3>現行実装で行っていること</h3>
+          <ul><li>bcrypt（cost 10）でパスワードハッシュを保存。</li><li>32byteのランダムSession tokenを生成。</li><li>CookieをHttpOnlyにし、JavaScriptから直接読めないようにする。</li><li>WebSocket接続時も同じCookieで認証。</li><li>初回ユーザー0人なら管理者を自動作成。</li><li>管理者が自分自身を無効化・降格できないようガード。</li></ul>
+          <div class="callout danger"><span class="callout-title">インターネット公開時は追加対策が必要</span>現行は社内LAN前提です。外部公開するならHTTPS、Secure Cookie、CSRF方針、rate limit、強いパスワード規則、監査ログ、秘密情報管理、脆弱性更新、バックアップ暗号化などを設計し直します。</div>
+        </section>
+
+        <section id="realtime">
+          <span class="part-label">同期</span><h2>WebSocketは「変更通知ベル」として使う</h2>
+          <p>WebSocketでは接続中のブラウザへサーバーから送れます。現行アプリは複雑な差分データを直接配らず、<code>{ type: 'data:changed', scope: 'todo' }</code> のような小さな通知だけを送ります。</p>
+          <div class="grid-2"><div class="card"><h3>長所</h3><ul><li>実装と整合性が分かりやすい</li><li>取りこぼしても再取得で最新になる</li><li>画面側の既存load関数を再利用できる</li></ul></div><div class="card"><h3>代償</h3><ul><li>変更ごとに一覧APIを再取得する</li><li>大規模データ・大人数では通信量が増える</li><li>同時編集の競合解決は別途必要</li></ul></div></div>
+          <h3>接続ライフサイクル</h3>
+          <ol><li><code>AuthGate</code> が <code>/auth/me</code> でログイン確認。</li><li>認証済みの間だけ <code>connectRealtime()</code>。</li><li><code>web/lib/client.ts</code> が現在のhostの <code>/ws</code> へ接続。</li><li>サーバーがCookieを検証し、Client集合へ追加。</li><li>presence、data changed、notification changedを受信。</li><li>切断時は段階的に再接続。ログアウト時は明示切断。</li></ol>
+          <div class="callout tip"><span class="callout-title">初心者が追加するタイミング</span>同じCRUDを2つのブラウザで手動更新して正しく使えるようになってから追加します。WebSocketはデータ保存先ではなく、最新データを取りに行くきっかけです。</div>
+        </section>
+
+        <section id="gantt">
+          <span class="part-label">業務ルール</span><h2>ガント依存関係はサーバー側で守る</h2>
+          <p>現行は Finish to Start（先行タスクが終わってから後続開始）です。表示だけでなく日程の整合性を守る処理なので、Reactだけに置かずDB層でも実行します。</p>
+          <figure class="diagram">
+            <svg viewBox="0 0 1000 380" role="img" aria-labelledby="depTitle depDesc">
+              <title id="depTitle">Finish to Start依存と連鎖更新</title><desc id="depDesc">Aの終了翌日に待機日数を加えBを開始し、さらにCへ連鎖する。循環は拒否する。</desc>
+              <defs><marker id="arrowDep" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#4f46e5"/></marker></defs>
+              <g fill="#172033" font-size="14"><text x="55" y="45" font-size="19" font-weight="700">A → B（lag = 2日）→ C</text><text x="55" y="78" fill="#5f6b7c">B開始 = A終了 + 1日 + lagDays</text></g>
+              <g text-anchor="middle" font-size="15"><rect x="80" y="130" width="220" height="58" rx="12" fill="#4f46e5"/><text x="190" y="165" fill="#fff">A：設計 8/1〜8/3</text><rect x="420" y="130" width="220" height="58" rx="12" fill="#0891b2"/><text x="530" y="165" fill="#fff">B：実装 8/6〜8/8</text><rect x="750" y="130" width="170" height="58" rx="12" fill="#15803d"/><text x="835" y="165" fill="#fff">C：試験 8/9〜</text></g>
+              <g stroke="#4f46e5" stroke-width="3" marker-end="url(#arrowDep)"><path d="M300 159 H410"/><path d="M640 159 H740"/></g><text x="355" y="145" text-anchor="middle" fill="#3730a3" font-size="13">+2日</text>
+              <path d="M835 230 C835 325 190 325 190 205" fill="none" stroke="#b91c1c" stroke-width="3" stroke-dasharray="8 6"/>
+              <circle cx="510" cy="295" r="30" fill="#fef2f2" stroke="#b91c1c"/><path d="M493 278 L527 312 M527 278 L493 312" stroke="#b91c1c" stroke-width="5"/>
+              <text x="510" y="355" text-anchor="middle" fill="#991b1b" font-size="15" font-weight="700">C → A は循環するため拒否</text>
+            </svg>
+            <figcaption>先行が動けば後続を再帰的に調整し、訪問済み集合で無限ループを防ぎます。</figcaption>
+          </figure>
+          <h3><code>server/src/db/todos.ts</code> の処理</h3>
+          <ol><li><code>dependencyCreatesCycle</code>：BFSで後続をたどり、追加予定の先行へ戻るか確認。</li><li><code>enforcePredecessorConstraints</code>：複数の先行から最も遅い必要開始日を選ぶ。</li><li><code>shiftTodoToStart</code>：期間の長さを維持してタスクを移動。</li><li><code>resolveDependencyCascade</code>：後続へ再帰し、連鎖更新。</li><li>依存追加・待機変更・Todo更新をtransaction内で実行。</li></ol>
+          <div class="callout warn"><span class="callout-title">削除時の仕様判断</span>依存線を削除したとき、現在の実装は制約を再評価しますが、タスクを自動で過去へ戻すとは限りません。「制約を外す」と「以前の日付へ巻き戻す」は別の業務ルールです。仕様を文章で決めてから実装します。</div>
+        </section>
+
+        <section id="feature">
+          <span class="part-label">実践手順</span><h2>新しい機能を1つ追加するときの型</h2>
+          <p>例として「Todoに見積ポイント <code>estimate_points</code> を追加する」場合です。画面から始めず、データの意味と契約から決めます。</p>
+          <div class="phase"><div class="phase-id">1</div><h3>仕様を1文にする</h3><p>「Todoは0〜100の整数の見積ポイントを任意で持ち、詳細で編集できる」。誰が編集できるか、未設定はnullか0かも決めます。</p></div>
+          <div class="phase"><div class="phase-id">2</div><h3>受入条件を例で書く</h3><p>未設定で作れる、5を保存して再読込後も5、-1や文字列は400、一覧表示は後回し、など。</p></div>
+          <div class="phase"><div class="phase-id">3</div><h3>DBとmigration</h3><p><code>Todos</code> に列を追加し、既存DBでも安全に追加されるmigrationを書く。バックアップから復元できることも確認。</p></div>
+          <div class="phase"><div class="phase-id">4</div><h3>型とDB関数</h3><p>server types、desktop db types、renderer types、Create/Update inputをそろえ、SQLのSELECT/INSERT/UPDATEを直す。</p></div>
+          <div class="phase"><div class="phase-id">5</div><h3>両方のtransport</h3><p>Electron IPCとWeb route/clientを左右対称に追加。サーバー側で0〜100の整数を検証。</p></div>
+          <div class="phase"><div class="phase-id">6</div><h3>UI</h3><p>TodoDetailへ入力欄を追加し、保存中・成功・失敗を表示。最小表示から始める。</p></div>
+          <div class="phase"><div class="phase-id">7</div><h3>検証</h3><p>型チェック、Webビルド、デスクトップビルド、手動受入条件、既存DB起動を確認。</p></div>
+          <h3>変更漏れチェック</h3>
+          <ul class="checklist"><li>schema / migration</li><li>server DB types / renderer types / desktop types</li><li>server DB function</li><li>server route + validation</li><li>web client</li><li>preload contract + IPC</li><li>React UI</li><li>WebとElectronの両方を検証</li><li>READMEまたはこの資料を更新</li></ul>
+        </section>
+
+        <section id="debug">
+          <span class="part-label">問題解決</span><h2>デバッグは層を一つずつ確認する</h2>
+          <div class="table-wrap"><table><thead><tr><th>症状</th><th>最初に見る場所</th><th>確認</th></tr></thead><tbody>
+            <tr><td>ボタンが反応しない</td><td>Console / React handler</td><td>onClickが呼ばれるか、例外がないか</td></tr>
+            <tr><td>通信が飛ばない</td><td>Network</td><td>handler内でawait前まで来ているか</td></tr>
+            <tr><td>404</td><td>URL・route登録</td><td><code>/api</code> prefix、HTTP method、Vite proxy</td></tr>
+            <tr><td>401</td><td>Cookie・Session</td><td>ログイン済みか、Cookie送信、期限</td></tr>
+            <tr><td>403</td><td>権限</td><td>admin/member、所有者ルール</td></tr>
+            <tr><td>400</td><td>Response JSON / server log</td><td>入力検証またはDB制約のメッセージ</td></tr>
+            <tr><td>200だが画面が古い</td><td>State更新・再取得</td><td><code>setTodos</code> または <code>loadTodos</code></td></tr>
+            <tr><td>再読込で消える</td><td>DB</td><td>INSERTしたか、別DBを見ていないか</td></tr>
+            <tr><td>他の人に反映されない</td><td>WebSocket</td><td>接続、broadcast scope、listener</td></tr>
+            <tr><td>片方のモードだけ壊れる</td><td>Api左右対称</td><td>IPC/HTTP、Node/Electron ABI、型コピー</td></tr>
+          </tbody></table></div>
+          <h3>問題の切り分け手順</h3>
+          <ol><li>再現手順を3行以内で固定する。</li><li>期待値と実際値を書く。</li><li>Console、Network、サーバーログの最初のエラーを保存。</li><li>同じAPIをブラウザ/RESTクライアントから単独で試す。</li><li>DBをSELECTし、保存前・保存後を比較。</li><li>原因を直したら、同じバグを捕まえるテストを追加。</li></ol>
+          <div class="callout tip"><span class="callout-title">AIへ質問するとき</span>「動きません」ではなく、対象ファイル、実行コマンド、期待した動作、実際の動作、完全なエラー、直前の変更を渡します。AIの提案も一度に小さく適用し、差分を読んでから実行します。</div>
+        </section>
+
+        <section id="test">
+          <span class="part-label">品質</span><h2>テストは金字塔ではなく安全柵</h2>
+          <div class="grid-4"><div class="card"><h3>型チェック</h3><p>引数・戻り値・nullをコンパイル前に確認。</p></div><div class="card"><h3>単体テスト</h3><p>日付計算、循環検出、入力検証など純粋なロジック。</p></div><div class="card"><h3>APIテスト</h3><p>認証、status code、JSON、DB更新を確認。</p></div><div class="card"><h3>E2E</h3><p>ログイン→追加→再読込→編集→削除をブラウザで確認。</p></div></div>
+          <h3>このアプリで優先すべきケース</h3>
+          <ul><li>依存関係の循環を拒否する。</li><li>先行日程変更が複数段の後続へ伝播する。</li><li>月末の繰り返し日付が不正にならない。</li><li>100%進捗で完了・次回繰り返し生成が一度だけ起きる。</li><li>一般ユーザーが管理者APIを呼ぶと403。</li><li>Session期限切れで401。</li><li>タイマーを二重開始できない。</li><li>既存DBから新バージョンを起動してmigrationが成功する。</li></ul>
+          <pre><code># 現行リポジトリで最低限行う確認
+npx tsc --noEmit -p web/tsconfig.json
+npm --prefix server run typecheck
+npm run build:web
+npm run build</code></pre>
+          <p class="small">現状のpackage scriptsには包括的な自動テストコマンドがないため、今後は日付・依存関係から小さな単体テストを導入する価値があります。</p>
+        </section>
+
+        <section id="security">
+          <span class="part-label">運用</span><h2>開発が終わってもWebアプリは完成ではない</h2>
+          <h3>社内LAN運用の最小チェック</h3>
+          <ul class="checklist"><li><code>server/.env</code> に初期管理者パスワード等を設定しGitへ入れない</li><li>サーバーPCの固定IPまたは名前解決を用意</li><li>Windows Firewallは必要なプライベートネットワークだけ許可</li><li>DBバックアップを定期取得し、復元を実演して確認</li><li>Node.jsと依存パッケージの更新手順を決める</li><li>サービスログの保存期間・確認担当を決める</li><li>退職・異動ユーザーを無効化する手順を決める</li></ul>
+          <h3>バックアップはコピーではなく復元まで</h3>
+          <p>SQLiteは単一ファイルで扱いやすい一方、稼働中の無計画なコピーは避けます。安全な停止またはSQLiteのbackup機構を使い、別フォルダで起動して内容を読めるか定期確認します。</p>
+          <h3>インターネット公開との差</h3>
+          <div class="table-wrap"><table><thead><tr><th>項目</th><th>社内LAN</th><th>インターネット公開</th></tr></thead><tbody><tr><td>通信</td><td>HTTPでも限定的に運用可能</td><td>HTTPS必須</td></tr><tr><td>入口</td><td>FirewallとLAN</td><td>Reverse proxy/WAF/rate limit</td></tr><tr><td>秘密</td><td>.envと端末権限</td><td>Secret managerを検討</td></tr><tr><td>監視</td><td>サービスログ中心</td><td>可用性・攻撃・エラー監視</td></tr><tr><td>DB</td><td>少人数SQLite</td><td>負荷次第でPostgreSQL等</td></tr></tbody></table></div>
+        </section>
+
+        <section id="csharp">
+          <span class="part-label">知識の橋渡し</span><h2>C#経験をTypeScript / Reactへ対応づける</h2>
+          <div class="table-wrap"><table><thead><tr><th>C# / ASP.NET Core</th><th>このアプリ</th><th>違い・注意</th></tr></thead><tbody>
+            <tr><td><code>class TodoDto</code></td><td><code>interface Todo</code></td><td>TSの型は実行時に消える。外部入力は別途検証が必要</td></tr>
+            <tr><td><code>Task&lt;T&gt;</code> / await</td><td><code>Promise&lt;T&gt;</code> / await</td><td>考え方は近い。例外とキャンセルの扱いは異なる</td></tr>
+            <tr><td>Controller action</td><td>Express route handler</td><td>属性より登録順とmiddlewareが重要</td></tr>
+            <tr><td>Middleware</td><td><code>app.use</code> / <code>requireAuth</code></td><td>リクエスト順に通る点は同じ</td></tr>
+            <tr><td>Repository / Service</td><td><code>server/src/db/*.ts</code></td><td>現行は薄いrouteから機能別DB関数を直接呼ぶ</td></tr>
+            <tr><td>Entity Framework migration</td><td><code>schema.ts</code> の手書きmigration</td><td>自動履歴でなく、起動時の冪等チェック</td></tr>
+            <tr><td>Razor Component / View</td><td>React Component</td><td>state変更に応じて再描画</td></tr>
+            <tr><td>Parameter / EventCallback</td><td>props / callback props</td><td>データ下向き、イベント上向き</td></tr>
+            <tr><td>DI Singleton scoped service</td><td>module singleton / Context</td><td>Node moduleとReact Contextは用途が違う</td></tr>
+            <tr><td>SignalR</td><td><code>ws</code> WebSocket</td><td>現行は低レベルで単純な通知方式</td></tr>
+          </tbody></table></div>
+          <h3>TypeScriptで特に注意すること</h3>
+          <ul><li><code>number</code> は整数型と浮動小数点型を分けない。整数制約は検証する。</li><li><code>null</code> と <code>undefined</code> は別。API、DB、フォームで規則を決める。</li><li><code>interface</code> は実行時のバリデーションではない。JSONは信用しない。</li><li>オブジェクト・配列は参照型。React stateを直接変更しない。</li><li>Node.jsの同期APIはサーバーイベントループを止める可能性がある。ただし小規模SQLiteで同期ライブラリを選ぶ設計も成立する。</li></ul>
+        </section>
+
+        <section id="study">
+          <span class="part-label">学習計画</span><h2>4週間の実践カリキュラム</h2>
+          <div class="grid-2">
+            <div class="card"><h3>1週目：ブラウザとReact</h3><ul><li>HTML/CSS/DevTools</li><li>JSX、state、props、event</li><li>メモリ内CRUD</li><li>Git commitを小さく作る</li></ul><p><strong>成果物：</strong>再読込で消えるTodo。</p></div>
+            <div class="card"><h3>2週目：APIとDB</h3><ul><li>HTTP/JSON/status code</li><li>Express route/middleware</li><li>SQLite、SQL、外部キー</li><li>縦切りCRUD</li></ul><p><strong>成果物：</strong>再起動しても残るTodo。</p></div>
+            <div class="card"><h3>3週目：この題材らしい機能</h3><ul><li>カテゴリ・サブタスク</li><li>日付→座標</li><li>読み取り専用ガント</li><li>タイマーと履歴</li></ul><p><strong>成果物：</strong>簡易ガントTodo。</p></div>
+            <div class="card"><h3>4週目：チーム運用</h3><ul><li>Session Cookie認証</li><li>担当者と権限</li><li>WebSocket通知</li><li>build、バックアップ、別PC接続</li></ul><p><strong>成果物：</strong>2人で使えるLANアプリ。</p></div>
+          </div>
+          <h3>毎日の進め方（60〜90分）</h3>
+          <ol><li>10分：昨日のコードを口頭で説明。</li><li>15分：今日の1概念を小さな例で試す。</li><li>40分：1つの受入条件だけ実装。</li><li>10分：DevTools/ログ/DBで実際の流れを観察。</li><li>10分：コミットし、「分かったこと・次の疑問」をメモ。</li></ol>
+          <h3>完成版コードの読解課題</h3>
+          <ol><li><code>todoGetAll</code> を検索し、UI→client→route→DBを紙に描く。</li><li>タスク追加時のJSONをNetworkで記録する。</li><li><code>Todos</code> の1行と <code>Todo</code> interfaceを比較する。</li><li><code>onDataChanged</code> の購読と解除を説明する。</li><li>依存A→B→Cの日付を変え、DB関数のどこが動くか予想する。</li><li>小さな表示項目を1つ追加し、両モードのチェックリストを通す。</li></ol>
+          <div class="callout tip"><span class="callout-title">教える側のコツ</span>「このコードを貼って」より、「ボタンを押したら最初にどの関数へ入ると思う？」「このJSONは誰が作った？」と質問し、本人に矢印を描いてもらいます。説明できれば、AI生成コードでも自分のコードになります。</div>
+        </section>
+
+        <section id="glossary">
+          <span class="part-label">付録</span><h2>初心者向け用語集</h2>
+          <div class="table-wrap"><table><thead><tr><th>用語</th><th>この資料での意味</th></tr></thead><tbody>
+            <tr><td>フロントエンド</td><td>ブラウザで動く画面側。</td></tr><tr><td>バックエンド</td><td>サーバーで動き、認証・ルール・DBを扱う側。</td></tr><tr><td>API</td><td>プログラム同士の呼び出し規約。ここでは主にHTTP API。</td></tr><tr><td>Endpoint</td><td><code>GET /api/todos</code> のようなメソッドとURLの組。</td></tr><tr><td>JSON</td><td>通信で使うテキスト形式のデータ。</td></tr><tr><td>Component</td><td>Reactの再利用可能な画面部品。</td></tr><tr><td>State</td><td>画面が現在覚えている値。</td></tr><tr><td>Props</td><td>親Componentから子へ渡す値・関数。</td></tr><tr><td>Hook</td><td><code>useState</code> や <code>useEffect</code> などReact機能へ接続する関数。</td></tr><tr><td>Middleware</td><td>routeの前後で共通処理する関数。認証やJSON解析など。</td></tr><tr><td>Schema</td><td>DBのテーブル・列・制約の設計。</td></tr><tr><td>Migration</td><td>既存データを保ってSchemaを新しくする処理。</td></tr><tr><td>Transaction</td><td>複数DB操作を一つの成功/失敗単位にする仕組み。</td></tr><tr><td>Cookie</td><td>ブラウザがサイトごとに保存・自動送信する小さな値。</td></tr><tr><td>Session</td><td>ログイン状態をサーバー側で識別する仕組み。</td></tr><tr><td>WebSocket</td><td>サーバーとブラウザの双方向・継続接続。</td></tr><tr><td>Vite</td><td>フロントの開発サーバーと本番ビルドを行う道具。</td></tr><tr><td>Electron</td><td>Web技術でデスクトップアプリを作る実行環境。</td></tr><tr><td>ABI</td><td>コンパイル済みネイティブ部品と実行環境の互換ルール。</td></tr><tr><td>冪等</td><td>同じ処理を何度実行しても結果が壊れない性質。</td></tr></tbody></table></div>
+          <h3>最終チェック：自分の言葉で答えられるか</h3>
+          <ul class="checklist"><li>ReactとExpressはそれぞれどこで動くか</li><li>タスク追加のJSONが通る全ファイル</li><li>再読込しても残る理由</li><li>未ログインのAPIが401になる場所</li><li>他ユーザーへ変更が伝わる仕組み</li><li>Electron版とWeb版が同じ画面を使える理由</li><li>依存関係の循環をDB層で防ぐ理由</li><li>新しいTodo項目を追加する変更箇所</li></ul>
+        </section>
+
+        <section>
+          <span class="part-label">まとめ</span><h2>作る順番を守れば、完成版は怖くない</h2>
+          <p class="lead">このアプリは多機能ですが、根は「入力 → API → DB → JSON → state → 再描画」です。まずタイトルだけのTodoでこの1本を自力でつなぎ、その後に日付、カテゴリ、ガント、認証、同期を一つずつ重ねます。</p>
+          <div class="grid-3"><div class="card center"><span class="number">1</span><h3>小さく通す</h3><p>1機能を全層で完成</p></div><div class="card center"><span class="number">2</span><h3>観察する</h3><p>Network・ログ・DBを見る</p></div><div class="card center"><span class="number">3</span><h3>説明する</h3><p>矢印と自分の言葉で語る</p></div></div>
+          <div class="callout"><span class="callout-title">最初の具体的な一歩</span>別フォルダにViteのReact + TypeScriptプロジェクトを作り、今日中に「再読込で消えるタイトルだけのTodo」を完成させてください。明日、ExpressのGET/POSTへつなぐ。この順番なら、AIは丸投げ先ではなく、理解を加速するペアプログラマーになります。</div>
+        </section>
+      </div>
+      <footer>ToDoガントアプリ実装（2026年8月時点）を基にした学習資料 — 単体HTML / 外部依存なし / 印刷対応</footer>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const bar = document.getElementById('readingProgress');
+      const links = [...document.querySelectorAll('.sidebar a[href^="#"]')];
+      const sections = links.map(link => document.querySelector(link.getAttribute('href'))).filter(Boolean);
+      const update = () => {
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        const ratio = max > 0 ? window.scrollY / max : 0;
+        bar.style.transform = `scaleX(${Math.min(1, Math.max(0, ratio))})`;
+        let current = sections[0];
+        for (const section of sections) {
+          if (section.getBoundingClientRect().top <= 120) current = section;
+        }
+        links.forEach(link => link.classList.toggle('active', current && link.getAttribute('href') === `#${current.id}`));
+      };
+      document.addEventListener('scroll', update, { passive: true });
+      window.addEventListener('resize', update);
+      update();
+    })();
+  </script>
+</body>
+</html>
