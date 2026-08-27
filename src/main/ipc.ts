@@ -36,6 +36,7 @@ import {
   getSubTasksByTodo,
   getAllSubTasks,
   getSubTasksForCalendar,
+  reorderSubTasks,
   createSubTask,
   updateSubTask,
   deleteSubTask,
@@ -81,11 +82,12 @@ export function registerIpcHandlers(
   }
 
   const handleMutation = <TArgs extends unknown[], TResult>(
-    scope: 'category' | 'todo' | 'subtask' | 'plan' | 'progress',
+    scope: 'category' | 'todo' | 'subtask' | 'plan' | 'progress' | Array<'category' | 'todo' | 'subtask' | 'plan' | 'progress'>,
     action: (...args: TArgs) => TResult
   ) => (_event: Electron.IpcMainInvokeEvent, ...args: TArgs): TResult => {
     const result = action(...args)
-    broadcastDataChange(scope)
+    const scopes = Array.isArray(scope) ? scope : [scope]
+    scopes.forEach(broadcastDataChange)
     return result
   }
 
@@ -113,8 +115,9 @@ export function registerIpcHandlers(
   ipcMain.handle('subtask:getByTodo', (_, todoId: string) => getSubTasksByTodo(todoId))
   ipcMain.handle('subtask:getAll', () => getAllSubTasks())
   ipcMain.handle('subtask:getForCalendar', () => getSubTasksForCalendar())
-  ipcMain.handle('subtask:create', handleMutation('subtask', (todoId: string, data: CreateSubTaskInput) => createSubTask(todoId, data)))
-  ipcMain.handle('subtask:update', handleMutation('subtask', (id: string, data: UpdateSubTaskInput) => updateSubTask(id, data)))
+  ipcMain.handle('subtask:reorder', handleMutation('subtask', (todoId: string, orderedIds: string[]) => reorderSubTasks(todoId, orderedIds)))
+  ipcMain.handle('subtask:create', handleMutation(['subtask', 'todo'], (todoId: string, data: CreateSubTaskInput) => createSubTask(todoId, data)))
+  ipcMain.handle('subtask:update', handleMutation(['subtask', 'todo'], (id: string, data: UpdateSubTaskInput) => updateSubTask(id, data)))
   ipcMain.handle('subtask:delete', handleMutation('subtask', (id: string) => deleteSubTask(id)))
 
   // Timer

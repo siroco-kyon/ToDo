@@ -255,6 +255,78 @@ http://192.168.1.50:4577
 
 ---
 
+## 3.6 既に動いているサーバーを更新する
+
+更新時に置き換える実行物は、基本的に次の2か所です。
+
+| 置き換えるもの | 内容 |
+| --- | --- |
+| `server\src\` | API、DB処理、通知などのサーバープログラム |
+| `dist-web\` | `npm run build:web` で生成したブラウザ画面。ハッシュ付きファイルがあるため、フォルダ単位で丸ごと置き換える |
+
+次のものは運用データやサーバー固有設定なので、**上書き・削除しません**。
+
+- `server\data\`（SQLiteデータベース）
+- `server\.env`（ポート、データ保存先、初期管理者設定など）
+- `server\node_modules\`（サーバーPCでインストールした依存）
+- `server\service\daemon\`（サービスラッパーが生成した実行物）
+
+今回の機能追加ではDBスキーマと依存パッケージを変更していないため、サービスの再登録や `npm install` は不要です。`server\src\` と `dist-web\` を更新してサービスを再起動すれば反映されます。
+
+### 方法A：サーバーPCでGit更新・ビルドする
+
+ルートの依存パッケージがサーバーPCにも入っている場合の手順です。管理者PowerShellで実行します。
+
+```powershell
+cd D:\Github\ToDo
+Stop-Service TodoTeamServer
+
+# 停止中にDBをバックアップする
+$backupDir = "D:\TodoBackup\$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+New-Item -ItemType Directory -Path $backupDir -Force
+Copy-Item server\data\todo.db $backupDir
+
+git pull --ff-only origin main
+npm run build:web
+
+Start-Service TodoTeamServer
+Invoke-RestMethod http://localhost:4577/api/health
+```
+
+最後のコマンドで正常なレスポンスが返れば起動確認は完了です。ブラウザは `Ctrl + F5` で再読み込みしてください。
+
+> `TODO_DATA_DIR` を `.env` で変更している場合、バックアップ元は `server\data\todo.db` ではなく、指定した保存先の `todo.db` に置き換えてください。
+
+依存パッケージが変更された更新では、ロックファイルに応じて追加で次を実行します。
+
+```powershell
+# server\package-lock.json が変わった場合
+npm --prefix server ci
+
+# ルート package-lock.json が変わり、サーバーPCでWeb画面をビルドする場合
+npm ci
+```
+
+### 方法B：開発PCでビルドして成果物をコピーする
+
+サーバーPCへルートのElectron／フロント依存を入れたくない場合はこちらが軽量です。
+
+1. 開発PCのリポジトリで `npm run build:web` を実行する。
+2. サーバーPCで `Stop-Service TodoTeamServer` を実行する。
+3. 停止中にサーバーPCの `todo.db` をバックアップする。
+4. 開発PCの `server\src\` で、サーバーPCの `server\src\` を置き換える。
+5. 開発PCの `dist-web\` で、サーバーPCの `dist-web\` を**フォルダごと**置き換える。
+6. サーバーPCで `Start-Service TodoTeamServer` を実行する。
+7. `Invoke-RestMethod http://localhost:4577/api/health` とブラウザの `Ctrl + F5` で確認する。
+
+`dist-web\assets\` 内はファイル名がビルドごとに変わります。古いファイルを残した部分コピーではなく、必ず `dist-web\` 全体を置き換えてください。
+
+### 問題が起きた場合の戻し方
+
+サービスを停止し、更新前に退避した `server\src\` と `dist-web\` を戻してからサービスを開始します。今回の更新にはDBマイグレーションがないため、通常はDBを戻す必要はありません。データ自体に問題がある場合だけ、サービス停止中にバックアップした `todo.db` を復元してください。
+
+---
+
 ## 4. 管理者アカウントと初回パスワード
 
 データベースにユーザーが 1 人もいないとき（＝いちばん最初の起動時）だけ、

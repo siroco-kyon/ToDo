@@ -4,6 +4,7 @@ import type {
   ProgressNote,
   ProgressNoteComment,
   ProgressNoteReaction,
+  ProgressNoteReactionActor,
   ProgressDigest,
   ProgressDigestComment,
   ProgressDigestCompletedTodo,
@@ -55,6 +56,18 @@ function hydrateNotes(notes: ProgressNote[], currentUserId?: string | null): Pro
     )
     .all(actorKey(currentUserId), ...noteIds) as Array<ProgressNoteReaction & { note_id: string }>
 
+  const noteReactorRows = db
+    .prepare(
+      `SELECT pr.note_id, pr.emoji, pr.user_id,
+              COALESCE(u.display_name, '不明なユーザー') AS display_name,
+              u.color
+       FROM ProgressNoteReactions pr
+       LEFT JOIN Users u ON pr.user_id = u.id
+       WHERE pr.note_id IN (${placeholders})
+       ORDER BY pr.created_at ASC`
+    )
+    .all(...noteIds) as Array<ProgressNoteReactionActor & { note_id: string; emoji: string }>
+
   const commentIds = commentRows.map((row) => row.id)
   const commentReactionRows = commentIds.length === 0 ? [] : db
     .prepare(
@@ -67,12 +80,43 @@ function hydrateNotes(notes: ProgressNote[], currentUserId?: string | null): Pro
     )
     .all(actorKey(currentUserId), ...commentIds) as Array<ProgressNoteReaction & { comment_id: string }>
 
+  const commentReactorRows = commentIds.length === 0 ? [] : db
+    .prepare(
+      `SELECT pr.comment_id, pr.emoji, pr.user_id,
+              COALESCE(u.display_name, '不明なユーザー') AS display_name,
+              u.color
+       FROM ProgressCommentReactions pr
+       LEFT JOIN Users u ON pr.user_id = u.id
+       WHERE pr.comment_id IN (${commentIds.map(() => '?').join(', ')})
+       ORDER BY pr.created_at ASC`
+    )
+    .all(...commentIds) as Array<ProgressNoteReactionActor & { comment_id: string; emoji: string }>
+
+  const noteReactorsByReaction = new Map<string, ProgressNoteReactionActor[]>()
+  for (const row of noteReactorRows) {
+    const key = `${row.note_id}\u0000${row.emoji}`
+    const reactor = { user_id: row.user_id, display_name: row.display_name, color: row.color }
+    const list = noteReactorsByReaction.get(key)
+    if (list) list.push(reactor)
+    else noteReactorsByReaction.set(key, [reactor])
+  }
+
+  const commentReactorsByReaction = new Map<string, ProgressNoteReactionActor[]>()
+  for (const row of commentReactorRows) {
+    const key = `${row.comment_id}\u0000${row.emoji}`
+    const reactor = { user_id: row.user_id, display_name: row.display_name, color: row.color }
+    const list = commentReactorsByReaction.get(key)
+    if (list) list.push(reactor)
+    else commentReactorsByReaction.set(key, [reactor])
+  }
+
   const commentReactionsByComment = new Map<string, ProgressNoteReaction[]>()
   for (const row of commentReactionRows) {
     const reaction: ProgressNoteReaction = {
       emoji: row.emoji,
       count: Number(row.count),
-      reacted_by_me: Boolean(row.reacted_by_me)
+      reacted_by_me: Boolean(row.reacted_by_me),
+      reactors: commentReactorsByReaction.get(`${row.comment_id}\u0000${row.emoji}`) ?? []
     }
     const list = commentReactionsByComment.get(row.comment_id)
     if (list) list.push(reaction)
@@ -101,7 +145,8 @@ function hydrateNotes(notes: ProgressNote[], currentUserId?: string | null): Pro
     const reaction: ProgressNoteReaction = {
       emoji: row.emoji,
       count: Number(row.count),
-      reacted_by_me: Boolean(row.reacted_by_me)
+      reacted_by_me: Boolean(row.reacted_by_me),
+      reactors: noteReactorsByReaction.get(`${row.note_id}\u0000${row.emoji}`) ?? []
     }
     const list = reactionsByNote.get(row.note_id)
     if (list) list.push(reaction)

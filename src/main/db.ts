@@ -555,19 +555,38 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
   db.prepare(`UPDATE Todos SET ${fields.join(', ')} WHERE id = ?`).run(...values)
 }
 
+function getMaxSubTaskDueDate(todoId: string): string | null {
+  const row = db.prepare(
+    'SELECT MAX(due_date) AS max_due_date FROM SubTasks WHERE todo_id = ? AND due_date IS NOT NULL'
+  ).get(todoId) as { max_due_date: string | null }
+  return normalizeDateKey(row.max_due_date)
+}
+
+function keepTodoDueDateAfterSubTasks(id: string, data: UpdateTodoInput): UpdateTodoInput {
+  if (data.due_date === undefined) return data
+  const maxSubTaskDueDate = getMaxSubTaskDueDate(id)
+  const requestedDueDate = normalizeDateKey(data.due_date)
+  if (!maxSubTaskDueDate || (requestedDueDate && requestedDueDate >= maxSubTaskDueDate)) return data
+  return { ...data, due_date: maxSubTaskDueDate }
+}
+
 function shiftTodoToStart(todoId: string, nextStartDate: string, updatedAt: string): TodoBar {
   const current = getTodoById(todoId)
   const currentBar = getNormalizedTodoBar(current)
 
   if (!currentBar) {
-    applyTodoUpdate(todoId, { start_date: nextStartDate, due_date: nextStartDate }, updatedAt)
-    return { startDate: nextStartDate, endDate: nextStartDate }
+    const maxSubTaskDueDate = getMaxSubTaskDueDate(todoId)
+    const nextEndDate = maxSubTaskDueDate && maxSubTaskDueDate > nextStartDate ? maxSubTaskDueDate : nextStartDate
+    applyTodoUpdate(todoId, { start_date: nextStartDate, due_date: nextEndDate }, updatedAt)
+    return { startDate: nextStartDate, endDate: nextEndDate }
   }
 
   if (currentBar.startDate === nextStartDate) return currentBar
 
   const durationDays = getTodoDurationDays(current)
-  const nextEndDate = addDays(nextStartDate, durationDays)
+  const calculatedEndDate = addDays(nextStartDate, durationDays)
+  const maxSubTaskDueDate = getMaxSubTaskDueDate(todoId)
+  const nextEndDate = maxSubTaskDueDate && maxSubTaskDueDate > calculatedEndDate ? maxSubTaskDueDate : calculatedEndDate
   applyTodoUpdate(todoId, { start_date: nextStartDate, due_date: nextEndDate }, updatedAt)
   return { startDate: nextStartDate, endDate: nextEndDate }
 }
@@ -761,8 +780,9 @@ function spawnNextRecurrence(source: Todo): void {
 export function updateTodo(id: string, data: UpdateTodoInput): Todo {
   const now = new Date().toISOString()
   const before = getTodoById(id)
+  const constrainedData = keepTodoDueDateAfterSubTasks(id, data)
   db.transaction(() => {
-    applyTodoUpdate(id, data, now)
+    applyTodoUpdate(id, constrainedData, now)
     resolveDependencyCascade(id, now)
     const updated = getTodoById(id)
     recordTodoChanges(before, updated, now)
@@ -773,15 +793,15 @@ export function updateTodo(id: string, data: UpdateTodoInput): Todo {
   return getTodoById(id)
 }
 
-function syncTodoDueDateWithSubTask(todoId: string, subTaskDueDate: string | null): void {
-  const normalizedSubTaskDueDate = normalizeDateKey(subTaskDueDate)
-  if (!normalizedSubTaskDueDate) return
+function syncTodoDueDateWithSubTasks(todoId: string): void {
+  const maxSubTaskDueDate = getMaxSubTaskDueDate(todoId)
+  if (!maxSubTaskDueDate) return
 
   const todo = getTodoById(todoId)
   const normalizedTodoDueDate = normalizeDateKey(todo.due_date)
-  if (normalizedTodoDueDate && normalizedTodoDueDate >= normalizedSubTaskDueDate) return
+  if (normalizedTodoDueDate && normalizedTodoDueDate >= maxSubTaskDueDate) return
 
-  updateTodo(todoId, { due_date: normalizedSubTaskDueDate })
+  updateTodo(todoId, { due_date: maxSubTaskDueDate })
 }
 
 export function archiveTodo(id: string): void {
@@ -1041,6 +1061,26 @@ export function getSubTasksForCalendar(): CalendarSubTask[] {
   ).all() as CalendarSubTask[]
 }
 
+export function reorderSubTasks(todoId: string, orderedIds: string[]): void {
+  const currentIds = (db.prepare(
+    'SELECT id FROM SubTasks WHERE todo_id = ? ORDER BY sort_order ASC, created_at ASC'
+  ).all(todoId) as Array<{ id: string }>).map((row) => row.id)
+  const uniqueIds = new Set(orderedIds)
+
+  if (
+    orderedIds.length !== currentIds.length
+    || uniqueIds.size !== orderedIds.length
+    || currentIds.some((id) => !uniqueIds.has(id))
+  ) {
+    throw new Error('サブタスクの並び順が最新ではありません。再読み込みしてからやり直してください')
+  }
+
+  const update = db.prepare('UPDATE SubTasks SET sort_order = ? WHERE id = ? AND todo_id = ?')
+  db.transaction(() => {
+    orderedIds.forEach((id, index) => update.run(index, id, todoId))
+  })()
+}
+
 export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask {
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
@@ -1053,7 +1093,7 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
     'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now)
   const created = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
-  syncTodoDueDateWithSubTask(todoId, created.due_date)
+  syncTodoDueDateWithSubTasks(todoId)
   return created
 }
 
@@ -1091,7 +1131,7 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
     db.prepare('UPDATE SubTasks SET progress = ?, done = ?, completed_at = ? WHERE id = ?').run(nextProgress, nextDone ? 1 : 0, nextCompletedAt, id)
   }
   const updated = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
-  syncTodoDueDateWithSubTask(updated.todo_id, updated.due_date)
+  syncTodoDueDateWithSubTasks(updated.todo_id)
   return updated
 }
 
@@ -1536,7 +1576,8 @@ function hydrateProgressNotes(notes: ProgressNote[]): ProgressNote[] {
     const reaction: ProgressNoteReaction = {
       emoji: row.emoji,
       count: Number(row.count),
-      reacted_by_me: Boolean(row.reacted_by_me)
+      reacted_by_me: Boolean(row.reacted_by_me),
+      reactors: Number(row.count) > 0 ? [{ user_id: null, display_name: '自分', color: null }] : []
     }
     const list = commentReactionsByComment.get(row.comment_id)
     if (list) list.push(reaction)
@@ -1565,7 +1606,8 @@ function hydrateProgressNotes(notes: ProgressNote[]): ProgressNote[] {
     const reaction: ProgressNoteReaction = {
       emoji: row.emoji,
       count: Number(row.count),
-      reacted_by_me: Boolean(row.reacted_by_me)
+      reacted_by_me: Boolean(row.reacted_by_me),
+      reactors: Number(row.count) > 0 ? [{ user_id: null, display_name: '自分', color: null }] : []
     }
     const list = reactionsByNote.get(row.note_id)
     if (list) list.push(reaction)
@@ -1960,6 +2002,13 @@ export interface ProgressNoteReaction {
   emoji: string
   count: number
   reacted_by_me: boolean
+  reactors: ProgressNoteReactionActor[]
+}
+
+export interface ProgressNoteReactionActor {
+  user_id: string | null
+  display_name: string
+  color: string | null
 }
 
 export interface ProgressDigestTodo {

@@ -148,19 +148,38 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
   getDb().prepare(`UPDATE Todos SET ${fields.join(', ')} WHERE id = ?`).run(...values)
 }
 
+function getMaxSubTaskDueDate(todoId: string): string | null {
+  const row = getDb().prepare(
+    'SELECT MAX(due_date) AS max_due_date FROM SubTasks WHERE todo_id = ? AND due_date IS NOT NULL'
+  ).get(todoId) as { max_due_date: string | null }
+  return normalizeDateKey(row.max_due_date)
+}
+
+function keepTodoDueDateAfterSubTasks(id: string, data: UpdateTodoInput): UpdateTodoInput {
+  if (data.due_date === undefined) return data
+  const maxSubTaskDueDate = getMaxSubTaskDueDate(id)
+  const requestedDueDate = normalizeDateKey(data.due_date)
+  if (!maxSubTaskDueDate || (requestedDueDate && requestedDueDate >= maxSubTaskDueDate)) return data
+  return { ...data, due_date: maxSubTaskDueDate }
+}
+
 function shiftTodoToStart(todoId: string, nextStartDate: string, updatedAt: string): TodoBar {
   const current = getTodoById(todoId)
   const currentBar = getNormalizedTodoBar(current)
 
   if (!currentBar) {
-    applyTodoUpdate(todoId, { start_date: nextStartDate, due_date: nextStartDate }, updatedAt)
-    return { startDate: nextStartDate, endDate: nextStartDate }
+    const maxSubTaskDueDate = getMaxSubTaskDueDate(todoId)
+    const nextEndDate = maxSubTaskDueDate && maxSubTaskDueDate > nextStartDate ? maxSubTaskDueDate : nextStartDate
+    applyTodoUpdate(todoId, { start_date: nextStartDate, due_date: nextEndDate }, updatedAt)
+    return { startDate: nextStartDate, endDate: nextEndDate }
   }
 
   if (currentBar.startDate === nextStartDate) return currentBar
 
   const durationDays = getTodoDurationDays(current)
-  const nextEndDate = addDays(nextStartDate, durationDays)
+  const calculatedEndDate = addDays(nextStartDate, durationDays)
+  const maxSubTaskDueDate = getMaxSubTaskDueDate(todoId)
+  const nextEndDate = maxSubTaskDueDate && maxSubTaskDueDate > calculatedEndDate ? maxSubTaskDueDate : calculatedEndDate
   applyTodoUpdate(todoId, { start_date: nextStartDate, due_date: nextEndDate }, updatedAt)
   return { startDate: nextStartDate, endDate: nextEndDate }
 }
@@ -364,10 +383,11 @@ export function updateTodo(id: string, data: UpdateTodoInput, changedByUserId: s
   const db = getDb()
   const now = new Date().toISOString()
   const before = getTodoById(id)
+  const constrainedData = keepTodoDueDateAfterSubTasks(id, data)
   db.transaction(() => {
-    applyTodoUpdate(id, data, now)
-    if (data.co_assignee_ids !== undefined) {
-      replaceCoAssignees(id, data.co_assignee_ids, now)
+    applyTodoUpdate(id, constrainedData, now)
+    if (constrainedData.co_assignee_ids !== undefined) {
+      replaceCoAssignees(id, constrainedData.co_assignee_ids, now)
     }
     resolveDependencyCascade(id, now)
     const updated = getTodoById(id)
@@ -379,15 +399,15 @@ export function updateTodo(id: string, data: UpdateTodoInput, changedByUserId: s
   return getTodoById(id)
 }
 
-export function syncTodoDueDateWithSubTask(todoId: string, subTaskDueDate: string | null): void {
-  const normalizedSubTaskDueDate = normalizeDateKey(subTaskDueDate)
-  if (!normalizedSubTaskDueDate) return
+export function syncTodoDueDateWithSubTasks(todoId: string): void {
+  const maxSubTaskDueDate = getMaxSubTaskDueDate(todoId)
+  if (!maxSubTaskDueDate) return
 
   const todo = getTodoById(todoId)
   const normalizedTodoDueDate = normalizeDateKey(todo.due_date)
-  if (normalizedTodoDueDate && normalizedTodoDueDate >= normalizedSubTaskDueDate) return
+  if (normalizedTodoDueDate && normalizedTodoDueDate >= maxSubTaskDueDate) return
 
-  updateTodo(todoId, { due_date: normalizedSubTaskDueDate })
+  updateTodo(todoId, { due_date: maxSubTaskDueDate })
 }
 
 export function archiveTodo(id: string, changedByUserId: string | null = null): void {

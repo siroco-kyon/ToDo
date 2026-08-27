@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { getDb } from './connection'
 import { clampProgress, normalizeDateKey } from './helpers'
-import { syncTodoDueDateWithSubTask } from './todos'
+import { syncTodoDueDateWithSubTasks } from './todos'
 import type { CalendarSubTask, CreateSubTaskInput, SubTask, UpdateSubTaskInput } from './types'
 
 const SUBTASK_SELECT = `
@@ -43,6 +43,27 @@ export function getSubTasksForCalendar(): CalendarSubTask[] {
     .all() as CalendarSubTask[]
 }
 
+export function reorderSubTasks(todoId: string, orderedIds: string[]): void {
+  const db = getDb()
+  const currentIds = (db.prepare(
+    'SELECT id FROM SubTasks WHERE todo_id = ? ORDER BY sort_order ASC, created_at ASC'
+  ).all(todoId) as Array<{ id: string }>).map((row) => row.id)
+  const uniqueIds = new Set(orderedIds)
+
+  if (
+    orderedIds.length !== currentIds.length
+    || uniqueIds.size !== orderedIds.length
+    || currentIds.some((id) => !uniqueIds.has(id))
+  ) {
+    throw new Error('サブタスクの並び順が最新ではありません。再読み込みしてからやり直してください')
+  }
+
+  const update = db.prepare('UPDATE SubTasks SET sort_order = ? WHERE id = ? AND todo_id = ?')
+  db.transaction(() => {
+    orderedIds.forEach((id, index) => update.run(index, id, todoId))
+  })()
+}
+
 export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask {
   const db = getDb()
   const id = crypto.randomUUID()
@@ -56,7 +77,7 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
     'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now)
   const created = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
-  syncTodoDueDateWithSubTask(todoId, created.due_date)
+  syncTodoDueDateWithSubTasks(todoId)
   return created
 }
 
@@ -95,7 +116,7 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
     db.prepare('UPDATE SubTasks SET progress = ?, done = ?, completed_at = ? WHERE id = ?').run(nextProgress, nextDone ? 1 : 0, nextCompletedAt, id)
   }
   const updated = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
-  syncTodoDueDateWithSubTask(updated.todo_id, updated.due_date)
+  syncTodoDueDateWithSubTasks(updated.todo_id)
   return updated
 }
 

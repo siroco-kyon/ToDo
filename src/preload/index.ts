@@ -119,6 +119,8 @@ const api = {
   subtaskGetByTodo: (todoId: string): Promise<SubTask[]> => ipcRenderer.invoke('subtask:getByTodo', todoId),
   subtaskGetAll: (): Promise<SubTask[]> => ipcRenderer.invoke('subtask:getAll'),
   subtaskGetForCalendar: (): Promise<CalendarSubTask[]> => ipcRenderer.invoke('subtask:getForCalendar'),
+  subtaskReorder: (todoId: string, orderedIds: string[]): Promise<void> =>
+    ipcRenderer.invoke('subtask:reorder', todoId, orderedIds),
   subtaskCreate: (todoId: string, data: CreateSubTaskInput): Promise<SubTask> =>
     ipcRenderer.invoke('subtask:create', todoId, data),
   subtaskUpdate: (id: string, data: UpdateSubTaskInput): Promise<SubTask> =>

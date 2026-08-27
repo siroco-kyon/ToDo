@@ -106,14 +106,18 @@ function patchNote(notes: ProgressNote[], updated: ProgressNote): ProgressNote[]
 }
 
 function normalizeComment(comment: ProgressNoteComment): ProgressNoteComment {
-  return { ...comment, replies: (comment.replies ?? []).map(normalizeComment), reactions: comment.reactions ?? [] }
+  return {
+    ...comment,
+    replies: (comment.replies ?? []).map(normalizeComment),
+    reactions: (comment.reactions ?? []).map((reaction) => ({ ...reaction, reactors: reaction.reactors ?? [] }))
+  }
 }
 
 function normalizeNote(note: ProgressNote): ProgressNote {
   return {
     ...note,
     comments: (note.comments ?? []).map(normalizeComment),
-    reactions: note.reactions ?? []
+    reactions: (note.reactions ?? []).map((reaction) => ({ ...reaction, reactors: reaction.reactors ?? [] }))
   }
 }
 
@@ -123,6 +127,64 @@ function countComments(comments: ProgressNoteComment[] = []): number {
 
 function getLikeReaction(entity: { reactions: ProgressNoteReaction[] }) {
   return entity.reactions.find((reaction) => reaction.emoji === LIKE_EMOJI)
+}
+
+function LikeButton({ reaction, onClick }: {
+  reaction?: ProgressNoteReaction
+  onClick: () => void
+}): React.JSX.Element {
+  const [tooltipVisible, setTooltipVisible] = useState(false)
+  const reactors = reaction?.reactors ?? []
+
+  return (
+    <span
+      style={{ position: 'relative', display: 'inline-flex' }}
+      onMouseEnter={() => setTooltipVisible(true)}
+      onMouseLeave={() => setTooltipVisible(false)}
+      onFocus={() => setTooltipVisible(true)}
+      onBlur={() => setTooltipVisible(false)}
+    >
+      <button
+        onClick={onClick}
+        style={likeButtonStyle(Boolean(reaction?.reacted_by_me))}
+        aria-label={reactors.length > 0 ? `いいね: ${reactors.map((reactor) => reactor.display_name).join('、')}` : 'いいね'}
+      >
+        {LIKE_EMOJI} {reaction?.count ?? 0}
+      </button>
+      {tooltipVisible && reactors.length > 0 && (
+        <span
+          role="tooltip"
+          style={{
+            position: 'absolute',
+            left: 0,
+            bottom: 'calc(100% + 7px)',
+            zIndex: 30,
+            minWidth: 130,
+            maxWidth: 240,
+            maxHeight: 180,
+            overflowY: 'auto',
+            padding: '7px 9px',
+            borderRadius: 7,
+            border: '1px solid #334155',
+            background: '#0f172a',
+            color: '#e2e8f0',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.38)',
+            fontSize: '0.72rem',
+            lineHeight: 1.5,
+            whiteSpace: 'normal'
+          }}
+        >
+          <strong style={{ display: 'block', marginBottom: 3, color: '#f8fafc' }}>いいねした人</strong>
+          {reactors.map((reactor, index) => (
+            <span key={`${reactor.user_id ?? 'desktop'}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: reactor.color ?? '#64748b', flexShrink: 0 }} />
+              <span>{reactor.display_name}</span>
+            </span>
+          ))}
+        </span>
+      )}
+    </span>
+  )
 }
 
 function flattenReplies(comments: ProgressNoteComment[] = []): ProgressNoteComment[] {
@@ -458,9 +520,7 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
 
           {!editingThisComment && (
             <div style={commentActionRowStyle}>
-              <button onClick={() => void handleToggleCommentReaction(comment.id)} style={likeButtonStyle(Boolean(getLikeReaction(comment)?.reacted_by_me))}>
-                {LIKE_EMOJI} {getLikeReaction(comment)?.count ?? 0}
-              </button>
+              <LikeButton reaction={getLikeReaction(comment)} onClick={() => void handleToggleCommentReaction(comment.id)} />
               <button onClick={() => setReplyingToCommentId(comment.id)} style={inlineActionStyle}>返信</button>
               {replies.length > 0 && <span style={actionMetaStyle}>返信 {countComments(replies)}</span>}
               {canModifyComment(comment) && (
@@ -602,9 +662,7 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
 
                   {!editingNote && (
                     <div style={postActionRowStyle}>
-                      <button onClick={() => void handleToggleReaction(note.id)} style={likeButtonStyle(Boolean(getLikeReaction(note)?.reacted_by_me))}>
-                        {LIKE_EMOJI} {getLikeReaction(note)?.count ?? 0}
-                      </button>
+                      <LikeButton reaction={getLikeReaction(note)} onClick={() => void handleToggleReaction(note.id)} />
                       <span style={actionMetaStyle}>コメント {commentCount}</span>
                       <button onClick={() => setCommentingOnNoteId(note.id)} style={inlineActionStyle}>返信</button>
                       {canModifyNote(note) && (

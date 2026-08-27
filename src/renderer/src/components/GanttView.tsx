@@ -26,6 +26,7 @@ interface DatedSubTask {
 interface ChartGroup {
   todo: Todo
   todoBar: TodoBar | null
+  allSubTasks: SubTask[]
   datedSubTasks: DatedSubTask[]
   undatedSubTaskCount: number
   subTaskCount: number
@@ -305,6 +306,7 @@ interface PersistedGanttViewSettings {
   timeScale: TimeScale
   statusFilter: StatusFilter
   showSubtasks: boolean
+  showOutOfRange: boolean
   showUnscheduled: boolean
   showScheduleSignals: boolean
   showBaseline: boolean
@@ -398,6 +400,7 @@ function defaultGanttViewSettings(): PersistedGanttViewSettings {
     timeScale: 'day',
     statusFilter: 'active',
     showSubtasks: true,
+    showOutOfRange: true,
     showUnscheduled: true,
     showScheduleSignals: true,
     showBaseline: true,
@@ -429,6 +432,7 @@ function loadGanttViewSettings(): PersistedGanttViewSettings {
         ? parsed.statusFilter
         : defaults.statusFilter,
       showSubtasks: typeof parsed.showSubtasks === 'boolean' ? parsed.showSubtasks : defaults.showSubtasks,
+      showOutOfRange: typeof parsed.showOutOfRange === 'boolean' ? parsed.showOutOfRange : defaults.showOutOfRange,
       showUnscheduled: typeof parsed.showUnscheduled === 'boolean' ? parsed.showUnscheduled : defaults.showUnscheduled,
       showScheduleSignals: typeof parsed.showScheduleSignals === 'boolean'
         ? parsed.showScheduleSignals
@@ -588,6 +592,17 @@ function getDraftSubTaskBar(draft: NewSubTaskDraft): TodoBar | null {
 
 function intersectsRange(startDate: string, endDate: string, rangeStart: string, rangeEnd: string): boolean {
   return startDate <= rangeEnd && endDate >= rangeStart
+}
+
+function matchesStatusFilter(done: boolean, statusFilter: StatusFilter): boolean {
+  if (statusFilter === 'all') return true
+  return statusFilter === 'done' ? done : !done
+}
+
+function outOfRangeDirection(bar: TodoBar, rangeStart: string, rangeEnd: string): 'before' | 'after' | null {
+  if (bar.endDate < rangeStart) return 'before'
+  if (bar.startDate > rangeEnd) return 'after'
+  return null
 }
 
 function calculateExpectedProgress(bar: TodoBar, todayKey: string): number {
@@ -845,6 +860,7 @@ export function GanttView({
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialSettings.statusFilter)
   const [showSubtasks, setShowSubtasks] = useState(initialSettings.showSubtasks)
+  const [showOutOfRange, setShowOutOfRange] = useState(initialSettings.showOutOfRange)
   const [showUnscheduled, setShowUnscheduled] = useState(initialSettings.showUnscheduled)
   const [showScheduleSignals, setShowScheduleSignals] = useState(initialSettings.showScheduleSignals)
   const [showBaseline, setShowBaseline] = useState(initialSettings.showBaseline)
@@ -865,7 +881,10 @@ export function GanttView({
   const [isReorderMode, setIsReorderMode] = useState(false)
   const [draggingTodoId, setDraggingTodoId] = useState<string | null>(null)
   const [dragOverTodoId, setDragOverTodoId] = useState<string | null>(null)
+  const [draggingSubTaskId, setDraggingSubTaskId] = useState<string | null>(null)
+  const [dragOverSubTaskId, setDragOverSubTaskId] = useState<string | null>(null)
   const [reorderPending, setReorderPending] = useState(false)
+  const [reorderFeedback, setReorderFeedback] = useState<string | null>(null)
   const [dependencyLayoutVersion, setDependencyLayoutVersion] = useState(0)
   const [scrollStateReady, setScrollStateReady] = useState(false)
   const [leftColumnWidths, setLeftColumnWidths] = useState<GanttLeftColumnWidths>(() => loadGanttLeftColumnWidths())
@@ -962,6 +981,7 @@ export function GanttView({
       timeScale,
       statusFilter,
       showSubtasks,
+      showOutOfRange,
       showUnscheduled,
       showScheduleSignals,
       showBaseline,
@@ -984,6 +1004,7 @@ export function GanttView({
     showBaseline,
     showScheduleSignals,
     showSubtasks,
+    showOutOfRange,
     showUnscheduled,
     statusFilter,
     timeScale,
@@ -1412,12 +1433,9 @@ export function GanttView({
     }
 
     return ganttTodos.map((todo) => {
-      const todoSubTasks = (subTasksByTodo.get(todo.id) ?? []).slice().sort((a, b) => {
-        const aAnchor = (a.start_date ?? a.due_date) ?? '9999-12-31'
-        const bAnchor = (b.start_date ?? b.due_date) ?? '9999-12-31'
-        if (aAnchor !== bAnchor) return aAnchor.localeCompare(bAnchor)
-        return (a.sort_order ?? 0) - (b.sort_order ?? 0)
-      })
+      const todoSubTasks = (subTasksByTodo.get(todo.id) ?? []).slice().sort((a, b) =>
+        (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.created_at.localeCompare(b.created_at)
+      )
 
       const todoBar = getTodoBar(todo)
       const datedSubTasks = todoSubTasks
@@ -1434,6 +1452,7 @@ export function GanttView({
       return {
         todo,
         todoBar,
+        allSubTasks: todoSubTasks,
         datedSubTasks,
         undatedSubTaskCount: todoSubTasks.length - datedSubTasks.length,
         subTaskCount: todoSubTasks.length,
@@ -1442,16 +1461,32 @@ export function GanttView({
     })
   }, [ganttTodos, subTasks])
 
-  // 状態フィルターはタスク単位にだけ適用する。完了済みサブタスクを行ごと消すと
-  // 進捗の足跡が追えなくなるため、親タスクが表示される限りサブタスクは残す
-  // （完了サブタスクは緑のバーで描画される）。
   const filteredGroups = useMemo(() => {
-    return groups.filter((group) => {
-      if (statusFilter === 'done' && group.todo.status !== 'done') return false
-      if (statusFilter === 'active' && group.todo.status === 'done') return false
-      return true
-    })
-  }, [groups, statusFilter])
+    return groups.map((group): ChartGroup | null => {
+      const parentMatches = matchesStatusFilter(group.todo.status === 'done', statusFilter)
+      const matchingSubTasks = showSubtasks
+        ? group.allSubTasks.filter((subTask) => matchesStatusFilter(Boolean(subTask.done), statusFilter))
+        : []
+      if (!parentMatches && matchingSubTasks.length === 0) return null
+
+      const matchingIds = new Set(matchingSubTasks.map((subTask) => subTask.id))
+      const datedSubTasks = group.datedSubTasks.filter((item) => matchingIds.has(item.subTask.id))
+      const todoBar = parentMatches ? group.todoBar : null
+      const anchorCandidates = [todoBar?.startDate, ...datedSubTasks.map((item) => item.bar.startDate)]
+        .filter((value): value is string => Boolean(value))
+        .sort((a, b) => a.localeCompare(b))
+
+      return {
+        ...group,
+        todoBar,
+        allSubTasks: matchingSubTasks,
+        datedSubTasks,
+        undatedSubTaskCount: matchingSubTasks.length - datedSubTasks.length,
+        subTaskCount: matchingSubTasks.length,
+        anchorDate: anchorCandidates[0] ?? null
+      }
+    }).filter((group): group is ChartGroup => Boolean(group))
+  }, [groups, showSubtasks, statusFilter])
 
   const scheduledGroups = useMemo(() => (
     filteredGroups
@@ -1523,16 +1558,18 @@ export function GanttView({
     scheduledGroups
       .map((group) => ({
         ...group,
-        datedSubTasks: group.datedSubTasks.filter((item) => intersectsRange(item.bar.startDate, item.bar.endDate, normalizedRange.start, normalizedRange.end))
+        datedSubTasks: showOutOfRange
+          ? group.datedSubTasks
+          : group.datedSubTasks.filter((item) => intersectsRange(item.bar.startDate, item.bar.endDate, normalizedRange.start, normalizedRange.end))
       }))
       .filter((group) => {
         const todoVisible = group.todoBar
-          ? intersectsRange(group.todoBar.startDate, group.todoBar.endDate, normalizedRange.start, normalizedRange.end)
+          ? showOutOfRange || intersectsRange(group.todoBar.startDate, group.todoBar.endDate, normalizedRange.start, normalizedRange.end)
           : false
         const subTaskVisible = showSubtasks && group.datedSubTasks.length > 0
         return todoVisible || subTaskVisible
       })
-  ), [normalizedRange.end, normalizedRange.start, scheduledGroups, showSubtasks])
+  ), [normalizedRange.end, normalizedRange.start, scheduledGroups, showOutOfRange, showSubtasks])
 
   const chartSections = useMemo<ChartCategorySection[]>(() => {
     const makeSection = (key: CategoryFilterKey, label: string, color: string, groups: ChartGroup[]): ChartCategorySection => ({
@@ -1577,10 +1614,12 @@ export function GanttView({
     chartSections.flatMap((section) => section.collapsed ? [] : section.groups)
   ), [chartSections])
 
-  const canStartReorderMode = Boolean(onReorderTodos) && chartGroups.length > 1
+  const canStartReorderMode = (Boolean(onReorderTodos) && chartGroups.length > 1)
+    || chartGroups.some((group) => group.datedSubTasks.length > 1)
 
   const handleReorderDragStart = useCallback((todoId: string, event: React.DragEvent<HTMLDivElement>): void => {
     if (!isReorderMode || reorderPending || !onReorderTodos) return
+    setReorderFeedback(null)
     setDraggingTodoId(todoId)
     setDragOverTodoId(null)
     event.dataTransfer.effectAllowed = 'move'
@@ -1617,12 +1656,82 @@ export function GanttView({
     setReorderPending(true)
     try {
       await onReorderTodos(nextOrderedIds)
+    } catch (error) {
+      setReorderFeedback(error instanceof Error ? error.message : 'タスクを並べ替えできませんでした')
     } finally {
       setReorderPending(false)
       setDraggingTodoId(null)
       setDragOverTodoId(null)
     }
   }, [chartGroups, draggingTodoId, isReorderMode, onReorderTodos, reorderPending])
+
+  const handleSubTaskReorderDragStart = useCallback((subTaskId: string, event: React.DragEvent<HTMLDivElement>): void => {
+    if (!isReorderMode || reorderPending) return
+    event.stopPropagation()
+    setReorderFeedback(null)
+    setDraggingSubTaskId(subTaskId)
+    setDragOverSubTaskId(null)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', subTaskId)
+  }, [isReorderMode, reorderPending])
+
+  const handleSubTaskReorderDragOver = useCallback((subTaskId: string, event: React.DragEvent<HTMLDivElement>): void => {
+    if (!isReorderMode || reorderPending || !draggingSubTaskId || draggingSubTaskId === subTaskId) return
+    const source = subTaskById.get(draggingSubTaskId)
+    const target = subTaskById.get(subTaskId)
+    if (!source || !target || source.todo_id !== target.todo_id) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'move'
+    setDragOverSubTaskId(subTaskId)
+  }, [draggingSubTaskId, isReorderMode, reorderPending, subTaskById])
+
+  const handleSubTaskReorderDrop = useCallback(async (targetSubTaskId: string, event: React.DragEvent<HTMLDivElement>): Promise<void> => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!isReorderMode || reorderPending || !draggingSubTaskId || draggingSubTaskId === targetSubTaskId) {
+      setDragOverSubTaskId(null)
+      return
+    }
+
+    const source = subTaskById.get(draggingSubTaskId)
+    const target = subTaskById.get(targetSubTaskId)
+    if (!source || !target || source.todo_id !== target.todo_id) {
+      setDraggingSubTaskId(null)
+      setDragOverSubTaskId(null)
+      return
+    }
+
+    const siblings = subTasks
+      .filter((item) => item.todo_id === source.todo_id)
+      .slice()
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.created_at.localeCompare(b.created_at))
+    const orderedIds = siblings.map((item) => item.id)
+    const fromIndex = orderedIds.indexOf(source.id)
+    const toIndex = orderedIds.indexOf(target.id)
+    if (fromIndex < 0 || toIndex < 0) return
+
+    const nextOrderedIds = [...orderedIds]
+    nextOrderedIds.splice(fromIndex, 1)
+    nextOrderedIds.splice(toIndex, 0, source.id)
+    const orderById = new Map(nextOrderedIds.map((id, index) => [id, index]))
+    const previousSubTasks = subTasks
+    setSubTasks((previous) => previous.map((item) => item.todo_id === source.todo_id
+      ? { ...item, sort_order: orderById.get(item.id) ?? item.sort_order }
+      : item))
+
+    setReorderPending(true)
+    try {
+      await window.api.subtaskReorder(source.todo_id, nextOrderedIds)
+    } catch (error) {
+      setSubTasks(previousSubTasks)
+      setReorderFeedback(error instanceof Error ? error.message : 'サブタスクを並べ替えできませんでした')
+    } finally {
+      setReorderPending(false)
+      setDraggingSubTaskId(null)
+      setDragOverSubTaskId(null)
+    }
+  }, [draggingSubTaskId, isReorderMode, reorderPending, subTaskById, subTasks])
 
   const collectDependentTodoIds = useCallback((rootTodoIds: string[]): string[] => {
     const queue = [...rootTodoIds]
@@ -2630,6 +2739,7 @@ export function GanttView({
         <div>
           <div style={{ fontSize: '0.95rem', color: '#f8fafc', fontWeight: 700 }}>ガントチャート</div>
           {isReorderMode && <div style={{ marginTop: 2, fontSize: '0.72rem', color: '#93c5fd' }}>並び替えモード中</div>}
+          {reorderFeedback && <div role="alert" style={{ marginTop: 2, fontSize: '0.72rem', color: '#fca5a5' }}>{reorderFeedback}</div>}
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -2682,6 +2792,7 @@ export function GanttView({
         <span style={collapsedSummaryChipStyle}>表示単位 {SCALE_LABELS[timeScale]}</span>
         <span style={collapsedSummaryChipStyle}>ズーム {ZOOM_LABELS[zoom]}</span>
         <span style={collapsedSummaryChipStyle}>表示 {rangeChartGroups.length}件</span>
+        {showOutOfRange && <span style={collapsedSummaryChipStyle}>期間外を表示</span>}
         {isReorderMode && <span style={healthSummaryChipStyle('#14532d', '#16a34a', '#dcfce7')}>並び替えモード</span>}
         <span style={collapsedSummaryChipStyle}>サブタスク {visibleSubTaskCount}/{datedSubTaskCount}</span>
         {expandableTodoIds.length > 0 && (
@@ -2804,6 +2915,10 @@ export function GanttView({
                 <label style={toggleLabelStyle}>
                   <input type="checkbox" checked={showSubtasks} onChange={(event) => setShowSubtasks(event.target.checked)} />
                   <span>サブタスクを表示</span>
+                </label>
+                <label style={toggleLabelStyle}>
+                  <input type="checkbox" checked={showOutOfRange} onChange={(event) => setShowOutOfRange(event.target.checked)} />
+                  <span>期間外の項目を表示</span>
                 </label>
                 <label style={toggleLabelStyle}>
                   <input type="checkbox" checked={showUnscheduled} onChange={(event) => setShowUnscheduled(event.target.checked)} />
@@ -3138,14 +3253,24 @@ export function GanttView({
                   )
                   : null
                 const todoVisible = displayedTodoBar
-                  ? intersectsRange(displayedTodoBar.startDate, displayedTodoBar.endDate, normalizedRange.start, normalizedRange.end)
+                  ? showOutOfRange || intersectsRange(displayedTodoBar.startDate, displayedTodoBar.endDate, normalizedRange.start, normalizedRange.end)
                   : false
+                const todoOutsideRange = displayedTodoBar
+                  ? outOfRangeDirection(displayedTodoBar, normalizedRange.start, normalizedRange.end)
+                  : null
                 const actualStartIndex = displayedTodoBar ? diffUnits(displayedTodoBar.startDate, timelineStart, timeScale) : 0
                 const actualEndIndex = displayedTodoBar ? diffUnits(displayedTodoBar.endDate, timelineStart, timeScale) : 0
                 const clipped = displayedTodoBar ? actualStartIndex < 0 || actualEndIndex > totalUnits - 1 : false
                 const displayStartIndex = displayedTodoBar ? clamp(actualStartIndex, 0, totalUnits - 1) : 0
                 const displayEndIndex = displayedTodoBar ? clamp(actualEndIndex, 0, totalUnits - 1) : 0
-                const barWidth = displayedTodoBar ? Math.max((displayEndIndex - displayStartIndex + 1) * unitWidth - 8, 24) : 0
+                const barWidth = displayedTodoBar
+                  ? todoOutsideRange ? 76 : Math.max((displayEndIndex - displayStartIndex + 1) * unitWidth - 8, 24)
+                  : 0
+                const barLeft = todoOutsideRange === 'after'
+                  ? Math.max(timelineWidth - barWidth - 4, 4)
+                  : todoOutsideRange === 'before'
+                    ? 4
+                    : displayStartIndex * unitWidth + 4
                 const trackBackground = group.todo.status === 'not_started'
                   ? `linear-gradient(90deg, ${tone.fill}, #596474)`
                   : `linear-gradient(90deg, ${tone.fill}66, ${tone.border}66)`
@@ -3368,7 +3493,12 @@ export function GanttView({
                           />
                         )}
                         {displayedTodoBar && todoVisible && (
-                          <div ref={(node) => setDependencyTargetBarRef(group.todo.id, node)} onClick={() => handleChartItemSelect(group.todo.id)} style={{ position: 'absolute', left: displayStartIndex * unitWidth + 4, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 4, background: trackBackground, border: `1px solid ${tone.border}`, boxSizing: 'border-box', overflow: 'hidden', boxShadow: activeState ? '0 0 0 2px rgba(59, 130, 246, 0.28)' : isDependencySource || isDependencyTarget ? '0 0 0 2px rgba(56, 189, 248, 0.42)' : 'inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 3px 8px rgba(10, 12, 22, 0.28)', cursor: !isTimelineEditable ? 'pointer' : 'grab' }}>
+                          <div
+                            ref={(node) => setDependencyTargetBarRef(group.todo.id, todoOutsideRange ? null : node)}
+                            onClick={() => handleChartItemSelect(group.todo.id)}
+                            title={todoOutsideRange ? `${todoOutsideRange === 'before' ? '期間前' : '期間後'}: ${displayedTodoBar.startDate} - ${displayedTodoBar.endDate}` : undefined}
+                            style={{ position: 'absolute', left: barLeft, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 4, background: trackBackground, border: `1px ${todoOutsideRange ? 'dashed' : 'solid'} ${tone.border}`, boxSizing: 'border-box', overflow: 'hidden', boxShadow: activeState ? '0 0 0 2px rgba(59, 130, 246, 0.28)' : isDependencySource || isDependencyTarget ? '0 0 0 2px rgba(56, 189, 248, 0.42)' : 'inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 3px 8px rgba(10, 12, 22, 0.28)', cursor: todoOutsideRange || !isTimelineEditable ? 'pointer' : 'grab' }}
+                          >
                             <div style={{ position: 'absolute', inset: 0, width: `${progress}%`, background: tone.background }} />
                             {group.todo.assignee_color && (
                               <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: group.todo.assignee_color, zIndex: 3 }} />
@@ -3378,15 +3508,21 @@ export function GanttView({
                             )}
                             <div
                               onPointerDown={(event) => {
-                                if (event.button !== 0 || !isTimelineEditable) return
+                                if (event.button !== 0 || !isTimelineEditable || todoOutsideRange) return
                                 beginInteraction('move', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX)
                               }}
-                              style={{ position: 'absolute', left: 8, right: 8, top: 0, bottom: 0, display: 'flex', alignItems: 'center', gap: 6, cursor: !isTimelineEditable ? 'pointer' : 'grab', color: tone.text, zIndex: 2 }}
+                              style={{ position: 'absolute', left: 8, right: 8, top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: todoOutsideRange ? 'center' : undefined, gap: 6, cursor: todoOutsideRange || !isTimelineEditable ? 'pointer' : 'grab', color: tone.text, zIndex: 2 }}
                             >
-                              {barWidth > 52 && <span style={{ fontSize: '0.64rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{barStartLabel(displayedTodoBar.startDate, timeScale)}</span>}
-                              {barWidth > 96 && <span style={{ fontSize: '0.7rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.todo.title}</span>}
+                              {todoOutsideRange ? (
+                                <span style={{ fontSize: '0.64rem', fontWeight: 800, whiteSpace: 'nowrap' }}>{todoOutsideRange === 'before' ? '← 期間前' : '期間後 →'}</span>
+                              ) : (
+                                <>
+                                  {barWidth > 52 && <span style={{ fontSize: '0.64rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{barStartLabel(displayedTodoBar.startDate, timeScale)}</span>}
+                                  {barWidth > 96 && <span style={{ fontSize: '0.7rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.todo.title}</span>}
+                                </>
+                              )}
                             </div>
-                            {isTimelineEditable && (
+                            {isTimelineEditable && !todoOutsideRange && (
                               <>
                                 <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeStart', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX) }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: 'transparent' }} />
                                 <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeEnd', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX) }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: 'transparent' }} />
@@ -3394,7 +3530,7 @@ export function GanttView({
                             )}
                           </div>
                         )}
-                        {isTimelineEditable && dependencyGeometry && (
+                        {isTimelineEditable && !todoOutsideRange && dependencyGeometry && (
                           <>
                             {dependencyDrag && dependencyDrag.predecessorTodoId !== group.todo.id && (
                               <div
@@ -3441,6 +3577,8 @@ export function GanttView({
 
                     {showSubtasks && isExpanded && group.datedSubTasks.map(({ subTask, bar }) => {
                       const tone = subTaskTone(subTask, todayKey)
+                      const isSubTaskReorderSource = isReorderMode && draggingSubTaskId === subTask.id
+                      const isSubTaskReorderTarget = isReorderMode && dragOverSubTaskId === subTask.id && draggingSubTaskId !== subTask.id
                       const subTaskProgress = clamp(Boolean(subTask.done) ? 100 : subTask.progress ?? 0, 0, 100)
                       const baselineBar = showBaseline ? baselineSnapshot?.subTasks[subTask.id] ?? null : null
                       const subTaskActiveState = interaction?.targetType === 'subtask' && interaction.targetId === subTask.id ? interaction : null
@@ -3453,27 +3591,62 @@ export function GanttView({
                           : bar
                       const actualSubTaskStartIndex = diffUnits(displayedBar.startDate, timelineStart, timeScale)
                       const actualSubTaskEndIndex = diffUnits(displayedBar.endDate, timelineStart, timeScale)
+                      const subTaskOutsideRange = outOfRangeDirection(displayedBar, normalizedRange.start, normalizedRange.end)
                       const subTaskStartIndex = clamp(actualSubTaskStartIndex, 0, totalUnits - 1)
                       const subTaskEndIndex = clamp(actualSubTaskEndIndex, 0, totalUnits - 1)
+                      const subTaskBarWidth = subTaskOutsideRange
+                        ? 68
+                        : Math.max((subTaskEndIndex - subTaskStartIndex + 1) * unitWidth - 12, 12)
+                      const subTaskBarLeft = subTaskOutsideRange === 'after'
+                        ? Math.max(timelineWidth - subTaskBarWidth - 6, 6)
+                        : subTaskOutsideRange === 'before'
+                          ? 6
+                          : subTaskStartIndex * unitWidth + 6
                       const baselineVisible = baselineBar
                         ? intersectsRange(baselineBar.startDate, baselineBar.endDate, normalizedRange.start, normalizedRange.end)
                         : false
                       const baselineStartIndex = baselineBar ? clamp(diffUnits(baselineBar.startDate, timelineStart, timeScale), 0, totalUnits - 1) : 0
                       const baselineEndIndex = baselineBar ? clamp(diffUnits(baselineBar.endDate, timelineStart, timeScale), 0, totalUnits - 1) : 0
                       return (
-                        <div key={subTask.id} style={{ display: 'flex', minHeight: SUBTASK_ROW_HEIGHT, borderTop: '1px solid #111827' }}>
+                        <div
+                          key={subTask.id}
+                          onDragOver={(event) => handleSubTaskReorderDragOver(subTask.id, event)}
+                          onDrop={(event) => void handleSubTaskReorderDrop(subTask.id, event)}
+                          onDragEnd={() => {
+                            setDraggingSubTaskId(null)
+                            setDragOverSubTaskId(null)
+                          }}
+                          style={{
+                            display: 'flex',
+                            minHeight: SUBTASK_ROW_HEIGHT,
+                            borderTop: isSubTaskReorderTarget ? '2px solid #38bdf8' : '1px solid #111827',
+                            opacity: isSubTaskReorderSource ? 0.65 : 1,
+                            boxShadow: isSubTaskReorderTarget ? '0 0 0 2px rgba(56, 189, 248, 0.22) inset' : undefined
+                          }}
+                        >
                           <div style={{ position: 'sticky', left: 0, zIndex: 3, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0b1220', borderRight: '1px solid #1e293b', padding: '0 8px 0 24px' }}>
                             <div style={{ ...leftSubRowGridStyle, gridTemplateColumns: leftGridTemplate }}>
-                              {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'title' ? (
-                                <input
-                                  autoFocus
-                                  value={editingSubTaskCell.value}
-                                  onChange={(event) => setEditingSubTaskCell((previous) => previous ? { ...previous, value: event.target.value } : previous)}
-                                  onBlur={() => void commitSubTaskCellEdit()}
-                                  onKeyDown={handleSubTaskCellEditorKeyDown}
-                                  style={{ ...tableInputStyle, width: '100%' }}
-                                />
-                              ) : (
+                              <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
+                                {isReorderMode && (
+                                  <div
+                                    draggable={!reorderPending}
+                                    onDragStart={(event) => handleSubTaskReorderDragStart(subTask.id, event)}
+                                    style={{ ...reorderHandleStyle(reorderPending, isSubTaskReorderSource), width: 16, minWidth: 16, fontSize: '0.68rem' }}
+                                    title="同じタスク内でドラッグして並び替え"
+                                  >
+                                    ⋮⋮
+                                  </div>
+                                )}
+                                {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'title' ? (
+                                  <input
+                                    autoFocus
+                                    value={editingSubTaskCell.value}
+                                    onChange={(event) => setEditingSubTaskCell((previous) => previous ? { ...previous, value: event.target.value } : previous)}
+                                    onBlur={() => void commitSubTaskCellEdit()}
+                                    onKeyDown={handleSubTaskCellEditorKeyDown}
+                                    style={{ ...tableInputStyle, width: '100%' }}
+                                  />
+                                ) : (
                                 <button
                                   onClick={() => beginSubTaskCellEdit(subTask, 'title')}
                                   title={subTask.title}
@@ -3489,6 +3662,7 @@ export function GanttView({
                                   {subTask.title}
                                 </button>
                               )}
+                              </div>
                               {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'start_date' ? (
                                 <input
                                   autoFocus
@@ -3602,7 +3776,7 @@ export function GanttView({
                                 }}
                               />
                             )}
-                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTask.title} ${subTaskProgress}% (${displayedBar.startDate}${displayedBar.startDate === displayedBar.endDate ? '' : ` - ${displayedBar.endDate}`})`} style={{ position: 'absolute', left: subTaskStartIndex * unitWidth + 6, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: Math.max((subTaskEndIndex - subTaskStartIndex + 1) * unitWidth - 12, 12), height: SUBTASK_BAR_HEIGHT, borderRadius: 3, background: tone.background, border: `1px ${tone.borderStyle} ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: !isTimelineEditable ? 'pointer' : 'grab', overflow: 'hidden', boxShadow: subTaskActiveState ? '0 0 0 2px rgba(59, 130, 246, 0.22)' : Boolean(subTask.done) ? '0 0 0 1px rgba(134, 239, 172, 0.18) inset' : 'none' }}>
+                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTaskOutsideRange ? `${subTaskOutsideRange === 'before' ? '期間前' : '期間後'}: ` : ''}${subTask.title} ${subTaskProgress}% (${displayedBar.startDate}${displayedBar.startDate === displayedBar.endDate ? '' : ` - ${displayedBar.endDate}`})`} style={{ position: 'absolute', left: subTaskBarLeft, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: subTaskBarWidth, height: SUBTASK_BAR_HEIGHT, borderRadius: 3, background: tone.background, border: `1px ${subTaskOutsideRange ? 'dashed' : tone.borderStyle} ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: subTaskOutsideRange || !isTimelineEditable ? 'pointer' : 'grab', overflow: 'hidden', boxShadow: subTaskActiveState ? '0 0 0 2px rgba(59, 130, 246, 0.22)' : Boolean(subTask.done) ? '0 0 0 1px rgba(134, 239, 172, 0.18) inset' : 'none' }}>
                               <div
                                 style={{
                                   position: 'absolute',
@@ -3618,17 +3792,18 @@ export function GanttView({
                               />
                               <div
                                 onPointerDown={(event) => {
-                                  if (event.button !== 0 || !isTimelineEditable) return
+                                  if (event.button !== 0 || !isTimelineEditable || subTaskOutsideRange) return
                                   beginInteraction('move', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX)
                                 }}
-                                style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: !isTimelineEditable ? 'pointer' : 'grab' }}
+                                style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: subTaskOutsideRange || !isTimelineEditable ? 'pointer' : 'grab' }}
                               >
                                 <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0 5px', whiteSpace: 'nowrap', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
-                                  {Boolean(subTask.done) && unitWidth >= UNIT_WIDTH[timeScale].normal ? '完了 ' : ''}
-                                  {unitWidth >= UNIT_WIDTH[timeScale].normal ? `${subTaskProgress}% ${subTask.title}` : barStartLabel(displayedBar.startDate, timeScale)}
+                                  {subTaskOutsideRange
+                                    ? subTaskOutsideRange === 'before' ? '← 期間前' : '期間後 →'
+                                    : <>{Boolean(subTask.done) && unitWidth >= UNIT_WIDTH[timeScale].normal ? '完了 ' : ''}{unitWidth >= UNIT_WIDTH[timeScale].normal ? `${subTaskProgress}% ${subTask.title}` : barStartLabel(displayedBar.startDate, timeScale)}</>}
                                 </span>
                               </div>
-                              {isTimelineEditable && (
+                              {isTimelineEditable && !subTaskOutsideRange && (
                                 <>
                                   <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeStart', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX) }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'transparent' }} />
                                   <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeEnd', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX) }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'transparent' }} />

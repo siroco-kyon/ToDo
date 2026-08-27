@@ -420,6 +420,13 @@ export interface ProgressNoteReaction {
   emoji: string
   count: number
   reacted_by_me: boolean
+  reactors: ProgressNoteReactionActor[]
+}
+
+export interface ProgressNoteReactionActor {
+  user_id: string | null
+  display_name: string
+  color: string | null
 }
 
 export interface ProgressDigestTodo {
