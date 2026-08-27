@@ -77,8 +77,8 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
     'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now)
   const created = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
-  syncTodoDueDateWithSubTasks(todoId)
-  return created
+  const extendedTo = syncTodoDueDateWithSubTasks(todoId)
+  return { ...created, parent_due_date_extended_to: extendedTo }
 }
 
 export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
@@ -116,8 +116,8 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
     db.prepare('UPDATE SubTasks SET progress = ?, done = ?, completed_at = ? WHERE id = ?').run(nextProgress, nextDone ? 1 : 0, nextCompletedAt, id)
   }
   const updated = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
-  syncTodoDueDateWithSubTasks(updated.todo_id)
-  return updated
+  const extendedTo = syncTodoDueDateWithSubTasks(updated.todo_id)
+  return { ...updated, parent_due_date_extended_to: extendedTo }
 }
 
 export function deleteSubTask(id: string): void {

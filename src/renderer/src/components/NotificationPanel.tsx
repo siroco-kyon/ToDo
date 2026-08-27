@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import type { UserNotification } from '../types'
 
 interface Props {
@@ -7,6 +7,7 @@ interface Props {
   onClose: () => void
   onSelect: (notification: UserNotification) => void
   onMarkAllRead: () => void
+  onShowToast: (message: string, type?: 'success' | 'error') => void
 }
 
 export function NotificationPanel({
@@ -14,29 +15,72 @@ export function NotificationPanel({
   unreadCount,
   onClose,
   onSelect,
-  onMarkAllRead
+  onMarkAllRead,
+  onShowToast
 }: Props): React.JSX.Element {
+  const [tab, setTab] = useState<'unread' | 'all'>('unread')
+  const [showSettings, setShowSettings] = useState(false)
+  const [preferences, setPreferences] = useState<Record<string, boolean>>({})
+  const visibleNotifications = useMemo(() => tab === 'unread'
+    ? notifications.filter((notification) => notification.read_at == null)
+    : notifications, [notifications, tab])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  useEffect(() => {
+    void window.api.notificationPreferencesGet().then(setPreferences).catch((error) => {
+      onShowToast(error instanceof Error ? error.message : '通知設定を読み込めませんでした', 'error')
+    })
+  }, [onShowToast])
+
+  const updatePreference = async (type: string, enabled: boolean): Promise<void> => {
+    const previous = preferences[type] !== false
+    setPreferences((current) => ({ ...current, [type]: enabled }))
+    try {
+      await window.api.notificationPreferenceSet(type, enabled)
+    } catch (error) {
+      setPreferences((current) => ({ ...current, [type]: previous }))
+      onShowToast(error instanceof Error ? error.message : '通知設定を保存できませんでした', 'error')
+    }
+  }
+
   return (
     <div style={backdropStyle} onMouseDown={onClose}>
-      <section style={panelStyle} onMouseDown={(event) => event.stopPropagation()}>
+      <section role="dialog" aria-modal="true" aria-labelledby="notification-title" style={panelStyle} onMouseDown={(event) => event.stopPropagation()}>
         <header style={headerStyle}>
           <div>
-            <h2 style={titleStyle}>通知</h2>
+            <h2 id="notification-title" style={titleStyle}>通知</h2>
             <div style={subtitleStyle}>未読 {unreadCount} 件</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={onMarkAllRead} disabled={unreadCount === 0} style={buttonStyle(unreadCount > 0)}>
               すべて既読
             </button>
+            <button onClick={() => setShowSettings((value) => !value)} style={closeButtonStyle}>通知設定</button>
             <button onClick={onClose} style={closeButtonStyle}>閉じる</button>
           </div>
         </header>
 
+        <div style={{ display: 'flex', gap: 6, padding: '8px 10px 0' }}>
+          <button onClick={() => setTab('unread')} style={buttonStyle(tab === 'unread')}>未読 {unreadCount}</button>
+          <button onClick={() => setTab('all')} style={buttonStyle(tab === 'all')}>すべて</button>
+        </div>
+        {showSettings && <div style={{ margin: '8px 10px 0', padding: 10, borderRadius: 8, border: '1px solid #334155', display: 'grid', gap: 6 }}>
+          {([['task_assigned', '担当への追加'], ['progress_reply', '返信・購読更新'], ['progress_reaction', 'いいね'], ['mention', 'メンション'], ['task_due', '期限通知']] as const).map(([type, label]) => {
+            const enabled = preferences[type] !== false
+            return <label key={type} style={{ display: 'flex', gap: 7, alignItems: 'center', color: '#cbd5e1', fontSize: '0.76rem' }}><input type="checkbox" checked={enabled} onChange={(event) => { void updatePreference(type, event.target.checked) }} />{label}</label>
+          })}
+        </div>}
+
         <div style={listStyle}>
-          {notifications.length === 0 ? (
-            <div style={emptyStyle}>通知はありません</div>
+          {visibleNotifications.length === 0 ? (
+            <div style={emptyStyle}>{tab === 'unread' ? '未読の通知はありません' : '通知履歴はありません'}</div>
           ) : (
-            notifications.map((notification) => {
+            visibleNotifications.map((notification) => {
               const unread = notification.read_at == null
               return (
                 <button

@@ -226,6 +226,23 @@ export function createSchema(db: Database.Database): void {
       FOREIGN KEY (progress_comment_id) REFERENCES ProgressNoteComments(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS TodoSubscriptions (
+      user_id TEXT NOT NULL,
+      todo_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, todo_id),
+      FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE,
+      FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS NotificationPreferences (
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY (user_id, type),
+      FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_todos_assignee ON Todos(assignee_id);
     CREATE INDEX IF NOT EXISTS idx_todos_status ON Todos(status);
     CREATE INDEX IF NOT EXISTS idx_worklogs_user ON WorkLogs(user_id);

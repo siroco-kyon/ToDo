@@ -38,7 +38,7 @@ import {
 } from '../db/subtasks'
 import { startTimer, stopTimer, getRunningState } from '../db/timer'
 import { getWorkLogsByTodo, getAllWorkLogRows, getWorkLogsByDate, getWorkLogsSummary } from '../db/worklogs'
-import { getUserById } from '../db/users'
+import { getUserById, listUsers } from '../db/users'
 import { getDb } from '../db/connection'
 import { importDesktopDb } from '../import/import-desktop-db'
 import { getOverviewData } from '../db/overview'
@@ -137,9 +137,10 @@ function notifyProgressReply(
   actorUserId: string,
   note: ProgressNote | undefined,
   parentComment: ProgressNoteComment | undefined,
-  commentId: string
-): void {
-  if (!note) return
+  commentId: string,
+  excluded = new Set<string>()
+): Set<string> {
+  if (!note) return new Set<string>()
 
   const recipients = new Set<string>()
   if (note.user_id && note.user_id !== actorUserId) recipients.add(note.user_id)
@@ -147,6 +148,7 @@ function notifyProgressReply(
 
   const changed = new Set<string>()
   for (const userId of recipients) {
+    if (excluded.has(userId)) continue
     try {
       const isParentRecipient = parentComment?.user_id === userId
       const notification = createNotification({
@@ -165,6 +167,49 @@ function notifyProgressReply(
     }
   }
   notifyUnreadChanged(changed)
+  return changed
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function containsMention(body: string, name: string): boolean {
+  const escaped = escapeRegex(name.trim())
+  if (!escaped) return false
+  return new RegExp(`(?:^|\\s)@${escaped}(?=$|[\\s.,!?、。！？:：;；()（）])`, 'iu').test(body)
+}
+
+function notifyMentions(actorUserId: string, body: string, note: ProgressNote, commentId?: string, excluded = new Set<string>()): Set<string> {
+  const changed = new Set<string>()
+  for (const user of listUsers()) {
+    if (!user.is_active || user.id === actorUserId || excluded.has(user.id)) continue
+    if (!containsMention(body, user.display_name) && !containsMention(body, user.username)) continue
+    const notification = createNotification({
+      userId: user.id, type: 'mention', actorUserId, todoId: note.todo_id,
+      progressNoteId: note.id, progressCommentId: commentId ?? null,
+      title: '進捗でメンションされました', body: `「${note.todo_title}」の進捗であなたがメンションされました`
+    })
+    if (notification) changed.add(user.id)
+  }
+  notifyUnreadChanged(changed)
+  return changed
+}
+
+function notifySubscribers(actorUserId: string, note: ProgressNote, commentId?: string, excluded = new Set<string>()): Set<string> {
+  const rows = getDb().prepare('SELECT user_id FROM TodoSubscriptions WHERE todo_id = ? AND user_id != ?').all(note.todo_id, actorUserId) as Array<{ user_id: string }>
+  const changed = new Set<string>()
+  for (const row of rows) {
+    if (excluded.has(row.user_id)) continue
+    const notification = createNotification({
+      userId: row.user_id, type: 'progress_reply', actorUserId, todoId: note.todo_id,
+      progressNoteId: note.id, progressCommentId: commentId ?? null,
+      title: '購読中のタスクに更新があります', body: `「${note.todo_title}」に進捗が追加されました`
+    })
+    if (notification) changed.add(row.user_id)
+  }
+  notifyUnreadChanged(changed)
+  return changed
 }
 
 function findCommentInTree(comments: ProgressNoteComment[], commentId: string): ProgressNoteComment | undefined {
@@ -238,7 +283,10 @@ dataRouter.put('/todos/:id', (req, res) =>
   }, 'todo'))
 dataRouter.post('/todos/reorder', (req, res) => run(res, () => reorderTodos(req.body.orderedIds), 'todo'))
 dataRouter.post('/todos/:id/archive', (req, res) => run(res, () => archiveTodo(req.params.id, req.user!.id), 'todo'))
-dataRouter.post('/todos/:id/unarchive', (req, res) => run(res, () => unarchiveTodo(req.params.id, req.user!.id), 'todo'))
+dataRouter.post('/todos/:id/unarchive', (req, res) => run(res, () => {
+  const restoreStatus = ['not_started', 'active', 'done'].includes(req.body?.status) ? req.body.status : 'active'
+  return unarchiveTodo(req.params.id, req.user!.id, restoreStatus)
+}, 'todo'))
 dataRouter.delete('/todos/:id', (req, res) => run(res, () => deleteTodo(req.params.id), 'todo'))
 
 // ─── Dependencies ─────────────────────────────────────────────
@@ -253,6 +301,12 @@ dataRouter.delete('/dependencies/:id', (req, res) => run(res, () => deleteTodoDe
 dataRouter.get('/subtasks', (_req, res) => run(res, () => getAllSubTasks()))
 dataRouter.get('/subtasks/calendar', (_req, res) => run(res, () => getSubTasksForCalendar()))
 dataRouter.get('/todos/:todoId/subtasks', (req, res) => run(res, () => getSubTasksByTodo(req.params.todoId)))
+dataRouter.get('/todos/:todoId/subscription', (req, res) => run(res, () => ({ subscribed: Boolean(getDb().prepare('SELECT 1 FROM TodoSubscriptions WHERE user_id = ? AND todo_id = ?').get(req.user!.id, req.params.todoId)) })))
+dataRouter.post('/todos/:todoId/subscription', (req, res) => run(res, () => {
+  if (req.body.subscribed) getDb().prepare('INSERT OR IGNORE INTO TodoSubscriptions (user_id, todo_id, created_at) VALUES (?, ?, ?)').run(req.user!.id, req.params.todoId, new Date().toISOString())
+  else getDb().prepare('DELETE FROM TodoSubscriptions WHERE user_id = ? AND todo_id = ?').run(req.user!.id, req.params.todoId)
+  return { subscribed: Boolean(req.body.subscribed) }
+}))
 dataRouter.post('/todos/:todoId/subtasks/reorder', (req, res) =>
   run(res, () => reorderSubTasks(req.params.todoId, req.body.orderedIds), 'subtask'))
 dataRouter.post('/todos/:todoId/subtasks', (req, res) =>
@@ -326,6 +380,17 @@ dataRouter.post('/notifications/read-all', (req, res) =>
     markAllNotificationsRead(req.user!.id)
     notifyUnreadChanged([req.user!.id])
   }))
+dataRouter.get('/notification-preferences', (req, res) => run(res, () => {
+  const rows = getDb().prepare('SELECT type, enabled FROM NotificationPreferences WHERE user_id = ?').all(req.user!.id) as Array<{ type: string; enabled: number }>
+  return Object.fromEntries(rows.map((row) => [row.type, Boolean(row.enabled)]))
+}))
+dataRouter.post('/notification-preferences', (req, res) => run(res, () => {
+  const type = String(req.body.type ?? '')
+  if (!['progress_reply', 'task_assigned', 'progress_reaction', 'task_due', 'mention'].includes(type)) throw new Error('通知種別が不正です')
+  const enabled = Boolean(req.body.enabled)
+  getDb().prepare('INSERT INTO NotificationPreferences (user_id, type, enabled) VALUES (?, ?, ?) ON CONFLICT(user_id, type) DO UPDATE SET enabled = excluded.enabled').run(req.user!.id, type, enabled ? 1 : 0)
+  return { type, enabled }
+}))
 
 // ─── Progress notes (shared) ──────────────────────────────────
 dataRouter.get('/todos/:todoId/progress-notes', (req, res) =>
@@ -338,7 +403,12 @@ dataRouter.get('/progress-notes/timeline', (req, res) =>
     return getProgressNotesByRange(from, to, req.user!.id)
   }))
 dataRouter.post('/todos/:todoId/progress-notes', (req, res) =>
-  run(res, () => createProgressNote(req.params.todoId, req.user!.id, req.body.body), 'progress'))
+  run(res, () => {
+    const created = createProgressNote(req.params.todoId, req.user!.id, req.body.body)
+    const mentioned = notifyMentions(req.user!.id, req.body.body, created)
+    notifySubscribers(req.user!.id, created, undefined, mentioned)
+    return created
+  }, 'progress'))
 dataRouter.put('/progress-notes/:id', (req, res) =>
   run(res, () => {
     const note = getProgressNote(req.params.id, req.user!.id)
@@ -366,7 +436,12 @@ dataRouter.post('/progress-notes/:id/comments', (req, res) =>
       ? getProgressNoteComment(req.body.parentCommentId)
       : undefined
     const created = createProgressNoteCommentWithId(req.params.id, req.user!.id, req.body.body, req.body.parentCommentId)
-    notifyProgressReply(req.user!.id, note, parentComment, created.commentId)
+    const notified = notifyProgressReply(req.user!.id, note, parentComment, created.commentId)
+    if (note) {
+      const mentioned = notifyMentions(req.user!.id, req.body.body, note, created.commentId, notified)
+      mentioned.forEach((userId) => notified.add(userId))
+      notifySubscribers(req.user!.id, note, created.commentId, notified)
+    }
     return created.note
   }, 'progress'))
 dataRouter.put('/progress-note-comments/:id', (req, res) =>

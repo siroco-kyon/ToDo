@@ -266,7 +266,7 @@ export const api: Api = {
   todoCreate: (data: CreateTodoInput) => post<Todo>('/todos', data),
   todoUpdate: (id, data: UpdateTodoInput) => put<Todo>(`/todos/${id}`, data),
   todoArchive: (id) => post<void>(`/todos/${id}/archive`),
-  todoUnarchive: (id) => post<void>(`/todos/${id}/unarchive`),
+  todoUnarchive: (id, status) => post<void>(`/todos/${id}/unarchive`, status ? { status } : {}),
   todoDelete: (id) => del<void>(`/todos/${id}`),
   todoReorder: (orderedIds) => post<void>('/todos/reorder', { orderedIds }),
   todoDependencyGetAll: () => get<TodoDependency[]>('/dependencies'),
@@ -400,6 +400,10 @@ export const api: Api = {
   },
   notificationMarkRead: (id) => post<UserNotification | null>(`/notifications/${id}/read`),
   notificationMarkAllRead: () => post<void>('/notifications/read-all'),
+  notificationPreferencesGet: () => get<Record<string, boolean>>('/notification-preferences'),
+  notificationPreferenceSet: (type, enabled) => post<{ type: string; enabled: boolean }>('/notification-preferences', { type, enabled }),
+  todoSubscriptionGet: (todoId) => get<{ subscribed: boolean }>(`/todos/${todoId}/subscription`),
+  todoSubscriptionSet: (todoId, subscribed) => post<{ subscribed: boolean }>(`/todos/${todoId}/subscription`, { subscribed }),
 
   // ─── Desktop-only surface: stubbed for the web build ─────────
   iconGetDataUrl: async () => DEFAULT_ICON_DATA_URL,

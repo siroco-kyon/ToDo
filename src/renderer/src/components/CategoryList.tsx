@@ -163,7 +163,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                     {cat.name}
                   </span>
                   {cat.is_private ? (
-                    <span title="プライベート（全体の集計から除外）" style={{ marginLeft: 4, fontSize: '0.7rem', flexShrink: 0 }}>🔒</span>
+                    <span title="共有集計の対象外（他の利用者からも閲覧できます）" style={{ marginLeft: 4, fontSize: '0.66rem', flexShrink: 0 }}>集計外</span>
                   ) : null}
                 </button>
                 {cat.description && hoveredId !== cat.id && (

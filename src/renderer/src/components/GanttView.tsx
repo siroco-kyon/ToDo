@@ -805,11 +805,19 @@ function rowTimelineStyle(height: number, unitWidth: number, timelineWidth: numb
   }
 }
 
-function todoMatchesQuery(todo: Todo, normalizedQuery: string): boolean {
+function todoMatchesQuery(todo: Todo, subTasks: SubTask[], normalizedQuery: string): boolean {
   if (!normalizedQuery) return true
   return todo.title.toLowerCase().includes(normalizedQuery)
     || todo.description.toLowerCase().includes(normalizedQuery)
+    || todo.memo.toLowerCase().includes(normalizedQuery)
     || (todo.category_name?.toLowerCase().includes(normalizedQuery) ?? false)
+    || (todo.assignee_name?.toLowerCase().includes(normalizedQuery) ?? false)
+    || (todo.co_assignees ?? []).some((assignee) => assignee.display_name.toLowerCase().includes(normalizedQuery))
+    || subTasks.some((subTask) => subTask.todo_id === todo.id && (
+      subTask.title.toLowerCase().includes(normalizedQuery)
+      || subTask.description.toLowerCase().includes(normalizedQuery)
+      || (subTask.assignee_name?.toLowerCase().includes(normalizedQuery) ?? false)
+    ))
 }
 
 function barStartLabel(dateStr: string, scale: TimeScale): string {
@@ -1219,9 +1227,9 @@ export function GanttView({
 
   const todoSelectionCandidates = useMemo(() => (
     categoryFilteredTodos
-      .filter((todo) => todoMatchesQuery(todo, normalizedTaskQuery))
+      .filter((todo) => todoMatchesQuery(todo, subTasks, normalizedTaskQuery))
       .sort((a, b) => (todoOrderById.get(a.id) ?? 0) - (todoOrderById.get(b.id) ?? 0) || a.title.localeCompare(b.title, 'ja'))
-  ), [categoryFilteredTodos, normalizedTaskQuery, todoOrderById])
+  ), [categoryFilteredTodos, normalizedTaskQuery, subTasks, todoOrderById])
   const todoById = useMemo(() => new Map(todos.map((todo) => [todo.id, todo])), [todos])
   const subTaskById = useMemo(() => new Map(subTasks.map((subTask) => [subTask.id, subTask])), [subTasks])
 
@@ -3095,7 +3103,7 @@ export function GanttView({
         {loading ? (
           <div style={centerEmptyStyle}>タスクを読み込み中...</div>
         ) : rangeChartGroups.length === 0 ? (
-          <div style={centerEmptyStyle}>この期間に表示できる予定タスクはありません。</div>
+          <div style={centerEmptyStyle}><div>この条件で表示できる予定タスクはありません。</div><div style={{ display: 'flex', gap: 8, marginTop: 12 }}><button onClick={() => { setTaskQuery(''); setStatusFilter('all'); setShowOutOfRange(true); setShowUnscheduled(true) }} style={headerActionButtonStyle}>絞り込みを解除</button><button onClick={() => setRangeMode('auto')} style={headerActionButtonStyle}>期間を自動に戻す</button></div></div>
         ) : (
           <div ref={scrollRef} style={{ height: '100%', overflow: 'auto' }}>
             <div style={{ minWidth: leftTableWidth + timelineWidth }}>

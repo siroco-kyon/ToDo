@@ -399,15 +399,16 @@ export function updateTodo(id: string, data: UpdateTodoInput, changedByUserId: s
   return getTodoById(id)
 }
 
-export function syncTodoDueDateWithSubTasks(todoId: string): void {
+export function syncTodoDueDateWithSubTasks(todoId: string): string | null {
   const maxSubTaskDueDate = getMaxSubTaskDueDate(todoId)
-  if (!maxSubTaskDueDate) return
+  if (!maxSubTaskDueDate) return null
 
   const todo = getTodoById(todoId)
   const normalizedTodoDueDate = normalizeDateKey(todo.due_date)
-  if (normalizedTodoDueDate && normalizedTodoDueDate >= maxSubTaskDueDate) return
+  if (normalizedTodoDueDate && normalizedTodoDueDate >= maxSubTaskDueDate) return null
 
   updateTodo(todoId, { due_date: maxSubTaskDueDate })
+  return maxSubTaskDueDate
 }
 
 export function archiveTodo(id: string, changedByUserId: string | null = null): void {
@@ -420,12 +421,12 @@ export function archiveTodo(id: string, changedByUserId: string | null = null): 
   })()
 }
 
-export function unarchiveTodo(id: string, changedByUserId: string | null = null): void {
+export function unarchiveTodo(id: string, changedByUserId: string | null = null, restoreStatus: 'not_started' | 'active' | 'done' = 'active'): void {
   const db = getDb()
   const now = new Date().toISOString()
   const before = getTodoById(id)
   db.transaction(() => {
-    db.prepare("UPDATE Todos SET status = 'active', archived_at = NULL, completed_at = NULL, updated_at = ? WHERE id = ?").run(now, id)
+    db.prepare("UPDATE Todos SET status = ?, archived_at = NULL, completed_at = CASE WHEN ? = 'done' THEN completed_at ELSE NULL END, updated_at = ? WHERE id = ?").run(restoreStatus, restoreStatus, now, id)
     recordTodoChanges(before, getTodoById(id), changedByUserId, now)
   })()
 }

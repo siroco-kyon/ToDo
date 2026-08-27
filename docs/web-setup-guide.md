@@ -271,7 +271,9 @@ http://192.168.1.50:4577
 - `server\node_modules\`（サーバーPCでインストールした依存）
 - `server\service\daemon\`（サービスラッパーが生成した実行物）
 
-今回の機能追加ではDBスキーマと依存パッケージを変更していないため、サービスの再登録や `npm install` は不要です。`server\src\` と `dist-web\` を更新してサービスを再起動すれば反映されます。
+今回の更新では通知設定とタスク購読用のテーブルを追加します。サービス起動時に `CREATE TABLE IF NOT EXISTS` で自動追加されるため、手動のマイグレーションコマンドは不要です。依存パッケージは変更していないため、サービスの再登録や `npm install` も不要です。
+
+`TODO_WEB_DIST` を `.env` で変更している場合、以下の `dist-web\` はその指定先に読み替えてください。
 
 ### 方法A：サーバーPCでGit更新・ビルドする
 
@@ -281,21 +283,22 @@ http://192.168.1.50:4577
 cd D:\Github\ToDo
 Stop-Service TodoTeamServer
 
-# 停止中にDBをバックアップする
+# 停止中にDBディレクトリ全体をバックアップする（todo.db / WAL / SHMを含む）
 $backupDir = "D:\TodoBackup\$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 New-Item -ItemType Directory -Path $backupDir -Force
-Copy-Item server\data\todo.db $backupDir
+Copy-Item server\data $backupDir -Recurse
 
 git pull --ff-only origin main
 npm run build:web
 
 Start-Service TodoTeamServer
-Invoke-RestMethod http://localhost:4577/api/health
+$port = 4577 # server\.env の PORT を変更している場合は合わせる
+Invoke-RestMethod "http://localhost:$port/api/health"
 ```
 
-最後のコマンドで正常なレスポンスが返れば起動確認は完了です。ブラウザは `Ctrl + F5` で再読み込みしてください。
+最後のコマンドで正常なレスポンスが返れば、サーバー起動と起動時DB拡張は成功しています。ブラウザを `Ctrl + F5` で再読み込みし、ログイン、通知設定、タスク詳細の購読ボタンまで簡易確認してください。
 
-> `TODO_DATA_DIR` を `.env` で変更している場合、バックアップ元は `server\data\todo.db` ではなく、指定した保存先の `todo.db` に置き換えてください。
+> `TODO_DATA_DIR` を `.env` で変更している場合、バックアップ元は `server\data` ではなく指定した保存先ディレクトリに置き換えてください。必ずサービス停止後にフォルダ単位でコピーします。
 
 依存パッケージが変更された更新では、ロックファイルに応じて追加で次を実行します。
 
@@ -313,17 +316,17 @@ npm ci
 
 1. 開発PCのリポジトリで `npm run build:web` を実行する。
 2. サーバーPCで `Stop-Service TodoTeamServer` を実行する。
-3. 停止中にサーバーPCの `todo.db` をバックアップする。
+3. 停止中にサーバーPCの `TODO_DATA_DIR`（既定 `server\data\`）をフォルダごとバックアップする。
 4. 開発PCの `server\src\` で、サーバーPCの `server\src\` を置き換える。
-5. 開発PCの `dist-web\` で、サーバーPCの `dist-web\` を**フォルダごと**置き換える。
+5. 開発PCの `dist-web\` で、サーバーPCの実際の配信先（既定 `dist-web\`、`TODO_WEB_DIST` 設定時はその場所）を**フォルダごと**置き換える。
 6. サーバーPCで `Start-Service TodoTeamServer` を実行する。
-7. `Invoke-RestMethod http://localhost:4577/api/health` とブラウザの `Ctrl + F5` で確認する。
+7. 実際の `PORT` に対する `/api/health` と、ブラウザの `Ctrl + F5` で確認する。
 
 `dist-web\assets\` 内はファイル名がビルドごとに変わります。古いファイルを残した部分コピーではなく、必ず `dist-web\` 全体を置き換えてください。
 
 ### 問題が起きた場合の戻し方
 
-サービスを停止し、更新前に退避した `server\src\` と `dist-web\` を戻してからサービスを開始します。今回の更新にはDBマイグレーションがないため、通常はDBを戻す必要はありません。データ自体に問題がある場合だけ、サービス停止中にバックアップした `todo.db` を復元してください。
+サービスを停止し、更新前に退避した `server\src\` と実際のWeb配信先を戻してからサービスを開始します。今回のDB変更はテーブル追加のみなので、旧プログラムは追加テーブルを無視でき、通常はDBを戻す必要はありません。完全に更新前へ戻す場合やデータに問題がある場合は、サービス停止中に `TODO_DATA_DIR` をバックアップ一式から復元してください。
 
 ---
 

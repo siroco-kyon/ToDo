@@ -8,7 +8,7 @@ interface Props {
   showArchived: boolean
   onToggleArchived: () => void
   onOpenSettings: () => void
-  activeView: 'detail' | 'log' | 'progress' | 'plan' | 'gantt' | 'team' | 'kanban'
+  activeView: 'detail' | 'overview' | 'log' | 'progress' | 'plan' | 'gantt' | 'team' | 'kanban'
   scopeLens: 'personal' | 'team'
   onSetScopeLens: (lens: 'personal' | 'team') => void
   showPlanRail: boolean
@@ -21,6 +21,7 @@ interface Props {
   onLogout?: () => void
   onOpenNotifications?: () => void
   onToggleLogView: () => void
+  onToggleOverviewView: () => void
   onToggleProgressView: () => void
   onTogglePlanView: () => void
   onToggleGanttView: () => void
@@ -32,7 +33,7 @@ interface Props {
 }
 
 interface ViewButton {
-  key: 'plan' | 'gantt' | 'kanban' | 'log' | 'progress' | 'team'
+  key: 'overview' | 'plan' | 'gantt' | 'kanban' | 'log' | 'progress' | 'team'
   label: string
   active: boolean
   onClick: () => void
@@ -57,6 +58,7 @@ export function Toolbar({
   onLogout,
   onOpenNotifications,
   onToggleLogView,
+  onToggleOverviewView,
   onToggleProgressView,
   onTogglePlanView,
   onToggleGanttView,
@@ -67,6 +69,7 @@ export function Toolbar({
   onToggleTaskPane
 }: Props): React.JSX.Element {
   const viewButtons: ViewButton[] = [
+    { key: 'overview', label: '概要', active: activeView === 'overview', onClick: onToggleOverviewView },
     { key: 'gantt', label: 'ガント', active: activeView === 'gantt', onClick: onToggleGanttView },
     { key: 'kanban', label: 'カンバン', active: activeView === 'kanban', onClick: onToggleKanbanView },
     ...(showTeamButton ? [{ key: 'team' as const, label: 'チーム', active: activeView === 'team', onClick: onToggleTeamView }] : []),
@@ -107,9 +110,9 @@ export function Toolbar({
           </span>
         )}
 
-        <div style={groupStyle} title="全体: プライベートを集計・表示から除外（切替は自分の画面だけ）">
-          <button onClick={() => onSetScopeLens('personal')} style={viewButtonStyle(scopeLens === 'personal')}>個人</button>
-          <button onClick={() => onSetScopeLens('team')} style={viewButtonStyle(scopeLens === 'team')}>全体</button>
+        <div style={groupStyle} title="集計対象外を含む／共有集計だけを切り替えます（切替は自分の画面だけ）">
+          <button onClick={() => onSetScopeLens('personal')} style={viewButtonStyle(scopeLens === 'personal')}>すべて表示</button>
+          <button onClick={() => onSetScopeLens('team')} style={viewButtonStyle(scopeLens === 'team')}>共有集計</button>
         </div>
 
         <div style={groupStyle}>
@@ -135,7 +138,7 @@ export function Toolbar({
             今日のレール
           </button>
           <button onClick={onToggleArchived} style={utilityButtonStyle(showArchived)}>
-            {showArchived ? 'アーカイブ表示中' : 'アーカイブ'}
+            {showArchived ? 'ゴミ箱表示中' : 'ゴミ箱'}
           </button>
           <button onClick={onOpenProgressReport} style={utilityButtonStyle(false)}>進捗レポート</button>
           <button onClick={onOpenSettings} style={utilityButtonStyle(false)}>設定</button>
