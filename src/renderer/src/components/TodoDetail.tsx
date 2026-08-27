@@ -82,6 +82,7 @@ export function TodoDetail({
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState<UpdateTodoInput>({})
   const [editableSubTasks, setEditableSubTasks] = useState<EditableSubTask[]>([])
+  const [subTaskReorderPending, setSubTaskReorderPending] = useState(false)
   const [descriptionDraft, setDescriptionDraft] = useState('')
   const [descriptionBase, setDescriptionBase] = useState('')
   const [descriptionSaving, setDescriptionSaving] = useState(false)
@@ -295,6 +296,35 @@ export function TodoDetail({
     await window.api.subtaskDelete(subTaskId)
     setSubTasks((previous) => previous.filter((item) => item.id !== subTaskId))
     setEditableSubTasks((previous) => previous.filter((item) => item.id !== subTaskId))
+  }
+
+  const handleMoveSubTask = async (subTaskId: string, direction: -1 | 1): Promise<void> => {
+    if (!todo || subTaskReorderPending) return
+
+    const fromIndex = subTasks.findIndex((item) => item.id === subTaskId)
+    const toIndex = fromIndex + direction
+    if (fromIndex < 0 || toIndex < 0 || toIndex >= subTasks.length) return
+
+    const previousSubTasks = subTasks
+    const previousEditableSubTasks = editableSubTasks
+    const nextSubTasks = [...subTasks]
+    const [moved] = nextSubTasks.splice(fromIndex, 1)
+    nextSubTasks.splice(toIndex, 0, moved)
+    const orderedIds = nextSubTasks.map((item) => item.id)
+    const editableById = new Map(editableSubTasks.map((item) => [item.id, item]))
+
+    setSubTasks(nextSubTasks)
+    setEditableSubTasks(orderedIds.map((id) => editableById.get(id)).filter((item): item is EditableSubTask => Boolean(item)))
+    setSubTaskReorderPending(true)
+    try {
+      await window.api.subtaskReorder(todo.id, orderedIds)
+    } catch (error) {
+      setSubTasks(previousSubTasks)
+      setEditableSubTasks(previousEditableSubTasks)
+      onShowToast(error instanceof Error ? error.message : 'サブタスクを並べ替えできませんでした', 'error')
+    } finally {
+      setSubTaskReorderPending(false)
+    }
   }
 
   const handleSave = async (): Promise<void> => {
@@ -790,26 +820,44 @@ export function TodoDetail({
         <div style={sectionTitleStyle}>サブタスク {subTasks.length > 0 && `(${doneCount}/${subTasks.length})`}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
           {editing
-            ? editableSubTasks.map((subTask) => (
-              <EditableSubTaskItem
-                key={subTask.id}
-                subTask={subTask}
-                onChange={(data) => setEditableSubTasks((previous) => previous.map((item) => item.id === subTask.id ? { ...item, ...data } : item))}
-                onDelete={() => void handleDeleteSubTask(subTask.id)}
-              />
+            ? editableSubTasks.map((subTask, index) => (
+              <div key={subTask.id} style={{ display: 'flex', alignItems: 'stretch', gap: 6 }}>
+                <SubTaskOrderControls
+                  index={index}
+                  count={editableSubTasks.length}
+                  disabled={subTaskReorderPending}
+                  onMove={(direction) => void handleMoveSubTask(subTask.id, direction)}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <EditableSubTaskItem
+                    subTask={subTask}
+                    onChange={(data) => setEditableSubTasks((previous) => previous.map((item) => item.id === subTask.id ? { ...item, ...data } : item))}
+                    onDelete={() => void handleDeleteSubTask(subTask.id)}
+                  />
+                </div>
+              </div>
             ))
-            : subTasks.map((subTask) => (
-              <ReadonlySubTaskItem
-                key={subTask.id}
-                subTask={subTask}
-                onToggle={() => void window.api.subtaskUpdate(subTask.id, { done: !subTask.done }).then((updated) => setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item)))}
-                onSave={async (data) => {
-                  const updated = await window.api.subtaskUpdate(subTask.id, data)
-                  setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
-                }}
-                onDelete={() => void handleDeleteSubTask(subTask.id)}
-                onShowToast={onShowToast}
-              />
+            : subTasks.map((subTask, index) => (
+              <div key={subTask.id} style={{ display: 'flex', alignItems: 'stretch', gap: 6 }}>
+                <SubTaskOrderControls
+                  index={index}
+                  count={subTasks.length}
+                  disabled={subTaskReorderPending}
+                  onMove={(direction) => void handleMoveSubTask(subTask.id, direction)}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <ReadonlySubTaskItem
+                    subTask={subTask}
+                    onToggle={() => void window.api.subtaskUpdate(subTask.id, { done: !subTask.done }).then((updated) => setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item)))}
+                    onSave={async (data) => {
+                      const updated = await window.api.subtaskUpdate(subTask.id, data)
+                      setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
+                    }}
+                    onDelete={() => void handleDeleteSubTask(subTask.id)}
+                    onShowToast={onShowToast}
+                  />
+                </div>
+              </div>
             ))}
         </div>
         <form onSubmit={(event) => void handleAddSubTask(event)} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -900,6 +948,32 @@ function DependencyList({ title, items, getTodoId, getTitle, reload }: { title: 
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function SubTaskOrderControls({ index, count, disabled, onMove }: {
+  index: number
+  count: number
+  disabled: boolean
+  onMove: (direction: -1 | 1) => void
+}): React.JSX.Element {
+  const button = (isDisabled: boolean): React.CSSProperties => ({
+    width: 24,
+    flex: 1,
+    minHeight: 24,
+    border: '1px solid #334155',
+    borderRadius: 5,
+    background: '#0f172a',
+    color: isDisabled ? '#475569' : '#94a3b8',
+    cursor: isDisabled ? 'not-allowed' : 'pointer',
+    padding: 0
+  })
+
+  return (
+    <div style={{ width: 24, display: 'flex', flexDirection: 'column', gap: 4 }} aria-label="サブタスクの並べ替え">
+      <button type="button" onClick={() => onMove(-1)} disabled={disabled || index === 0} title="上へ移動" aria-label="上へ移動" style={button(disabled || index === 0)}>▲</button>
+      <button type="button" onClick={() => onMove(1)} disabled={disabled || index >= count - 1} title="下へ移動" aria-label="下へ移動" style={button(disabled || index >= count - 1)}>▼</button>
     </div>
   )
 }

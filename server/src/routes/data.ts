@@ -31,6 +31,7 @@ import {
   getSubTasksByTodo,
   getAllSubTasks,
   getSubTasksForCalendar,
+  reorderSubTasks,
   createSubTask,
   updateSubTask,
   deleteSubTask
@@ -79,10 +80,13 @@ export const dataRouter = Router()
 dataRouter.use(requireAuth)
 
 /** Run a handler, broadcast a change scope on success, and map thrown errors to 400. */
-function run<T>(res: Response, fn: () => T, scope?: DataScope): void {
+function run<T>(res: Response, fn: () => T, scope?: DataScope | DataScope[]): void {
   try {
     const result = fn()
-    if (scope) broadcastDataChanged(scope)
+    if (scope) {
+      const scopes = Array.isArray(scope) ? scope : [scope]
+      scopes.forEach(broadcastDataChanged)
+    }
     res.json(result === undefined ? { ok: true } : result)
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : 'エラーが発生しました' })
@@ -129,23 +133,38 @@ function notifyNewAssignments(actorUserId: string, before: Set<string>, after: T
   notifyUnreadChanged(changed)
 }
 
-function notifyProgressReply(actorUserId: string, note: ProgressNote | undefined, commentId: string): void {
-  if (!note?.user_id || note.user_id === actorUserId) return
-  try {
-    const notification = createNotification({
-      userId: note.user_id,
-      type: 'progress_reply',
-      actorUserId,
-      todoId: note.todo_id,
-      progressNoteId: note.id,
-      progressCommentId: commentId,
-      title: '進捗に返信がありました',
-      body: `「${note.todo_title}」の進捗に返信がありました`
-    })
-    if (notification) notifyUnreadChanged([note.user_id])
-  } catch (error) {
-    console.error('Failed to create progress reply notification', error)
+function notifyProgressReply(
+  actorUserId: string,
+  note: ProgressNote | undefined,
+  parentComment: ProgressNoteComment | undefined,
+  commentId: string
+): void {
+  if (!note) return
+
+  const recipients = new Set<string>()
+  if (note.user_id && note.user_id !== actorUserId) recipients.add(note.user_id)
+  if (parentComment?.user_id && parentComment.user_id !== actorUserId) recipients.add(parentComment.user_id)
+
+  const changed = new Set<string>()
+  for (const userId of recipients) {
+    try {
+      const isParentRecipient = parentComment?.user_id === userId
+      const notification = createNotification({
+        userId,
+        type: 'progress_reply',
+        actorUserId,
+        todoId: note.todo_id,
+        progressNoteId: note.id,
+        progressCommentId: commentId,
+        title: isParentRecipient ? '返信に返信がありました' : '進捗に返信がありました',
+        body: `「${note.todo_title}」の${isParentRecipient ? '返信' : '進捗'}に返信がありました`
+      })
+      if (notification) changed.add(userId)
+    } catch (error) {
+      console.error('Failed to create progress reply notification', error)
+    }
   }
+  notifyUnreadChanged(changed)
 }
 
 function findCommentInTree(comments: ProgressNoteComment[], commentId: string): ProgressNoteComment | undefined {
@@ -234,9 +253,11 @@ dataRouter.delete('/dependencies/:id', (req, res) => run(res, () => deleteTodoDe
 dataRouter.get('/subtasks', (_req, res) => run(res, () => getAllSubTasks()))
 dataRouter.get('/subtasks/calendar', (_req, res) => run(res, () => getSubTasksForCalendar()))
 dataRouter.get('/todos/:todoId/subtasks', (req, res) => run(res, () => getSubTasksByTodo(req.params.todoId)))
+dataRouter.post('/todos/:todoId/subtasks/reorder', (req, res) =>
+  run(res, () => reorderSubTasks(req.params.todoId, req.body.orderedIds), 'subtask'))
 dataRouter.post('/todos/:todoId/subtasks', (req, res) =>
-  run(res, () => createSubTask(req.params.todoId, req.body), 'subtask'))
-dataRouter.put('/subtasks/:id', (req, res) => run(res, () => updateSubTask(req.params.id, req.body), 'subtask'))
+  run(res, () => createSubTask(req.params.todoId, req.body), ['subtask', 'todo']))
+dataRouter.put('/subtasks/:id', (req, res) => run(res, () => updateSubTask(req.params.id, req.body), ['subtask', 'todo']))
 dataRouter.delete('/subtasks/:id', (req, res) => run(res, () => deleteSubTask(req.params.id), 'subtask'))
 
 // ─── Timer (per-user) ─────────────────────────────────────────
@@ -341,8 +362,11 @@ dataRouter.delete('/progress-notes/:id', (req, res) =>
 dataRouter.post('/progress-notes/:id/comments', (req, res) =>
   run(res, () => {
     const note = getProgressNote(req.params.id, req.user!.id)
+    const parentComment = req.body.parentCommentId
+      ? getProgressNoteComment(req.body.parentCommentId)
+      : undefined
     const created = createProgressNoteCommentWithId(req.params.id, req.user!.id, req.body.body, req.body.parentCommentId)
-    notifyProgressReply(req.user!.id, note, created.commentId)
+    notifyProgressReply(req.user!.id, note, parentComment, created.commentId)
     return created.note
   }, 'progress'))
 dataRouter.put('/progress-note-comments/:id', (req, res) =>

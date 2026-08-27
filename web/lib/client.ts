@@ -279,6 +279,7 @@ export const api: Api = {
   subtaskGetByTodo: (todoId) => get<SubTask[]>(`/todos/${todoId}/subtasks`),
   subtaskGetAll: () => get<SubTask[]>('/subtasks'),
   subtaskGetForCalendar: () => get<CalendarSubTask[]>('/subtasks/calendar'),
+  subtaskReorder: (todoId, orderedIds) => post<void>(`/todos/${todoId}/subtasks/reorder`, { orderedIds }),
   subtaskCreate: (todoId, data: CreateSubTaskInput) =>
     post<SubTask>(`/todos/${todoId}/subtasks`, data),
   subtaskUpdate: (id, data: UpdateSubTaskInput) => put<SubTask>(`/subtasks/${id}`, data),
