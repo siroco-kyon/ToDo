@@ -35,7 +35,7 @@ export interface Session {
 
 // ─── User notifications ───────────────────────────────────────
 
-export type NotificationType = 'progress_reply' | 'task_assigned' | 'progress_reaction'
+export type NotificationType = 'progress_reply' | 'task_assigned' | 'progress_reaction' | 'task_due' | 'mention'
 
 export interface UserNotification {
   id: string
@@ -173,6 +173,7 @@ export interface SubTask {
   completed_at: string | null
   sort_order: number
   created_at: string
+  parent_due_date_extended_to?: string | null
 }
 
 export interface CalendarSubTask extends SubTask {

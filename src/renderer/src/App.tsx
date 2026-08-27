@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Category, CreateTodoInput, DailyPlanItem, PublicUser, Todo, UpdateDailyPlanItemInput, UpdateTodoInput, UserNotification } from './types'
+import type { Category, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateTodoInput, UserNotification } from './types'
 import { useTimer } from './hooks/useTimer'
 import { Toolbar } from './components/Toolbar'
 import { CategoryList } from './components/CategoryList'
@@ -22,9 +22,10 @@ import { GanttView } from './components/GanttView'
 import { KanbanView } from './components/KanbanView'
 import { TeamDashboard } from './components/TeamDashboard'
 import { NotificationPanel } from './components/NotificationPanel'
+import { OverviewDashboard } from './components/OverviewDashboard'
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
-type CenterView = 'detail' | 'log' | 'progress' | 'plan' | 'gantt' | 'team' | 'kanban'
+type CenterView = 'detail' | 'overview' | 'log' | 'progress' | 'plan' | 'gantt' | 'team' | 'kanban'
 type ScopeLens = 'personal' | 'team'
 type GanttSidePanelMode = 'detail' | 'today'
 type PaneKey = 'category' | 'list' | 'side'
@@ -34,6 +35,16 @@ interface PaneWidths {
   category: number
   list: number
   side: number
+}
+
+interface SavedTaskView {
+  name: string
+  searchQuery: string
+  categoryId: string | null
+  assigneeId: string | null
+  showArchived: boolean
+  sortField: SortField
+  sortDir: 'asc' | 'desc'
 }
 
 const DEFAULT_PANE_WIDTHS: PaneWidths = {
@@ -78,7 +89,12 @@ export function App(): React.JSX.Element {
   const isStandaloneTaskReportWindow = window.location.hash === '#task-report-only'
   const [isFirstLaunch, setIsFirstLaunch] = useState<boolean | null>(null)
   const [todos, setTodos] = useState<Todo[]>([])
+  const [allSubTasks, setAllSubTasks] = useState<SubTask[]>([])
   const [todayPlanItems, setTodayPlanItems] = useState<DailyPlanItem[]>([])
+  const [planDate, setPlanDate] = useState(getTodayKey())
+  const [selectedPlanItems, setSelectedPlanItems] = useState<DailyPlanItem[]>([])
+  const [selectedPlanLoading, setSelectedPlanLoading] = useState(false)
+  const [selectedPlanError, setSelectedPlanError] = useState<string | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [users, setUsers] = useState<PublicUser[]>([])
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null)
@@ -93,10 +109,18 @@ export function App(): React.JSX.Element {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null)
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
+  const [detailDirty, setDetailDirty] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [sortField, setSortField] = useState<SortField>('created_at')
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc')
   const [searchQuery, setSearchQuery] = useState('')
+  const [bulkSelectedTodoIds, setBulkSelectedTodoIds] = useState<string[]>([])
+  const [savedTaskViews, setSavedTaskViews] = useState<SavedTaskView[]>(() => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem('saved-task-views') ?? '[]') as unknown
+      return Array.isArray(parsed) ? parsed as SavedTaskView[] : []
+    } catch { return [] }
+  })
   const [showQuickAdd, setShowQuickAdd] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
@@ -131,12 +155,14 @@ export function App(): React.JSX.Element {
   const [assigneeDefaultApplied, setAssigneeDefaultApplied] = useState(false)
   const [paneWidths, setPaneWidths] = useState<PaneWidths>(() => loadPaneWidths())
   const [toasts, setToasts] = useState<ToastMessage[]>([])
+  const [initialLoadError, setInitialLoadError] = useState<string | null>(null)
   const toastIdRef = useRef(0)
+  const selectedPlanRequestRef = useRef(0)
   const resizeRef = useRef<{ key: PaneKey; startX: number; startWidth: number } | null>(null)
 
-  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success', action?: { label: string; run: () => void }) => {
     const id = ++toastIdRef.current
-    setToasts((prev) => [...prev, { id, message, type }])
+    setToasts((prev) => [...prev, { id, message, type, actionLabel: action?.label, onAction: action?.run }])
   }, [])
 
   const removeToast = useCallback((id: number) => {
@@ -154,6 +180,24 @@ export function App(): React.JSX.Element {
 
   const loadTodayPlan = useCallback(async () => {
     setTodayPlanItems(await window.api.dailyPlanGetByDate(getTodayKey()))
+  }, [])
+
+  const loadSelectedPlan = useCallback(async (date: string) => {
+    const requestId = ++selectedPlanRequestRef.current
+    setSelectedPlanLoading(true)
+    setSelectedPlanError(null)
+    setSelectedPlanItems([])
+    try {
+      const items = await window.api.dailyPlanGetByDate(date)
+      if (requestId === selectedPlanRequestRef.current) setSelectedPlanItems(items)
+    } catch (error) {
+      if (requestId === selectedPlanRequestRef.current) {
+        setSelectedPlanError(error instanceof Error ? error.message : '計画を読み込めませんでした')
+      }
+      throw error
+    } finally {
+      if (requestId === selectedPlanRequestRef.current) setSelectedPlanLoading(false)
+    }
   }, [])
 
   const loadCategories = useCallback(async () => {
@@ -180,19 +224,28 @@ export function App(): React.JSX.Element {
   }, [])
 
   const loadInitialData = useCallback(async () => {
-    const [allTodos, allCategories, planItems, allUsers, me] = await Promise.all([
+    setInitialLoadError(null)
+    const [allTodos, allCategories, planItems, allUsers, me, nextSubTasks] = await Promise.all([
       window.api.todoGetAll(),
       window.api.categoryGetAll(),
       window.api.dailyPlanGetByDate(getTodayKey()),
       window.api.userList(),
-      window.api.authGetCurrentUser()
+      window.api.authGetCurrentUser(),
+      window.api.subtaskGetAll()
     ])
     setTodos(allTodos)
     setCategories(allCategories)
     setTodayPlanItems(planItems)
+    setSelectedPlanItems(planItems)
     setUsers(allUsers)
     setCurrentUser(me)
+    setAllSubTasks(nextSubTasks)
   }, [])
+
+  useEffect(() => {
+    if (isFirstLaunch !== false) return
+    void loadSelectedPlan(planDate).catch((error) => showToast(error instanceof Error ? error.message : '計画を読み込めませんでした', 'error'))
+  }, [isFirstLaunch, loadSelectedPlan, planDate, showToast])
 
   const { isRunning, runningTodoId, elapsedSeconds, start, stop, restore } = useTimer(loadTodos)
 
@@ -239,16 +292,23 @@ export function App(): React.JSX.Element {
       }
 
       if (scope === 'todo') {
-        void loadTodos()
+        void Promise.all([loadTodos(), loadSelectedPlan(planDate)])
+        return
+      }
+
+      if (scope === 'subtask') {
+        void window.api.subtaskGetAll().then(setAllSubTasks).catch((error) => {
+          showToast(error instanceof Error ? error.message : 'サブタスクを再読み込みできませんでした', 'error')
+        })
         return
       }
 
       if (scope === 'plan') {
-        void loadTodayPlan()
+        void Promise.all([loadTodayPlan(), loadSelectedPlan(planDate)])
       }
     })
     return () => unsubscribe()
-  }, [isFirstLaunch, loadCategories, loadTodayPlan, loadTodos])
+  }, [isFirstLaunch, loadCategories, loadSelectedPlan, loadTodayPlan, loadTodos, planDate, showToast])
 
   useEffect(() => {
     if (!currentUser) {
@@ -313,6 +373,10 @@ export function App(): React.JSX.Element {
   }, [paneWidths])
 
   useEffect(() => {
+    window.localStorage.setItem('saved-task-views', JSON.stringify(savedTaskViews))
+  }, [savedTaskViews])
+
+  useEffect(() => {
     const handlePointerMove = (event: PointerEvent): void => {
       const current = resizeRef.current
       if (!current) return
@@ -364,7 +428,9 @@ export function App(): React.JSX.Element {
       if (running) restore(running)
     }
 
-    init()
+    init().catch((error) => {
+      setInitialLoadError(error instanceof Error ? error.message : 'データを読み込めませんでした')
+    })
   }, [isFirstLaunch, loadInitialData, restore])
 
   const handleExportClipboard = useCallback(async () => {
@@ -420,6 +486,12 @@ export function App(): React.JSX.Element {
       : todayPlanItems.filter((item) => item.category_id == null || !privateCategoryIds.has(item.category_id)),
     [privateCategoryIds, scopeLens, todayPlanItems]
   )
+  const lensSelectedPlanItems = useMemo(
+    () => scopeLens === 'personal'
+      ? selectedPlanItems
+      : selectedPlanItems.filter((item) => item.category_id == null || !privateCategoryIds.has(item.category_id)),
+    [privateCategoryIds, scopeLens, selectedPlanItems]
+  )
 
   const filteredTodos = lensTodos
     .filter((todo) => {
@@ -438,7 +510,15 @@ export function App(): React.JSX.Element {
       if (q) {
         const hit = todo.title.toLowerCase().includes(q)
           || todo.description.toLowerCase().includes(q)
+          || todo.memo.toLowerCase().includes(q)
           || (todo.category_name?.toLowerCase().includes(q) ?? false)
+          || (todo.assignee_name?.toLowerCase().includes(q) ?? false)
+          || (todo.co_assignees ?? []).some((assignee) => assignee.display_name.toLowerCase().includes(q))
+          || allSubTasks.some((subTask) => subTask.todo_id === todo.id && (
+            subTask.title.toLowerCase().includes(q)
+            || subTask.description.toLowerCase().includes(q)
+            || (subTask.assignee_name?.toLowerCase().includes(q) ?? false)
+          ))
 
         if (!hit) return false
       }
@@ -472,21 +552,31 @@ export function App(): React.JSX.Element {
       return 0
     })
 
+  useEffect(() => {
+    const visibleIds = new Set(filteredTodos.map((todo) => todo.id))
+    setBulkSelectedTodoIds((previous) => {
+      const next = previous.filter((id) => visibleIds.has(id))
+      return next.length === previous.length ? previous : next
+    })
+  }, [allSubTasks, q, scopeLens, selectedAssigneeId, selectedCategoryId, showArchived, sortDir, sortField, todos])
+
   const selectedTodo = lensTodos.find((todo) => todo.id === selectedTodoId) ?? null
 
   const toggleCenterView = useCallback((view: CenterView) => {
+    if (detailDirty && !window.confirm('未保存の変更があります。別の画面へ移動しますか？')) return
     setActiveView((prev) => prev === view ? 'detail' : view)
     if (view === 'gantt') setGanttSidePanelMode('today')
-  }, [])
+  }, [detailDirty])
 
   const openTodoDetail = useCallback((id: string) => {
+    if (id !== selectedTodoId && detailDirty && !window.confirm('未保存の変更があります。別のタスクへ移動しますか？')) return
     setSelectedTodoId(id)
     if (activeView === 'gantt') {
       setGanttSidePanelMode('detail')
       return
     }
     setActiveView('detail')
-  }, [activeView])
+  }, [activeView, detailDirty, selectedTodoId])
 
   const openNotifications = useCallback(() => {
     setShowNotifications(true)
@@ -502,7 +592,7 @@ export function App(): React.JSX.Element {
         await window.api.notificationMarkRead(notification.id)
       }
       await loadNotifications()
-      if ((notification.type === 'progress_reply' || notification.type === 'progress_reaction') && notification.progress_note_id) {
+      if ((notification.type === 'progress_reply' || notification.type === 'progress_reaction' || notification.type === 'mention') && notification.progress_note_id) {
         setProgressTimelineFocus({
           date: getDateKeyFromIso(notification.created_at),
           todoId: notification.todo_id,
@@ -542,8 +632,9 @@ export function App(): React.JSX.Element {
   }, [])
 
   const handleAdd = useCallback(async (data: CreateTodoInput) => {
-    await window.api.todoCreate(data)
+    const created = await window.api.todoCreate(data)
     await loadTodos()
+    return created
   }, [loadTodos])
 
   const handleUpdate = useCallback(async (id: string, data: UpdateTodoInput) => {
@@ -556,11 +647,12 @@ export function App(): React.JSX.Element {
   }, [])
 
   const handleArchive = useCallback(async (id: string) => {
+    const previousStatus = todos.find((todo) => todo.id === id)?.status
     await window.api.todoArchive(id)
     await loadTodos()
     if (selectedTodoId === id) setSelectedTodoId(null)
-    showToast('アーカイブしました')
-  }, [loadTodos, selectedTodoId, showToast])
+    showToast('ゴミ箱へ移動しました', 'success', { label: '元に戻す', run: () => { void window.api.todoUnarchive(id, previousStatus === 'archived' ? 'active' : previousStatus).then(loadTodos).then(() => showToast('元の状態に戻しました')) } })
+  }, [loadTodos, selectedTodoId, showToast, todos])
 
   const handleUnarchive = useCallback(async (id: string) => {
     await window.api.todoUnarchive(id)
@@ -671,6 +763,148 @@ export function App(): React.JSX.Element {
     await window.api.dailyPlanReorder(getTodayKey(), orderedIds)
     await loadTodos()
   }, [loadTodos])
+
+  const handleBulkUpdate = useCallback(async (data: UpdateTodoInput): Promise<void> => {
+    if (bulkSelectedTodoIds.length === 0) return
+    const results = await Promise.allSettled(bulkSelectedTodoIds.map((id) => window.api.todoUpdate(id, data)))
+    const failedIds = bulkSelectedTodoIds.filter((_, index) => results[index].status === 'rejected')
+    const successCount = bulkSelectedTodoIds.length - failedIds.length
+    await loadTodos()
+    showToast(failedIds.length > 0 ? `${successCount}件を更新、${failedIds.length}件は失敗しました` : `${successCount}件を一括更新しました`, failedIds.length > 0 ? 'error' : 'success')
+    setBulkSelectedTodoIds(failedIds)
+  }, [bulkSelectedTodoIds, loadTodos, showToast])
+
+  const handleBulkArchive = useCallback(async (): Promise<void> => {
+    if (!window.confirm(`${bulkSelectedTodoIds.length}件をゴミ箱へ移動しますか？`)) return
+    const originalStatuses = new Map(todos.filter((todo) => bulkSelectedTodoIds.includes(todo.id)).map((todo) => [todo.id, todo.status] as const))
+    const results = await Promise.allSettled(bulkSelectedTodoIds.map((id) => window.api.todoArchive(id)))
+    const failedIds = bulkSelectedTodoIds.filter((_, index) => results[index].status === 'rejected')
+    const archivedIds = bulkSelectedTodoIds.filter((_, index) => results[index].status === 'fulfilled')
+    const successCount = bulkSelectedTodoIds.length - failedIds.length
+    await loadTodos()
+    showToast(
+      failedIds.length > 0 ? `${successCount}件をゴミ箱へ移動、${failedIds.length}件は失敗しました` : `${successCount}件をゴミ箱へ移動しました`,
+      failedIds.length > 0 ? 'error' : 'success',
+      archivedIds.length > 0 ? {
+        label: '元に戻す',
+        run: () => {
+          void Promise.all(archivedIds.map((id) => {
+            const status = originalStatuses.get(id)
+            return window.api.todoUnarchive(id, status === 'archived' ? 'active' : status)
+          })).then(loadTodos).then(() => showToast(`${archivedIds.length}件を元の状態に戻しました`))
+        }
+      } : undefined
+    )
+    setBulkSelectedTodoIds(failedIds)
+  }, [bulkSelectedTodoIds, loadTodos, showToast, todos])
+
+  const handleBulkAddToday = useCallback(async (): Promise<void> => {
+    const existingItems = await window.api.dailyPlanGetByDate(getTodayKey())
+    const existingTodoIds = new Set(existingItems.map((item) => item.todo_id))
+    const targetIds = bulkSelectedTodoIds.filter((id) => !existingTodoIds.has(id))
+    const results = await Promise.allSettled(targetIds.map((id) => window.api.dailyPlanAdd(getTodayKey(), id)))
+    const failedIds = targetIds.filter((_, index) => results[index].status === 'rejected')
+    const addedCount = targetIds.length - failedIds.length
+    await loadTodos()
+    await loadTodayPlan()
+    if (planDate === getTodayKey()) await loadSelectedPlan(planDate)
+    const message = failedIds.length > 0
+      ? `${addedCount}件を追加、${failedIds.length}件は失敗しました`
+      : addedCount > 0
+        ? `${addedCount}件を今日の計画へ追加しました`
+        : '選択したタスクはすでに今日の計画に入っています'
+    showToast(message, failedIds.length > 0 ? 'error' : 'success')
+    setBulkSelectedTodoIds(failedIds)
+  }, [bulkSelectedTodoIds, loadSelectedPlan, loadTodayPlan, loadTodos, planDate, showToast])
+
+  const handleBulkDueDate = useCallback(async (): Promise<void> => {
+    const dueDate = window.prompt('期限を YYYY-MM-DD 形式で入力してください。空欄で期限を解除します。')
+    if (dueDate == null) return
+    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { showToast('日付形式が不正です', 'error'); return }
+    await handleBulkUpdate({ due_date: dueDate || null })
+  }, [handleBulkUpdate, showToast])
+
+  const saveCurrentTaskView = useCallback((): void => {
+    const name = window.prompt('この表示条件の名前を入力してください')?.trim()
+    if (!name) return
+    const next: SavedTaskView = { name, searchQuery, categoryId: selectedCategoryId, assigneeId: selectedAssigneeId, showArchived, sortField, sortDir }
+    setSavedTaskViews((previous) => [...previous.filter((view) => view.name !== name), next])
+    showToast(`表示条件「${name}」を保存しました`)
+  }, [searchQuery, selectedAssigneeId, selectedCategoryId, showArchived, showToast, sortDir, sortField])
+
+  const applyTaskView = useCallback((view: SavedTaskView): void => {
+    setSearchQuery(view.searchQuery)
+    setSelectedCategoryId(view.categoryId)
+    setSelectedAssigneeId(view.assigneeId)
+    setShowArchived(view.showArchived)
+    setSortField(view.sortField)
+    setSortDir(view.sortDir)
+  }, [])
+
+  const clearTaskFilters = useCallback((): void => {
+    setSearchQuery('')
+    setSelectedCategoryId(null)
+    setSelectedAssigneeId(null)
+    setShowArchived(false)
+  }, [])
+
+  const refreshSelectedPlan = useCallback(async (): Promise<void> => {
+    await loadSelectedPlan(planDate)
+    if (planDate === getTodayKey()) await loadTodayPlan()
+  }, [loadSelectedPlan, loadTodayPlan, planDate])
+
+  const handleSelectedPlanAdd = useCallback(async (todoId: string): Promise<DailyPlanItem> => {
+    const item = await window.api.dailyPlanAdd(planDate, todoId)
+    await refreshSelectedPlan()
+    return item
+  }, [planDate, refreshSelectedPlan])
+
+  const handleSelectedPlanUpdate = useCallback(async (id: string, data: UpdateDailyPlanItemInput): Promise<void> => {
+    await window.api.dailyPlanUpdate(id, data)
+    await refreshSelectedPlan()
+  }, [refreshSelectedPlan])
+
+  const handleSelectedPlanShift = useCallback(async (id: string, deltaMinutes: number): Promise<void> => {
+    await window.api.dailyPlanShift(id, deltaMinutes)
+    await refreshSelectedPlan()
+  }, [refreshSelectedPlan])
+
+  const handleSelectedPlanShiftFollowing = useCallback(async (id: string, deltaMinutes: number): Promise<void> => {
+    const anchor = selectedPlanItems.find((item) => item.id === id)
+    if (!anchor?.scheduled_start) return
+
+    const targets = selectedPlanItems.filter((item) => (
+      item.scheduled_start != null && item.scheduled_start >= anchor.scheduled_start!
+    ))
+    await Promise.all(targets.map((item) => window.api.dailyPlanShift(item.id, deltaMinutes)))
+    await refreshSelectedPlan()
+    showToast(`${targets.length}件の予定を${Math.abs(deltaMinutes)}分${deltaMinutes < 0 ? '早めました' : '遅らせました'}`)
+  }, [refreshSelectedPlan, selectedPlanItems, showToast])
+
+  const handleSelectedPlanDelete = useCallback(async (id: string): Promise<void> => {
+    await window.api.dailyPlanDelete(id)
+    await refreshSelectedPlan()
+  }, [refreshSelectedPlan])
+
+  const handleSelectedPlanReorder = useCallback(async (orderedIds: string[]): Promise<void> => {
+    await window.api.dailyPlanReorder(planDate, orderedIds)
+    await refreshSelectedPlan()
+  }, [planDate, refreshSelectedPlan])
+
+  const handleCarryOverPlan = useCallback(async (): Promise<void> => {
+    const previous = new Date(`${planDate}T00:00:00`)
+    previous.setDate(previous.getDate() - 1)
+    const previousKey = `${previous.getFullYear()}-${String(previous.getMonth() + 1).padStart(2, '0')}-${String(previous.getDate()).padStart(2, '0')}`
+    const previousItems = await window.api.dailyPlanGetByDate(previousKey)
+    const visiblePreviousItems = scopeLens === 'personal'
+      ? previousItems
+      : previousItems.filter((item) => item.category_id == null || !privateCategoryIds.has(item.category_id))
+    const existingTodoIds = new Set(lensSelectedPlanItems.map((item) => item.todo_id))
+    const carry = visiblePreviousItems.filter((item) => item.status !== 'done' && !existingTodoIds.has(item.todo_id))
+    for (const item of carry) await window.api.dailyPlanAdd(planDate, item.todo_id)
+    await refreshSelectedPlan()
+    showToast(carry.length > 0 ? `${carry.length}件を前日から繰り越しました` : '繰り越す未完了タスクはありません')
+  }, [lensSelectedPlanItems, planDate, privateCategoryIds, refreshSelectedPlan, scopeLens, showToast])
 
   const standaloneSortOptions: { key: SortField; label: string }[] = [
     { key: 'sort_order', label: '手動' },
@@ -804,6 +1038,7 @@ export function App(): React.JSX.Element {
         onOpenNotifications={multiUser ? openNotifications : undefined}
         onLogout={multiUser ? () => void window.api.authLogout() : undefined}
         onToggleLogView={() => toggleCenterView('log')}
+        onToggleOverviewView={() => toggleCenterView('overview')}
         onToggleProgressView={() => toggleCenterView('progress')}
         onTogglePlanView={() => toggleCenterView('plan')}
         onToggleGanttView={() => toggleCenterView('gantt')}
@@ -879,7 +1114,35 @@ export function App(): React.JSX.Element {
                 ))}
               </select>
             )}
+            <div style={{ display: 'flex', gap: 5, marginTop: 6, flexWrap: 'wrap' }}>
+              {savedTaskViews.length > 0 && <select defaultValue="" onChange={(event) => { const view = savedTaskViews.find((item) => item.name === event.target.value); if (view) applyTaskView(view); event.target.value = '' }} style={{ flex: 1, minWidth: 100, padding: '4px 6px', background: '#0f172a', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6 }}><option value="">保存ビュー</option>{savedTaskViews.map((view) => <option key={view.name} value={view.name}>{view.name}</option>)}</select>}
+              <button onClick={saveCurrentTaskView} style={{ padding: '4px 7px', background: '#172554', color: '#dbeafe', border: '1px solid #2563eb', borderRadius: 6, cursor: 'pointer' }}>保存</button>
+              {(searchQuery || selectedCategoryId || selectedAssigneeId !== null || showArchived) && <button onClick={clearTaskFilters} style={{ padding: '4px 7px', background: '#3f1d1d', color: '#fecaca', border: '1px solid #7f1d1d', borderRadius: 6, cursor: 'pointer' }}>全解除</button>}
+            </div>
+            {(searchQuery || selectedCategoryId || selectedAssigneeId !== null || showArchived) && (
+              <div aria-label="適用中の絞り込み" style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                {searchQuery && <button onClick={() => setSearchQuery('')} title="検索条件を解除" style={filterChipStyle}>検索: {searchQuery} ×</button>}
+                {selectedCategoryId && <button onClick={() => setSelectedCategoryId(null)} title="カテゴリ条件を解除" style={filterChipStyle}>カテゴリ: {categories.find((item) => item.id === selectedCategoryId)?.name ?? '不明'} ×</button>}
+                {selectedAssigneeId !== null && <button onClick={() => setSelectedAssigneeId(null)} title="担当者条件を解除" style={filterChipStyle}>担当: {selectedAssigneeId === '' ? '未割当' : users.find((item) => item.id === selectedAssigneeId)?.display_name ?? '不明'} ×</button>}
+                {showArchived && <button onClick={() => setShowArchived(false)} title="ゴミ箱表示を解除" style={filterChipStyle}>ゴミ箱 ×</button>}
+              </div>
+            )}
           </div>
+
+          {bulkSelectedTodoIds.length > 0 && (
+            <div style={{ padding: '6px 8px', borderBottom: '1px solid #312e81', background: '#172554', display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+              <strong style={{ fontSize: '0.72rem', color: '#dbeafe' }}>{bulkSelectedTodoIds.length}件選択</strong>
+              <button onClick={() => void handleBulkUpdate({ status: 'done', progress: 100 })} style={bulkButtonStyle}>完了</button>
+              <select defaultValue="" onChange={(event) => { if (event.target.value) void handleBulkUpdate(event.target.value === 'done' ? { status: 'done', progress: 100 } : { status: event.target.value as Todo['status'] }); event.target.value = '' }} style={bulkSelectStyle}><option value="">状態変更</option><option value="not_started">未着手</option><option value="active">進行中</option><option value="done">完了</option></select>
+              <select defaultValue="" onChange={(event) => { if (event.target.value) void handleBulkUpdate({ priority: Number(event.target.value) }); event.target.value = '' }} style={bulkSelectStyle}><option value="">優先度</option><option value="5">最高</option><option value="4">高</option><option value="3">中</option><option value="2">低</option><option value="1">最低</option></select>
+              <select defaultValue="" onChange={(event) => { if (event.target.value) void handleBulkUpdate({ category_id: event.target.value === '__none__' ? null : event.target.value }); event.target.value = '' }} style={bulkSelectStyle}><option value="">カテゴリ変更</option><option value="__none__">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+              {multiUser && <select defaultValue="" onChange={(event) => { if (event.target.value) void handleBulkUpdate({ assignee_id: event.target.value === '__none__' ? null : event.target.value }); event.target.value = '' }} style={bulkSelectStyle}><option value="">担当変更</option><option value="__none__">未割当</option>{users.filter((user) => user.is_active).map((user) => <option key={user.id} value={user.id}>{user.display_name}</option>)}</select>}
+              <button onClick={() => void handleBulkDueDate()} style={bulkButtonStyle}>期限</button>
+              <button onClick={() => void handleBulkAddToday()} style={bulkButtonStyle}>今日へ</button>
+              <button onClick={() => void handleBulkArchive()} style={bulkButtonStyle}>ゴミ箱へ</button>
+              <button onClick={() => setBulkSelectedTodoIds([])} style={bulkButtonStyle}>解除</button>
+            </div>
+          )}
 
           <div style={{ padding: '5px 8px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
             {SORT_FIELDS.map(({ key, label }) => {
@@ -926,6 +1189,10 @@ export function App(): React.JSX.Element {
               elapsedSeconds={elapsedSeconds}
               isManualSort={isManualSort}
               searchQuery={q}
+              selectedIds={bulkSelectedTodoIds}
+              onToggleSelected={(id) => setBulkSelectedTodoIds((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id])}
+              onClearSearch={() => setSearchQuery('')}
+              onAddTodo={() => setShowQuickAdd(true)}
               onSelect={openTodoDetail}
               onToggleDone={handleToggleDone}
               onArchive={handleArchive}
@@ -944,7 +1211,15 @@ export function App(): React.JSX.Element {
         />
 
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: '#0f172a' }}>
-          {activeView === 'gantt' ? (
+          {initialLoadError ? (
+            <div role="alert" style={{ margin: 24, padding: 20, border: '1px solid #ef4444', borderRadius: 12, background: '#450a0a', color: '#fecaca' }}>
+              <strong>データを読み込めませんでした</strong>
+              <div style={{ marginTop: 6, fontSize: '0.82rem' }}>{initialLoadError}</div>
+              <button onClick={() => void loadInitialData().catch((error) => setInitialLoadError(error instanceof Error ? error.message : '再読み込みできませんでした'))} style={{ marginTop: 12, padding: '7px 12px', borderRadius: 7, border: '1px solid #ef4444', background: '#7f1d1d', color: '#fff', cursor: 'pointer' }}>再試行</button>
+            </div>
+          ) : activeView === 'overview' ? (
+            <OverviewDashboard todos={filteredTodos} categories={categories} runningTodoId={runningTodoId} elapsedSeconds={elapsedSeconds} onSelectTodo={openTodoDetail} />
+          ) : activeView === 'gantt' ? (
             <GanttView
               categories={categories}
               users={users}
@@ -964,18 +1239,29 @@ export function App(): React.JSX.Element {
               onChangeStatus={handleKanbanMove}
               onCreateInColumn={handleKanbanCreate}
             />
+          ) : activeView === 'plan' && selectedPlanLoading ? (
+            <div role="status" style={{ padding: 24, color: '#94a3b8' }}>計画を読み込んでいます…</div>
+          ) : activeView === 'plan' && selectedPlanError ? (
+            <div role="alert" style={{ margin: 24, padding: 20, border: '1px solid #ef4444', borderRadius: 12, background: '#450a0a', color: '#fecaca' }}>
+              <strong>{planDate} の計画を読み込めませんでした</strong>
+              <div style={{ marginTop: 6, fontSize: '0.82rem' }}>{selectedPlanError}</div>
+              <button onClick={() => void loadSelectedPlan(planDate).catch(() => undefined)} style={{ marginTop: 12, padding: '7px 12px', borderRadius: 7, border: '1px solid #ef4444', background: '#7f1d1d', color: '#fff', cursor: 'pointer' }}>再試行</button>
+            </div>
           ) : activeView === 'plan' ? (
             <PlanView
-              date={getTodayKey()}
-              planItems={lensPlanItems}
+              date={planDate}
+              planItems={lensSelectedPlanItems}
               todos={filteredTodos}
               runningTodoId={runningTodoId}
               onSelectTodo={openTodoDetail}
-              onAddTodo={handleAddToTodayPlan}
-              onRemoveItem={handleRemoveTodayPlanItem}
-              onUpdateItem={handleUpdateTodayPlanItem}
-              onShiftItem={handleShiftTodayPlanItem}
-              onReorder={handleReorderTodayPlan}
+              onAddTodo={handleSelectedPlanAdd}
+              onRemoveItem={handleSelectedPlanDelete}
+              onUpdateItem={handleSelectedPlanUpdate}
+              onShiftItem={handleSelectedPlanShift}
+              onShiftFollowing={handleSelectedPlanShiftFollowing}
+              onReorder={handleSelectedPlanReorder}
+              onDateChange={setPlanDate}
+              onCarryOver={handleCarryOverPlan}
             />
           ) : activeView === 'log' ? (
             <WorkLogSummary hiddenTodoIds={hiddenPrivateTodoIds} />
@@ -1005,6 +1291,7 @@ export function App(): React.JSX.Element {
               onStopTimer={stop}
               onAddToTodayPlan={handleAddToTodayPlan}
               onShowToast={showToast}
+              onDirtyChange={setDetailDirty}
             />
           )}
         </div>
@@ -1059,6 +1346,7 @@ export function App(): React.JSX.Element {
                         onStopTimer={stop}
                         onAddToTodayPlan={handleAddToTodayPlan}
                         onShowToast={showToast}
+                        onDirtyChange={setDetailDirty}
                       />
                     ) : (
                       <TodayFlowRail
@@ -1066,7 +1354,7 @@ export function App(): React.JSX.Element {
                         planItems={lensPlanItems}
                         runningTodoId={runningTodoId}
                         onSelectTodo={openTodoDetail}
-                        onOpenPlan={() => setActiveView('plan')}
+                        onOpenPlan={() => toggleCenterView('plan')}
                       />
                     )}
                   </div>
@@ -1077,7 +1365,7 @@ export function App(): React.JSX.Element {
                   planItems={lensPlanItems}
                   runningTodoId={runningTodoId}
                   onSelectTodo={openTodoDetail}
-                  onOpenPlan={() => setActiveView('plan')}
+                  onOpenPlan={() => toggleCenterView('plan')}
                 />
               )}
             </div>
@@ -1091,6 +1379,7 @@ export function App(): React.JSX.Element {
           users={users}
           onAdd={handleAdd}
           onClose={() => setShowQuickAdd(false)}
+          onShowToast={showToast}
         />
       )}
 
@@ -1123,6 +1412,7 @@ export function App(): React.JSX.Element {
           onClose={() => setShowNotifications(false)}
           onSelect={(notification) => void handleSelectNotification(notification)}
           onMarkAllRead={() => void handleMarkAllNotificationsRead()}
+          onShowToast={showToast}
         />
       )}
 
@@ -1174,6 +1464,22 @@ const resizeHandleStyle: React.CSSProperties = {
   cursor: 'col-resize',
   background: 'linear-gradient(to right, transparent 0, transparent 2px, #162033 2px, #162033 4px, transparent 4px)',
   opacity: 0.8
+}
+
+const bulkButtonStyle: React.CSSProperties = {
+  padding: '4px 7px', borderRadius: 6, border: '1px solid #3b82f6',
+  background: '#1e3a8a', color: '#dbeafe', cursor: 'pointer', fontSize: '0.7rem'
+}
+
+const bulkSelectStyle: React.CSSProperties = {
+  padding: '4px 6px', borderRadius: 6, border: '1px solid #3b82f6',
+  background: '#0f172a', color: '#dbeafe', fontSize: '0.7rem'
+}
+
+const filterChipStyle: React.CSSProperties = {
+  maxWidth: '100%', padding: '2px 6px', borderRadius: 999, border: '1px solid #4f46e5',
+  background: '#1e1b4b', color: '#c7d2fe', cursor: 'pointer', fontSize: '0.68rem',
+  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
 }
 
 function sideTabButtonStyle(active: boolean): React.CSSProperties {

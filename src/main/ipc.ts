@@ -103,7 +103,7 @@ export function registerIpcHandlers(
   ipcMain.handle('todo:create', handleMutation('todo', (data) => createTodo(data)))
   ipcMain.handle('todo:update', handleMutation('todo', (id: string, data) => updateTodo(id, data)))
   ipcMain.handle('todo:archive', handleMutation('todo', (id: string) => archiveTodo(id)))
-  ipcMain.handle('todo:unarchive', handleMutation('todo', (id: string) => unarchiveTodo(id)))
+  ipcMain.handle('todo:unarchive', handleMutation('todo', (id: string, status?: 'not_started' | 'active' | 'done') => unarchiveTodo(id, status)))
   ipcMain.handle('todo:delete', handleMutation('todo', (id: string) => deleteTodo(id)))
   ipcMain.handle('todo:reorder', handleMutation('todo', (orderedIds: string[]) => reorderTodos(orderedIds)))
   ipcMain.handle('todoDependency:getAll', () => getAllTodoDependencies())

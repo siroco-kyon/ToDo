@@ -105,7 +105,7 @@ const api = {
   todoUpdate: (id: string, data: UpdateTodoInput): Promise<Todo> =>
     ipcRenderer.invoke('todo:update', id, data),
   todoArchive: (id: string): Promise<void> => ipcRenderer.invoke('todo:archive', id),
-  todoUnarchive: (id: string): Promise<void> => ipcRenderer.invoke('todo:unarchive', id),
+  todoUnarchive: (id: string, status?: 'not_started' | 'active' | 'done'): Promise<void> => ipcRenderer.invoke('todo:unarchive', id, status),
   todoDelete: (id: string): Promise<void> => ipcRenderer.invoke('todo:delete', id),
   todoReorder: (orderedIds: string[]): Promise<void> => ipcRenderer.invoke('todo:reorder', orderedIds),
   todoDependencyGetAll: (): Promise<TodoDependency[]> => ipcRenderer.invoke('todoDependency:getAll'),
@@ -180,6 +180,10 @@ const api = {
   notificationUnreadCount: async (): Promise<number> => 0,
   notificationMarkRead: async (_id: string): Promise<UserNotification | null> => null,
   notificationMarkAllRead: async (): Promise<void> => {},
+  notificationPreferencesGet: async (): Promise<Record<string, boolean>> => ({}),
+  notificationPreferenceSet: async (type: string, enabled: boolean): Promise<{ type: string; enabled: boolean }> => ({ type, enabled }),
+  todoSubscriptionGet: async (_todoId: string): Promise<{ subscribed: boolean }> => ({ subscribed: false }),
+  todoSubscriptionSet: async (_todoId: string, subscribed: boolean): Promise<{ subscribed: boolean }> => ({ subscribed }),
 
   // Progress notes (shared) / digest (admin report; desktop returns a single bucket)
   progressNoteGetByTodo: (todoId: string): Promise<ProgressNote[]> =>

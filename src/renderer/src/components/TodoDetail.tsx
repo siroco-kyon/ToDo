@@ -16,7 +16,8 @@ interface Props {
   onStartTimer: (todoId: string) => Promise<void>
   onStopTimer: (note?: string) => Promise<void>
   onAddToTodayPlan: (todoId: string) => Promise<DailyPlanItem>
-  onShowToast: (message: string, type?: 'success' | 'error') => void
+  onShowToast: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
+  onDirtyChange?: (dirty: boolean) => void
 }
 
 interface EditableSubTask {
@@ -69,7 +70,8 @@ export function TodoDetail({
   onStartTimer,
   onStopTimer,
   onAddToTodayPlan,
-  onShowToast
+  onShowToast,
+  onDirtyChange
 }: Props): React.JSX.Element {
   const [logs, setLogs] = useState<WorkLog[]>([])
   const [subTasks, setSubTasks] = useState<SubTask[]>([])
@@ -83,6 +85,8 @@ export function TodoDetail({
   const [editData, setEditData] = useState<UpdateTodoInput>({})
   const [editableSubTasks, setEditableSubTasks] = useState<EditableSubTask[]>([])
   const [subTaskReorderPending, setSubTaskReorderPending] = useState(false)
+  const [subscribed, setSubscribed] = useState(false)
+  const [sectionLoadError, setSectionLoadError] = useState<string | null>(null)
   const [descriptionDraft, setDescriptionDraft] = useState('')
   const [descriptionBase, setDescriptionBase] = useState('')
   const [descriptionSaving, setDescriptionSaving] = useState(false)
@@ -142,12 +146,24 @@ export function TodoDetail({
     }))
   ), [])
 
+  useEffect(() => {
+    if (!todo) {
+      onDirtyChange?.(false)
+      return
+    }
+    const structuredChanged = editing && (
+      JSON.stringify(editData) !== JSON.stringify(createEditData(todo))
+      || JSON.stringify(editableSubTasks) !== JSON.stringify(createEditableSubTasks(subTasks))
+    )
+    onDirtyChange?.(structuredChanged || descriptionDraft !== descriptionBase || memoDraft !== memoBase)
+  }, [createEditData, createEditableSubTasks, descriptionBase, descriptionDraft, editData, editableSubTasks, editing, memoBase, memoDraft, onDirtyChange, subTasks, todo])
+
   const loadSubTasks = useCallback(async (id: string) => {
     try {
       setSubTasks(await window.api.subtaskGetByTodo(id))
     } catch (error) {
       console.error('Failed to load subtasks', error)
-      setSubTasks([])
+      setSectionLoadError('サブタスクを読み込めませんでした')
     }
   }, [])
 
@@ -157,7 +173,7 @@ export function TodoDetail({
       setDependencies(rows.filter((row) => row.predecessor_todo_id === id || row.successor_todo_id === id))
     } catch (error) {
       console.error('Failed to load dependencies', error)
-      setDependencies([])
+      setSectionLoadError('依存関係を読み込めませんでした')
     }
   }, [])
 
@@ -166,7 +182,7 @@ export function TodoDetail({
       setProgressNotes(await window.api.progressNoteGetByTodo(id))
     } catch (error) {
       console.error('Failed to load progress notes', error)
-      setProgressNotes([])
+      setSectionLoadError('進捗メモを読み込めませんでした')
     }
   }, [])
 
@@ -175,7 +191,7 @@ export function TodoDetail({
       setLogs(await window.api.worklogGetByTodo(id))
     } catch (error) {
       console.error('Failed to load worklogs', error)
-      setLogs([])
+      setSectionLoadError('作業ログを読み込めませんでした')
     }
   }, [])
 
@@ -196,6 +212,7 @@ export function TodoDetail({
     }
 
     void loadWorkLogs(todoId)
+    setSectionLoadError(null)
     void loadSubTasks(todoId)
     void loadDependencies(todoId)
     void loadProgressNotes(todoId)
@@ -223,7 +240,7 @@ export function TodoDetail({
       setDescriptionBase(todo.description ?? '')
       setMemoDraft(todo.memo ?? '')
       setMemoBase(todo.memo ?? '')
-      setNoteDraft('')
+      setNoteDraft(window.localStorage.getItem(`progress-note-draft:${todoId}`) ?? '')
       setEditingProgressNoteId(null)
       setEditingProgressNoteDraft('')
       return
@@ -260,6 +277,11 @@ export function TodoDetail({
     return () => unsubscribe()
   }, [loadDependencies, loadProgressNotes, loadSubTasks, loadWorkLogs, todoId])
 
+  useEffect(() => {
+    if (!todoId || !currentUser) { setSubscribed(false); return }
+    void window.api.todoSubscriptionGet(todoId).then((result) => setSubscribed(result.subscribed)).catch(() => setSubscribed(false))
+  }, [currentUser, todoId])
+
   const calcProgress = useCallback((clientX: number): number => {
     if (!progressBarRef.current) return 0
     const rect = progressBarRef.current.getBoundingClientRect()
@@ -293,9 +315,34 @@ export function TodoDetail({
   }, [calcProgress, onShowToast, onUpdate, todoId])
 
   const handleDeleteSubTask = async (subTaskId: string): Promise<void> => {
+    const target = subTasks.find((item) => item.id === subTaskId)
+    if (!window.confirm(`サブタスク「${target?.title ?? ''}」を削除しますか？`)) return
+    if (!target || !todoId) return
+    const originalIndex = subTasks.findIndex((item) => item.id === subTaskId)
+    const remainingIds = subTasks.filter((item) => item.id !== subTaskId).map((item) => item.id)
     await window.api.subtaskDelete(subTaskId)
     setSubTasks((previous) => previous.filter((item) => item.id !== subTaskId))
     setEditableSubTasks((previous) => previous.filter((item) => item.id !== subTaskId))
+    onShowToast(`サブタスク「${target.title}」を削除しました`, 'success', {
+      label: '元に戻す',
+      run: () => {
+        void window.api.subtaskCreate(todoId, {
+          title: target.title,
+          description: target.description,
+          assignee_id: target.assignee_id,
+          start_date: target.start_date,
+          due_date: target.due_date,
+          progress: target.progress
+        }).then(async (created) => {
+          if (target.done && !created.done) await window.api.subtaskUpdate(created.id, { done: true })
+          const orderedIds = [...remainingIds]
+          orderedIds.splice(Math.max(0, originalIndex), 0, created.id)
+          await window.api.subtaskReorder(todoId, orderedIds)
+          await loadSubTasks(todoId)
+          onShowToast('サブタスクを元の位置へ戻しました')
+        })
+      }
+    })
   }
 
   const handleMoveSubTask = async (subTaskId: string, direction: -1 | 1): Promise<void> => {
@@ -355,7 +402,7 @@ export function TodoDetail({
     })
 
     await onUpdate(todo.id, editData)
-    await Promise.all(changedSubTasks.map((subTask) => window.api.subtaskUpdate(subTask.id, {
+    const updatedSubTasks = await Promise.all(changedSubTasks.map((subTask) => window.api.subtaskUpdate(subTask.id, {
       title: subTask.title.trim(),
       description: subTask.description.trim(),
       start_date: subTask.start_date ?? null,
@@ -367,7 +414,8 @@ export function TodoDetail({
     setDescriptionBase(editData.description ?? '')
     await loadSubTasks(todo.id)
     setEditing(false)
-    onShowToast('タスクを更新しました')
+    const extendedTo = updatedSubTasks.map((item) => item.parent_due_date_extended_to).filter(Boolean).sort().at(-1)
+    onShowToast(extendedTo ? `タスクを更新し、親期限を${extendedTo}まで延長しました` : 'タスクを更新しました')
   }
 
   const handleDescriptionSave = async (): Promise<void> => {
@@ -404,33 +452,43 @@ export function TodoDetail({
     event.preventDefault()
     if (!todo) return
 
-    const title = newSubTask.title.trim()
-    if (!title) return
+    const titles = newSubTask.title.split(/\r?\n/).map((value) => value.trim()).filter(Boolean)
+    if (titles.length === 0) return
     if (newSubTask.start_date && newSubTask.due_date && newSubTask.start_date > newSubTask.due_date) {
       onShowToast('サブタスクの日付が不正です', 'error')
       return
     }
 
-    const created = await window.api.subtaskCreate(todo.id, {
-      title,
-      description: newSubTask.description?.trim() ?? '',
-      start_date: newSubTask.start_date ?? null,
-      due_date: newSubTask.due_date ?? null,
-      progress: clampProgress(newSubTask.progress ?? 0)
-    })
-    setNewSubTask({ title: '', description: '', start_date: null, due_date: null, progress: 0 })
-    setSubTasks((previous) => [...previous, created])
-    if (editing) {
-      setEditableSubTasks((previous) => [...previous, {
-        id: created.id,
-        title: created.title,
-        description: created.description ?? '',
-        start_date: created.start_date ?? null,
-        due_date: created.due_date ?? null,
-        progress: clampProgress(created.progress ?? 0),
-        done: Boolean(created.done)
-      }])
+    const createdItems: SubTask[] = []
+    const remainingTitles = [...titles]
+    try {
+      for (const title of titles) {
+        createdItems.push(await window.api.subtaskCreate(todo.id, {
+          title,
+          description: newSubTask.description?.trim() ?? '',
+          start_date: newSubTask.start_date ?? null,
+          due_date: newSubTask.due_date ?? null,
+          progress: clampProgress(newSubTask.progress ?? 0)
+        }))
+        remainingTitles.shift()
+        setNewSubTask((previous) => ({ ...previous, title: remainingTitles.join('\n') }))
+      }
+    } catch (error) {
+      if (createdItems.length > 0) setSubTasks((previous) => [...previous, ...createdItems])
+      onShowToast(`${createdItems.length}件は追加済みです。残りを再試行できます: ${error instanceof Error ? error.message : '追加できませんでした'}`, 'error')
+      return
     }
+    setNewSubTask({ title: '', description: '', start_date: null, due_date: null, progress: 0 })
+    setSubTasks((previous) => [...previous, ...createdItems])
+    if (editing) {
+      setEditableSubTasks((previous) => [...previous, ...createdItems.map((created) => ({
+        id: created.id, title: created.title, description: created.description ?? '',
+        start_date: created.start_date ?? null, due_date: created.due_date ?? null,
+        progress: clampProgress(created.progress ?? 0), done: Boolean(created.done)
+      }))])
+    }
+    const extendedTo = createdItems.map((item) => item.parent_due_date_extended_to).filter(Boolean).sort().at(-1)
+    if (extendedTo) onShowToast(`サブタスクに合わせて親タスクの期限を${extendedTo}まで延長しました`)
   }
 
   const handleCreateDependency = async (): Promise<void> => {
@@ -456,6 +514,7 @@ export function TodoDetail({
       const created = await window.api.progressNoteCreate(todoId, body)
       setProgressNotes((previous) => [created, ...previous])
       setNoteDraft('')
+      window.localStorage.removeItem(`progress-note-draft:${todoId}`)
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '進捗メモを追加できませんでした', 'error')
     } finally {
@@ -477,6 +536,7 @@ export function TodoDetail({
   }
 
   const handleDeleteProgressNote = async (id: string): Promise<void> => {
+    if (!window.confirm('この進捗メモを削除しますか？')) return
     try {
       await window.api.progressNoteDelete(id)
       setProgressNotes((previous) => previous.filter((note) => note.id !== id))
@@ -524,9 +584,42 @@ export function TodoDetail({
   }
 
   const cancelEditing = (): void => {
+    const changed = JSON.stringify(editData) !== JSON.stringify(createEditData(todo))
+      || JSON.stringify(editableSubTasks) !== JSON.stringify(createEditableSubTasks(subTasks))
+    if (changed && !window.confirm('未保存の変更があります。編集を閉じてもよいですか？')) return
     setEditData(createEditData(todo))
     setEditableSubTasks(createEditableSubTasks(subTasks))
     setEditing(false)
+  }
+
+  const duplicateTodo = async (): Promise<void> => {
+    const created = await window.api.todoCreate({
+      title: `${todo.title}（コピー）`, description: todo.description, memo: todo.memo,
+      category_id: todo.category_id, assignee_id: todo.assignee_id, priority: todo.priority,
+      status: 'not_started', progress: 0, start_date: todo.start_date, due_date: todo.due_date
+    })
+    for (const subTask of subTasks) {
+      await window.api.subtaskCreate(created.id, {
+        title: subTask.title, description: subTask.description, assignee_id: subTask.assignee_id,
+        start_date: subTask.start_date, due_date: subTask.due_date, progress: 0
+      })
+    }
+    onShowToast(`「${created.title}」を作成しました`)
+  }
+
+  const saveAsTemplate = (): void => {
+    const name = window.prompt('テンプレート名を入力してください', todo.title)?.trim()
+    if (!name) return
+    const key = 'todo-templates'
+    let templates: Array<{ name?: string }> = []
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(key) ?? '[]') as unknown
+      if (Array.isArray(parsed)) templates = parsed as Array<{ name?: string }>
+    } catch { templates = [] }
+    templates = templates.filter((template) => template.name !== name)
+    templates.push({ name, todo: createEditData(todo), subTasks: subTasks.map((item) => ({ title: item.title, description: item.description, start_date: item.start_date, due_date: item.due_date })) } as { name: string })
+    window.localStorage.setItem(key, JSON.stringify(templates))
+    onShowToast(`テンプレート「${name}」を保存しました`)
   }
 
   return (
@@ -559,9 +652,13 @@ export function TodoDetail({
         <button onClick={editing ? cancelEditing : startEditing} style={buttonStyle('#334155')}>
           {editing ? '閉じる' : '編集'}
         </button>
+        {!editing && <button onClick={() => void duplicateTodo()} style={buttonStyle('#334155')}>複製</button>}
+        {!editing && <button onClick={saveAsTemplate} style={buttonStyle('#334155')}>テンプレート保存</button>}
+        {!editing && currentUser && <button onClick={() => void window.api.todoSubscriptionSet(todo.id, !subscribed).then((result) => { setSubscribed(result.subscribed); onShowToast(result.subscribed ? 'このタスクの更新を購読します' : '購読を解除しました') })} style={buttonStyle(subscribed ? '#14532d' : '#334155')}>{subscribed ? '購読中' : '購読'}</button>}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {sectionLoadError && <div role="alert" style={{ padding: 10, borderRadius: 8, border: '1px solid #ef4444', background: '#450a0a', color: '#fecaca', fontSize: '0.8rem' }}>{sectionLoadError}<button onClick={() => { setSectionLoadError(null); void Promise.all([loadWorkLogs(todo.id), loadSubTasks(todo.id), loadDependencies(todo.id), loadProgressNotes(todo.id)]) }} style={{ marginLeft: 10, padding: '4px 8px', borderRadius: 6, border: '1px solid #ef4444', background: '#7f1d1d', color: '#fff' }}>再試行</button></div>}
       {!editing && (todo.start_date || todo.due_date || todo.assignee_name || (todo.co_assignees ?? []).length > 0) && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {todo.start_date && <Badge color="#93c5fd">開始日 {todo.start_date}</Badge>}
@@ -597,7 +694,7 @@ export function TodoDetail({
         <div style={{ background: '#1e293b', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div><label style={labelStyle}>説明</label><textarea value={editData.description ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, description: event.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} /></div>
           <div><label style={labelStyle}>開始日</label><input type="date" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div>
-          <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最高</option><option value={2}>高</option><option value={3}>中</option><option value={4}>低</option><option value={5}>最低</option></select></div></div>
+          <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最低</option><option value={2}>低</option><option value={3}>中</option><option value={4}>高</option><option value={5}>最高</option></select></div></div>
           <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>締切</label><input type="date" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div><div style={{ flex: 1 }}><label style={labelStyle}>繰り返し</label><select value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as 'daily' | 'weekly' | 'monthly' | null }))} style={inputStyle}><option value="">なし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option></select></div></div>
           {editData.recurrence && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
@@ -762,7 +859,14 @@ export function TodoDetail({
             </div>
             <textarea
               value={noteDraft}
-              onChange={(event) => setNoteDraft(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value
+                setNoteDraft(value)
+                if (todoId) {
+                  if (value) window.localStorage.setItem(`progress-note-draft:${todoId}`, value)
+                  else window.localStorage.removeItem(`progress-note-draft:${todoId}`)
+                }
+              }}
               onKeyDown={(event) => {
                 if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                   event.preventDefault()
@@ -852,6 +956,7 @@ export function TodoDetail({
                     onSave={async (data) => {
                       const updated = await window.api.subtaskUpdate(subTask.id, data)
                       setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
+                      if (updated.parent_due_date_extended_to) onShowToast(`親タスクの期限を${updated.parent_due_date_extended_to}まで延長しました`)
                     }}
                     onDelete={() => void handleDeleteSubTask(subTask.id)}
                     onShowToast={onShowToast}
@@ -861,11 +966,11 @@ export function TodoDetail({
             ))}
         </div>
         <form onSubmit={(event) => void handleAddSubTask(event)} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <input value={newSubTask.title} onChange={(event) => setNewSubTask((previous) => ({ ...previous, title: event.target.value }))} placeholder="新しいサブタスクを追加..." style={{ ...inputStyle, fontSize: '0.82rem', padding: '6px 8px' }} />
+          <textarea value={newSubTask.title} onChange={(event) => setNewSubTask((previous) => ({ ...previous, title: event.target.value }))} placeholder="新しいサブタスクを追加...（複数行で一括追加）" rows={2} style={{ ...inputStyle, fontSize: '0.82rem', padding: '6px 8px', resize: 'vertical' }} />
           <textarea value={newSubTask.description ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, description: event.target.value }))} placeholder="メモ..." rows={2} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            <input type="date" value={newSubTask.start_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
-            <input type="date" value={newSubTask.due_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, due_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
+            <label style={labelStyle}>開始日<input type="date" value={newSubTask.start_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} /></label>
+            <label style={labelStyle}>期限<input type="date" value={newSubTask.due_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, due_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} /></label>
           </div>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: '#94a3b8' }}>
             <span>進捗 {clampProgress(newSubTask.progress ?? 0)}%</span>

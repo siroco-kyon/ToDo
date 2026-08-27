@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import type { Category, CreateTodoInput, PublicUser } from '../types'
+import type { Category, CreateTodoInput, PublicUser, Todo } from '../types'
 import { AssigneePicker } from './AssigneePicker'
 
 interface Props {
   categories: Category[]
   users?: PublicUser[]
-  onAdd: (data: CreateTodoInput) => Promise<void>
+  onAdd: (data: CreateTodoInput) => Promise<Todo>
   onClose: () => void
+  onShowToast: (message: string, type?: 'success' | 'error') => void
 }
 
 const selectStyle: React.CSSProperties = {
@@ -27,10 +28,24 @@ const labelStyle: React.CSSProperties = {
   color: '#94a3b8'
 }
 
-export function QuickAddModal({ categories, users = [], onAdd, onClose }: Props): React.JSX.Element {
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [memo, setMemo] = useState('')
+export function QuickAddModal({ categories, users = [], onAdd, onClose, onShowToast }: Props): React.JSX.Element {
+  const templates = useMemo(() => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem('todo-templates') ?? '[]') as unknown
+      return Array.isArray(parsed) ? parsed as Array<{ name: string; todo: CreateTodoInput; subTasks?: Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null }> }> : []
+    } catch { return [] }
+  }, [])
+  const [selectedTemplateName, setSelectedTemplateName] = useState('')
+  const [templateSubTasks, setTemplateSubTasks] = useState<Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null }>>([])
+  const savedDraft = useMemo(() => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem('quick-add-draft') ?? '{}') as unknown
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as { title?: string; description?: string; memo?: string } : {}
+    } catch { return {} }
+  }, [])
+  const [title, setTitle] = useState(savedDraft.title ?? '')
+  const [description, setDescription] = useState(savedDraft.description ?? '')
+  const [memo, setMemo] = useState(savedDraft.memo ?? '')
   const [categoryId, setCategoryId] = useState('')
   const [assigneeId, setAssigneeId] = useState<string | null>(null)
   const [status, setStatus] = useState<NonNullable<CreateTodoInput['status']>>('not_started')
@@ -38,7 +53,8 @@ export function QuickAddModal({ categories, users = [], onAdd, onClose }: Props)
   const [startDate, setStartDate] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [keepOpen, setKeepOpen] = useState(false)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const isDateRangeInvalid = useMemo(() => (
     Boolean(startDate && dueDate && startDate > dueDate)
@@ -49,37 +65,62 @@ export function QuickAddModal({ categories, users = [], onAdd, onClose }: Props)
   }, [])
 
   useEffect(() => {
+    window.localStorage.setItem('quick-add-draft', JSON.stringify({ title, description, memo }))
+  }, [description, memo, title])
+
+  const requestClose = (): void => {
+    if ((title.trim() || description.trim() || memo.trim()) && !window.confirm('入力中の内容があります。閉じてもよいですか？\n下書きは次回まで保存されます。')) return
+    onClose()
+  }
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape' || event.isComposing) return
       event.preventDefault()
-      onClose()
+      requestClose()
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+  }, [description, memo, onClose, title])
 
   const handleSubmit = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault()
     if (submitting) return
 
-    const trimmedTitle = title.trim()
-    if (!trimmedTitle || isDateRangeInvalid) return
+    const titles = title.split(/\r?\n/).map((value) => value.trim()).filter(Boolean)
+    if (titles.length === 0 || isDateRangeInvalid) return
 
     setSubmitting(true)
+    const remainingTitles = [...titles]
+    let createdCount = 0
     try {
-      await onAdd({
-        title: trimmedTitle,
-        description: description.trim(),
-        memo: memo.trim(),
-        category_id: categoryId || null,
-        assignee_id: assigneeId,
-        status,
-        priority,
-        start_date: startDate || null,
-        due_date: dueDate || null
-      })
-      onClose()
+      for (const nextTitle of titles) {
+        const created = await onAdd({
+          title: nextTitle,
+          description: description.trim(),
+          memo: memo.trim(),
+          category_id: categoryId || null,
+          assignee_id: assigneeId,
+          status,
+          priority,
+          start_date: startDate || null,
+          due_date: dueDate || null
+        })
+        createdCount += 1
+        remainingTitles.shift()
+        setTitle(remainingTitles.join('\n'))
+        for (const subTask of templateSubTasks) await window.api.subtaskCreate(created.id, subTask)
+      }
+      setTitle('')
+      setDescription('')
+      setMemo('')
+      window.localStorage.removeItem('quick-add-draft')
+      if (keepOpen) inputRef.current?.focus()
+      else onClose()
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : '追加できませんでした'
+      onShowToast(createdCount > 0 ? `${createdCount}件は追加済みです。残りを再試行できます: ${detail}` : detail, 'error')
     } finally {
       setSubmitting(false)
     }
@@ -99,10 +140,13 @@ export function QuickAddModal({ categories, users = [], onAdd, onClose }: Props)
         boxSizing: 'border-box'
       }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose()
+        if (event.target === event.currentTarget) requestClose()
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quick-add-title"
         style={{
           background: '#1e293b',
           borderRadius: 12,
@@ -113,19 +157,21 @@ export function QuickAddModal({ categories, users = [], onAdd, onClose }: Props)
           border: '1px solid #334155'
         }}
       >
-        <h2 style={{ margin: '0 0 14px', fontSize: '1.08rem', color: '#e2e8f0' }}>
+        <h2 id="quick-add-title" style={{ margin: '0 0 14px', fontSize: '1.08rem', color: '#e2e8f0' }}>
           タスク追加
         </h2>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {templates.length > 0 && <div><label style={labelStyle}>テンプレート</label><select value={selectedTemplateName} onChange={(event) => { const template = templates.find((item) => item.name === event.target.value); setSelectedTemplateName(event.target.value); if (!template) { setTemplateSubTasks([]); return }; setTitle(template.todo.title ?? ''); setDescription(template.todo.description ?? ''); setMemo(template.todo.memo ?? ''); setCategoryId(template.todo.category_id ?? ''); setAssigneeId(template.todo.assignee_id ?? null); setStatus(template.todo.status ?? 'not_started'); setPriority(template.todo.priority ?? 3); setStartDate(template.todo.start_date ?? ''); setDueDate(template.todo.due_date ?? ''); setTemplateSubTasks(template.subTasks ?? []) }} style={selectStyle}><option value="">選択しない</option>{templates.map((template) => <option key={template.name} value={template.name}>{template.name}</option>)}</select></div>}
           <div>
             <label style={labelStyle}>タイトル</label>
-            <input
+            <textarea
               ref={inputRef}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="タスクを入力..."
-              style={{ ...selectStyle, fontSize: '1rem' }}
+              placeholder="タスクを入力...（複数行で一括追加）"
+              rows={2}
+              style={{ ...selectStyle, fontSize: '1rem', resize: 'vertical' }}
             />
           </div>
 
@@ -202,11 +248,11 @@ export function QuickAddModal({ categories, users = [], onAdd, onClose }: Props)
             <div>
               <label style={labelStyle}>優先度</label>
               <select value={priority} onChange={(event) => setPriority(Number(event.target.value))} style={selectStyle}>
-                <option value={1}>低</option>
-                <option value={2}>中低</option>
-                <option value={3}>中</option>
-                <option value={4}>中高</option>
-                <option value={5}>高</option>
+              <option value={1}>最低</option>
+              <option value={2}>低</option>
+              <option value={3}>中</option>
+              <option value={4}>高</option>
+              <option value={5}>最高</option>
               </select>
             </div>
           </div>
@@ -225,9 +271,10 @@ export function QuickAddModal({ categories, users = [], onAdd, onClose }: Props)
           )}
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+            <label style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 6, color: '#94a3b8', fontSize: '0.78rem' }}><input type="checkbox" checked={keepOpen} onChange={(event) => setKeepOpen(event.target.checked)} />追加後も続ける</label>
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               style={{
                 padding: '8px 16px',
                 background: '#334155',

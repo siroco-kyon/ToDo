@@ -793,15 +793,16 @@ export function updateTodo(id: string, data: UpdateTodoInput): Todo {
   return getTodoById(id)
 }
 
-function syncTodoDueDateWithSubTasks(todoId: string): void {
+function syncTodoDueDateWithSubTasks(todoId: string): string | null {
   const maxSubTaskDueDate = getMaxSubTaskDueDate(todoId)
-  if (!maxSubTaskDueDate) return
+  if (!maxSubTaskDueDate) return null
 
   const todo = getTodoById(todoId)
   const normalizedTodoDueDate = normalizeDateKey(todo.due_date)
-  if (normalizedTodoDueDate && normalizedTodoDueDate >= maxSubTaskDueDate) return
+  if (normalizedTodoDueDate && normalizedTodoDueDate >= maxSubTaskDueDate) return null
 
   updateTodo(todoId, { due_date: maxSubTaskDueDate })
+  return maxSubTaskDueDate
 }
 
 export function archiveTodo(id: string): void {
@@ -813,11 +814,11 @@ export function archiveTodo(id: string): void {
   })()
 }
 
-export function unarchiveTodo(id: string): void {
+export function unarchiveTodo(id: string, restoreStatus: 'not_started' | 'active' | 'done' = 'active'): void {
   const now = new Date().toISOString()
   const before = getTodoById(id)
   db.transaction(() => {
-    db.prepare(`UPDATE Todos SET status = 'active', archived_at = NULL, completed_at = NULL, updated_at = ? WHERE id = ?`).run(now, id)
+    db.prepare(`UPDATE Todos SET status = ?, archived_at = NULL, completed_at = CASE WHEN ? = 'done' THEN completed_at ELSE NULL END, updated_at = ? WHERE id = ?`).run(restoreStatus, restoreStatus, now, id)
     recordTodoChanges(before, getTodoById(id), now)
   })()
 }
@@ -1093,8 +1094,8 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
     'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now)
   const created = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
-  syncTodoDueDateWithSubTasks(todoId)
-  return created
+  const extendedTo = syncTodoDueDateWithSubTasks(todoId)
+  return { ...created, parent_due_date_extended_to: extendedTo }
 }
 
 export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
@@ -1131,8 +1132,8 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
     db.prepare('UPDATE SubTasks SET progress = ?, done = ?, completed_at = ? WHERE id = ?').run(nextProgress, nextDone ? 1 : 0, nextCompletedAt, id)
   }
   const updated = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
-  syncTodoDueDateWithSubTasks(updated.todo_id)
-  return updated
+  const extendedTo = syncTodoDueDateWithSubTasks(updated.todo_id)
+  return { ...updated, parent_due_date_extended_to: extendedTo }
 }
 
 export function deleteSubTask(id: string): void {
@@ -1903,7 +1904,7 @@ export interface UpdateUserInput {
 }
 
 /** User-specific notification shown in the server build. Desktop returns none. */
-export type NotificationType = 'progress_reply' | 'task_assigned' | 'progress_reaction'
+export type NotificationType = 'progress_reply' | 'task_assigned' | 'progress_reaction' | 'task_due' | 'mention'
 
 export interface UserNotification {
   id: string
@@ -2176,6 +2177,7 @@ export interface SubTask {
   completed_at: string | null
   sort_order: number
   created_at: string
+  parent_due_date_extended_to?: string | null
 }
 
 export interface CalendarSubTask extends SubTask {

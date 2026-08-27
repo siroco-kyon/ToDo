@@ -11,7 +11,10 @@ interface Props {
   onRemoveItem: (id: string) => Promise<void>
   onUpdateItem: (id: string, data: UpdateDailyPlanItemInput) => Promise<void>
   onShiftItem: (id: string, deltaMinutes: number) => Promise<void>
+  onShiftFollowing?: (id: string, deltaMinutes: number) => Promise<void>
   onReorder: (orderedIds: string[]) => Promise<void>
+  onDateChange?: (date: string) => void
+  onCarryOver?: () => Promise<void>
 }
 
 interface SuggestedGroup {
@@ -75,6 +78,12 @@ const AUTO_SCROLL_LEAD_MINUTES = 60
 function getTodayKey(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+function shiftDateKey(dateKey: string, days: number): string {
+  const date = parseDateKey(dateKey)
+  date.setDate(date.getDate() + days)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 function parseDateKey(dateStr: string): Date {
@@ -583,7 +592,10 @@ export function PlanView({
   onRemoveItem,
   onUpdateItem,
   onShiftItem,
-  onReorder
+  onShiftFollowing,
+  onReorder,
+  onDateChange,
+  onCarryOver
 }: Props): React.JSX.Element {
   const timelineRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -912,10 +924,17 @@ export function PlanView({
     }
   }
 
-  void onShiftItem
-
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 20 }}>
+      {onDateChange && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <button onClick={() => onDateChange(shiftDateKey(date, -1))} style={miniActionBtn('#1e293b', '#cbd5e1')}>← 前日</button>
+          <input type="date" value={date} onChange={(event) => onDateChange(event.target.value)} style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }} />
+          <button onClick={() => onDateChange(shiftDateKey(date, 1))} style={miniActionBtn('#1e293b', '#cbd5e1')}>翌日 →</button>
+          <button onClick={() => onDateChange(getTodayKey())} style={miniActionBtn('#172554', '#dbeafe')}>今日</button>
+          {onCarryOver && <button onClick={() => void onCarryOver()} style={miniActionBtn('#14532d', '#dcfce7')}>前日の未完了を繰り越す</button>}
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(320px, 0.9fr)', gap: 16, alignItems: 'start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
             <div
@@ -1262,6 +1281,18 @@ export function PlanView({
                               </span>
                             )}
                             {!compactBlock && <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void onShiftItem(item.id, -15)} style={miniActionBtn('#1e293b', '#cbd5e1')} title="15分早める">−15</button>
+                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void onShiftItem(item.id, 15)} style={miniActionBtn('#1e293b', '#cbd5e1')} title="15分遅らせる">+15</button>
+                              {onShiftFollowing && (
+                                <button
+                                  onPointerDown={(event) => event.stopPropagation()}
+                                  onClick={() => void onShiftFollowing(item.id, 15)}
+                                  style={miniActionBtn('#172554', '#bfdbfe')}
+                                  title="この予定と、これ以降の予定を15分遅らせる"
+                                >
+                                  以降+15
+                                </button>
+                              )}
                               <button
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={() => {

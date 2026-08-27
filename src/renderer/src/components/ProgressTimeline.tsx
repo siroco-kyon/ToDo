@@ -219,15 +219,35 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
   const [selectedTodoId, setSelectedTodoId] = useState('')
   const [focusedNoteId, setFocusedNoteId] = useState<string | null>(null)
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null)
-  const [noteDraft, setNoteDraft] = useState('')
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>(() => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem('progress-timeline-note-drafts') ?? '{}') as unknown
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, string> : {}
+    } catch { return {} }
+  })
   const [savingNote, setSavingNote] = useState(false)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [editingNoteDraft, setEditingNoteDraft] = useState('')
-  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>(() => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem('progress-timeline-comment-drafts') ?? '{}') as unknown
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, string> : {}
+    } catch { return {} }
+  })
   const [commentingOnNoteId, setCommentingOnNoteId] = useState<string | null>(null)
   const [replyingToCommentId, setReplyingToCommentId] = useState<string | null>(null)
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingCommentDraft, setEditingCommentDraft] = useState('')
+  const noteDraft = selectedTodoId ? noteDrafts[selectedTodoId] ?? '' : ''
+  const setNoteDraft = (value: string): void => {
+    if (!selectedTodoId) return
+    setNoteDrafts((previous) => {
+      const next = { ...previous }
+      if (value) next[selectedTodoId] = value
+      else delete next[selectedTodoId]
+      return next
+    })
+  }
 
   const taskOptions = useMemo(() => (
     todos
@@ -238,6 +258,9 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
     if (selectedTodoId && taskOptions.some((todo) => todo.id === selectedTodoId)) return
     setSelectedTodoId(taskOptions[0]?.id ?? '')
   }, [selectedTodoId, taskOptions])
+
+  useEffect(() => { window.localStorage.setItem('progress-timeline-note-drafts', JSON.stringify(noteDrafts)) }, [noteDrafts])
+  useEffect(() => { window.localStorage.setItem('progress-timeline-comment-drafts', JSON.stringify(commentDrafts)) }, [commentDrafts])
 
   useEffect(() => {
     try {
@@ -407,6 +430,7 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
   }
 
   const handleDeleteComment = async (commentId: string): Promise<void> => {
+    if (!window.confirm('この返信と、その返信への返信を削除しますか？')) return
     try {
       const updated = await window.api.progressNoteCommentDelete(commentId)
       setNotes((previous) => patchNote(previous, updated))

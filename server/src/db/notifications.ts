@@ -34,13 +34,53 @@ function getNotificationForUser(userId: string, id: string): UserNotification | 
     .get(userId, id) as UserNotification | undefined
 }
 
+function localDateKey(offsetDays = 0): string {
+  const date = new Date()
+  date.setDate(date.getDate() + offsetDays)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function localDayStartIso(): string {
+  const date = new Date()
+  date.setHours(0, 0, 0, 0)
+  return date.toISOString()
+}
+
+function ensureDueNotifications(userId: string): void {
+  const db = getDb()
+  const today = localDateKey()
+  const rows = db.prepare(
+    `SELECT DISTINCT t.id, t.title, t.due_date
+     FROM Todos t LEFT JOIN TodoCoAssignees ca ON ca.todo_id = t.id
+     WHERE t.status NOT IN ('done', 'archived') AND t.due_date IS NOT NULL
+       AND t.due_date <= ? AND (t.assignee_id = ? OR ca.user_id = ?)`
+  ).all(localDateKey(3), userId, userId) as Array<{ id: string; title: string; due_date: string }>
+  const exists = db.prepare("SELECT 1 FROM Notifications WHERE user_id = ? AND type = 'task_due' AND todo_id = ? AND created_at >= ? LIMIT 1")
+  for (const row of rows) {
+    if (exists.get(userId, row.id, localDayStartIso())) continue
+    createNotification({
+      userId, type: 'task_due', todoId: row.id,
+      title: row.due_date < today ? '期限を過ぎたタスクがあります' : '期限が近いタスクがあります',
+      body: `「${row.title}」の期限は${row.due_date}です`
+    })
+  }
+}
+
 export function listNotifications(userId: string, limit = 50): UserNotification[] {
-  return getDb()
-    .prepare(`${NOTIFICATION_SELECT} WHERE n.user_id = ? AND n.read_at IS NULL ORDER BY n.created_at DESC LIMIT ?`)
+  ensureDueNotifications(userId)
+  const db = getDb()
+  const unread = db
+    .prepare(`${NOTIFICATION_SELECT} WHERE n.user_id = ? AND n.read_at IS NULL ORDER BY n.created_at DESC`)
+    .all(userId) as UserNotification[]
+  const recent = db
+    .prepare(`${NOTIFICATION_SELECT} WHERE n.user_id = ? ORDER BY n.created_at DESC LIMIT ?`)
     .all(userId, clampLimit(limit)) as UserNotification[]
+  return Array.from(new Map([...unread, ...recent].map((notification) => [notification.id, notification])).values())
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
 }
 
 export function countUnreadNotifications(userId: string): number {
+  ensureDueNotifications(userId)
   return (
     getDb()
       .prepare('SELECT COUNT(*) AS count FROM Notifications WHERE user_id = ? AND read_at IS NULL')
@@ -50,6 +90,8 @@ export function countUnreadNotifications(userId: string): number {
 
 export function createNotification(input: CreateNotificationInput): UserNotification | null {
   if (!input.userId || input.userId === input.actorUserId) return null
+  const preference = getDb().prepare('SELECT enabled FROM NotificationPreferences WHERE user_id = ? AND type = ?').get(input.userId, input.type) as { enabled: number } | undefined
+  if (preference?.enabled === 0) return null
 
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
@@ -78,14 +120,15 @@ export function createNotification(input: CreateNotificationInput): UserNotifica
 
 export function markNotificationRead(userId: string, id: string): UserNotification | undefined {
   const notification = getNotificationForUser(userId, id)
+  if (!notification) return undefined
   getDb()
-    .prepare('DELETE FROM Notifications WHERE user_id = ? AND id = ?')
-    .run(userId, id)
-  return notification
+    .prepare('UPDATE Notifications SET read_at = COALESCE(read_at, ?) WHERE user_id = ? AND id = ?')
+    .run(new Date().toISOString(), userId, id)
+  return getNotificationForUser(userId, id)
 }
 
 export function markAllNotificationsRead(userId: string): void {
   getDb()
-    .prepare('DELETE FROM Notifications WHERE user_id = ?')
-    .run(userId)
+    .prepare('UPDATE Notifications SET read_at = COALESCE(read_at, ?) WHERE user_id = ?')
+    .run(new Date().toISOString(), userId)
 }

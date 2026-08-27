@@ -156,7 +156,7 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div style={{
+      <div role="dialog" aria-modal="true" aria-label="ユーザー管理" style={{
         background: '#1e293b', borderRadius: 14, padding: 28, width: 600,
         maxHeight: '88vh', overflowY: 'auto',
         boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid #334155',
