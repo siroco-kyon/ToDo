@@ -14,6 +14,7 @@ import type {
   WorkLog,
   RunningState,
   WorkLogSummaryRow,
+  OverviewQuery,
   OverviewData,
   DailyPlanItem,
   UpdateDailyPlanItemInput,
@@ -295,7 +296,10 @@ export const api: Api = {
   worklogGetAll: () => get<WorkLogSummaryRow[]>('/worklogs/all'),
   worklogGetByDate: (dateStr) => get<WorkLogSummaryRow[]>('/worklogs/by-date', { date: dateStr }),
   worklogGetSummary: (days) => get<WorkLogSummaryRow[]>('/worklogs/summary', { days }),
-  overviewGetData: () => get<OverviewData>('/overview'),
+  overviewGetData: (query: OverviewQuery = {}) => get<OverviewData>('/overview', {
+    assigneeId: query.assigneeId === null ? undefined : query.assigneeId,
+    includePrivate: query.includePrivate === false ? 'false' : undefined
+  }),
 
   // Progress notes (shared) / digest (admin report)
   progressNoteGetByTodo: (todoId) => get<ProgressNote[]>(`/todos/${todoId}/progress-notes`),

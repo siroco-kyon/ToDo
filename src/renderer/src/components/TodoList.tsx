@@ -9,8 +9,6 @@ interface Props {
   elapsedSeconds: number
   isManualSort: boolean
   searchQuery: string
-  selectedIds?: string[]
-  onToggleSelected?: (id: string) => void
   onClearSearch?: () => void
   onAddTodo?: () => void
   onSelect: (id: string) => void
@@ -64,13 +62,11 @@ function Highlight({ text, query }: { text: string; query: string }): React.JSX.
 
 function TodoItem({
   todo, isSelected, isRunning, elapsedSeconds, isManualSort, searchQuery,
-  isBulkSelected, onToggleBulk,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete,
   onStartTimer, onStopTimer,
   onDragStart, onDragOver, onDrop, isDragOver
 }: {
   todo: Todo; isSelected: boolean; isRunning: boolean; elapsedSeconds: number
-  isBulkSelected: boolean; onToggleBulk: () => void
   isManualSort: boolean; searchQuery: string
   onSelect: () => void; onToggleDone: () => void
   onArchive: () => void; onUnarchive: () => void; onDelete: () => void
@@ -103,7 +99,6 @@ function TodoItem({
     >
       <div style={{ padding: '8px 12px 4px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-          <input type="checkbox" checked={isBulkSelected} onClick={(event) => event.stopPropagation()} onChange={onToggleBulk} aria-label={`${todo.title}を一括操作対象にする`} style={{ marginTop: 3, accentColor: '#6366f1' }} />
           {/* ドラッグハンドル */}
           {isManualSort && !isArchived && (
             <span style={{ color: '#334155', fontSize: '0.8rem', cursor: 'grab', flexShrink: 0, marginTop: 2, userSelect: 'none' }}>⠿</span>
@@ -237,7 +232,7 @@ function TodoItem({
 
 export function TodoList({
   todos, selectedId, runningTodoId, elapsedSeconds, isManualSort, searchQuery,
-  selectedIds = [], onToggleSelected = () => {}, onClearSearch, onAddTodo,
+  onClearSearch, onAddTodo,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete, onReorder,
   onStartTimer, onStopTimer
 }: Props): React.JSX.Element {
@@ -279,8 +274,6 @@ export function TodoList({
           key={todo.id}
           todo={todo}
           isSelected={selectedId === todo.id}
-          isBulkSelected={selectedIds.includes(todo.id)}
-          onToggleBulk={() => onToggleSelected(todo.id)}
           isRunning={runningTodoId === todo.id}
           elapsedSeconds={runningTodoId === todo.id ? elapsedSeconds : 0}
           isManualSort={isManualSort}

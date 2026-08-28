@@ -1,11 +1,13 @@
 import { getDb } from './connection'
 import { getAllCategories } from './categories'
 import { getAllTodos } from './todos'
+import { getProgressDigest } from './progress'
 import { average, clampRunningSeconds, diffCalendarDays, getTodayKey, toMinutes } from './helpers'
 import type {
   OverviewCategoryStat,
   OverviewCompletedSubTaskItem,
   OverviewData,
+  OverviewQuery,
   OverviewSummary,
   OverviewTaskItem,
   OverviewTaskReason,
@@ -43,20 +45,68 @@ function buildOverviewTask(
     updatedAt: todo.updated_at,
     reason,
     subTaskDone: subTask.done,
-    subTaskTotal: subTask.total
+    subTaskTotal: subTask.total,
+    assigneeId: todo.assignee_id,
+    assigneeName: todo.assignee_name,
+    assigneeColor: todo.assignee_color,
+    coAssignees: todo.co_assignees ?? []
   }
 }
 
-/** Sum of all in-flight timers across the team, clamped to a window. */
-function sumRunningSeconds(windowStart: Date, now: Date): number {
-  const rows = getDb().prepare('SELECT start_time FROM RunningState').all() as Array<{ start_time: string }>
-  return rows.reduce((total, row) => total + clampRunningSeconds(row.start_time, windowStart, now), 0)
+function formatLocalDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-export function getOverviewData(): OverviewData {
+function matchesAssignee(todo: Todo, assigneeId: string | null | undefined): boolean {
+  if (assigneeId == null) return true
+  if (assigneeId === '') {
+    return todo.assignee_id == null && (todo.co_assignees ?? []).length === 0
+  }
+  return todo.assignee_id === assigneeId || (todo.co_assignees ?? []).some((item) => item.user_id === assigneeId)
+}
+
+function sumLoggedSeconds(windowStart: Date, userId: string | null | undefined, includePrivate: boolean): number {
+  if (userId === '') return 0
+  const rows = getDb().prepare(`
+    SELECT wl.duration_seconds, wl.user_id, COALESCE(c.is_private, 0) AS is_private
+    FROM WorkLogs wl
+    JOIN Todos t ON wl.todo_id = t.id
+    LEFT JOIN Categories c ON t.category_id = c.id
+    WHERE wl.start_time >= ?
+  `).all(windowStart.toISOString()) as Array<{ duration_seconds: number; user_id: string; is_private: number }>
+  return rows.reduce((total, row) => {
+    if (userId != null && row.user_id !== userId) return total
+    if (!includePrivate && row.is_private === 1) return total
+    return total + row.duration_seconds
+  }, 0)
+}
+
+/** Sum of matching in-flight timers, clamped to a window. */
+function sumRunningSeconds(windowStart: Date, now: Date, userId: string | null | undefined, includePrivate: boolean): number {
+  if (userId === '') return 0
+  const rows = getDb().prepare(`
+    SELECT rs.start_time, rs.user_id, COALESCE(c.is_private, 0) AS is_private
+    FROM RunningState rs
+    JOIN Todos t ON rs.todo_id = t.id
+    LEFT JOIN Categories c ON t.category_id = c.id
+  `).all() as Array<{ start_time: string; user_id: string; is_private: number }>
+  return rows.reduce((total, row) => {
+    if (userId != null && row.user_id !== userId) return total
+    if (!includePrivate && row.is_private === 1) return total
+    return total + clampRunningSeconds(row.start_time, windowStart, now)
+  }, 0)
+}
+
+export function getOverviewData(query: OverviewQuery = {}): OverviewData {
   const db = getDb()
-  const todos = getAllTodos().filter((todo) => todo.status !== 'archived')
   const categories = getAllCategories()
+  const includePrivate = query.includePrivate !== false
+  const privateCategoryIds = new Set(categories.filter((category) => category.is_private === 1).map((category) => category.id))
+  const todos = getAllTodos().filter((todo) =>
+    todo.status !== 'archived'
+    && (includePrivate || todo.category_id == null || !privateCategoryIds.has(todo.category_id))
+    && matchesAssignee(todo, query.assigneeId)
+  )
   const todayKey = getTodayKey()
   const currentWeekStart = getCurrentWeekStart()
   const activeTodos = todos.filter((todo) => todo.status !== 'done')
@@ -203,39 +253,56 @@ export function getOverviewData(): OverviewData {
   weekStart.setDate(weekStart.getDate() - 6)
   weekStart.setHours(0, 0, 0, 0)
 
-  const todaySecondsRow = db.prepare(`
-    SELECT COALESCE(SUM(duration_seconds), 0) AS total
-    FROM WorkLogs
-    WHERE start_time >= ?
-  `).get(todayStart.toISOString()) as { total: number }
-
-  const weekSecondsRow = db.prepare(`
-    SELECT COALESCE(SUM(duration_seconds), 0) AS total
-    FROM WorkLogs
-    WHERE start_time >= ?
-  `).get(weekStart.toISOString()) as { total: number }
-
   const now = new Date()
-  const runningToday = sumRunningSeconds(todayStart, now)
-  const runningWeek = sumRunningSeconds(weekStart, now)
-  const completedSubTasks = db.prepare(
+  const runningToday = sumRunningSeconds(todayStart, now, query.assigneeId, includePrivate)
+  const runningWeek = sumRunningSeconds(weekStart, now, query.assigneeId, includePrivate)
+  const eligibleTodoIds = new Set(todos.map((todo) => todo.id))
+  const todoById = new Map(todos.map((todo) => [todo.id, todo] as const))
+  const completedSubTasks = (db.prepare(
     `SELECT
         st.id,
         st.todo_id,
         st.title,
         st.completed_at,
+        st.assignee_id,
+        su.display_name AS assignee_name,
+        su.color AS assignee_color,
         t.title AS todo_title,
         c.name AS category_name,
         c.color AS category_color
      FROM SubTasks st
      JOIN Todos t ON st.todo_id = t.id
      LEFT JOIN Categories c ON t.category_id = c.id
+     LEFT JOIN Users su ON st.assignee_id = su.id
      WHERE st.done = 1
        AND st.completed_at IS NOT NULL
        AND st.completed_at >= ?
        AND t.status != 'archived'
      ORDER BY st.completed_at DESC`
-  ).all(currentWeekStart.toISOString()) as OverviewCompletedSubTaskItem[]
+  ).all(currentWeekStart.toISOString()) as Array<Omit<OverviewCompletedSubTaskItem,
+    'parent_assignee_id' | 'parent_assignee_name' | 'parent_assignee_color' | 'parent_co_assignees'>>)
+    .filter((item) => eligibleTodoIds.has(item.todo_id))
+    .map((item) => {
+      const parent = todoById.get(item.todo_id)!
+      return {
+        ...item,
+        parent_assignee_id: parent.assignee_id,
+        parent_assignee_name: parent.assignee_name,
+        parent_assignee_color: parent.assignee_color,
+        parent_co_assignees: parent.co_assignees ?? []
+      }
+    })
+
+  const activityTo = formatLocalDate(now)
+  const activityFromDate = new Date(now)
+  activityFromDate.setDate(activityFromDate.getDate() - 6)
+  const activityFrom = formatLocalDate(activityFromDate)
+  const activityUserIds = query.assigneeId == null
+    ? undefined
+    : query.assigneeId === '' ? [] : [query.assigneeId]
+  const memberActivity = query.assigneeId === ''
+    ? []
+    : getProgressDigest(activityFrom, activityTo, activityUserIds, includePrivate).users
 
   const summary: OverviewSummary = {
     totalTasks: todos.length,
@@ -248,8 +315,8 @@ export function getOverviewData(): OverviewData {
     avgActiveProgress: average(activeTodos.map((todo) => todo.progress)),
     overdueTasks: overdueTodos.length,
     dueSoonTasks: dueSoonTodos.length,
-    todayMinutes: toMinutes(todaySecondsRow.total + runningToday),
-    weekMinutes: toMinutes(weekSecondsRow.total + runningWeek),
+    todayMinutes: toMinutes(sumLoggedSeconds(todayStart, query.assigneeId, includePrivate) + runningToday),
+    weekMinutes: toMinutes(sumLoggedSeconds(weekStart, query.assigneeId, includePrivate) + runningWeek),
     completedSubTasksThisWeek: completedSubTasks.length
   }
 
@@ -261,6 +328,9 @@ export function getOverviewData(): OverviewData {
     highPriority,
     nearlyDone,
     stale,
-    completedSubTasks: completedSubTasks.slice(0, 10)
+    completedSubTasks: completedSubTasks.slice(0, 10),
+    activityFrom,
+    activityTo,
+    memberActivity
   }
 }

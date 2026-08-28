@@ -13,6 +13,7 @@ import type {
   WorkLog,
   RunningState,
   WorkLogSummaryRow,
+  OverviewQuery,
   OverviewData,
   DailyPlanItem,
   UpdateDailyPlanItemInput,
@@ -53,6 +54,7 @@ export type {
   WorkLog,
   RunningState,
   WorkLogSummaryRow,
+  OverviewQuery,
   OverviewData,
   DailyPlanItem,
   UpdateDailyPlanItemInput,
@@ -141,7 +143,7 @@ const api = {
     ipcRenderer.invoke('worklog:getByDate', dateStr),
   worklogGetSummary: (days: number): Promise<WorkLogSummaryRow[]> =>
     ipcRenderer.invoke('worklog:getSummary', days),
-  overviewGetData: (): Promise<OverviewData> => ipcRenderer.invoke('overview:getData'),
+  overviewGetData: (query: OverviewQuery = {}): Promise<OverviewData> => ipcRenderer.invoke('overview:getData', query),
 
   // Daily plan
   dailyPlanGetByDate: (dateStr: string): Promise<DailyPlanItem[]> =>
