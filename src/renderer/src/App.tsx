@@ -114,7 +114,6 @@ export function App(): React.JSX.Element {
   const [sortField, setSortField] = useState<SortField>('created_at')
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc')
   const [searchQuery, setSearchQuery] = useState('')
-  const [bulkSelectedTodoIds, setBulkSelectedTodoIds] = useState<string[]>([])
   const [savedTaskViews, setSavedTaskViews] = useState<SavedTaskView[]>(() => {
     try {
       const parsed = JSON.parse(window.localStorage.getItem('saved-task-views') ?? '[]') as unknown
@@ -498,7 +497,7 @@ export function App(): React.JSX.Element {
       if (!showArchived && todo.status === 'archived') return false
       if (selectedCategoryId && todo.category_id !== selectedCategoryId) return false
       if (selectedAssigneeId !== null) {
-        if (selectedAssigneeId === '' && todo.assignee_id !== null) return false
+        if (selectedAssigneeId === '' && (todo.assignee_id !== null || (todo.co_assignees ?? []).length > 0)) return false
         // 主担当またはサブ担当のどちらかに入っていれば表示する
         if (
           selectedAssigneeId !== '' &&
@@ -551,14 +550,6 @@ export function App(): React.JSX.Element {
       if (aVal > bVal) return sortDir === 'asc' ? 1 : -1
       return 0
     })
-
-  useEffect(() => {
-    const visibleIds = new Set(filteredTodos.map((todo) => todo.id))
-    setBulkSelectedTodoIds((previous) => {
-      const next = previous.filter((id) => visibleIds.has(id))
-      return next.length === previous.length ? previous : next
-    })
-  }, [allSubTasks, q, scopeLens, selectedAssigneeId, selectedCategoryId, showArchived, sortDir, sortField, todos])
 
   const selectedTodo = lensTodos.find((todo) => todo.id === selectedTodoId) ?? null
 
@@ -651,7 +642,7 @@ export function App(): React.JSX.Element {
     await window.api.todoArchive(id)
     await loadTodos()
     if (selectedTodoId === id) setSelectedTodoId(null)
-    showToast('ゴミ箱へ移動しました', 'success', { label: '元に戻す', run: () => { void window.api.todoUnarchive(id, previousStatus === 'archived' ? 'active' : previousStatus).then(loadTodos).then(() => showToast('元の状態に戻しました')) } })
+    showToast('アーカイブしました', 'success', { label: '元に戻す', run: () => { void window.api.todoUnarchive(id, previousStatus === 'archived' ? 'active' : previousStatus).then(loadTodos).then(() => showToast('元の状態に戻しました')) } })
   }, [loadTodos, selectedTodoId, showToast, todos])
 
   const handleUnarchive = useCallback(async (id: string) => {
@@ -763,66 +754,6 @@ export function App(): React.JSX.Element {
     await window.api.dailyPlanReorder(getTodayKey(), orderedIds)
     await loadTodos()
   }, [loadTodos])
-
-  const handleBulkUpdate = useCallback(async (data: UpdateTodoInput): Promise<void> => {
-    if (bulkSelectedTodoIds.length === 0) return
-    const results = await Promise.allSettled(bulkSelectedTodoIds.map((id) => window.api.todoUpdate(id, data)))
-    const failedIds = bulkSelectedTodoIds.filter((_, index) => results[index].status === 'rejected')
-    const successCount = bulkSelectedTodoIds.length - failedIds.length
-    await loadTodos()
-    showToast(failedIds.length > 0 ? `${successCount}件を更新、${failedIds.length}件は失敗しました` : `${successCount}件を一括更新しました`, failedIds.length > 0 ? 'error' : 'success')
-    setBulkSelectedTodoIds(failedIds)
-  }, [bulkSelectedTodoIds, loadTodos, showToast])
-
-  const handleBulkArchive = useCallback(async (): Promise<void> => {
-    if (!window.confirm(`${bulkSelectedTodoIds.length}件をゴミ箱へ移動しますか？`)) return
-    const originalStatuses = new Map(todos.filter((todo) => bulkSelectedTodoIds.includes(todo.id)).map((todo) => [todo.id, todo.status] as const))
-    const results = await Promise.allSettled(bulkSelectedTodoIds.map((id) => window.api.todoArchive(id)))
-    const failedIds = bulkSelectedTodoIds.filter((_, index) => results[index].status === 'rejected')
-    const archivedIds = bulkSelectedTodoIds.filter((_, index) => results[index].status === 'fulfilled')
-    const successCount = bulkSelectedTodoIds.length - failedIds.length
-    await loadTodos()
-    showToast(
-      failedIds.length > 0 ? `${successCount}件をゴミ箱へ移動、${failedIds.length}件は失敗しました` : `${successCount}件をゴミ箱へ移動しました`,
-      failedIds.length > 0 ? 'error' : 'success',
-      archivedIds.length > 0 ? {
-        label: '元に戻す',
-        run: () => {
-          void Promise.all(archivedIds.map((id) => {
-            const status = originalStatuses.get(id)
-            return window.api.todoUnarchive(id, status === 'archived' ? 'active' : status)
-          })).then(loadTodos).then(() => showToast(`${archivedIds.length}件を元の状態に戻しました`))
-        }
-      } : undefined
-    )
-    setBulkSelectedTodoIds(failedIds)
-  }, [bulkSelectedTodoIds, loadTodos, showToast, todos])
-
-  const handleBulkAddToday = useCallback(async (): Promise<void> => {
-    const existingItems = await window.api.dailyPlanGetByDate(getTodayKey())
-    const existingTodoIds = new Set(existingItems.map((item) => item.todo_id))
-    const targetIds = bulkSelectedTodoIds.filter((id) => !existingTodoIds.has(id))
-    const results = await Promise.allSettled(targetIds.map((id) => window.api.dailyPlanAdd(getTodayKey(), id)))
-    const failedIds = targetIds.filter((_, index) => results[index].status === 'rejected')
-    const addedCount = targetIds.length - failedIds.length
-    await loadTodos()
-    await loadTodayPlan()
-    if (planDate === getTodayKey()) await loadSelectedPlan(planDate)
-    const message = failedIds.length > 0
-      ? `${addedCount}件を追加、${failedIds.length}件は失敗しました`
-      : addedCount > 0
-        ? `${addedCount}件を今日の計画へ追加しました`
-        : '選択したタスクはすでに今日の計画に入っています'
-    showToast(message, failedIds.length > 0 ? 'error' : 'success')
-    setBulkSelectedTodoIds(failedIds)
-  }, [bulkSelectedTodoIds, loadSelectedPlan, loadTodayPlan, loadTodos, planDate, showToast])
-
-  const handleBulkDueDate = useCallback(async (): Promise<void> => {
-    const dueDate = window.prompt('期限を YYYY-MM-DD 形式で入力してください。空欄で期限を解除します。')
-    if (dueDate == null) return
-    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { showToast('日付形式が不正です', 'error'); return }
-    await handleBulkUpdate({ due_date: dueDate || null })
-  }, [handleBulkUpdate, showToast])
 
   const saveCurrentTaskView = useCallback((): void => {
     const name = window.prompt('この表示条件の名前を入力してください')?.trim()
@@ -1124,25 +1055,10 @@ export function App(): React.JSX.Element {
                 {searchQuery && <button onClick={() => setSearchQuery('')} title="検索条件を解除" style={filterChipStyle}>検索: {searchQuery} ×</button>}
                 {selectedCategoryId && <button onClick={() => setSelectedCategoryId(null)} title="カテゴリ条件を解除" style={filterChipStyle}>カテゴリ: {categories.find((item) => item.id === selectedCategoryId)?.name ?? '不明'} ×</button>}
                 {selectedAssigneeId !== null && <button onClick={() => setSelectedAssigneeId(null)} title="担当者条件を解除" style={filterChipStyle}>担当: {selectedAssigneeId === '' ? '未割当' : users.find((item) => item.id === selectedAssigneeId)?.display_name ?? '不明'} ×</button>}
-                {showArchived && <button onClick={() => setShowArchived(false)} title="ゴミ箱表示を解除" style={filterChipStyle}>ゴミ箱 ×</button>}
+                {showArchived && <button onClick={() => setShowArchived(false)} title="アーカイブ表示を解除" style={filterChipStyle}>アーカイブ ×</button>}
               </div>
             )}
           </div>
-
-          {bulkSelectedTodoIds.length > 0 && (
-            <div style={{ padding: '6px 8px', borderBottom: '1px solid #312e81', background: '#172554', display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-              <strong style={{ fontSize: '0.72rem', color: '#dbeafe' }}>{bulkSelectedTodoIds.length}件選択</strong>
-              <button onClick={() => void handleBulkUpdate({ status: 'done', progress: 100 })} style={bulkButtonStyle}>完了</button>
-              <select defaultValue="" onChange={(event) => { if (event.target.value) void handleBulkUpdate(event.target.value === 'done' ? { status: 'done', progress: 100 } : { status: event.target.value as Todo['status'] }); event.target.value = '' }} style={bulkSelectStyle}><option value="">状態変更</option><option value="not_started">未着手</option><option value="active">進行中</option><option value="done">完了</option></select>
-              <select defaultValue="" onChange={(event) => { if (event.target.value) void handleBulkUpdate({ priority: Number(event.target.value) }); event.target.value = '' }} style={bulkSelectStyle}><option value="">優先度</option><option value="5">最高</option><option value="4">高</option><option value="3">中</option><option value="2">低</option><option value="1">最低</option></select>
-              <select defaultValue="" onChange={(event) => { if (event.target.value) void handleBulkUpdate({ category_id: event.target.value === '__none__' ? null : event.target.value }); event.target.value = '' }} style={bulkSelectStyle}><option value="">カテゴリ変更</option><option value="__none__">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
-              {multiUser && <select defaultValue="" onChange={(event) => { if (event.target.value) void handleBulkUpdate({ assignee_id: event.target.value === '__none__' ? null : event.target.value }); event.target.value = '' }} style={bulkSelectStyle}><option value="">担当変更</option><option value="__none__">未割当</option>{users.filter((user) => user.is_active).map((user) => <option key={user.id} value={user.id}>{user.display_name}</option>)}</select>}
-              <button onClick={() => void handleBulkDueDate()} style={bulkButtonStyle}>期限</button>
-              <button onClick={() => void handleBulkAddToday()} style={bulkButtonStyle}>今日へ</button>
-              <button onClick={() => void handleBulkArchive()} style={bulkButtonStyle}>ゴミ箱へ</button>
-              <button onClick={() => setBulkSelectedTodoIds([])} style={bulkButtonStyle}>解除</button>
-            </div>
-          )}
 
           <div style={{ padding: '5px 8px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
             {SORT_FIELDS.map(({ key, label }) => {
@@ -1189,8 +1105,6 @@ export function App(): React.JSX.Element {
               elapsedSeconds={elapsedSeconds}
               isManualSort={isManualSort}
               searchQuery={q}
-              selectedIds={bulkSelectedTodoIds}
-              onToggleSelected={(id) => setBulkSelectedTodoIds((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id])}
               onClearSearch={() => setSearchQuery('')}
               onAddTodo={() => setShowQuickAdd(true)}
               onSelect={openTodoDetail}
@@ -1218,7 +1132,16 @@ export function App(): React.JSX.Element {
               <button onClick={() => void loadInitialData().catch((error) => setInitialLoadError(error instanceof Error ? error.message : '再読み込みできませんでした'))} style={{ marginTop: 12, padding: '7px 12px', borderRadius: 7, border: '1px solid #ef4444', background: '#7f1d1d', color: '#fff', cursor: 'pointer' }}>再試行</button>
             </div>
           ) : activeView === 'overview' ? (
-            <OverviewDashboard todos={filteredTodos} categories={categories} runningTodoId={runningTodoId} elapsedSeconds={elapsedSeconds} onSelectTodo={openTodoDetail} />
+            <OverviewDashboard
+              todos={filteredTodos}
+              categories={categories}
+              users={users}
+              selectedAssigneeId={selectedAssigneeId}
+              includePrivate={scopeLens === 'personal'}
+              runningTodoId={runningTodoId}
+              elapsedSeconds={elapsedSeconds}
+              onSelectTodo={openTodoDetail}
+            />
           ) : activeView === 'gantt' ? (
             <GanttView
               categories={categories}
@@ -1464,16 +1387,6 @@ const resizeHandleStyle: React.CSSProperties = {
   cursor: 'col-resize',
   background: 'linear-gradient(to right, transparent 0, transparent 2px, #162033 2px, #162033 4px, transparent 4px)',
   opacity: 0.8
-}
-
-const bulkButtonStyle: React.CSSProperties = {
-  padding: '4px 7px', borderRadius: 6, border: '1px solid #3b82f6',
-  background: '#1e3a8a', color: '#dbeafe', cursor: 'pointer', fontSize: '0.7rem'
-}
-
-const bulkSelectStyle: React.CSSProperties = {
-  padding: '4px 6px', borderRadius: 6, border: '1px solid #3b82f6',
-  background: '#0f172a', color: '#dbeafe', fontSize: '0.7rem'
 }
 
 const filterChipStyle: React.CSSProperties = {

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
+    "test:overview": "tsx --test tests/overview.test.ts",
     "import:db": "tsx src/import/cli.ts",
     "service:install": "node service/install.cjs",
     "service:uninstall": "node service/uninstall.cjs",

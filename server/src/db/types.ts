@@ -275,6 +275,11 @@ export interface UpdateDailyPlanItemInput {
 
 export type OverviewTaskReason = 'overdue' | 'dueSoon' | 'highPriority' | 'stale' | 'dueToday' | 'nearlyDone'
 
+export interface OverviewQuery {
+  assigneeId?: string | null
+  includePrivate?: boolean
+}
+
 export interface OverviewSummary {
   totalTasks: number
   activeTasks: number
@@ -314,6 +319,10 @@ export interface OverviewTaskItem {
   reason: OverviewTaskReason
   subTaskDone: number
   subTaskTotal: number
+  assigneeId: string | null
+  assigneeName: string | null
+  assigneeColor: string | null
+  coAssignees: TodoCoAssignee[]
 }
 
 export interface OverviewCompletedSubTaskItem {
@@ -324,6 +333,13 @@ export interface OverviewCompletedSubTaskItem {
   todo_title: string
   category_name: string | null
   category_color: string | null
+  assignee_id: string | null
+  assignee_name: string | null
+  assignee_color: string | null
+  parent_assignee_id: string | null
+  parent_assignee_name: string | null
+  parent_assignee_color: string | null
+  parent_co_assignees: TodoCoAssignee[]
 }
 
 export interface OverviewData {
@@ -335,6 +351,9 @@ export interface OverviewData {
   nearlyDone: OverviewTaskItem[]
   stale: OverviewTaskItem[]
   completedSubTasks: OverviewCompletedSubTaskItem[]
+  activityFrom: string
+  activityTo: string
+  memberActivity: ProgressDigestUser[]
 }
 
 // ─── Team dashboard ───────────────────────────────────────────

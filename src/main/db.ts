@@ -1292,13 +1292,39 @@ function buildOverviewTask(
     updatedAt: todo.updated_at,
     reason,
     subTaskDone: subTask.done,
-    subTaskTotal: subTask.total
+    subTaskTotal: subTask.total,
+    assigneeId: todo.assignee_id,
+    assigneeName: todo.assignee_name,
+    assigneeColor: todo.assignee_color,
+    coAssignees: todo.co_assignees ?? []
   }
 }
 
-export function getOverviewData(): OverviewData {
-  const todos = getAllTodos().filter((todo) => todo.status !== 'archived')
+function formatOverviewLocalDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function sumDesktopOverviewWorkSeconds(windowStart: Date, includePrivate: boolean): number {
+  const rows = db.prepare(`
+    SELECT wl.duration_seconds, COALESCE(c.is_private, 0) AS is_private
+    FROM WorkLogs wl
+    JOIN Todos t ON wl.todo_id = t.id
+    LEFT JOIN Categories c ON t.category_id = c.id
+    WHERE wl.start_time >= ?
+  `).all(windowStart.toISOString()) as Array<{ duration_seconds: number; is_private: number }>
+  return rows.reduce((sum, row) => !includePrivate && row.is_private === 1 ? sum : sum + row.duration_seconds, 0)
+}
+
+export function getOverviewData(query: OverviewQuery = {}): OverviewData {
   const categories = getAllCategories()
+  const includePrivate = query.includePrivate !== false
+  const privateCategoryIds = new Set(categories.filter((category) => category.is_private === 1).map((category) => category.id))
+  // Electron版は単一ユーザーなので「未割り当て」は全タスク、任意のWebユーザーIDは0件になる。
+  const todos = getAllTodos().filter((todo) =>
+    todo.status !== 'archived'
+    && (includePrivate || todo.category_id == null || !privateCategoryIds.has(todo.category_id))
+    && (query.assigneeId == null || query.assigneeId === '')
+  )
   const todayKey = getTodayKey()
   const currentWeekStart = getCurrentWeekStart()
   const activeTodos = todos.filter((todo) => todo.status !== 'done')
@@ -1445,28 +1471,22 @@ export function getOverviewData(): OverviewData {
   weekStart.setDate(weekStart.getDate() - 6)
   weekStart.setHours(0, 0, 0, 0)
 
-  const todaySecondsRow = db.prepare(`
-    SELECT COALESCE(SUM(duration_seconds), 0) AS total
-    FROM WorkLogs
-    WHERE start_time >= ?
-  `).get(todayStart.toISOString()) as { total: number }
-
-  const weekSecondsRow = db.prepare(`
-    SELECT COALESCE(SUM(duration_seconds), 0) AS total
-    FROM WorkLogs
-    WHERE start_time >= ?
-  `).get(weekStart.toISOString()) as { total: number }
-
   const running = getRunningState()
   const now = new Date()
-  const runningToday = running ? clampRunningSeconds(running.start_time, todayStart, now) : 0
-  const runningWeek = running ? clampRunningSeconds(running.start_time, weekStart, now) : 0
-  const completedSubTasks = db.prepare(
+  const runningTodo = running ? todos.find((todo) => todo.id === running.todo_id) : null
+  const runningToday = running && runningTodo ? clampRunningSeconds(running.start_time, todayStart, now) : 0
+  const runningWeek = running && runningTodo ? clampRunningSeconds(running.start_time, weekStart, now) : 0
+  const eligibleTodoIds = new Set(todos.map((todo) => todo.id))
+  const todoById = new Map(todos.map((todo) => [todo.id, todo] as const))
+  const completedSubTasks = (db.prepare(
     `SELECT
         st.id,
         st.todo_id,
         st.title,
         st.completed_at,
+        NULL AS assignee_id,
+        NULL AS assignee_name,
+        NULL AS assignee_color,
         t.title AS todo_title,
         c.name AS category_name,
         c.color AS category_color
@@ -1478,7 +1498,27 @@ export function getOverviewData(): OverviewData {
        AND st.completed_at >= ?
        AND t.status != 'archived'
      ORDER BY st.completed_at DESC`
-  ).all(currentWeekStart.toISOString()) as OverviewCompletedSubTaskItem[]
+  ).all(currentWeekStart.toISOString()) as Array<Omit<OverviewCompletedSubTaskItem,
+    'parent_assignee_id' | 'parent_assignee_name' | 'parent_assignee_color' | 'parent_co_assignees'>>)
+    .filter((item) => eligibleTodoIds.has(item.todo_id))
+    .map((item) => {
+      const parent = todoById.get(item.todo_id)!
+      return {
+        ...item,
+        parent_assignee_id: parent.assignee_id,
+        parent_assignee_name: parent.assignee_name,
+        parent_assignee_color: parent.assignee_color,
+        parent_co_assignees: parent.co_assignees ?? []
+      }
+    })
+
+  const activityTo = formatOverviewLocalDate(now)
+  const activityFromDate = new Date(now)
+  activityFromDate.setDate(activityFromDate.getDate() - 6)
+  const activityFrom = formatOverviewLocalDate(activityFromDate)
+  const memberActivity = query.assigneeId == null
+    ? getProgressDigest({ from: activityFrom, to: activityTo, includePrivate }).users
+    : []
 
   const summary: OverviewSummary = {
     totalTasks: todos.length,
@@ -1491,8 +1531,8 @@ export function getOverviewData(): OverviewData {
     avgActiveProgress: average(activeTodos.map((todo) => todo.progress)),
     overdueTasks: overdueTodos.length,
     dueSoonTasks: dueSoonTodos.length,
-    todayMinutes: toMinutes(todaySecondsRow.total + runningToday),
-    weekMinutes: toMinutes(weekSecondsRow.total + runningWeek),
+    todayMinutes: toMinutes(sumDesktopOverviewWorkSeconds(todayStart, includePrivate) + runningToday),
+    weekMinutes: toMinutes(sumDesktopOverviewWorkSeconds(weekStart, includePrivate) + runningWeek),
     completedSubTasksThisWeek: completedSubTasks.length
   }
 
@@ -1504,7 +1544,10 @@ export function getOverviewData(): OverviewData {
     highPriority,
     nearlyDone,
     stale,
-    completedSubTasks: completedSubTasks.slice(0, 10)
+    completedSubTasks: completedSubTasks.slice(0, 10),
+    activityFrom,
+    activityTo,
+    memberActivity
   }
 }
 
@@ -2304,6 +2347,11 @@ export interface UpdateDailyPlanItemInput {
 
 export type OverviewTaskReason = 'overdue' | 'dueSoon' | 'highPriority' | 'stale' | 'dueToday' | 'nearlyDone'
 
+export interface OverviewQuery {
+  assigneeId?: string | null
+  includePrivate?: boolean
+}
+
 export interface OverviewSummary {
   totalTasks: number
   activeTasks: number
@@ -2343,6 +2391,10 @@ export interface OverviewTaskItem {
   reason: OverviewTaskReason
   subTaskDone: number
   subTaskTotal: number
+  assigneeId: string | null
+  assigneeName: string | null
+  assigneeColor: string | null
+  coAssignees: TodoCoAssignee[]
 }
 
 export interface OverviewCompletedSubTaskItem {
@@ -2353,6 +2405,13 @@ export interface OverviewCompletedSubTaskItem {
   todo_title: string
   category_name: string | null
   category_color: string | null
+  assignee_id: string | null
+  assignee_name: string | null
+  assignee_color: string | null
+  parent_assignee_id: string | null
+  parent_assignee_name: string | null
+  parent_assignee_color: string | null
+  parent_co_assignees: TodoCoAssignee[]
 }
 
 export interface OverviewData {
@@ -2364,4 +2423,7 @@ export interface OverviewData {
   nearlyDone: OverviewTaskItem[]
   stale: OverviewTaskItem[]
   completedSubTasks: OverviewCompletedSubTaskItem[]
+  activityFrom: string
+  activityTo: string
+  memberActivity: ProgressDigestUser[]
 }

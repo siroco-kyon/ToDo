@@ -5,42 +5,26 @@ import type {
   OverviewCompletedSubTaskItem,
   OverviewData,
   OverviewTaskItem,
+  ProgressDigestUser,
+  PublicUser,
   Todo,
-  WorkLogSummaryRow
+  TodoCoAssignee
 } from '../types'
 
 interface Props {
   todos: Todo[]
   categories: Category[]
+  users: PublicUser[]
+  selectedAssigneeId: string | null
+  includePrivate: boolean
   runningTodoId: string | null
   elapsedSeconds: number
   onSelectTodo: (id: string) => void
 }
 
-interface WeeklyTaskActivity {
-  todoId: string
-  title: string
-  categoryName: string | null
-  categoryColor: string | null
-  totalSeconds: number
-  entryCount: number
-  daysWorked: number
-  lastWorkedAt: string
-}
-
 function getTodayKey(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
-function getWeekStart(): Date {
-  const now = new Date()
-  const start = new Date(now)
-  const day = start.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  start.setDate(start.getDate() + diff)
-  start.setHours(0, 0, 0, 0)
-  return start
 }
 
 function parseDateKey(dateStr: string): Date {
@@ -53,21 +37,12 @@ function diffCalendarDays(dateStr: string, baseDateStr: string): number {
   return Math.round(diffMs / 86400000)
 }
 
-function getLocalDateKey(isoStr: string): string {
-  const d = new Date(isoStr)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 function formatMinutes(minutes: number): string {
   const hours = Math.floor(minutes / 60)
   const mins = minutes % 60
   if (hours === 0) return `${mins}分`
   if (mins === 0) return `${hours}時間`
   return `${hours}時間${mins}分`
-}
-
-function formatSeconds(seconds: number): string {
-  return formatMinutes(Math.round(seconds / 60))
 }
 
 function formatElapsed(seconds: number): string {
@@ -94,11 +69,6 @@ function formatIdleLabel(updatedAt: string): string {
   return `${diffDays}日更新なし`
 }
 
-function formatMonthDay(isoStr: string): string {
-  const d = new Date(isoStr)
-  return `${d.getMonth() + 1}/${d.getDate()}`
-}
-
 function formatDateTime(isoStr: string): string {
   const d = new Date(isoStr)
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -119,48 +89,6 @@ function reasonTone(reason: OverviewTaskItem['reason']): { color: string; backgr
   if (reason === 'highPriority') return { color: '#fde68a', background: '#78350f', border: '#d97706' }
   if (reason === 'stale') return { color: '#cbd5e1', background: '#1e293b', border: '#475569' }
   return { color: '#bfdbfe', background: '#172554', border: '#2563eb' }
-}
-
-function buildWeeklyActivity(rows: WorkLogSummaryRow[]): WeeklyTaskActivity[] {
-  const map = new Map<string, WeeklyTaskActivity & { dayKeys: Set<string> }>()
-
-  rows.forEach((row) => {
-    const existing = map.get(row.todo_id)
-    if (!existing) {
-      map.set(row.todo_id, {
-        todoId: row.todo_id,
-        title: row.title,
-        categoryName: row.category_name,
-        categoryColor: row.category_color,
-        totalSeconds: row.duration_seconds,
-        entryCount: 1,
-        daysWorked: 0,
-        lastWorkedAt: row.end_time,
-        dayKeys: new Set([getLocalDateKey(row.start_time)])
-      })
-      return
-    }
-
-    existing.totalSeconds += row.duration_seconds
-    existing.entryCount += 1
-    existing.dayKeys.add(getLocalDateKey(row.start_time))
-    if (new Date(row.end_time).getTime() > new Date(existing.lastWorkedAt).getTime()) {
-      existing.lastWorkedAt = row.end_time
-    }
-  })
-
-  return [...map.values()]
-    .map((item) => ({
-      todoId: item.todoId,
-      title: item.title,
-      categoryName: item.categoryName,
-      categoryColor: item.categoryColor,
-      totalSeconds: item.totalSeconds,
-      entryCount: item.entryCount,
-      daysWorked: item.dayKeys.size,
-      lastWorkedAt: item.lastWorkedAt
-    }))
-    .sort((a, b) => b.totalSeconds - a.totalSeconds || b.entryCount - a.entryCount)
 }
 
 function SummaryCard({
@@ -287,6 +215,107 @@ function CategoryRow({ category }: { category: OverviewCategoryStat }): React.JS
   )
 }
 
+function AssigneeLabels({
+  assigneeName,
+  assigneeColor,
+  coAssignees = [],
+  label
+}: {
+  assigneeName: string | null
+  assigneeColor: string | null
+  coAssignees?: TodoCoAssignee[]
+  label?: string
+}): React.JSX.Element {
+  const names = [assigneeName, ...coAssignees.map((item) => item.display_name)].filter((name): name is string => Boolean(name))
+  if (names.length === 0) {
+    return <span style={{ fontSize: '0.72rem', color: '#64748b' }}>{label ? `${label}: ` : ''}未割り当て</span>
+  }
+
+  const visibleCoAssignees = coAssignees.slice(0, assigneeName ? 1 : 2)
+  const hiddenCount = coAssignees.length - visibleCoAssignees.length
+  return (
+    <span title={names.join('、')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', minWidth: 0 }}>
+      {label && <span style={{ fontSize: '0.68rem', color: '#64748b' }}>{label}:</span>}
+      {assigneeName && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: '#cbd5e1' }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: assigneeColor ?? '#64748b' }} />
+          {assigneeName}
+        </span>
+      )}
+      {visibleCoAssignees.map((item) => (
+        <span key={item.user_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', color: '#94a3b8', background: '#1e293b', borderRadius: 999, padding: '1px 6px' }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: item.color }} />
+          {item.display_name}
+        </span>
+      ))}
+      {hiddenCount > 0 && <span style={{ fontSize: '0.68rem', color: '#64748b' }}>+{hiddenCount}</span>}
+    </span>
+  )
+}
+
+interface RecentMemberActivity {
+  id: string
+  at: string
+  kind: string
+  todoTitle: string
+  detail?: string
+}
+
+function buildRecentMemberActivity(user: ProgressDigestUser): RecentMemberActivity[] {
+  return [
+    ...user.added_todos.map((item) => ({ id: `todo-${item.id}`, at: item.created_at, kind: 'タスク追加', todoTitle: item.title })),
+    ...user.completed_todos.map((item) => ({ id: `done-${item.id}`, at: item.completed_at, kind: 'タスク完了', todoTitle: item.title })),
+    ...user.added_subtasks.map((item) => ({ id: `sub-${item.id}`, at: item.created_at, kind: 'サブタスク追加', todoTitle: item.todo_title, detail: item.title })),
+    ...user.task_changes.map((item) => ({ id: `change-${item.id}`, at: item.created_at, kind: 'タスク変更', todoTitle: item.todo_title, detail: item.field })),
+    ...user.notes.map((item) => ({ id: `note-${item.id}`, at: item.created_at, kind: '進捗投稿', todoTitle: item.todo_title, detail: item.body })),
+    ...user.comments.map((item) => ({ id: `comment-${item.id}`, at: item.created_at, kind: 'コメント', todoTitle: item.todo_title, detail: item.body }))
+  ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 3)
+}
+
+function MemberActivityCard({ user }: { user: ProgressDigestUser }): React.JSX.Element {
+  const recent = buildRecentMemberActivity(user)
+  const activityCount = user.added_todos.length + user.completed_todos.length + user.added_subtasks.length
+    + user.task_changes.length + user.notes.length + user.comments.length + user.work_log_count
+
+  const badges = [
+    `作業 ${formatMinutes(user.work_minutes)}`,
+    `記録 ${user.work_log_count}回`,
+    `追加 ${user.added_todos.length}`,
+    `完了 ${user.completed_todos.length}`,
+    `サブタスク ${user.added_subtasks.length}`,
+    `変更 ${user.task_changes.length}`,
+    `進捗 ${user.notes.length}`,
+    `コメント ${user.comments.length}`
+  ]
+
+  return (
+    <article style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: 14, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 10, height: 10, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
+        <strong style={{ color: '#e2e8f0', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.display_name}</strong>
+        <span style={{ marginLeft: 'auto', color: activityCount > 0 ? '#86efac' : '#64748b', fontSize: '0.7rem' }}>
+          {activityCount > 0 ? '活動あり' : '活動なし'}
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 10 }}>
+        {badges.map((badge) => <span key={badge} style={{ background: '#1e293b', color: '#94a3b8', borderRadius: 999, padding: '2px 7px', fontSize: '0.66rem' }}>{badge}</span>)}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 11 }}>
+        {recent.length === 0 ? (
+          <span style={{ color: '#64748b', fontSize: '0.74rem' }}>この期間の活動はありません。</span>
+        ) : recent.map((item) => (
+          <div key={item.id} style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '2px 8px', fontSize: '0.72rem' }}>
+            <span style={{ color: '#a78bfa' }}>{item.kind}</span>
+            <span style={{ color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.todoTitle}</span>
+            <span style={{ color: '#475569' }}>{formatDateTime(item.at)}</span>
+            {item.detail ? <span title={item.detail} style={{ color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.detail}</span> : <span />}
+          </div>
+        ))}
+      </div>
+    </article>
+  )
+}
+
 function TaskRow({
   item,
   onSelect
@@ -346,6 +375,10 @@ function TaskRow({
         {item.title}
       </div>
 
+      <div style={{ marginTop: 7 }}>
+        <AssigneeLabels assigneeName={item.assigneeName} assigneeColor={item.assigneeColor} coAssignees={item.coAssignees} label="担当" />
+      </div>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
         <span style={{ fontSize: '0.75rem', color: '#93c5fd' }}>
           {formatDueLabel(item.dueDate)}
@@ -393,96 +426,6 @@ function TaskList({
         )}
       </div>
     </Section>
-  )
-}
-
-function WeeklyStatCard({
-  label,
-  value,
-  detail,
-  tone
-}: {
-  label: string
-  value: string
-  detail: string
-  tone: string
-}): React.JSX.Element {
-  return (
-    <div
-      style={{
-        background: '#0f172a',
-        border: '1px solid #1e293b',
-        borderRadius: 12,
-        padding: '12px 14px'
-      }}
-    >
-      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{label}</div>
-      <div style={{ fontSize: '1.15rem', color: tone, fontWeight: 700, marginTop: 8 }}>{value}</div>
-      <div style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: 6 }}>{detail}</div>
-    </div>
-  )
-}
-
-function WeeklyActivityRow({
-  activity,
-  maxSeconds,
-  onSelect
-}: {
-  activity: WeeklyTaskActivity
-  maxSeconds: number
-  onSelect: (id: string) => void
-}): React.JSX.Element {
-  const fill = maxSeconds > 0 ? Math.max(12, Math.round((activity.totalSeconds / maxSeconds) * 100)) : 0
-  const tone = activity.categoryColor ?? '#6366f1'
-
-  return (
-    <button
-      onClick={() => onSelect(activity.todoId)}
-      style={{
-        width: '100%',
-        background: '#0f172a',
-        border: '1px solid #1e293b',
-        borderRadius: 12,
-        padding: '12px 14px',
-        cursor: 'pointer',
-        textAlign: 'left'
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '0.88rem', color: '#e5e7eb', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {activity.title}
-          </div>
-          {activity.categoryName && (
-            <div style={{ fontSize: '0.7rem', color: activity.categoryColor ?? '#a5b4fc', marginTop: 4 }}>
-              {activity.categoryName}
-            </div>
-          )}
-        </div>
-        <div style={{ fontSize: '0.9rem', color: '#f8fafc', fontWeight: 700, flexShrink: 0 }}>
-          {formatSeconds(activity.totalSeconds)}
-        </div>
-      </div>
-
-      <div style={{ marginTop: 10, height: 7, background: '#020617', borderRadius: 999 }}>
-        <div
-          style={{
-            height: '100%',
-            width: `${fill}%`,
-            background: `linear-gradient(90deg, ${tone}, #22c55e)`,
-            borderRadius: 999
-          }}
-        />
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
-        <span style={{ fontSize: '0.74rem', color: '#cbd5e1' }}>{activity.entryCount}回 記録</span>
-        <span style={{ fontSize: '0.74rem', color: '#93c5fd' }}>{activity.daysWorked}日 作業</span>
-        <span style={{ fontSize: '0.74rem', color: '#64748b', marginLeft: 'auto' }}>
-          最終 {formatMonthDay(activity.lastWorkedAt)}
-        </span>
-      </div>
-    </button>
   )
 }
 
@@ -543,6 +486,12 @@ function CompletedSubTaskRow({
       <div style={{ marginTop: 6, fontSize: '0.74rem', color: '#94a3b8' }}>
         親タスク: {item.todo_title}
       </div>
+      <div style={{ marginTop: 7, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        {item.assignee_name && (
+          <AssigneeLabels assigneeName={item.assignee_name} assigneeColor={item.assignee_color} label="サブタスク担当" />
+        )}
+        <AssigneeLabels assigneeName={item.parent_assignee_name} assigneeColor={item.parent_assignee_color} coAssignees={item.parent_co_assignees} label="親担当" />
+      </div>
     </button>
   )
 }
@@ -550,13 +499,14 @@ function CompletedSubTaskRow({
 export function OverviewDashboard({
   todos,
   categories,
+  users,
+  selectedAssigneeId,
+  includePrivate,
   runningTodoId,
   elapsedSeconds,
   onSelectTodo
 }: Props): React.JSX.Element {
   const [data, setData] = useState<OverviewData | null>(null)
-  const [weeklyActivity, setWeeklyActivity] = useState<WeeklyTaskActivity[]>([])
-  const [weekEntryCount, setWeekEntryCount] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -564,25 +514,16 @@ export function OverviewDashboard({
 
     const load = async (): Promise<void> => {
       setLoading(true)
+      setData(null)
       try {
-        const [nextData, weekRows] = await Promise.all([
-          window.api.overviewGetData(),
-          window.api.worklogGetSummary(7)
-        ])
-
-        const weekStart = getWeekStart().getTime()
-        const currentWeekRows = weekRows.filter((row) => new Date(row.start_time).getTime() >= weekStart)
+        const nextData = await window.api.overviewGetData({ assigneeId: selectedAssigneeId, includePrivate })
 
         if (!cancelled) {
           setData(nextData)
-          setWeeklyActivity(buildWeeklyActivity(currentWeekRows))
-          setWeekEntryCount(currentWeekRows.length)
         }
       } catch {
         if (!cancelled) {
           setData(null)
-          setWeeklyActivity([])
-          setWeekEntryCount(0)
         }
       } finally {
         if (!cancelled) {
@@ -596,12 +537,20 @@ export function OverviewDashboard({
     return () => {
       cancelled = true
     }
-  }, [todos, categories, runningTodoId])
+  }, [todos, categories, runningTodoId, selectedAssigneeId, includePrivate])
 
   const runningTodo = todos.find((todo) => todo.id === runningTodoId) ?? null
   const atRiskCount = data ? data.summary.overdueTasks + data.summary.dueSoonTasks : 0
-  const topWeeklySeconds = weeklyActivity[0]?.totalSeconds ?? 0
-  const currentWeekMinutes = Math.round(weeklyActivity.reduce((sum, item) => sum + item.totalSeconds, 0) / 60)
+  const selectedUser = selectedAssigneeId ? users.find((user) => user.id === selectedAssigneeId) : null
+  const scopeLabel = users.length === 0
+    ? '自分'
+    : selectedAssigneeId === null
+      ? '全員'
+      : selectedAssigneeId === ''
+        ? '未割り当て'
+        : `${selectedUser?.display_name ?? '不明なユーザー'}${selectedUser?.is_active === 0 ? '（無効）' : ''}`
+  const activityWorkMinutes = data?.memberActivity.reduce((sum, user) => sum + user.work_minutes, 0) ?? 0
+  const activityLogCount = data?.memberActivity.reduce((sum, user) => sum + user.work_log_count, 0) ?? 0
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 20 }}>
@@ -611,7 +560,11 @@ export function OverviewDashboard({
             ダッシュボード
           </div>
           <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: 4 }}>
-            {categories.length}カテゴリを1画面で俯瞰
+            {data?.categories.length ?? 0}カテゴリを1画面で俯瞰
+          </div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, border: '1px solid #334155', background: '#111827', borderRadius: 999, padding: '3px 9px', fontSize: '0.74rem', color: '#cbd5e1' }}>
+            {selectedUser && <span style={{ width: 7, height: 7, borderRadius: '50%', background: selectedUser.color }} />}
+            対象: {scopeLabel}
           </div>
         </div>
         {data && (
@@ -674,52 +627,20 @@ export function OverviewDashboard({
             />
           </div>
 
-          <Section title="今週やったこと" subtitle={`${weeklyActivity.length}タスク / ${weekEntryCount}回 記録`}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 0.85fr) minmax(0, 1.6fr)', gap: 16, alignItems: 'start' }}>
-              <div style={{ display: 'grid', gap: 10 }}>
-                <WeeklyStatCard
-                  label="今週の作業時間"
-                  value={formatMinutes(currentWeekMinutes)}
-                  detail="今週の作業ログ合計"
-                  tone="#a78bfa"
-                />
-                <WeeklyStatCard
-                  label="触ったタスク"
-                  value={`${weeklyActivity.length}件`}
-                  detail="今週ログがあるタスク数"
-                  tone="#60a5fa"
-                />
-                <WeeklyStatCard
-                  label="記録回数"
-                  value={`${weekEntryCount}回`}
-                  detail="タイマー停止で残った件数"
-                  tone="#4ade80"
-                />
-                <WeeklyStatCard
-                  label="完了サブタスク"
-                  value={`${data.summary.completedSubTasksThisWeek}件`}
-                  detail="今週完了したサブタスク"
-                  tone="#34d399"
-                />
+          <Section title={selectedAssigneeId === null ? 'メンバーそれぞれの活動' : `${scopeLabel}の活動`} subtitle={`${data.activityFrom}〜${data.activityTo}・作業 ${formatMinutes(activityWorkMinutes)} / ${activityLogCount}回 記録`}>
+            {selectedAssigneeId === '' ? (
+              <div style={{ color: '#64748b', fontSize: '0.82rem', padding: '8px 2px' }}>
+                未割り当てタスクには、メンバーに紐づく活動集計はありません。
               </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {weeklyActivity.length === 0 ? (
-                  <div style={{ color: '#64748b', fontSize: '0.82rem', padding: '8px 2px' }}>
-                    今週の作業ログはまだありません。
-                  </div>
-                ) : (
-                  weeklyActivity.slice(0, 6).map((activity) => (
-                    <WeeklyActivityRow
-                      key={activity.todoId}
-                      activity={activity}
-                      maxSeconds={topWeeklySeconds}
-                      onSelect={onSelectTodo}
-                    />
-                  ))
-                )}
+            ) : data.memberActivity.length === 0 ? (
+              <div style={{ color: '#64748b', fontSize: '0.82rem', padding: '8px 2px' }}>
+                この期間に表示できるメンバー活動はありません。
               </div>
-            </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10 }}>
+                {data.memberActivity.map((user) => <MemberActivityCard key={user.user_id ?? 'desktop'} user={user} />)}
+              </div>
+            )}
           </Section>
 
           <Section title="今週完了したサブタスク" subtitle={`${data.completedSubTasks.length}件を表示`}>

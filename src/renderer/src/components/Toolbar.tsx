@@ -138,7 +138,7 @@ export function Toolbar({
             今日のレール
           </button>
           <button onClick={onToggleArchived} style={utilityButtonStyle(showArchived)}>
-            {showArchived ? 'ゴミ箱表示中' : 'ゴミ箱'}
+            {showArchived ? 'アーカイブ表示中' : 'アーカイブ'}
           </button>
           <button onClick={onOpenProgressReport} style={utilityButtonStyle(false)}>進捗レポート</button>
           <button onClick={onOpenSettings} style={utilityButtonStyle(false)}>設定</button>

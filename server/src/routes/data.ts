@@ -328,7 +328,10 @@ dataRouter.get('/worklogs/summary', (req, res) =>
   run(res, () => getWorkLogsSummary(req.user!.id, Number(req.query.days ?? 7))))
 
 // ─── Overview ─────────────────────────────────────────────────
-dataRouter.get('/overview', (_req, res) => run(res, () => getOverviewData()))
+dataRouter.get('/overview', (req, res) => run(res, () => getOverviewData({
+  assigneeId: req.query.assigneeId == null ? undefined : String(req.query.assigneeId),
+  includePrivate: req.query.includePrivate !== 'false'
+})))
 
 // ─── Daily plan (per-user) ────────────────────────────────────
 dataRouter.get('/plan', (req, res) =>

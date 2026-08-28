@@ -60,6 +60,7 @@ import type {
   CreateSubTaskInput,
   UpdateDailyPlanItemInput,
   UpdateSubTaskInput,
+  OverviewQuery,
   ProgressDigestQuery
 } from './db'
 import { exportMarkdown } from './markdown'
@@ -130,7 +131,7 @@ export function registerIpcHandlers(
   ipcMain.handle('worklog:getAll', () => getAllWorkLogRows())
   ipcMain.handle('worklog:getByDate', (_, dateStr: string) => getWorkLogsByDate(dateStr))
   ipcMain.handle('worklog:getSummary', (_, days: number) => getWorkLogsSummary(days))
-  ipcMain.handle('overview:getData', () => getOverviewData())
+  ipcMain.handle('overview:getData', (_, query: OverviewQuery = {}) => getOverviewData(query))
 
   // Daily plan
   ipcMain.handle('dailyPlan:getByDate', (_, dateStr: string) => getDailyPlanItems(dateStr))
