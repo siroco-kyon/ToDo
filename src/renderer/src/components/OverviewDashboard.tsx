@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react'
 import type {
-  Category,
   OverviewCategoryStat,
   OverviewCompletedSubTaskItem,
   OverviewData,
@@ -13,8 +12,8 @@ import type {
 
 interface Props {
   todos: Todo[]
-  categories: Category[]
   users: PublicUser[]
+  dataRevision: string
   selectedAssigneeId: string | null
   includePrivate: boolean
   runningTodoId: string | null
@@ -498,8 +497,8 @@ function CompletedSubTaskRow({
 
 export function OverviewDashboard({
   todos,
-  categories,
   users,
+  dataRevision,
   selectedAssigneeId,
   includePrivate,
   runningTodoId,
@@ -537,7 +536,7 @@ export function OverviewDashboard({
     return () => {
       cancelled = true
     }
-  }, [todos, categories, runningTodoId, selectedAssigneeId, includePrivate])
+  }, [dataRevision, runningTodoId, selectedAssigneeId, includePrivate])
 
   const runningTodo = todos.find((todo) => todo.id === runningTodoId) ?? null
   const atRiskCount = data ? data.summary.overdueTasks + data.summary.dueSoonTasks : 0

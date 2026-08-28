@@ -114,7 +114,7 @@ export function App(): React.JSX.Element {
   const [sortField, setSortField] = useState<SortField>('created_at')
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc')
   const [searchQuery, setSearchQuery] = useState('')
-  const [savedTaskViews, setSavedTaskViews] = useState<SavedTaskView[]>(() => {
+  const [savedTaskViews] = useState<SavedTaskView[]>(() => {
     try {
       const parsed = JSON.parse(window.localStorage.getItem('saved-task-views') ?? '[]') as unknown
       return Array.isArray(parsed) ? parsed as SavedTaskView[] : []
@@ -372,10 +372,6 @@ export function App(): React.JSX.Element {
   }, [paneWidths])
 
   useEffect(() => {
-    window.localStorage.setItem('saved-task-views', JSON.stringify(savedTaskViews))
-  }, [savedTaskViews])
-
-  useEffect(() => {
     const handlePointerMove = (event: PointerEvent): void => {
       const current = resizeRef.current
       if (!current) return
@@ -524,6 +520,7 @@ export function App(): React.JSX.Element {
 
       return true
     })
+
     .sort((a, b) => {
       if (a.status === 'archived' && b.status !== 'archived') return 1
       if (a.status !== 'archived' && b.status === 'archived') return -1
@@ -550,6 +547,20 @@ export function App(): React.JSX.Element {
       if (aVal > bVal) return sortDir === 'asc' ? 1 : -1
       return 0
     })
+
+  // タイマーの秒更新では変化せず、概要の集計元が実際に変わったときだけ更新されるキー。
+  const overviewDataRevision = useMemo(() => JSON.stringify({
+    todos: todos.map((todo) => [
+      todo.id, todo.updated_at, todo.status, todo.progress, todo.priority, todo.due_date,
+      todo.category_id, todo.assignee_id, (todo.co_assignees ?? []).map((item) => item.user_id)
+    ]),
+    subTasks: allSubTasks.map((subTask) => [
+      subTask.id, subTask.todo_id, subTask.title, subTask.done, subTask.progress,
+      subTask.completed_at, subTask.start_date, subTask.due_date, subTask.assignee_id
+    ]),
+    categories: categories.map((category) => [category.id, category.name, category.color, category.is_private]),
+    users: users.map((user) => [user.id, user.display_name, user.color, user.is_active])
+  }), [allSubTasks, categories, todos, users])
 
   const selectedTodo = lensTodos.find((todo) => todo.id === selectedTodoId) ?? null
 
@@ -755,14 +766,6 @@ export function App(): React.JSX.Element {
     await loadTodos()
   }, [loadTodos])
 
-  const saveCurrentTaskView = useCallback((): void => {
-    const name = window.prompt('この表示条件の名前を入力してください')?.trim()
-    if (!name) return
-    const next: SavedTaskView = { name, searchQuery, categoryId: selectedCategoryId, assigneeId: selectedAssigneeId, showArchived, sortField, sortDir }
-    setSavedTaskViews((previous) => [...previous.filter((view) => view.name !== name), next])
-    showToast(`表示条件「${name}」を保存しました`)
-  }, [searchQuery, selectedAssigneeId, selectedCategoryId, showArchived, showToast, sortDir, sortField])
-
   const applyTaskView = useCallback((view: SavedTaskView): void => {
     setSearchQuery(view.searchQuery)
     setSelectedCategoryId(view.categoryId)
@@ -770,13 +773,6 @@ export function App(): React.JSX.Element {
     setShowArchived(view.showArchived)
     setSortField(view.sortField)
     setSortDir(view.sortDir)
-  }, [])
-
-  const clearTaskFilters = useCallback((): void => {
-    setSearchQuery('')
-    setSelectedCategoryId(null)
-    setSelectedAssigneeId(null)
-    setShowArchived(false)
   }, [])
 
   const refreshSelectedPlan = useCallback(async (): Promise<void> => {
@@ -1045,16 +1041,13 @@ export function App(): React.JSX.Element {
                 ))}
               </select>
             )}
-            <div style={{ display: 'flex', gap: 5, marginTop: 6, flexWrap: 'wrap' }}>
-              {savedTaskViews.length > 0 && <select defaultValue="" onChange={(event) => { const view = savedTaskViews.find((item) => item.name === event.target.value); if (view) applyTaskView(view); event.target.value = '' }} style={{ flex: 1, minWidth: 100, padding: '4px 6px', background: '#0f172a', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6 }}><option value="">保存ビュー</option>{savedTaskViews.map((view) => <option key={view.name} value={view.name}>{view.name}</option>)}</select>}
-              <button onClick={saveCurrentTaskView} style={{ padding: '4px 7px', background: '#172554', color: '#dbeafe', border: '1px solid #2563eb', borderRadius: 6, cursor: 'pointer' }}>保存</button>
-              {(searchQuery || selectedCategoryId || selectedAssigneeId !== null || showArchived) && <button onClick={clearTaskFilters} style={{ padding: '4px 7px', background: '#3f1d1d', color: '#fecaca', border: '1px solid #7f1d1d', borderRadius: 6, cursor: 'pointer' }}>全解除</button>}
-            </div>
-            {(searchQuery || selectedCategoryId || selectedAssigneeId !== null || showArchived) && (
+            {savedTaskViews.length > 0 && <div style={{ display: 'flex', gap: 5, marginTop: 6, flexWrap: 'wrap' }}>
+              <select defaultValue="" onChange={(event) => { const view = savedTaskViews.find((item) => item.name === event.target.value); if (view) applyTaskView(view); event.target.value = '' }} style={{ flex: 1, minWidth: 100, padding: '4px 6px', background: '#0f172a', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6 }}><option value="">保存ビュー</option>{savedTaskViews.map((view) => <option key={view.name} value={view.name}>{view.name}</option>)}</select>
+            </div>}
+            {(searchQuery || selectedCategoryId || showArchived) && (
               <div aria-label="適用中の絞り込み" style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
                 {searchQuery && <button onClick={() => setSearchQuery('')} title="検索条件を解除" style={filterChipStyle}>検索: {searchQuery} ×</button>}
                 {selectedCategoryId && <button onClick={() => setSelectedCategoryId(null)} title="カテゴリ条件を解除" style={filterChipStyle}>カテゴリ: {categories.find((item) => item.id === selectedCategoryId)?.name ?? '不明'} ×</button>}
-                {selectedAssigneeId !== null && <button onClick={() => setSelectedAssigneeId(null)} title="担当者条件を解除" style={filterChipStyle}>担当: {selectedAssigneeId === '' ? '未割当' : users.find((item) => item.id === selectedAssigneeId)?.display_name ?? '不明'} ×</button>}
                 {showArchived && <button onClick={() => setShowArchived(false)} title="アーカイブ表示を解除" style={filterChipStyle}>アーカイブ ×</button>}
               </div>
             )}
@@ -1134,8 +1127,8 @@ export function App(): React.JSX.Element {
           ) : activeView === 'overview' ? (
             <OverviewDashboard
               todos={filteredTodos}
-              categories={categories}
               users={users}
+              dataRevision={overviewDataRevision}
               selectedAssigneeId={selectedAssigneeId}
               includePrivate={scopeLens === 'personal'}
               runningTodoId={runningTodoId}
