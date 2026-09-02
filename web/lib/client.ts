@@ -324,7 +324,7 @@ export const api: Api = {
 
   // Daily plan
   dailyPlanGetByDate: (dateStr) => get<DailyPlanItem[]>('/plan', { date: dateStr }),
-  dailyPlanAdd: (dateStr, todoId) => post<DailyPlanItem>('/plan', { date: dateStr, todoId }),
+  dailyPlanAdd: (dateStr, todoId, options) => post<DailyPlanItem>('/plan', { date: dateStr, todoId, options }),
   dailyPlanUpdate: (id, data: UpdateDailyPlanItemInput) => put<DailyPlanItem>(`/plan/${id}`, data),
   dailyPlanShift: (id, deltaMinutes) => post<DailyPlanItem>(`/plan/${id}/shift`, { deltaMinutes }),
   dailyPlanDelete: (id) => del<void>(`/plan/${id}`),

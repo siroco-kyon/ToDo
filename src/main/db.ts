@@ -109,7 +109,6 @@ function createTables(): void {
       sort_order INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      UNIQUE(plan_date, todo_id),
       FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE
     );
 
@@ -284,6 +283,38 @@ function migrateDb(): void {
     db.prepare('UPDATE DailyPlanItems SET lane = 0 WHERE lane IS NULL').run()
   }
 
+  // UNIQUE(plan_date, todo_id) を撤去（同じタスクを1日に複数回置けるようにする）。
+  // SQLite は制約由来の暗黙インデックスを DROP できないのでテーブルごと作り直す。
+  const dailyPlanIndexes = db.prepare('PRAGMA index_list(DailyPlanItems)').all() as { unique: number; origin: string }[]
+  if (dailyPlanIndexes.some((idx) => idx.unique === 1 && idx.origin === 'u')) {
+    db.pragma('foreign_keys = OFF')
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE DailyPlanItems_new (
+          id TEXT PRIMARY KEY,
+          plan_date TEXT NOT NULL,
+          todo_id TEXT NOT NULL,
+          scheduled_start TEXT,
+          estimated_minutes INTEGER,
+          lane INTEGER DEFAULT 0,
+          sort_order INTEGER DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE
+        );
+      `)
+      db.exec(`
+        INSERT INTO DailyPlanItems_new
+          (id, plan_date, todo_id, scheduled_start, estimated_minutes, lane, sort_order, created_at, updated_at)
+        SELECT id, plan_date, todo_id, scheduled_start, estimated_minutes, lane, sort_order, created_at, updated_at
+        FROM DailyPlanItems
+      `)
+      db.exec('DROP TABLE DailyPlanItems')
+      db.exec('ALTER TABLE DailyPlanItems_new RENAME TO DailyPlanItems')
+    })()
+    db.pragma('foreign_keys = ON')
+  }
+
   if (!dependencyColumns.some((c) => c.name === 'lag_days')) {
     db.prepare('ALTER TABLE TodoDependencies ADD COLUMN lag_days INTEGER NOT NULL DEFAULT 0').run()
   }
@@ -397,6 +428,16 @@ function normalizeTimeKey(value: string | null | undefined): string | null {
   const minutes = Number(match[2])
   if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+function normalizePlanDuration(value: number | null | undefined): number | null {
+  if (value == null) return null
+  return Math.max(15, Math.min(480, Math.round(value / 15) * 15))
+}
+
+function normalizePlanLane(value: number | null | undefined): number {
+  if (value == null) return 0
+  return Math.max(0, Math.min(2, value))
 }
 
 function shiftTimeKey(value: string, deltaMinutes: number): string {
@@ -930,27 +971,29 @@ export function getDailyPlanItems(planDate: string): DailyPlanItem[] {
   ).all(planDate) as DailyPlanItem[]
 }
 
-export function addDailyPlanItem(planDate: string, todoId: string): DailyPlanItem {
-  const existing = db.prepare(
-    `SELECT
-        dpi.*,
-        t.title,
-        t.description,
-        t.category_id,
-        t.status,
-        t.priority,
-        t.progress,
-        t.start_date,
-        t.due_date,
-        c.name AS category_name,
-        c.color AS category_color
-     FROM DailyPlanItems dpi
-     JOIN Todos t ON dpi.todo_id = t.id
-     LEFT JOIN Categories c ON t.category_id = c.id
-     WHERE dpi.plan_date = ? AND dpi.todo_id = ?`
-  ).get(planDate, todoId) as DailyPlanItem | undefined
+export function addDailyPlanItem(planDate: string, todoId: string, options?: AddDailyPlanItemOptions): DailyPlanItem {
+  if (!options?.allowDuplicate) {
+    const existing = db.prepare(
+      `SELECT
+          dpi.*,
+          t.title,
+          t.description,
+          t.category_id,
+          t.status,
+          t.priority,
+          t.progress,
+          t.start_date,
+          t.due_date,
+          c.name AS category_name,
+          c.color AS category_color
+       FROM DailyPlanItems dpi
+       JOIN Todos t ON dpi.todo_id = t.id
+       LEFT JOIN Categories c ON t.category_id = c.id
+       WHERE dpi.plan_date = ? AND dpi.todo_id = ?`
+    ).get(planDate, todoId) as DailyPlanItem | undefined
 
-  if (existing) return existing
+    if (existing) return existing
+  }
 
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
@@ -959,9 +1002,19 @@ export function addDailyPlanItem(planDate: string, todoId: string): DailyPlanIte
   ).m
 
   db.prepare(
-    `INSERT INTO DailyPlanItems (id, plan_date, todo_id, scheduled_start, estimated_minutes, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, NULL, 60, ?, ?, ?)`
-  ).run(id, planDate, todoId, maxOrder + 1, now, now)
+    `INSERT INTO DailyPlanItems (id, plan_date, todo_id, scheduled_start, estimated_minutes, lane, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    planDate,
+    todoId,
+    normalizeTimeKey(options?.scheduled_start ?? null),
+    normalizePlanDuration(options?.estimated_minutes === undefined ? 60 : options.estimated_minutes),
+    normalizePlanLane(options?.lane ?? 0),
+    maxOrder + 1,
+    now,
+    now
+  )
 
   return db.prepare(
     `SELECT
@@ -993,13 +1046,12 @@ export function updateDailyPlanItem(id: string, data: UpdateDailyPlanItemInput):
     values.push(normalizeTimeKey(data.scheduled_start))
   }
   if (data.estimated_minutes !== undefined) {
-    const value = data.estimated_minutes == null ? null : Math.max(15, Math.min(480, Math.round(data.estimated_minutes / 15) * 15))
     fields.push('estimated_minutes = ?')
-    values.push(value)
+    values.push(normalizePlanDuration(data.estimated_minutes))
   }
   if (data.lane !== undefined) {
     fields.push('lane = ?')
-    values.push(Math.max(0, Math.min(2, data.lane)))
+    values.push(normalizePlanLane(data.lane))
   }
 
   values.push(id)
@@ -2340,6 +2392,17 @@ export interface DailyPlanItem {
 }
 
 export interface UpdateDailyPlanItemInput {
+  scheduled_start?: string | null
+  estimated_minutes?: number | null
+  lane?: number
+}
+
+/**
+ * 計画への追加オプション。
+ * allowDuplicate を指定しない限り、同じ日・同じタスクの既存行を返す（従来の挙動）。
+ */
+export interface AddDailyPlanItemOptions {
+  allowDuplicate?: boolean
   scheduled_start?: string | null
   estimated_minutes?: number | null
   lane?: number

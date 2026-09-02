@@ -17,6 +17,7 @@ import type {
   OverviewData,
   DailyPlanItem,
   UpdateDailyPlanItemInput,
+  AddDailyPlanItemOptions,
   PublicUser,
   UserRole,
   CreateUserInput,
@@ -58,6 +59,7 @@ export type {
   OverviewData,
   DailyPlanItem,
   UpdateDailyPlanItemInput,
+  AddDailyPlanItemOptions,
   PublicUser,
   UserRole,
   CreateUserInput,
@@ -148,8 +150,8 @@ const api = {
   // Daily plan
   dailyPlanGetByDate: (dateStr: string): Promise<DailyPlanItem[]> =>
     ipcRenderer.invoke('dailyPlan:getByDate', dateStr),
-  dailyPlanAdd: (dateStr: string, todoId: string): Promise<DailyPlanItem> =>
-    ipcRenderer.invoke('dailyPlan:add', dateStr, todoId),
+  dailyPlanAdd: (dateStr: string, todoId: string, options?: AddDailyPlanItemOptions): Promise<DailyPlanItem> =>
+    ipcRenderer.invoke('dailyPlan:add', dateStr, todoId, options),
   dailyPlanUpdate: (id: string, data: UpdateDailyPlanItemInput): Promise<DailyPlanItem> =>
     ipcRenderer.invoke('dailyPlan:update', id, data),
   dailyPlanShift: (id: string, deltaMinutes: number): Promise<DailyPlanItem> =>

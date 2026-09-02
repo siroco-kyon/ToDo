@@ -57,6 +57,7 @@ import {
   initDb
 } from './db'
 import type {
+  AddDailyPlanItemOptions,
   CreateSubTaskInput,
   UpdateDailyPlanItemInput,
   UpdateSubTaskInput,
@@ -135,7 +136,7 @@ export function registerIpcHandlers(
 
   // Daily plan
   ipcMain.handle('dailyPlan:getByDate', (_, dateStr: string) => getDailyPlanItems(dateStr))
-  ipcMain.handle('dailyPlan:add', handleMutation('plan', (dateStr: string, todoId: string) => addDailyPlanItem(dateStr, todoId)))
+  ipcMain.handle('dailyPlan:add', handleMutation('plan', (dateStr: string, todoId: string, options?: AddDailyPlanItemOptions) => addDailyPlanItem(dateStr, todoId, options)))
   ipcMain.handle('dailyPlan:update', handleMutation('plan', (id: string, data: UpdateDailyPlanItemInput) => updateDailyPlanItem(id, data)))
   ipcMain.handle('dailyPlan:shift', handleMutation('plan', (id: string, deltaMinutes: number) => shiftDailyPlanItem(id, deltaMinutes)))
   ipcMain.handle('dailyPlan:delete', handleMutation('plan', (id: string) => deleteDailyPlanItem(id)))

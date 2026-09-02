@@ -337,7 +337,7 @@ dataRouter.get('/overview', (req, res) => run(res, () => getOverviewData({
 dataRouter.get('/plan', (req, res) =>
   run(res, () => getDailyPlanItems(req.user!.id, String(req.query.date ?? ''))))
 dataRouter.post('/plan', (req, res) =>
-  run(res, () => addDailyPlanItem(req.user!.id, req.body.date, req.body.todoId), 'plan'))
+  run(res, () => addDailyPlanItem(req.user!.id, req.body.date, req.body.todoId, req.body.options), 'plan'))
 dataRouter.post('/plan/reorder', (req, res) =>
   run(res, () => reorderDailyPlanItems(req.user!.id, req.body.date, req.body.orderedIds), 'plan'))
 dataRouter.put('/plan/:id', (req, res) => run(res, () => updateDailyPlanItem(req.params.id, req.body), 'plan'))

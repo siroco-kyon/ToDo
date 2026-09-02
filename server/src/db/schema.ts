@@ -120,7 +120,6 @@ export function createSchema(db: Database.Database): void {
       sort_order INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      UNIQUE(plan_date, todo_id, user_id),
       FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
     );
@@ -315,6 +314,41 @@ export function runMigrations(db: Database.Database): void {
   const categoryColumns = db.prepare('PRAGMA table_info(Categories)').all() as { name: string }[]
   if (!categoryColumns.some((c) => c.name === 'is_private')) {
     db.prepare('ALTER TABLE Categories ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0').run()
+  }
+
+  // UNIQUE(plan_date, todo_id, user_id) を撤去（同じタスクを1日に複数回置けるようにする）。
+  // SQLite は制約由来の暗黙インデックスを DROP できないのでテーブルごと作り直す。
+  const dailyPlanIndexes = db.prepare('PRAGMA index_list(DailyPlanItems)').all() as { unique: number; origin: string }[]
+  if (dailyPlanIndexes.some((idx) => idx.unique === 1 && idx.origin === 'u')) {
+    db.pragma('foreign_keys = OFF')
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE DailyPlanItems_new (
+          id TEXT PRIMARY KEY,
+          plan_date TEXT NOT NULL,
+          todo_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          scheduled_start TEXT,
+          estimated_minutes INTEGER,
+          lane INTEGER DEFAULT 0,
+          sort_order INTEGER DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
+        );
+      `)
+      db.exec(`
+        INSERT INTO DailyPlanItems_new
+          (id, plan_date, todo_id, user_id, scheduled_start, estimated_minutes, lane, sort_order, created_at, updated_at)
+        SELECT id, plan_date, todo_id, user_id, scheduled_start, estimated_minutes, lane, sort_order, created_at, updated_at
+        FROM DailyPlanItems
+      `)
+      db.exec('DROP TABLE DailyPlanItems')
+      db.exec('ALTER TABLE DailyPlanItems_new RENAME TO DailyPlanItems')
+      db.exec('CREATE INDEX IF NOT EXISTS idx_plan_date_user ON DailyPlanItems(plan_date, user_id)')
+    })()
+    db.pragma('foreign_keys = ON')
   }
 }
 
