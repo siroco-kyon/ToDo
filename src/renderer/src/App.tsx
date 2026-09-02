@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Category, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateTodoInput, UserNotification } from './types'
+import type { AddDailyPlanItemOptions, Category, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateTodoInput, UserNotification } from './types'
 import { useTimer } from './hooks/useTimer'
 import { Toolbar } from './components/Toolbar'
 import { CategoryList } from './components/CategoryList'
@@ -780,8 +780,9 @@ export function App(): React.JSX.Element {
     if (planDate === getTodayKey()) await loadTodayPlan()
   }, [loadSelectedPlan, loadTodayPlan, planDate])
 
-  const handleSelectedPlanAdd = useCallback(async (todoId: string): Promise<DailyPlanItem> => {
-    const item = await window.api.dailyPlanAdd(planDate, todoId)
+  // 計画タブからの追加は同じタスクを何度でも置けるようにする（詳細画面の「今日の計画に追加」は従来通り1件だけ）
+  const handleSelectedPlanAdd = useCallback(async (todoId: string, options?: AddDailyPlanItemOptions): Promise<DailyPlanItem> => {
+    const item = await window.api.dailyPlanAdd(planDate, todoId, { allowDuplicate: true, ...options })
     await refreshSelectedPlan()
     return item
   }, [planDate, refreshSelectedPlan])
@@ -826,9 +827,18 @@ export function App(): React.JSX.Element {
     const visiblePreviousItems = scopeLens === 'personal'
       ? previousItems
       : previousItems.filter((item) => item.category_id == null || !privateCategoryIds.has(item.category_id))
-    const existingTodoIds = new Set(lensSelectedPlanItems.map((item) => item.todo_id))
-    const carry = visiblePreviousItems.filter((item) => item.status !== 'done' && !existingTodoIds.has(item.todo_id))
-    for (const item of carry) await window.api.dailyPlanAdd(planDate, item.todo_id)
+    // 同じタスクの複数配置に対応するため、タスク単位ではなく「タスク×開始時刻」単位で重複を判定する
+    const planKey = (item: DailyPlanItem): string => `${item.todo_id}|${item.scheduled_start ?? ''}`
+    const existingKeys = new Set(lensSelectedPlanItems.map(planKey))
+    const carry = visiblePreviousItems.filter((item) => item.status !== 'done' && !existingKeys.has(planKey(item)))
+    for (const item of carry) {
+      await window.api.dailyPlanAdd(planDate, item.todo_id, {
+        allowDuplicate: true,
+        scheduled_start: item.scheduled_start,
+        estimated_minutes: item.estimated_minutes,
+        lane: item.lane
+      })
+    }
     await refreshSelectedPlan()
     showToast(carry.length > 0 ? `${carry.length}件を前日から繰り越しました` : '繰り越す未完了タスクはありません')
   }, [lensSelectedPlanItems, planDate, privateCategoryIds, refreshSelectedPlan, scopeLens, showToast])

@@ -243,6 +243,17 @@ export interface UpdateDailyPlanItemInput {
   lane?: number
 }
 
+/**
+ * 計画への追加オプション。
+ * allowDuplicate を指定しない限り、同じ日・同じタスクの既存行を返す（従来の挙動）。
+ */
+export interface AddDailyPlanItemOptions {
+  allowDuplicate?: boolean
+  scheduled_start?: string | null
+  estimated_minutes?: number | null
+  lane?: number
+}
+
 export type OverviewTaskReason = 'overdue' | 'dueSoon' | 'highPriority' | 'stale' | 'dueToday' | 'nearlyDone'
 
 export interface OverviewQuery {

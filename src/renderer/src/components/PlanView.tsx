@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { DailyPlanItem, Todo, UpdateDailyPlanItemInput } from '../types'
+import type { AddDailyPlanItemOptions, DailyPlanItem, Todo, UpdateDailyPlanItemInput } from '../types'
 
 interface Props {
   date: string
@@ -7,7 +7,7 @@ interface Props {
   todos: Todo[]
   runningTodoId: string | null
   onSelectTodo: (id: string) => void
-  onAddTodo: (todoId: string) => Promise<DailyPlanItem>
+  onAddTodo: (todoId: string, options?: AddDailyPlanItemOptions) => Promise<DailyPlanItem>
   onRemoveItem: (id: string) => Promise<void>
   onUpdateItem: (id: string, data: UpdateDailyPlanItemInput) => Promise<void>
   onShiftItem: (id: string, deltaMinutes: number) => Promise<void>
@@ -401,6 +401,7 @@ const laneHeaderStyle: React.CSSProperties = {
 function CandidateCard({
   todo,
   todayKey,
+  plannedCount = 0,
   onAdd,
   onSchedule,
   onPrepareDrag,
@@ -408,6 +409,7 @@ function CandidateCard({
 }: {
   todo: Todo
   todayKey: string
+  plannedCount?: number
   onAdd: (todoId: string) => Promise<void>
   onSchedule: (draft: PlacementDraft) => void
   onPrepareDrag: () => void
@@ -456,6 +458,11 @@ function CandidateCard({
           )}
           <span style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>{formatDueLabel(todo.due_date, todayKey)}</span>
           <span style={{ fontSize: '0.72rem', color: '#fbbf24' }}>P{todo.priority}</span>
+          {plannedCount > 0 && (
+            <span style={{ fontSize: '0.68rem', color: '#93c5fd', background: '#1e3a8a40', borderRadius: 999, padding: '2px 8px' }}>
+              配置済み ×{plannedCount}
+            </span>
+          )}
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
@@ -611,37 +618,51 @@ export function PlanView({
 
   interactionRef.current = interaction
 
-  const plannedTodoIds = useMemo(() => new Set(planItems.map((item) => item.todo_id)), [planItems])
+  // 同じタスクを複数回置けるので、配置済みかどうかではなく「何個置いたか」を持つ
+  const plannedCountByTodoId = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const item of planItems) counts.set(item.todo_id, (counts.get(item.todo_id) ?? 0) + 1)
+    return counts
+  }, [planItems])
 
   const availableTodos = useMemo(() => (
     todos
       .filter((todo) => todo.status !== 'done' && todo.status !== 'archived')
-      .filter((todo) => !plannedTodoIds.has(todo.id))
       .sort((a, b) => {
+        // 未配置のタスクを先に出しつつ、配置済みも再配置できるよう一覧には残す
+        const aPlanned = (plannedCountByTodoId.get(a.id) ?? 0) > 0 ? 1 : 0
+        const bPlanned = (plannedCountByTodoId.get(b.id) ?? 0) > 0 ? 1 : 0
+        if (aPlanned !== bPlanned) return aPlanned - bPlanned
         if (a.due_date && b.due_date && a.due_date !== b.due_date) return a.due_date.localeCompare(b.due_date)
         if (a.due_date && !b.due_date) return -1
         if (!a.due_date && b.due_date) return 1
         if (b.priority !== a.priority) return b.priority - a.priority
         return a.title.localeCompare(b.title, 'ja')
       })
-  ), [plannedTodoIds, todos])
+  ), [plannedCountByTodoId, todos])
+
+  // おすすめ候補は「次に何を計画するか」の提案なので、まだ置いていないタスクだけを対象にする
+  const unplannedTodos = useMemo(
+    () => availableTodos.filter((todo) => (plannedCountByTodoId.get(todo.id) ?? 0) === 0),
+    [availableTodos, plannedCountByTodoId]
+  )
 
   const suggestions = useMemo(() => {
     const staleLimit = Date.now() - 7 * 86400000
     const groups: SuggestedGroup[] = [
-      { title: '期限が今日', items: availableTodos.filter((todo) => todo.due_date === date).slice(0, 4) },
+      { title: '期限が今日', items: unplannedTodos.filter((todo) => todo.due_date === date).slice(0, 4) },
       {
         title: '期限が近い',
-        items: availableTodos
+        items: unplannedTodos
           .filter((todo) => todo.due_date && todo.due_date !== date && diffCalendarDays(todo.due_date, date) > 0 && diffCalendarDays(todo.due_date, date) <= 3)
           .slice(0, 4)
       },
-      { title: '優先度が高い', items: availableTodos.filter((todo) => todo.priority >= 4).slice(0, 4) },
-      { title: 'しばらく触っていない', items: availableTodos.filter((todo) => new Date(todo.updated_at).getTime() <= staleLimit).slice(0, 4) }
+      { title: '優先度が高い', items: unplannedTodos.filter((todo) => todo.priority >= 4).slice(0, 4) },
+      { title: 'しばらく触っていない', items: unplannedTodos.filter((todo) => new Date(todo.updated_at).getTime() <= staleLimit).slice(0, 4) }
     ]
 
     return groups.filter((group) => group.items.length > 0)
-  }, [availableTodos, date])
+  }, [date, unplannedTodos])
 
   const filteredBacklog = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -854,20 +875,28 @@ export function PlanView({
 
   const scheduleTodo = async (todoId: string, startMinutes: number, lane: number, durationMinutes?: number): Promise<void> => {
     const normalizedDuration = normalizeDuration(durationMinutes)
-    const created = await onAddTodo(todoId)
-    const nextCreated = {
-      ...created,
-      scheduled_start: offsetToClock(startMinutes),
-      estimated_minutes: normalizedDuration,
-      lane
-    }
-
-    await onUpdateItem(created.id, {
+    // 作成と配置を1回で行う（未配置の重複行が途中で残らないようにする）
+    const created = await onAddTodo(todoId, {
+      allowDuplicate: true,
       scheduled_start: offsetToClock(startMinutes),
       estimated_minutes: normalizedDuration,
       lane
     })
-    await onReorder(reorderIdsByTime([...planItems, nextCreated]))
+
+    await onReorder(reorderIdsByTime([...planItems, created]))
+  }
+
+  const duplicateBlock = async (block: TimelineBlock): Promise<void> => {
+    // 直後の時間帯に同じ長さでコピーする（末尾を越える場合は収まる位置まで戻す）
+    const startMinutes = clamp(block.endMinutes, 0, TIMELINE_TOTAL_MINUTES - block.durationMinutes)
+    const created = await onAddTodo(block.todo_id, {
+      allowDuplicate: true,
+      scheduled_start: offsetToClock(startMinutes),
+      estimated_minutes: block.durationMinutes,
+      lane: block.lane
+    })
+
+    await onReorder(reorderIdsByTime([...planItems, created]))
   }
 
   const handleTimelineDragLeave = (event: React.DragEvent<HTMLDivElement>): void => {
@@ -1295,6 +1324,14 @@ export function PlanView({
                               )}
                               <button
                                 onPointerDown={(event) => event.stopPropagation()}
+                                onClick={() => void duplicateBlock(item)}
+                                style={miniActionBtn('#1e293b', '#cbd5e1')}
+                                title="同じタスクをこの直後にもう1つ置く"
+                              >
+                                複製
+                              </button>
+                              <button
+                                onPointerDown={(event) => event.stopPropagation()}
                                 onClick={() => {
                                   const nextItems = planItems.map((planItem) => {
                                     if (planItem.id !== item.id) return planItem
@@ -1424,7 +1461,7 @@ export function PlanView({
             </div>
           </Section>
 
-          <Section title="未計画タスク" subtitle={`${availableTodos.length}件のアクティブタスクから検索できます。`}>
+          <Section title="タスクを探す" subtitle={`${availableTodos.length}件のアクティブタスクから検索できます。配置済みのタスクも、もう一度置けます。`}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <input
                 value={searchQuery}
@@ -1440,6 +1477,7 @@ export function PlanView({
                     key={todo.id}
                     todo={todo}
                     todayKey={date}
+                    plannedCount={plannedCountByTodoId.get(todo.id) ?? 0}
                     onAdd={async (todoId) => { await onAddTodo(todoId) }}
                     onSchedule={(draft) => {
                       setPlacementDraft(draft)
@@ -1457,6 +1495,7 @@ export function PlanView({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, color: '#94a3b8', fontSize: '0.8rem', lineHeight: 1.6 }}>
               <div>候補や未割当のカードは、ドラッグして時間割へ落とすか、「時間に置く」を押してから空き時間をクリックすると配置できます。</div>
               <div>時間割のブロックは、ドラッグで開始時刻、下端ドラッグで長さを調整できます。</div>
+              <div>同じタスクは1日に何個でも置けます。ブロックの「複製」を押すか、「タスクを探す」から同じタスクをもう一度ドラッグしてください。</div>
               <div>時刻ラベルと時間割は同じスクロール領域なので、上下に動かしてもズレません。</div>
               <div>`Esc` を押すとクリック配置モードをキャンセルできます。</div>
             </div>

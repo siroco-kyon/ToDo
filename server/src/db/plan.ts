@@ -1,7 +1,17 @@
 import crypto from 'crypto'
 import { getDb } from './connection'
 import { normalizeTimeKey, shiftTimeKey } from './helpers'
-import type { DailyPlanItem, UpdateDailyPlanItemInput } from './types'
+import type { AddDailyPlanItemOptions, DailyPlanItem, UpdateDailyPlanItemInput } from './types'
+
+function normalizePlanDuration(value: number | null | undefined): number | null {
+  if (value == null) return null
+  return Math.max(15, Math.min(480, Math.round(value / 15) * 15))
+}
+
+function normalizePlanLane(value: number | null | undefined): number {
+  if (value == null) return 0
+  return Math.max(0, Math.min(2, value))
+}
 
 const PLAN_SELECT = `
   SELECT
@@ -38,13 +48,21 @@ export function getDailyPlanItems(userId: string, planDate: string): DailyPlanIt
   ).all(planDate, userId) as DailyPlanItem[]
 }
 
-export function addDailyPlanItem(userId: string, planDate: string, todoId: string): DailyPlanItem {
+export function addDailyPlanItem(
+  userId: string,
+  planDate: string,
+  todoId: string,
+  options?: AddDailyPlanItemOptions
+): DailyPlanItem {
   const db = getDb()
-  const existing = db.prepare(
-    `${PLAN_SELECT} WHERE dpi.plan_date = ? AND dpi.todo_id = ? AND dpi.user_id = ?`
-  ).get(planDate, todoId, userId) as DailyPlanItem | undefined
 
-  if (existing) return existing
+  if (!options?.allowDuplicate) {
+    const existing = db.prepare(
+      `${PLAN_SELECT} WHERE dpi.plan_date = ? AND dpi.todo_id = ? AND dpi.user_id = ?`
+    ).get(planDate, todoId, userId) as DailyPlanItem | undefined
+
+    if (existing) return existing
+  }
 
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
@@ -53,9 +71,20 @@ export function addDailyPlanItem(userId: string, planDate: string, todoId: strin
   ).m
 
   db.prepare(
-    `INSERT INTO DailyPlanItems (id, plan_date, todo_id, user_id, scheduled_start, estimated_minutes, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, NULL, 60, ?, ?, ?)`
-  ).run(id, planDate, todoId, userId, maxOrder + 1, now, now)
+    `INSERT INTO DailyPlanItems (id, plan_date, todo_id, user_id, scheduled_start, estimated_minutes, lane, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    planDate,
+    todoId,
+    userId,
+    normalizeTimeKey(options?.scheduled_start ?? null),
+    normalizePlanDuration(options?.estimated_minutes === undefined ? 60 : options.estimated_minutes),
+    normalizePlanLane(options?.lane ?? 0),
+    maxOrder + 1,
+    now,
+    now
+  )
 
   return db.prepare(`${PLAN_SELECT} WHERE dpi.id = ?`).get(id) as DailyPlanItem
 }
@@ -71,13 +100,12 @@ export function updateDailyPlanItem(id: string, data: UpdateDailyPlanItemInput):
     values.push(normalizeTimeKey(data.scheduled_start))
   }
   if (data.estimated_minutes !== undefined) {
-    const value = data.estimated_minutes == null ? null : Math.max(15, Math.min(480, Math.round(data.estimated_minutes / 15) * 15))
     fields.push('estimated_minutes = ?')
-    values.push(value)
+    values.push(normalizePlanDuration(data.estimated_minutes))
   }
   if (data.lane !== undefined) {
     fields.push('lane = ?')
-    values.push(Math.max(0, Math.min(2, data.lane)))
+    values.push(normalizePlanLane(data.lane))
   }
 
   values.push(id)
