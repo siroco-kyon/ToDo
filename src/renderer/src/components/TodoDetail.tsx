@@ -631,30 +631,32 @@ export function TodoDetail({
           zIndex: 2,
           padding: '20px 20px 12px',
           display: 'flex',
-          alignItems: 'flex-start',
+          flexDirection: 'column',
           gap: 10,
           borderBottom: '1px solid #1e293b',
           background: '#0b1220'
         }}
       >
-        <div style={{ flex: 1 }}>
+        <div style={{ width: '100%', minWidth: 0 }}>
           {editing ? (
             <input value={editData.title ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, title: event.target.value }))} style={inputStyle} />
           ) : (
-            <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0', lineHeight: 1.4, margin: 0 }}>{todo.title}</h2>
+            <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0', lineHeight: 1.4, margin: 0, overflowWrap: 'anywhere' }}>{todo.title}</h2>
           )}
         </div>
-        {!editing && todo.status !== 'done' && todo.status !== 'archived' && (
-          <button onClick={() => void onAddToTodayPlan(todo.id)} disabled={isInTodayPlan} style={buttonStyle(isInTodayPlan ? '#1e293b' : '#2563eb', isInTodayPlan ? '#64748b' : '#dbeafe')}>
-            {isInTodayPlan ? '今日の計画に追加済み' : '今日の計画に追加'}
+        <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {!editing && todo.status !== 'done' && todo.status !== 'archived' && (
+            <button onClick={() => void onAddToTodayPlan(todo.id)} disabled={isInTodayPlan} style={buttonStyle(isInTodayPlan ? '#1e293b' : '#2563eb', isInTodayPlan ? '#64748b' : '#dbeafe')}>
+              {isInTodayPlan ? '今日の計画に追加済み' : '今日の計画に追加'}
+            </button>
+          )}
+          <button onClick={editing ? cancelEditing : startEditing} style={buttonStyle('#334155')}>
+            {editing ? '閉じる' : '編集'}
           </button>
-        )}
-        <button onClick={editing ? cancelEditing : startEditing} style={buttonStyle('#334155')}>
-          {editing ? '閉じる' : '編集'}
-        </button>
-        {!editing && <button onClick={() => void duplicateTodo()} style={buttonStyle('#334155')}>複製</button>}
-        {!editing && <button onClick={saveAsTemplate} style={buttonStyle('#334155')}>テンプレート保存</button>}
-        {!editing && currentUser && <button onClick={() => void window.api.todoSubscriptionSet(todo.id, !subscribed).then((result) => { setSubscribed(result.subscribed); onShowToast(result.subscribed ? 'このタスクの更新を購読します' : '購読を解除しました') })} style={buttonStyle(subscribed ? '#14532d' : '#334155')}>{subscribed ? '購読中' : '購読'}</button>}
+          {!editing && <button onClick={() => void duplicateTodo()} style={buttonStyle('#334155')}>複製</button>}
+          {!editing && <button onClick={saveAsTemplate} style={buttonStyle('#334155')}>テンプレート保存</button>}
+          {!editing && currentUser && <button onClick={() => void window.api.todoSubscriptionSet(todo.id, !subscribed).then((result) => { setSubscribed(result.subscribed); onShowToast(result.subscribed ? 'このタスクの更新通知を受け取ります' : '更新通知をオフにしました') })} style={buttonStyle(subscribed ? '#14532d' : '#334155')}>{subscribed ? '更新通知オン' : '更新通知を受け取る'}</button>}
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
