@@ -11,6 +11,7 @@ export interface ProgressTimelineFocusTarget {
 
 interface Props {
   todos: Todo[]
+  users?: PublicUser[]
   currentUser?: PublicUser | null
   focusTarget?: ProgressTimelineFocusTarget | null
   onSelectTodo: (id: string) => void
@@ -211,10 +212,11 @@ function commentElementId(id: string): string {
   return `progress-comment-${id}`
 }
 
-export function ProgressTimeline({ todos, currentUser = null, focusTarget = null, onSelectTodo, onShowToast, hiddenTodoIds = NO_HIDDEN_TODOS }: Props): React.JSX.Element {
+export function ProgressTimeline({ todos, users = [], currentUser = null, focusTarget = null, onSelectTodo, onShowToast, hiddenTodoIds = NO_HIDDEN_TODOS }: Props): React.JSX.Element {
   const [range, setRange] = useState<TimelineRange>(getWeekRange)
   const [notes, setNotes] = useState<ProgressNote[]>([])
   const [sortMode, setSortMode] = useState<SortMode>(loadSortMode)
+  const [selectedAuthorId, setSelectedAuthorId] = useState('')
   const [loading, setLoading] = useState(false)
   const [selectedTodoId, setSelectedTodoId] = useState('')
   const [focusedNoteId, setFocusedNoteId] = useState<string | null>(null)
@@ -443,10 +445,12 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
   // notes を直接描画すると全体レンズまたはユーザー指定ソートが失われる。
   const visibleNotes = useMemo(
     () => sortNotes(
-      hiddenTodoIds.size === 0 ? notes : notes.filter((note) => !hiddenTodoIds.has(note.todo_id)),
+      notes.filter((note) =>
+        !hiddenTodoIds.has(note.todo_id) && (!selectedAuthorId || note.user_id === selectedAuthorId)
+      ),
       sortMode
     ),
-    [notes, hiddenTodoIds, sortMode]
+    [notes, hiddenTodoIds, selectedAuthorId, sortMode]
   )
   const totalComments = visibleNotes.reduce((sum, note) => sum + countComments(note.comments ?? []), 0)
   const today = getTodayKey()
@@ -605,6 +609,20 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
           <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)} title="並び替え" style={inputStyle}>
             {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
+          {users.length > 0 && (
+            <select
+              value={selectedAuthorId}
+              onChange={(event) => setSelectedAuthorId(event.target.value)}
+              aria-label="投稿者で絞り込み"
+              title="投稿者で絞り込み"
+              style={inputStyle}
+            >
+              <option value="">投稿者: 全員</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>{`投稿者: ${user.display_name}${user.is_active === 1 ? '' : '（無効）'}`}</option>
+              ))}
+            </select>
+          )}
           <button onClick={() => void load()} style={secondaryButtonStyle}>更新</button>
         </div>
       </div>
@@ -644,7 +662,7 @@ export function ProgressTimeline({ todos, currentUser = null, focusTarget = null
           </div>
 
           {loading && <div style={emptyStyle}>読み込み中...</div>}
-          {!loading && visibleNotes.length === 0 && <div style={emptyStyle}>選択した期間の進捗ログはまだありません。</div>}
+          {!loading && visibleNotes.length === 0 && <div style={emptyStyle}>選択した期間・投稿者の進捗ログはまだありません。</div>}
 
           {!loading && visibleNotes.map((note) => {
             const authorName = getAuthorName(note.author_name)
