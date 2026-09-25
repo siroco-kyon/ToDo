@@ -62,6 +62,7 @@ src/renderer/src/components/WorkLogSummary.tsx 作業ログ
 src/renderer/src/components/ReportView.tsx    報告タブ（定例用。担当者別に進捗ログを返信まで全文表示・鮮度判定）
 src/renderer/src/components/ProgressNoteThread.tsx 進捗ログ＋返信スレッドの表示（報告タブ・概要で共通。コールバックを渡すと、いいね・編集・削除が有効になる）
 src/renderer/src/components/LikeButton.tsx    いいねボタンと押した人のツールチップ（進捗タブ・報告タブ・概要で共通）
+src/renderer/src/components/ProgressSlider.tsx ドラッグ・キー操作で進捗率を変えるバー（離したときに1回だけ保存）
 src/renderer/src/lib/dueDate.ts               日付のみ文字列のローカル解釈と期限色分けの共通ヘルパー
 src/renderer/src/components/UserManagementModal.tsx 管理者用ユーザー管理（サーバー版）
 

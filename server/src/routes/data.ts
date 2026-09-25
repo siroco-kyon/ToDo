@@ -56,6 +56,9 @@ import {
   getProgressNotesByTodo,
   getProgressNotesByRange,
   getTodoReportActivity,
+  getOpenDiscussionNotes,
+  setProgressNoteNeedsDiscussion,
+  getTodoChangesByRange,
   getProgressNote,
   createProgressNote,
   updateProgressNote,
@@ -408,6 +411,13 @@ dataRouter.get('/progress-notes/timeline', (req, res) =>
   }))
 dataRouter.get('/progress-notes/last-activity', (_req, res) =>
   run(res, () => getTodoReportActivity()))
+dataRouter.get('/progress-notes/discussions', (req, res) =>
+  run(res, () => getOpenDiscussionNotes(req.user!.id)))
+// 要相談の付け外しは会議で誰でも行えるようにする（投稿者以外が「相談済み」にすることがある）
+dataRouter.put('/progress-notes/:id/discussion', (req, res) =>
+  run(res, () => setProgressNoteNeedsDiscussion(req.params.id, Boolean(req.body.value), req.user!.id), 'progress'))
+dataRouter.get('/todo-changes', (req, res) =>
+  run(res, () => getTodoChangesByRange(String(req.query.from ?? ''), String(req.query.to ?? ''))))
 dataRouter.post('/todos/:todoId/progress-notes', (req, res) =>
   run(res, () => {
     const created = createProgressNote(req.params.todoId, req.user!.id, req.body.body)

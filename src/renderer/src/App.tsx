@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AddDailyPlanItemOptions, Category, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateTodoInput, UserNotification } from './types'
+import type { AddDailyPlanItemOptions, Category, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateSubTaskInput, UpdateTodoInput, UserNotification } from './types'
 import { useTimer } from './hooks/useTimer'
 import { Toolbar } from './components/Toolbar'
 import { CategoryList } from './components/CategoryList'
@@ -645,6 +645,13 @@ export function App(): React.JSX.Element {
     await loadTodos()
   }, [loadTodos])
 
+  // サブタスクの期限は親タスクの期限を延長することがあるので、タスクも取り直す
+  const handleUpdateSubTask = useCallback(async (id: string, data: UpdateSubTaskInput) => {
+    await window.api.subtaskUpdate(id, data)
+    const [nextSubTasks] = await Promise.all([window.api.subtaskGetAll(), loadTodos()])
+    setAllSubTasks(nextSubTasks)
+  }, [loadTodos])
+
   const handleOpenGanttWindow = useCallback(async () => {
     await window.api.windowOpenGantt()
   }, [])
@@ -1211,6 +1218,7 @@ export function App(): React.JSX.Element {
               currentUser={currentUser}
               onSelectTodo={openTodoDetail}
               onUpdateTodo={handleUpdate}
+              onUpdateSubTask={handleUpdateSubTask}
               onShowToast={showToast}
             />
           ) : activeView === 'team' ? (

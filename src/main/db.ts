@@ -122,6 +122,7 @@ function createTables(): void {
       todo_id TEXT NOT NULL,
       user_id TEXT,
       body TEXT NOT NULL,
+      needs_discussion INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE
@@ -326,6 +327,9 @@ function migrateDb(): void {
   if (!progressNoteColumns.some((c) => c.name === 'updated_at')) {
     db.prepare("ALTER TABLE ProgressNotes ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''").run()
     db.prepare("UPDATE ProgressNotes SET updated_at = created_at WHERE updated_at = ''").run()
+  }
+  if (!progressNoteColumns.some((c) => c.name === 'needs_discussion')) {
+    db.prepare('ALTER TABLE ProgressNotes ADD COLUMN needs_discussion INTEGER NOT NULL DEFAULT 0').run()
   }
 
   if (!progressCommentColumns.some((c) => c.name === 'parent_comment_id')) {
@@ -1623,7 +1627,7 @@ export function setSetting(key: string, value: string): void {
 // Desktop is single-user: notes carry no author (user_id stays NULL) and the
 // digest collapses to one bucket. Kept here so the shared UI works in both modes.
 
-const PROGRESS_NOTE_SELECT = `SELECT pn.id, pn.todo_id, pn.user_id, pn.body, pn.created_at, pn.updated_at,
+const PROGRESS_NOTE_SELECT = `SELECT pn.id, pn.todo_id, pn.user_id, pn.body, pn.needs_discussion, pn.created_at, pn.updated_at,
               t.title AS todo_title, c.name AS category_name, c.color AS category_color,
               NULL AS author_name, NULL AS author_color,
               COUNT(pnc.id) AS comment_count
@@ -1737,6 +1741,36 @@ export function getProgressNotesByRange(from: string, to: string): ProgressNote[
     .prepare(`${PROGRESS_NOTE_SELECT} WHERE date(pn.created_at, 'localtime') BETWEEN ? AND ? GROUP BY pn.id ORDER BY pn.created_at DESC`)
     .all(from, to) as ProgressNote[]
   return hydrateProgressNotes(notes)
+}
+
+/** 未解決の「要相談」進捗ログ（期間に関係なく全件、新しい順） */
+export function getOpenDiscussionNotes(): ProgressNote[] {
+  const notes = db
+    .prepare(`${PROGRESS_NOTE_SELECT} WHERE pn.needs_discussion = 1 GROUP BY pn.id ORDER BY pn.created_at DESC`)
+    .all() as ProgressNote[]
+  return hydrateProgressNotes(notes)
+}
+
+export function setProgressNoteNeedsDiscussion(id: string, value: boolean): ProgressNote {
+  db.prepare('UPDATE ProgressNotes SET needs_discussion = ? WHERE id = ?').run(value ? 1 : 0, id)
+  const note = getProgressNote(id)
+  if (!note) throw new Error('進捗ログが見つかりません')
+  return note
+}
+
+/** 期間内（ローカル日付）の進捗率・期限の変更履歴。古い順 */
+export function getTodoChangesByRange(from: string, to: string): TodoChangeEntry[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
+    throw new Error('変更履歴の期間が不正です')
+  }
+  return db
+    .prepare(
+      `SELECT id, todo_id, field, old_value, new_value, created_at
+       FROM TodoChangeLogs
+       WHERE field IN ('progress', 'due_date') AND date(created_at, 'localtime') BETWEEN ? AND ?
+       ORDER BY created_at ASC`
+    )
+    .all(from, to) as TodoChangeEntry[]
 }
 
 /** 全タスクの最終報告日時（進捗ログの最新投稿・メモの最終変更）。報告のないタスクは両方 null */
@@ -2074,6 +2108,16 @@ export interface TeamDashboard {
   workloads: TeamMemberWorkload[]
 }
 
+/** タスクの変更履歴（報告タブの期間中の進捗差分・期限変更の表示用。progress と due_date のみ） */
+export interface TodoChangeEntry {
+  id: string
+  todo_id: string
+  field: 'progress' | 'due_date'
+  old_value: string | null
+  new_value: string | null
+  created_at: string
+}
+
 /** タスクごとの最終報告日時（報告タブの鮮度判定用）。進捗ログの最新投稿とメモの最終変更 */
 export interface TodoReportActivity {
   todo_id: string
@@ -2094,6 +2138,8 @@ export interface ProgressNote {
   body: string
   created_at: string
   updated_at: string
+  /** 1 のとき「要相談」。報告タブで担当者ごとの先頭に集める */
+  needs_discussion: number
   comment_count: number
   comments: ProgressNoteComment[]
   reactions: ProgressNoteReaction[]

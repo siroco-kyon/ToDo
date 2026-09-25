@@ -415,6 +415,16 @@ export interface TeamDashboard {
 
 // ─── Progress notes & digest ──────────────────────────────────
 
+/** タスクの変更履歴（報告タブの期間中の進捗差分・期限変更の表示用。progress と due_date のみ） */
+export interface TodoChangeEntry {
+  id: string
+  todo_id: string
+  field: 'progress' | 'due_date'
+  old_value: string | null
+  new_value: string | null
+  created_at: string
+}
+
 /** タスクごとの最終報告日時（報告タブの鮮度判定用）。進捗ログの最新投稿とメモの最終変更 */
 export interface TodoReportActivity {
   todo_id: string
@@ -435,6 +445,8 @@ export interface ProgressNote {
   body: string
   created_at: string
   updated_at: string
+  /** 1 のとき「要相談」。報告タブで担当者ごとの先頭に集める */
+  needs_discussion: number
   comment_count: number
   comments: ProgressNoteComment[]
   reactions: ProgressNoteReaction[]

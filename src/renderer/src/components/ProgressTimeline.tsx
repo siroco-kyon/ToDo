@@ -620,6 +620,9 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                     <span style={{ color: '#f8fafc', fontSize: '0.9rem', fontWeight: 800 }}>{authorName}</span>
                     <span style={{ color: '#64748b', fontSize: '0.74rem' }}>{formatDateTime(note.created_at)}</span>
                     {note.updated_at !== note.created_at && <span style={editedStyle}>編集済み</span>}
+                    {note.needs_discussion === 1 && (
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#fed7aa', background: '#7c2d12', border: '1px solid #c2410c', borderRadius: 999, padding: '0 7px' }}>要相談</span>
+                    )}
                     <button onClick={() => onSelectTodo(note.todo_id)} style={{ ...taskLinkStyle, color: note.category_color ?? '#93c5fd' }}>{note.todo_title}</button>
                   </div>
                   {note.category_name && (

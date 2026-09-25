@@ -4,14 +4,17 @@ import { dateStamp, downloadCsv, toCsv } from '../lib/csv'
 import { diffDaysFromToday, getDueDateColor, isoToDateKey, toDateKey } from '../lib/dueDate'
 import { LIKE_EMOJI } from './LikeButton'
 import { ProgressNoteThread } from './ProgressNoteThread'
+import { ProgressSlider } from './ProgressSlider'
 import type {
   ProgressNote,
   ProgressNoteComment,
   PublicUser,
   SubTask,
   Todo,
+  TodoChangeEntry,
   TodoReportActivity,
   TodoStatus,
+  UpdateSubTaskInput,
   UpdateTodoInput
 } from '../types'
 
@@ -27,6 +30,7 @@ interface Props {
   currentUser: PublicUser | null
   onSelectTodo: (id: string) => void
   onUpdateTodo: (id: string, data: UpdateTodoInput) => Promise<void>
+  onUpdateSubTask: (id: string, data: UpdateSubTaskInput) => Promise<void>
   onShowToast: (message: string, type?: 'success' | 'error') => void
 }
 
@@ -47,6 +51,14 @@ interface ReportRow {
   lastReportAt: string | null
   lastMemoAt: string | null
   freshness: Freshness
+  /** 期間の最初の進捗率（期間中に進捗の変更がなければ null） */
+  progressStart: number | null
+  /** 期間中の期限の変更（古い順） */
+  dueChanges: TodoChangeEntry[]
+  /** 期間中に期限を後ろへずらした回数 */
+  postponedCount: number
+  /** 未解決の「要相談」進捗ログ（期間に関係なく） */
+  discussions: ProgressNote[]
 }
 
 interface ReportGroup {
@@ -86,7 +98,6 @@ const STATUS_COLOR: Record<TodoStatus, string> = {
   archived: '#475569'
 }
 
-const PROGRESS_OPTIONS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
 function readStorage(key: string): string | null {
   try {
@@ -165,6 +176,16 @@ function isMyTask(todo: Todo, subTasks: SubTask[], userId: string): boolean {
     || subTasks.some((subTask) => subTask.assignee_id === userId)
 }
 
+function groupByTodo<T extends { todo_id: string }>(items: T[]): Map<string, T[]> {
+  const map = new Map<string, T[]>()
+  for (const item of items) {
+    const list = map.get(item.todo_id)
+    if (list) list.push(item)
+    else map.set(item.todo_id, [item])
+  }
+  return map
+}
+
 function needsReport(freshness: Freshness): boolean {
   return freshness === 'quiet' || freshness === 'stale' || freshness === 'none'
 }
@@ -178,7 +199,9 @@ function buildRow(
   subTasks: SubTask[],
   notes: ProgressNote[],
   activity: TodoReportActivity | undefined,
-  range: DateRange
+  range: DateRange,
+  changes: TodoChangeEntry[],
+  discussions: ProgressNote[]
 ): ReportRow {
   const lastNoteAt = activity?.last_note_at ?? null
   const lastMemoAt = activity?.last_memo_at ?? null
@@ -200,7 +223,15 @@ function buildRow(
     freshness = 'quiet'
   }
 
-  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness }
+  // 期間中の最初の変更の「変更前」が、期間開始時点の値
+  const progressChanges = changes.filter((change) => change.field === 'progress')
+  const progressStart = progressChanges.length > 0 ? Number(progressChanges[0].old_value ?? 0) : null
+  const dueChanges = changes.filter((change) => change.field === 'due_date')
+  const postponedCount = dueChanges.filter((change) =>
+    change.old_value != null && change.new_value != null && change.new_value.slice(0, 10) > change.old_value.slice(0, 10)
+  ).length
+
+  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, progressStart, dueChanges, postponedCount, discussions }
 }
 
 function groupRows(rows: ReportRow[], mode: GroupMode, users: PublicUser[], currentUserId: string | null): ReportGroup[] {
@@ -267,6 +298,34 @@ function statusSummary(row: ReportRow, separator: string): string {
   return `${status}${separator}${freshnessText(row)}`
 }
 
+/** 期間中の進捗の変化。変更がなければ null */
+function progressDeltaText(row: ReportRow): string | null {
+  if (row.progressStart === null) return null
+  const delta = row.todo.progress - row.progressStart
+  const sign = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : '±0'
+  return `${row.progressStart}% → ${row.todo.progress}%（${sign}）`
+}
+
+function progressDeltaColor(row: ReportRow): string {
+  if (row.progressStart === null) return '#64748b'
+  const delta = row.todo.progress - row.progressStart
+  if (delta > 0) return '#86efac'
+  if (delta < 0) return '#fca5a5'
+  return '#94a3b8'
+}
+
+/** 期間中の期限の変更。変更がなければ null */
+function dueChangeText(row: ReportRow): string | null {
+  if (row.dueChanges.length === 0) return null
+  const first = row.dueChanges[0].old_value
+  const current = row.todo.due_date
+  const route = `${formatShortDate(first)} → ${formatShortDate(current)}`
+  if (row.postponedCount > 0) return `延期${row.postponedCount}回（${route}）`
+  if (first && current && current.slice(0, 10) < first.slice(0, 10)) return `前倒し（${route}）`
+  if (!first && current) return `期限を設定（${formatShortDate(current)}）`
+  return `期限を変更（${route}）`
+}
+
 function assigneeText(todo: Todo): string {
   const co = (todo.co_assignees ?? []).map((assignee) => assignee.display_name)
   const main = todo.assignee_name ?? '未割り当て'
@@ -291,14 +350,34 @@ function commentsToMarkdown(comments: ProgressNoteComment[], depth: number): str
   return lines
 }
 
+function noteToMarkdown(note: ProgressNote, indent: string, withTask: boolean): string[] {
+  const [first, ...rest] = note.body.split(/\r?\n/)
+  const flag = note.needs_discussion === 1 ? '【要相談】' : ''
+  const task = withTask ? `［${note.todo_title}］` : ''
+  const lines = [`${indent}- ${flag}${task}${formatDateTime(note.created_at)} ${getAuthorName(note.author_name)}: ${first}`]
+  for (const line of rest) lines.push(`${indent}  ${line}`)
+  lines.push(...commentsToMarkdown(note.comments ?? [], indent.length / 2 + 1))
+  return lines
+}
+
 function reportToMarkdown(groups: ReportGroup[], range: DateRange, mode: GroupMode, multiUser: boolean): string {
   const lines: string[] = [`# 報告 ${range.from} ～ ${range.to}`, '']
+  const discussions = groups.flatMap((group) => group.rows.flatMap((row) => row.discussions))
+  if (discussions.length > 0) {
+    lines.push(`## 要相談（${discussions.length}件）`, '')
+    for (const note of discussions) lines.push(...noteToMarkdown(note, '', true))
+    lines.push('')
+  }
   for (const group of groups) {
     lines.push(`## ${group.label}（${group.rows.length}件）`, '')
     for (const row of group.rows) {
       const { todo } = row
       lines.push(`### ${todo.title}（${todo.progress}%・${statusSummary(row, '・')}）`)
       lines.push(`- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} / 期限 ${todo.due_date?.slice(0, 10) ?? '未設定'}`)
+      const delta = progressDeltaText(row)
+      if (delta) lines.push(`- 期間中の進捗: ${delta}`)
+      const dueChange = dueChangeText(row)
+      if (dueChange) lines.push(`- 期限の変更: ${dueChange}`)
       if (mode === 'assignee') lines.push(`- カテゴリ: ${todo.category_name ?? '未分類'}`)
       else if (multiUser) lines.push(`- 担当: ${assigneeText(todo)}`)
       if (row.lastReportAt) lines.push(`- 最終報告: ${formatDateTime(row.lastReportAt)}`)
@@ -321,12 +400,7 @@ function reportToMarkdown(groups: ReportGroup[], range: DateRange, mode: GroupMo
         lines.push('- 進捗: この期間の記録なし')
       } else {
         lines.push('- 進捗:')
-        for (const note of row.notes) {
-          const [first, ...rest] = note.body.split(/\r?\n/)
-          lines.push(`  - ${formatDateTime(note.created_at)} ${getAuthorName(note.author_name)}: ${first}`)
-          for (const line of rest) lines.push(`    ${line}`)
-          lines.push(...commentsToMarkdown(note.comments ?? [], 2))
-        }
+        for (const note of row.notes) lines.push(...noteToMarkdown(note, '  ', false))
       }
       lines.push('')
     }
@@ -346,14 +420,14 @@ function commentsToPlainText(comments: ProgressNoteComment[], depth: number): st
 function notesToPlainText(notes: ProgressNote[]): string {
   return notes
     .map((note) => [
-      `${formatDateTime(note.created_at)} ${getAuthorName(note.author_name)}: ${note.body}`,
+      `${note.needs_discussion === 1 ? '【要相談】' : ''}${formatDateTime(note.created_at)} ${getAuthorName(note.author_name)}: ${note.body}`,
       ...commentsToPlainText(note.comments ?? [], 1)
     ].join('\n'))
     .join('\n\n')
 }
 
 function reportToCsv(groups: ReportGroup[]): string {
-  const headers = ['担当', 'カテゴリ', 'タスク', 'サブタスク', '状態', '開始', '期限', '進捗(%)', '最終報告', '期間内の進捗コメント', 'メモ']
+  const headers = ['担当', 'カテゴリ', 'タスク', 'サブタスク', '状態', '開始', '期限', '進捗(%)', '期間中の進捗', '期限の変更', '最終報告', '要相談', '期間内の進捗コメント', 'メモ']
   const rows: Array<Array<string | number | null>> = []
   for (const group of groups) {
     for (const row of group.rows) {
@@ -367,7 +441,10 @@ function reportToCsv(groups: ReportGroup[]): string {
         todo.start_date?.slice(0, 10) ?? '',
         todo.due_date?.slice(0, 10) ?? '',
         todo.progress,
+        progressDeltaText(row) ?? '',
+        dueChangeText(row) ?? '',
         row.lastReportAt ? formatDateTime(row.lastReportAt) : '',
+        row.discussions.length > 0 ? `${row.discussions.length}件` : '',
         notesToPlainText(row.notes),
         todo.memo.trim()
       ])
@@ -383,6 +460,9 @@ function reportToCsv(groups: ReportGroup[]): string {
           subTask.progress,
           '',
           '',
+          '',
+          '',
+          '',
           subTask.description.trim()
         ])
       }
@@ -393,7 +473,7 @@ function reportToCsv(groups: ReportGroup[]): string {
 
 // ─── 画面 ─────────────────────────────────────────────────────
 
-export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, onUpdateTodo, onShowToast }: Props): React.JSX.Element {
+export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, onUpdateTodo, onUpdateSubTask, onShowToast }: Props): React.JSX.Element {
   const multiUser = users.length > 0
   const [preset, setPreset] = useState<PeriodPreset>(loadPreset)
   const [range, setRange] = useState<DateRange>(() => presetRange(PRESETS.find((item) => item.value === loadPreset())?.days ?? 7))
@@ -401,8 +481,11 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
   const [onlyMine, setOnlyMine] = useState(() => readStorage(STORAGE_KEYS.onlyMine) === '1')
   const [onlyNeedsReport, setOnlyNeedsReport] = useState(false)
   const [includeOldDone, setIncludeOldDone] = useState(false)
+  const [onlyDiscussion, setOnlyDiscussion] = useState(false)
   const [notes, setNotes] = useState<ProgressNote[]>([])
   const [activity, setActivity] = useState<Map<string, TodoReportActivity>>(() => new Map())
+  const [changes, setChanges] = useState<TodoChangeEntry[]>([])
+  const [discussions, setDiscussions] = useState<ProgressNote[]>([])
   const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -417,13 +500,17 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     const requestId = ++requestIdRef.current
     setLoading(true)
     try {
-      const [nextNotes, nextActivity] = await Promise.all([
+      const [nextNotes, nextActivity, nextChanges, nextDiscussions] = await Promise.all([
         window.api.progressNoteGetByRange(range.from, range.to),
-        window.api.progressNoteGetLastActivity()
+        window.api.progressNoteGetLastActivity(),
+        window.api.todoChangeGetByRange(range.from, range.to),
+        window.api.progressNoteGetOpenDiscussions()
       ])
       if (requestId !== requestIdRef.current) return
       setNotes(nextNotes)
       setActivity(new Map(nextActivity.map((item) => [item.todo_id, item])))
+      setChanges(nextChanges)
+      setDiscussions(nextDiscussions)
       setLoadError(null)
       setLoaded(true)
     } catch (error) {
@@ -485,14 +572,26 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     return map
   }, [subTasks])
 
+  const changesByTodo = useMemo(() => groupByTodo(changes), [changes])
+  const discussionsByTodo = useMemo(() => groupByTodo(discussions), [discussions])
+
   const rows = useMemo(() => todos
     .filter((todo) => todo.status !== 'archived')
     // 期間より前に完了したタスクは既定で隠す（期間中・期間後に完了したものは報告対象）
     .filter((todo) => includeOldDone || todo.status !== 'done' || (todo.completed_at != null && isoToDateKey(todo.completed_at) >= range.from))
     .filter((todo) => !effectiveOnlyMine || isMyTask(todo, subTasksByTodo.get(todo.id) ?? [], currentUser!.id))
-    .map((todo) => buildRow(todo, subTasksByTodo.get(todo.id) ?? [], notesByTodo.get(todo.id) ?? [], activity.get(todo.id), range))
-    .filter((row) => !onlyNeedsReport || needsReport(row.freshness)),
-  [activity, currentUser, effectiveOnlyMine, includeOldDone, notesByTodo, onlyNeedsReport, range, subTasksByTodo, todos])
+    .map((todo) => buildRow(
+      todo,
+      subTasksByTodo.get(todo.id) ?? [],
+      notesByTodo.get(todo.id) ?? [],
+      activity.get(todo.id),
+      range,
+      changesByTodo.get(todo.id) ?? [],
+      discussionsByTodo.get(todo.id) ?? []
+    ))
+    .filter((row) => !onlyNeedsReport || needsReport(row.freshness))
+    .filter((row) => !onlyDiscussion || row.discussions.length > 0),
+  [activity, changesByTodo, currentUser, discussionsByTodo, effectiveOnlyMine, includeOldDone, notesByTodo, onlyDiscussion, onlyNeedsReport, range, subTasksByTodo, todos])
 
   const groups = useMemo(
     () => groupRows(rows, effectiveGroupMode, users, currentUser?.id ?? null),
@@ -503,21 +602,30 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
   const needsReportCount = rows.filter((row) => needsReport(row.freshness)).length
   const overdueCount = rows.filter((row) => isOverdue(row.todo)).length
   const noteCount = rows.reduce((sum, row) => sum + row.notes.length, 0)
+  const discussionCount = rows.reduce((sum, row) => sum + row.discussions.length, 0)
+  const postponedTaskCount = rows.filter((row) => row.postponedCount > 0).length
 
   const canModifyNote = useCallback(
     (note: ProgressNote): boolean => currentUser == null || currentUser.role === 'admin' || note.user_id === currentUser.id,
     [currentUser]
   )
 
+  // 期間内の一覧と「要相談」一覧の両方に同じ進捗ログが載りうるので、両方を差し替える
   const patchNote = useCallback((updated: ProgressNote): void => {
     setNotes((previous) => previous.map((note) => note.id === updated.id ? updated : note))
+    setDiscussions((previous) => {
+      const others = previous.filter((note) => note.id !== updated.id)
+      if (updated.needs_discussion !== 1) return others
+      return [...others, updated].sort((a, b) => b.created_at.localeCompare(a.created_at))
+    })
   }, [])
 
-  const createNote = useCallback(async (todo: Todo, body: string): Promise<boolean> => {
+  const createNote = useCallback(async (todo: Todo, body: string, needsDiscussion: boolean): Promise<boolean> => {
     const trimmed = body.trim()
     if (!trimmed) return false
     try {
-      await window.api.progressNoteCreate(todo.id, trimmed)
+      const created = await window.api.progressNoteCreate(todo.id, trimmed)
+      if (needsDiscussion) await window.api.progressNoteSetNeedsDiscussion(created.id, true)
       await load()
       onShowToast('進捗ログを投稿しました')
       return true
@@ -568,11 +676,49 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     }
   }, [onShowToast, patchNote])
 
+  const replyNote = useCallback(async (noteId: string, body: string, parentCommentId: string | null): Promise<boolean> => {
+    const trimmed = body.trim()
+    if (!trimmed) return false
+    try {
+      patchNote(await window.api.progressNoteCommentCreate(noteId, trimmed, parentCommentId))
+      onShowToast('返信しました')
+      return true
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '返信できませんでした', 'error')
+      return false
+    }
+  }, [onShowToast, patchNote])
+
+  const toggleDiscussion = useCallback(async (noteId: string, value: boolean): Promise<void> => {
+    const key = `discussion:${noteId}`
+    if (pendingReactionsRef.current.has(key)) return
+    pendingReactionsRef.current.add(key)
+    try {
+      patchNote(await window.api.progressNoteSetNeedsDiscussion(noteId, value))
+      onShowToast(value ? '要相談にしました' : '相談済みにしました')
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '要相談を切り替えられませんでした', 'error')
+    } finally {
+      pendingReactionsRef.current.delete(key)
+    }
+  }, [onShowToast, patchNote])
+
+  const updateSubTask = useCallback(async (subTask: SubTask, data: UpdateSubTaskInput, successMessage: string): Promise<boolean> => {
+    try {
+      await onUpdateSubTask(subTask.id, data)
+      onShowToast(successMessage)
+      return true
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : 'サブタスクを更新できませんでした', 'error')
+      return false
+    }
+  }, [onShowToast, onUpdateSubTask])
+
   const updateTask = useCallback(async (todo: Todo, data: UpdateTodoInput, successMessage: string): Promise<boolean> => {
     try {
       await onUpdateTodo(todo.id, data)
-      // メモの更新は最終報告日時に影響する
-      if (data.memo !== undefined) await load()
+      // メモは最終報告日時に、進捗・期限は期間中の変化の表示に影響するので取り直す
+      await load()
       onShowToast(successMessage)
       return true
     } catch (error) {
@@ -588,9 +734,13 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     onDeleteNote: (noteId) => void deleteNote(noteId),
     onToggleNoteLike: (noteId) => void toggleLike(noteId, (id, emoji) => window.api.progressNoteReactionToggle(id, emoji)),
     onToggleCommentLike: (commentId) => void toggleLike(commentId, (id, emoji) => window.api.progressNoteCommentReactionToggle(id, emoji)),
+    onReply: replyNote,
+    onToggleDiscussion: (noteId, value) => void toggleDiscussion(noteId, value),
     onUpdateTask: updateTask,
+    onUpdateSubTask: updateSubTask,
+    onSelectTodo,
     onShowToast
-  }), [canModifyNote, createNote, deleteNote, onShowToast, toggleLike, updateNote, updateTask])
+  }), [canModifyNote, createNote, deleteNote, onSelectTodo, onShowToast, replyNote, toggleDiscussion, toggleLike, updateNote, updateSubTask, updateTask])
 
   const handleCopyMarkdown = async (): Promise<void> => {
     try {
@@ -680,6 +830,10 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
               <input type="checkbox" checked={includeOldDone} onChange={(event) => setIncludeOldDone(event.target.checked)} style={{ accentColor: '#6366f1' }} />
               期間前に完了したタスクも表示
             </label>
+            <label style={checkboxLabelStyle}>
+              <input type="checkbox" checked={onlyDiscussion} onChange={(event) => setOnlyDiscussion(event.target.checked)} style={{ accentColor: '#f97316' }} />
+              要相談があるタスクのみ
+            </label>
           </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -688,6 +842,8 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
             <span style={summaryChipStyle(needsReportCount > 0 ? '#fde68a' : '#64748b')}>報告なし {needsReportCount}件</span>
             <span style={summaryChipStyle(overdueCount > 0 ? '#fca5a5' : '#64748b')}>期限超過 {overdueCount}件</span>
             <span style={summaryChipStyle('#93c5fd')}>進捗ログ {noteCount}件</span>
+            <span style={summaryChipStyle(discussionCount > 0 ? '#fdba74' : '#64748b')}>要相談 {discussionCount}件</span>
+            <span style={summaryChipStyle(postponedTaskCount > 0 ? '#fde68a' : '#64748b')}>期間中に延期 {postponedTaskCount}件</span>
           </div>
         </div>
 
@@ -701,13 +857,16 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
 
         {loaded && groups.length === 0 && (
           <div style={emptyStyle}>
-            {onlyNeedsReport ? '報告が必要なタスクはありません。' : '表示できるタスクがありません。左のタスク一覧の絞り込みも確認してください。'}
+            {onlyNeedsReport || onlyDiscussion ? '条件に合うタスクはありません。' : '表示できるタスクがありません。左のタスク一覧の絞り込みも確認してください。'}
           </div>
         )}
 
         {loaded && groups.map((group) => {
           const groupNeeds = group.rows.filter((row) => needsReport(row.freshness)).length
           const groupReported = group.rows.filter((row) => row.freshness === 'fresh').length
+          const groupDiscussions = group.rows
+            .flatMap((row) => row.discussions)
+            .sort((a, b) => b.created_at.localeCompare(a.created_at))
           return (
             <section key={`${effectiveGroupMode}:${group.key}`} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={groupHeaderStyle}>
@@ -719,7 +878,21 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
                 <span style={{ fontSize: '0.76rem', color: groupNeeds > 0 ? '#fde68a' : '#64748b', fontWeight: groupNeeds > 0 ? 700 : 400 }}>
                   報告なし {groupNeeds}
                 </span>
+                {groupDiscussions.length > 0 && (
+                  <span style={{ fontSize: '0.76rem', color: '#fdba74', fontWeight: 700 }}>要相談 {groupDiscussions.length}</span>
+                )}
               </div>
+              {groupDiscussions.length > 0 && (
+                <div style={discussionBoxStyle}>
+                  <div style={{ fontSize: '0.8rem', color: '#fdba74', fontWeight: 800 }}>
+                    要相談（{groupDiscussions.length}件）
+                    <span style={{ marginLeft: 8, fontSize: '0.7rem', color: '#94a3b8', fontWeight: 400 }}>相談が済んだら「相談済みにする」で外します</span>
+                  </div>
+                  {groupDiscussions.map((note) => (
+                    <InteractiveNote key={`discussion-${note.id}`} note={note} actions={actions} showTask />
+                  ))}
+                </div>
+              )}
               {group.rows.map((row) => (
                 <ReportTaskCard
                   key={row.todo.id}
@@ -741,13 +914,129 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
 
 interface ReportCardActions {
   canModifyNote: (note: ProgressNote) => boolean
-  onCreateNote: (todo: Todo, body: string) => Promise<boolean>
+  onCreateNote: (todo: Todo, body: string, needsDiscussion: boolean) => Promise<boolean>
   onUpdateNote: (noteId: string, body: string) => Promise<boolean>
   onDeleteNote: (noteId: string) => void
   onToggleNoteLike: (noteId: string) => void
   onToggleCommentLike: (commentId: string) => void
+  onReply: (noteId: string, body: string, parentCommentId: string | null) => Promise<boolean>
+  onToggleDiscussion: (noteId: string, value: boolean) => void
   onUpdateTask: (todo: Todo, data: UpdateTodoInput, successMessage: string) => Promise<boolean>
+  onUpdateSubTask: (subTask: SubTask, data: UpdateSubTaskInput, successMessage: string) => Promise<boolean>
+  onSelectTodo: (id: string) => void
   onShowToast: (message: string, type?: 'success' | 'error') => void
+}
+
+/** 報告タブ用に操作をすべて有効にした進捗ログ表示 */
+function InteractiveNote({ note, actions, showTask = false }: { note: ProgressNote; actions: ReportCardActions; showTask?: boolean }): React.JSX.Element {
+  return (
+    <ProgressNoteThread
+      note={note}
+      showTask={showTask}
+      onSelectTodo={actions.onSelectTodo}
+      onToggleLike={actions.onToggleNoteLike}
+      onToggleCommentLike={actions.onToggleCommentLike}
+      onReply={actions.onReply}
+      onToggleDiscussion={actions.onToggleDiscussion}
+      canModify={actions.canModifyNote(note)}
+      onUpdate={actions.onUpdateNote}
+      onDelete={actions.onDeleteNote}
+    />
+  )
+}
+
+/** サブタスク1行。完了チェック・期限・進捗率（ドラッグ）をその場で変えられる */
+function SubTaskRow({ subTask, actions }: { subTask: SubTask; actions: ReportCardActions }): React.JSX.Element {
+  const [editingDue, setEditingDue] = useState(false)
+  const [dueDraft, setDueDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const done = subTask.done === 1
+  const dueColor = done ? '' : getDueDateColor(subTask.due_date)
+
+  const run = async (data: UpdateSubTaskInput, successMessage: string): Promise<boolean> => {
+    setSaving(true)
+    const ok = await actions.onUpdateSubTask(subTask, data, successMessage)
+    setSaving(false)
+    return ok
+  }
+
+  const openDueEditor = (): void => {
+    setDueDraft(subTask.due_date?.slice(0, 10) ?? '')
+    setEditingDue(true)
+  }
+
+  const saveDue = async (): Promise<void> => {
+    const next = dueDraft || null
+    if (next && subTask.start_date && subTask.start_date.slice(0, 10) > next) {
+      actions.onShowToast('サブタスクの開始日は期限以前にしてください', 'error')
+      return
+    }
+    if (next === (subTask.due_date?.slice(0, 10) ?? null)) {
+      setEditingDue(false)
+      return
+    }
+    if (await run({ due_date: next }, 'サブタスクの期限を更新しました')) setEditingDue(false)
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <label style={{ display: 'flex', alignItems: 'baseline', gap: 7, fontSize: '0.78rem', cursor: 'pointer' }}>
+        <input
+          type="checkbox"
+          checked={done}
+          disabled={saving}
+          onChange={(event) => void run(
+            { done: event.target.checked },
+            event.target.checked ? 'サブタスクを完了にしました' : 'サブタスクを未完了に戻しました'
+          )}
+          style={{ accentColor: '#22c55e', cursor: 'pointer', flexShrink: 0, margin: 0, transform: 'translateY(1px)' }}
+        />
+        <span style={{ flex: 1, minWidth: 0, color: done ? '#64748b' : '#cbd5e1', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word' }}>
+          {subTask.title}
+          {subTask.assignee_name && (
+            <span style={{ marginLeft: 6, fontSize: '0.7rem', color: subTask.assignee_color ?? '#94a3b8', display: 'inline-block' }}>
+              {subTask.assignee_name}
+            </span>
+          )}
+        </span>
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 20, minHeight: 22 }}>
+        {editingDue ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+            <input
+              type="date"
+              value={dueDraft}
+              onChange={(event) => setDueDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void saveDue()
+                if (event.key === 'Escape') setEditingDue(false)
+              }}
+              aria-label={`${subTask.title}の期限`}
+              autoFocus
+              style={{ ...inputStyle, padding: '2px 6px', fontSize: '0.72rem' }}
+            />
+            <button onClick={() => void saveDue()} disabled={saving} style={{ ...inlineActionStyle, color: '#93c5fd' }}>保存</button>
+            <button onClick={() => setEditingDue(false)} style={inlineActionStyle}>取消</button>
+          </div>
+        ) : (
+          <button
+            onClick={openDueEditor}
+            title="期限を変更"
+            style={{ ...inlineActionStyle, textDecoration: 'none', color: dueColor || '#64748b', fontWeight: dueColor ? 800 : 600, flexShrink: 0 }}
+          >
+            {subTask.due_date ? `期限 ${formatShortDate(subTask.due_date)}` : '期限なし'}
+          </button>
+        )}
+        <ProgressSlider
+          value={subTask.progress}
+          height={5}
+          valueMinWidth={34}
+          label={`${subTask.title}の進捗率`}
+          onCommit={(progress) => run({ progress }, `サブタスクの進捗を${progress}%に更新しました`)}
+        />
+      </div>
+    </div>
+  )
 }
 
 function ReportTaskCard({
@@ -768,6 +1057,7 @@ function ReportTaskCard({
   const { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness } = row
   const [composerOpen, setComposerOpen] = useState(false)
   const [draft, setDraft] = useState('')
+  const [draftNeedsDiscussion, setDraftNeedsDiscussion] = useState(false)
   const [posting, setPosting] = useState(false)
   const [editingSchedule, setEditingSchedule] = useState(false)
   const [startDraft, setStartDraft] = useState('')
@@ -779,19 +1069,19 @@ function ReportTaskCard({
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
   const dueLabel = formatDueLabel(todo.due_date, todo.status)
   const memo = todo.memo.trim()
-  const progressOptions = PROGRESS_OPTIONS.includes(todo.progress)
-    ? PROGRESS_OPTIONS
-    : [...PROGRESS_OPTIONS, todo.progress].sort((a, b) => a - b)
+  const progressDelta = progressDeltaText(row)
+  const dueChange = dueChangeText(row)
   const canPost = !posting && draft.trim().length > 0
   const memoChanged = memoDraft !== todo.memo
 
   const submitNote = async (): Promise<void> => {
     if (!canPost) return
     setPosting(true)
-    const ok = await actions.onCreateNote(todo, draft)
+    const ok = await actions.onCreateNote(todo, draft, draftNeedsDiscussion)
     setPosting(false)
     if (ok) {
       setDraft('')
+      setDraftNeedsDiscussion(false)
       setComposerOpen(false)
     }
   }
@@ -924,24 +1214,21 @@ function ReportTaskCard({
             <button onClick={openScheduleEditor} title="開始日・期限を変更" style={inlineActionStyle}>変更</button>
           </div>
         )}
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1, height: 8, background: '#1e293b', borderRadius: 999, overflow: 'hidden' }}>
-            <div style={{ width: `${Math.min(100, Math.max(0, todo.progress))}%`, height: '100%', background: todo.progress >= 100 ? '#22c55e' : '#3b82f6', borderRadius: 999 }} />
+        {!editingSchedule && dueChange && (
+          <div style={{ fontSize: '0.72rem', color: row.postponedCount > 0 ? '#fde68a' : '#94a3b8', fontWeight: row.postponedCount > 0 ? 700 : 400 }}>
+            期間中の期限変更: {dueChange}
           </div>
-          <select
+        )}
+
+        <div>
+          <ProgressSlider
             value={todo.progress}
-            disabled={saving}
-            onChange={(event) => {
-              const progress = Number(event.target.value)
-              void updateField({ progress }, `進捗を${progress}%に更新しました`)
-            }}
-            aria-label="進捗率"
-            title="進捗率を変更（100%で完了になります）"
-            style={progressSelectStyle}
-          >
-            {progressOptions.map((value) => <option key={value} value={value}>{value}%</option>)}
-          </select>
+            label={`${todo.title}の進捗率`}
+            onCommit={(progress) => updateField({ progress }, `進捗を${progress}%に更新しました`)}
+          />
+          <div style={{ fontSize: '0.72rem', color: progressDeltaColor(row), marginTop: -2 }}>
+            {progressDelta ? `期間中 ${progressDelta}` : '期間中の進捗の変更なし'}
+          </div>
         </div>
 
         {subTasks.length > 0 && (
@@ -949,26 +1236,7 @@ function ReportTaskCard({
             <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
               サブタスク {subTasks.filter((subTask) => subTask.done).length}/{subTasks.length} 完了
             </div>
-            {subTasks.map((subTask) => {
-              const subDueColor = subTask.done ? '' : getDueDateColor(subTask.due_date)
-              return (
-                <div key={subTask.id} style={{ display: 'flex', alignItems: 'baseline', gap: 7, fontSize: '0.78rem' }}>
-                  <span style={{ color: subTask.done ? '#22c55e' : '#475569', flexShrink: 0 }}>{subTask.done ? '✓' : '○'}</span>
-                  <span style={{ flex: 1, minWidth: 0, color: subTask.done ? '#64748b' : '#cbd5e1', textDecoration: subTask.done ? 'line-through' : 'none', wordBreak: 'break-word' }}>
-                    {subTask.title}
-                    {subTask.assignee_name && (
-                      <span style={{ marginLeft: 6, fontSize: '0.7rem', color: subTask.assignee_color ?? '#94a3b8', textDecoration: 'none', display: 'inline-block' }}>
-                        {subTask.assignee_name}
-                      </span>
-                    )}
-                  </span>
-                  {subTask.due_date && (
-                    <span style={{ flexShrink: 0, fontSize: '0.72rem', color: subDueColor || '#64748b' }}>{formatShortDate(subTask.due_date)}</span>
-                  )}
-                  <span style={{ flexShrink: 0, fontSize: '0.72rem', color: '#94a3b8', minWidth: 34, textAlign: 'right' }}>{subTask.progress}%</span>
-                </div>
-              )
-            })}
+            {subTasks.map((subTask) => <SubTaskRow key={subTask.id} subTask={subTask} actions={actions} />)}
           </div>
         )}
       </div>
@@ -982,6 +1250,11 @@ function ReportTaskCard({
           <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
             {lastReportAt ? `最終報告 ${formatDateTime(lastReportAt)}（${formatDaysAgo(lastReportAt)}）` : '最終報告 なし'}
           </span>
+          {row.discussions.length > 0 && (
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#fed7aa', background: '#7c2d12', border: '1px solid #c2410c', borderRadius: 999, padding: '1px 8px' }}>
+              要相談 {row.discussions.length}
+            </span>
+          )}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             {!memo && !editingMemo && (
               <button onClick={openMemoEditor} style={reportButtonStyle(false)}>＋ メモを書く</button>
@@ -1009,8 +1282,12 @@ function ReportTaskCard({
               aria-label="進捗ログ"
               style={{ ...inputStyle, width: '100%', resize: 'vertical', lineHeight: 1.55, minHeight: 72 }}
             />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-              <button onClick={() => { setComposerOpen(false); setDraft('') }} style={secondaryButtonStyle}>キャンセル</button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+              <label style={{ ...checkboxLabelStyle, marginRight: 'auto', color: draftNeedsDiscussion ? '#fdba74' : '#94a3b8' }}>
+                <input type="checkbox" checked={draftNeedsDiscussion} onChange={(event) => setDraftNeedsDiscussion(event.target.checked)} style={{ accentColor: '#f97316' }} />
+                要相談として投稿（定例で話したいこと）
+              </label>
+              <button onClick={() => { setComposerOpen(false); setDraft(''); setDraftNeedsDiscussion(false) }} style={secondaryButtonStyle}>キャンセル</button>
               <button onClick={() => void submitNote()} disabled={!canPost} style={primaryButtonStyle(canPost)}>
                 {posting ? '投稿中…' : '投稿'}
               </button>
@@ -1061,17 +1338,7 @@ function ReportTaskCard({
           <div style={{ fontSize: '0.8rem', color: '#475569', padding: '4px 2px' }}>この期間の進捗ログはありません。</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {notes.map((note) => (
-              <ProgressNoteThread
-                key={note.id}
-                note={note}
-                onToggleLike={actions.onToggleNoteLike}
-                onToggleCommentLike={actions.onToggleCommentLike}
-                canModify={actions.canModifyNote(note)}
-                onUpdate={actions.onUpdateNote}
-                onDelete={actions.onDeleteNote}
-              />
-            ))}
+            {notes.map((note) => <InteractiveNote key={note.id} note={note} actions={actions} />)}
           </div>
         )}
       </div>
@@ -1210,16 +1477,14 @@ const pillSelectStyle: React.CSSProperties = {
   outline: 'none'
 }
 
-const progressSelectStyle: React.CSSProperties = {
-  padding: '3px 6px',
-  background: '#0f172a',
-  border: '1px solid #334155',
-  borderRadius: 7,
-  color: '#f1f5f9',
-  fontSize: '0.84rem',
-  fontWeight: 800,
-  cursor: 'pointer',
-  outline: 'none'
+const discussionBoxStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  background: '#1c1210',
+  border: '1px solid #9a3412',
+  borderRadius: 12,
+  padding: '10px 12px'
 }
 
 const inlineActionStyle: React.CSSProperties = {
