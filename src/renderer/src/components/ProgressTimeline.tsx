@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ProgressNote, ProgressNoteComment, ProgressNoteReaction, PublicUser, Todo } from '../types'
+import type { ProgressNote, ProgressNoteComment, PublicUser, Todo } from '../types'
+import { LIKE_EMOJI, LikeButton, getLikeReaction } from './LikeButton'
 
 export interface ProgressTimelineFocusTarget {
   date?: string | null
@@ -35,7 +36,6 @@ const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
   { value: 'author', label: '投稿者別' }
 ]
 const SORT_STORAGE_KEY = 'progressTimeline.sortMode'
-const LIKE_EMOJI = '👍'
 
 function loadSortMode(): SortMode {
   try {
@@ -124,68 +124,6 @@ function normalizeNote(note: ProgressNote): ProgressNote {
 
 function countComments(comments: ProgressNoteComment[] = []): number {
   return comments.reduce((sum, comment) => sum + 1 + countComments(comment.replies ?? []), 0)
-}
-
-function getLikeReaction(entity: { reactions: ProgressNoteReaction[] }) {
-  return entity.reactions.find((reaction) => reaction.emoji === LIKE_EMOJI)
-}
-
-function LikeButton({ reaction, onClick }: {
-  reaction?: ProgressNoteReaction
-  onClick: () => void
-}): React.JSX.Element {
-  const [tooltipVisible, setTooltipVisible] = useState(false)
-  const reactors = reaction?.reactors ?? []
-
-  return (
-    <span
-      style={{ position: 'relative', display: 'inline-flex' }}
-      onMouseEnter={() => setTooltipVisible(true)}
-      onMouseLeave={() => setTooltipVisible(false)}
-      onFocus={() => setTooltipVisible(true)}
-      onBlur={() => setTooltipVisible(false)}
-    >
-      <button
-        onClick={onClick}
-        style={likeButtonStyle(Boolean(reaction?.reacted_by_me))}
-        aria-label={reactors.length > 0 ? `いいね: ${reactors.map((reactor) => reactor.display_name).join('、')}` : 'いいね'}
-      >
-        {LIKE_EMOJI} {reaction?.count ?? 0}
-      </button>
-      {tooltipVisible && reactors.length > 0 && (
-        <span
-          role="tooltip"
-          style={{
-            position: 'absolute',
-            left: 0,
-            bottom: 'calc(100% + 7px)',
-            zIndex: 30,
-            minWidth: 130,
-            maxWidth: 240,
-            maxHeight: 180,
-            overflowY: 'auto',
-            padding: '7px 9px',
-            borderRadius: 7,
-            border: '1px solid #334155',
-            background: '#0f172a',
-            color: '#e2e8f0',
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.38)',
-            fontSize: '0.72rem',
-            lineHeight: 1.5,
-            whiteSpace: 'normal'
-          }}
-        >
-          <strong style={{ display: 'block', marginBottom: 3, color: '#f8fafc' }}>いいねした人</strong>
-          {reactors.map((reactor, index) => (
-            <span key={`${reactor.user_id ?? 'desktop'}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: reactor.color ?? '#64748b', flexShrink: 0 }} />
-              <span>{reactor.display_name}</span>
-            </span>
-          ))}
-        </span>
-      )}
-    </span>
-  )
 }
 
 function flattenReplies(comments: ProgressNoteComment[] = []): ProgressNoteComment[] {
@@ -682,6 +620,9 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                     <span style={{ color: '#f8fafc', fontSize: '0.9rem', fontWeight: 800 }}>{authorName}</span>
                     <span style={{ color: '#64748b', fontSize: '0.74rem' }}>{formatDateTime(note.created_at)}</span>
                     {note.updated_at !== note.created_at && <span style={editedStyle}>編集済み</span>}
+                    {note.needs_discussion === 1 && (
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#fed7aa', background: '#7c2d12', border: '1px solid #c2410c', borderRadius: 999, padding: '0 7px' }}>要相談</span>
+                    )}
                     <button onClick={() => onSelectTodo(note.todo_id)} style={{ ...taskLinkStyle, color: note.category_color ?? '#93c5fd' }}>{note.todo_title}</button>
                   </div>
                   {note.category_name && (
@@ -859,18 +800,6 @@ function pillButtonStyle(active: boolean): React.CSSProperties {
     cursor: active ? 'pointer' : 'not-allowed',
     fontSize: '0.76rem',
     fontWeight: 900
-  }
-}
-
-function likeButtonStyle(active: boolean): React.CSSProperties {
-  return {
-    background: 'transparent',
-    border: 'none',
-    color: active ? '#60a5fa' : '#94a3b8',
-    cursor: 'pointer',
-    fontSize: '0.72rem',
-    fontWeight: 800,
-    padding: 0
   }
 }
 

@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { ProgressNoteThread } from './ProgressNoteThread'
 import type {
   OverviewCategoryStat,
   OverviewCompletedSubTaskItem,
   OverviewData,
   OverviewTaskItem,
   ProgressDigestUser,
+  ProgressNote,
   PublicUser,
   Todo,
   TodoCoAssignee
@@ -260,19 +262,40 @@ interface RecentMemberActivity {
   detail?: string
 }
 
+// 進捗投稿とコメントは下の「進捗ログ」で全文表示するので、ここではそれ以外の活動だけを直近3件出す
 function buildRecentMemberActivity(user: ProgressDigestUser): RecentMemberActivity[] {
   return [
     ...user.added_todos.map((item) => ({ id: `todo-${item.id}`, at: item.created_at, kind: 'タスク追加', todoTitle: item.title })),
     ...user.completed_todos.map((item) => ({ id: `done-${item.id}`, at: item.completed_at, kind: 'タスク完了', todoTitle: item.title })),
     ...user.added_subtasks.map((item) => ({ id: `sub-${item.id}`, at: item.created_at, kind: 'サブタスク追加', todoTitle: item.todo_title, detail: item.title })),
-    ...user.task_changes.map((item) => ({ id: `change-${item.id}`, at: item.created_at, kind: 'タスク変更', todoTitle: item.todo_title, detail: item.field })),
-    ...user.notes.map((item) => ({ id: `note-${item.id}`, at: item.created_at, kind: '進捗投稿', todoTitle: item.todo_title, detail: item.body })),
-    ...user.comments.map((item) => ({ id: `comment-${item.id}`, at: item.created_at, kind: 'コメント', todoTitle: item.todo_title, detail: item.body }))
+    ...user.task_changes.map((item) => ({ id: `change-${item.id}`, at: item.created_at, kind: 'タスク変更', todoTitle: item.todo_title, detail: item.field }))
   ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 3)
 }
 
-function MemberActivityCard({ user }: { user: ProgressDigestUser }): React.JSX.Element {
+function formatShortDateTime(isoStr: string): string {
+  const d = new Date(isoStr)
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function MemberActivityCard({
+  user,
+  notesById,
+  shownNoteIds,
+  onSelectTodo
+}: {
+  user: ProgressDigestUser
+  /** 期間内の進捗ログ（返信込み）。取得できなかったときは空 */
+  notesById: Map<string, ProgressNote>
+  /** ダッシュボード上のどこかのカードで全文表示される進捗ログのID */
+  shownNoteIds: Set<string>
+  onSelectTodo: (id: string) => void
+}): React.JSX.Element {
   const recent = buildRecentMemberActivity(user)
+  const notes = user.notes.slice().sort((a, b) => b.created_at.localeCompare(a.created_at))
+  // 他のカードのスレッドに出ない返信（期間外の進捗ログへの返信や、絞り込みで対象外のメンバーへの返信）はここで全文を出す
+  const orphanComments = user.comments
+    .filter((comment) => !shownNoteIds.has(comment.note_id))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
   const activityCount = user.added_todos.length + user.completed_todos.length + user.added_subtasks.length
     + user.task_changes.length + user.notes.length + user.comments.length + user.work_log_count
 
@@ -299,9 +322,47 @@ function MemberActivityCard({ user }: { user: ProgressDigestUser }): React.JSX.E
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 10 }}>
         {badges.map((badge) => <span key={badge} style={{ background: '#1e293b', color: '#94a3b8', borderRadius: 999, padding: '2px 7px', fontSize: '0.66rem' }}>{badge}</span>)}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 11 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+        <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>進捗ログ（{notes.length}件）</div>
+        {notes.length === 0 ? (
+          <span style={{ color: '#64748b', fontSize: '0.74rem' }}>この期間の進捗ログはありません。</span>
+        ) : notes.map((item) => {
+          const note = notesById.get(item.id)
+          return note ? (
+            <ProgressNoteThread key={item.id} note={note} showTask onSelectTodo={onSelectTodo} />
+          ) : (
+            <div key={item.id} style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 10, padding: '9px 11px', fontSize: '0.8rem' }}>
+              <div style={{ color: '#64748b', fontSize: '0.72rem' }}>{formatShortDateTime(item.created_at)} ・ {item.todo_title}</div>
+              <div style={{ marginTop: 4, color: '#e2e8f0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{item.body}</div>
+            </div>
+          )
+        })}
+      </div>
+      {orphanComments.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+          <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>ほかの進捗ログへの返信（{orphanComments.length}件）</div>
+          {orphanComments.map((comment) => (
+            <div key={comment.id} style={{ borderLeft: '2px solid #a78bfa66', paddingLeft: 9 }}>
+              <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', fontSize: '0.72rem' }}>
+                <span style={{ color: '#64748b' }}>{formatShortDateTime(comment.created_at)}</span>
+                <button
+                  onClick={() => onSelectTodo(comment.todo_id)}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#93c5fd', fontSize: '0.72rem', fontWeight: 700 }}
+                >
+                  {comment.todo_title}
+                </button>
+              </div>
+              <div style={{ marginTop: 2, fontSize: '0.8rem', color: '#cbd5e1', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
+                {comment.body}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 12 }}>
+        <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>その他の活動（直近）</div>
         {recent.length === 0 ? (
-          <span style={{ color: '#64748b', fontSize: '0.74rem' }}>この期間の活動はありません。</span>
+          <span style={{ color: '#64748b', fontSize: '0.74rem' }}>この期間のその他の活動はありません。</span>
         ) : recent.map((item) => (
           <div key={item.id} style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '2px 8px', fontSize: '0.72rem' }}>
             <span style={{ color: '#a78bfa' }}>{item.kind}</span>
@@ -506,22 +567,41 @@ export function OverviewDashboard({
   onSelectTodo
 }: Props): React.JSX.Element {
   const [data, setData] = useState<OverviewData | null>(null)
+  const [notesById, setNotesById] = useState<Map<string, ProgressNote>>(() => new Map())
   const [loading, setLoading] = useState(true)
+  const [progressRevision, setProgressRevision] = useState(0)
+  const lastLoadKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const unsubscribe = window.api.onDataChanged((scope) => {
+      if (scope === 'progress') setProgressRevision((value) => value + 1)
+    })
+    return () => unsubscribe()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
+    const loadKey = JSON.stringify([dataRevision, runningTodoId, selectedAssigneeId, includePrivate])
+    // 進捗ログ・返信の追加だけで再取得するときは、表示を消さずに裏で差し替える
+    const silent = lastLoadKeyRef.current === loadKey
+    lastLoadKeyRef.current = loadKey
 
     const load = async (): Promise<void> => {
-      setLoading(true)
-      setData(null)
+      if (!silent) {
+        setLoading(true)
+        setData(null)
+      }
       try {
         const nextData = await window.api.overviewGetData({ assigneeId: selectedAssigneeId, includePrivate })
+        // 返信スレッドは集計に含まれないので、同じ期間の進捗ログを別途取得する（失敗しても本文だけは表示できる）
+        const nextNotes = await window.api.progressNoteGetByRange(nextData.activityFrom, nextData.activityTo).catch(() => [] as ProgressNote[])
 
         if (!cancelled) {
           setData(nextData)
+          setNotesById(new Map(nextNotes.map((note) => [note.id, note])))
         }
       } catch {
-        if (!cancelled) {
+        if (!cancelled && !silent) {
           setData(null)
         }
       } finally {
@@ -536,7 +616,11 @@ export function OverviewDashboard({
     return () => {
       cancelled = true
     }
-  }, [dataRevision, runningTodoId, selectedAssigneeId, includePrivate])
+  }, [dataRevision, runningTodoId, selectedAssigneeId, includePrivate, progressRevision])
+
+  const shownNoteIds = useMemo(() => new Set(
+    (data?.memberActivity ?? []).flatMap((user) => user.notes.map((note) => note.id)).filter((id) => notesById.has(id))
+  ), [data, notesById])
 
   const runningTodo = todos.find((todo) => todo.id === runningTodoId) ?? null
   const atRiskCount = data ? data.summary.overdueTasks + data.summary.dueSoonTasks : 0
@@ -636,8 +720,16 @@ export function OverviewDashboard({
                 この期間に表示できるメンバー活動はありません。
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10 }}>
-                {data.memberActivity.map((user) => <MemberActivityCard key={user.user_id ?? 'desktop'} user={user} />)}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 10, alignItems: 'start' }}>
+                {data.memberActivity.map((user) => (
+                  <MemberActivityCard
+                    key={user.user_id ?? 'desktop'}
+                    user={user}
+                    notesById={notesById}
+                    shownNoteIds={shownNoteIds}
+                    onSelectTodo={onSelectTodo}
+                  />
+                ))}
               </div>
             )}
           </Section>

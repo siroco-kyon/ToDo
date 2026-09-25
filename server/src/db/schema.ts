@@ -163,6 +163,7 @@ export function createSchema(db: Database.Database): void {
       todo_id TEXT NOT NULL,
       user_id TEXT,
       body TEXT NOT NULL,
+      needs_discussion INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE,
@@ -303,6 +304,9 @@ export function runMigrations(db: Database.Database): void {
   if (!progressNoteColumns.some((c) => c.name === 'updated_at')) {
     db.prepare("ALTER TABLE ProgressNotes ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''").run()
     db.prepare("UPDATE ProgressNotes SET updated_at = created_at WHERE updated_at = ''").run()
+  }
+  if (!progressNoteColumns.some((c) => c.name === 'needs_discussion')) {
+    db.prepare('ALTER TABLE ProgressNotes ADD COLUMN needs_discussion INTEGER NOT NULL DEFAULT 0').run()
   }
 
   const progressCommentColumns = db.prepare('PRAGMA table_info(ProgressNoteComments)').all() as { name: string }[]

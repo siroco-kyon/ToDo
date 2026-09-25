@@ -43,6 +43,10 @@ import {
   getProgressNotesByTodo,
   getProgressNotesByDate,
   getProgressNotesByRange,
+  getTodoReportActivity,
+  getOpenDiscussionNotes,
+  setProgressNoteNeedsDiscussion,
+  getTodoChangesByRange,
   createProgressNote,
   updateProgressNote,
   deleteProgressNote,
@@ -165,6 +169,10 @@ export function registerIpcHandlers(
   ipcMain.handle('progressNote:getByTodo', (_, todoId: string) => getProgressNotesByTodo(todoId))
   ipcMain.handle('progressNote:getByDate', (_, dateStr: string) => getProgressNotesByDate(dateStr))
   ipcMain.handle('progressNote:getByRange', (_, from: string, to: string) => getProgressNotesByRange(from, to))
+  ipcMain.handle('progressNote:getLastActivity', () => getTodoReportActivity())
+  ipcMain.handle('progressNote:getOpenDiscussions', () => getOpenDiscussionNotes())
+  ipcMain.handle('progressNote:setNeedsDiscussion', handleMutation('progress', (id: string, value: boolean) => setProgressNoteNeedsDiscussion(id, value)))
+  ipcMain.handle('todoChange:getByRange', (_, from: string, to: string) => getTodoChangesByRange(from, to))
   ipcMain.handle('progressNote:create', handleMutation('progress', (todoId: string, body: string) => createProgressNote(todoId, body)))
   ipcMain.handle('progressNote:update', handleMutation('progress', (id: string, body: string) => updateProgressNote(id, body)))
   ipcMain.handle('progressNote:delete', handleMutation('progress', (id: string) => deleteProgressNote(id)))

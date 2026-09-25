@@ -12,10 +12,12 @@ import type {
   ProgressDigestSubTask,
   ProgressDigestTaskChange,
   ProgressDigestTodo,
-  ProgressDigestUser
+  ProgressDigestUser,
+  TodoChangeEntry,
+  TodoReportActivity
 } from './types'
 
-const NOTE_SELECT = `SELECT pn.id, pn.todo_id, pn.user_id, pn.body, pn.created_at, pn.updated_at,
+const NOTE_SELECT = `SELECT pn.id, pn.todo_id, pn.user_id, pn.body, pn.needs_discussion, pn.created_at, pn.updated_at,
               t.title AS todo_title, c.name AS category_name, c.color AS category_color,
               u.display_name AS author_name, u.color AS author_color,
               COUNT(pnc.id) AS comment_count
@@ -180,6 +182,48 @@ export function getProgressNotesByRange(from: string, to: string, currentUserId?
     .prepare(`${NOTE_SELECT} WHERE date(pn.created_at, 'localtime') BETWEEN ? AND ? GROUP BY pn.id ORDER BY pn.created_at DESC`)
     .all(from, to) as ProgressNote[]
   return hydrateNotes(notes, currentUserId)
+}
+
+/** 未解決の「要相談」進捗ログ（期間に関係なく全件、新しい順） */
+export function getOpenDiscussionNotes(currentUserId?: string | null): ProgressNote[] {
+  const notes = getDb()
+    .prepare(`${NOTE_SELECT} WHERE pn.needs_discussion = 1 GROUP BY pn.id ORDER BY pn.created_at DESC`)
+    .all() as ProgressNote[]
+  return hydrateNotes(notes, currentUserId)
+}
+
+export function setProgressNoteNeedsDiscussion(id: string, value: boolean, currentUserId?: string | null): ProgressNote {
+  getDb().prepare('UPDATE ProgressNotes SET needs_discussion = ? WHERE id = ?').run(value ? 1 : 0, id)
+  const note = getProgressNote(id, currentUserId)
+  if (!note) throw new Error('進捗ログが見つかりません')
+  return note
+}
+
+/** 期間内（ローカル日付）の進捗率・期限の変更履歴。古い順 */
+export function getTodoChangesByRange(from: string, to: string): TodoChangeEntry[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
+    throw new Error('変更履歴の期間が不正です')
+  }
+  return getDb()
+    .prepare(
+      `SELECT id, todo_id, field, old_value, new_value, created_at
+       FROM TodoChangeLogs
+       WHERE field IN ('progress', 'due_date') AND date(created_at, 'localtime') BETWEEN ? AND ?
+       ORDER BY created_at ASC`
+    )
+    .all(from, to) as TodoChangeEntry[]
+}
+
+/** 全タスクの最終報告日時（進捗ログの最新投稿・メモの最終変更）。報告のないタスクは両方 null */
+export function getTodoReportActivity(): TodoReportActivity[] {
+  return getDb()
+    .prepare(
+      `SELECT t.id AS todo_id,
+              (SELECT MAX(pn.created_at) FROM ProgressNotes pn WHERE pn.todo_id = t.id) AS last_note_at,
+              (SELECT MAX(tcl.created_at) FROM TodoChangeLogs tcl WHERE tcl.todo_id = t.id AND tcl.field = 'memo') AS last_memo_at
+       FROM Todos t`
+    )
+    .all() as TodoReportActivity[]
 }
 
 export function getProgressNote(id: string, currentUserId?: string | null): ProgressNote | undefined {

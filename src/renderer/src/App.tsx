@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AddDailyPlanItemOptions, Category, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateTodoInput, UserNotification } from './types'
+import type { AddDailyPlanItemOptions, Category, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateSubTaskInput, UpdateTodoInput, UserNotification } from './types'
 import { useTimer } from './hooks/useTimer'
 import { Toolbar } from './components/Toolbar'
 import { CategoryList } from './components/CategoryList'
@@ -23,9 +23,10 @@ import { KanbanView } from './components/KanbanView'
 import { TeamDashboard } from './components/TeamDashboard'
 import { NotificationPanel } from './components/NotificationPanel'
 import { OverviewDashboard } from './components/OverviewDashboard'
+import { ReportView } from './components/ReportView'
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
-type CenterView = 'detail' | 'overview' | 'log' | 'progress' | 'plan' | 'gantt' | 'team' | 'kanban'
+type CenterView = 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban'
 type ScopeLens = 'personal' | 'team'
 type GanttSidePanelMode = 'detail' | 'today'
 type PaneKey = 'category' | 'list' | 'side'
@@ -644,6 +645,13 @@ export function App(): React.JSX.Element {
     await loadTodos()
   }, [loadTodos])
 
+  // サブタスクの期限は親タスクの期限を延長することがあるので、タスクも取り直す
+  const handleUpdateSubTask = useCallback(async (id: string, data: UpdateSubTaskInput) => {
+    await window.api.subtaskUpdate(id, data)
+    const [nextSubTasks] = await Promise.all([window.api.subtaskGetAll(), loadTodos()])
+    setAllSubTasks(nextSubTasks)
+  }, [loadTodos])
+
   const handleOpenGanttWindow = useCallback(async () => {
     await window.api.windowOpenGantt()
   }, [])
@@ -938,7 +946,7 @@ export function App(): React.JSX.Element {
   }
 
   const isManualSort = sortField === 'sort_order'
-  const showRightPlanRail = showPlanRail && activeView !== 'plan' && activeView !== 'team' && activeView !== 'progress'
+  const showRightPlanRail = showPlanRail && activeView !== 'plan' && activeView !== 'team' && activeView !== 'progress' && activeView !== 'report'
   const showGanttSidePanel = activeView === 'gantt' && (ganttSidePanelMode === 'detail' || showPlanRail)
   const showAuxiliaryPanel = activeView === 'gantt' ? showGanttSidePanel : showRightPlanRail
   const SORT_FIELDS: { key: SortField; label: string }[] = [
@@ -977,6 +985,7 @@ export function App(): React.JSX.Element {
         onToggleLogView={() => toggleCenterView('log')}
         onToggleOverviewView={() => toggleCenterView('overview')}
         onToggleProgressView={() => toggleCenterView('progress')}
+        onToggleReportView={() => toggleCenterView('report')}
         onTogglePlanView={() => toggleCenterView('plan')}
         onToggleGanttView={() => toggleCenterView('gantt')}
         onToggleKanbanView={() => toggleCenterView('kanban')}
@@ -1200,6 +1209,17 @@ export function App(): React.JSX.Element {
               onSelectTodo={openTodoDetail}
               onShowToast={showToast}
               hiddenTodoIds={hiddenPrivateTodoIds}
+            />
+          ) : activeView === 'report' ? (
+            <ReportView
+              todos={filteredTodos}
+              subTasks={allSubTasks}
+              users={users}
+              currentUser={currentUser}
+              onSelectTodo={openTodoDetail}
+              onUpdateTodo={handleUpdate}
+              onUpdateSubTask={handleUpdateSubTask}
+              onShowToast={showToast}
             />
           ) : activeView === 'team' ? (
             <TeamDashboard onSelectTodo={openTodoDetail} includePrivate={scopeLens === 'personal'} />
