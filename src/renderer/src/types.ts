@@ -387,10 +387,12 @@ export interface TeamDashboard {
 
 // ─── Progress notes & digest ──────────────────────────────────
 
-/** タスクの変更履歴（報告タブの期間中の進捗差分・期限変更の表示用。progress と due_date のみ） */
+/** タスク・サブタスクの変更履歴（報告タブの期間中の進捗差分・期限変更の表示用。progress と due_date のみ） */
 export interface TodoChangeEntry {
   id: string
   todo_id: string
+  /** サブタスクの変更のときそのID。タスク自体の変更は null */
+  subtask_id: string | null
   field: 'progress' | 'due_date'
   old_value: string | null
   new_value: string | null

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProgressNote, ProgressNoteComment, PublicUser, Todo } from '../types'
 import { LIKE_EMOJI, LikeButton, getLikeReaction } from './LikeButton'
+import { NoteMenu, discussionBadgeStyle } from './ProgressNoteThread'
 
 export interface ProgressTimelineFocusTarget {
   date?: string | null
@@ -341,6 +342,21 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   const handleToggleCommentReaction = (commentId: string): Promise<void> =>
     toggleReactionGuarded(commentId, (id, emoji) => window.api.progressNoteCommentReactionToggle(id, emoji))
 
+  const handleToggleDiscussion = async (noteId: string, value: boolean): Promise<void> => {
+    const key = `discussion:${noteId}`
+    if (pendingReactionsRef.current.has(key)) return
+    pendingReactionsRef.current.add(key)
+    try {
+      const updated = await window.api.progressNoteSetNeedsDiscussion(noteId, value)
+      setNotes((previous) => patchNote(previous, updated))
+      onShowToast(value ? '要相談にしました' : '要相談を外しました')
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '要相談を切り替えられませんでした', 'error')
+    } finally {
+      pendingReactionsRef.current.delete(key)
+    }
+  }
+
   const handleCreateComment = async (noteId: string, parentCommentId: string | null = null): Promise<void> => {
     const key = draftKey(noteId, parentCommentId)
     const body = (commentDrafts[key] ?? '').trim()
@@ -621,7 +637,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                     <span style={{ color: '#64748b', fontSize: '0.74rem' }}>{formatDateTime(note.created_at)}</span>
                     {note.updated_at !== note.created_at && <span style={editedStyle}>編集済み</span>}
                     {note.needs_discussion === 1 && (
-                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#fed7aa', background: '#7c2d12', border: '1px solid #c2410c', borderRadius: 999, padding: '0 7px' }}>要相談</span>
+                      <span style={discussionBadgeStyle}>要相談</span>
                     )}
                     <button onClick={() => onSelectTodo(note.todo_id)} style={{ ...taskLinkStyle, color: note.category_color ?? '#93c5fd' }}>{note.todo_title}</button>
                   </div>
@@ -648,12 +664,21 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                       <LikeButton reaction={getLikeReaction(note)} onClick={() => void handleToggleReaction(note.id)} />
                       <span style={actionMetaStyle}>コメント {commentCount}</span>
                       <button onClick={() => setCommentingOnNoteId(note.id)} style={inlineActionStyle}>返信</button>
-                      {canModifyNote(note) && (
-                        <>
-                          <button onClick={() => { setEditingNoteId(note.id); setEditingNoteDraft(note.body) }} style={inlineActionStyle}>編集</button>
-                          <button onClick={() => void handleDeleteNote(note.id)} style={inlineActionStyle}>削除</button>
-                        </>
-                      )}
+                      {/* 報告タブと同じく、要相談・編集・削除は ⋯ にまとめる */}
+                      <NoteMenu
+                        items={[
+                          {
+                            label: note.needs_discussion === 1 ? '要相談を外す' : '要相談にする',
+                            onSelect: () => void handleToggleDiscussion(note.id, note.needs_discussion !== 1)
+                          },
+                          ...(canModifyNote(note)
+                            ? [
+                                { label: '編集', onSelect: () => { setEditingNoteId(note.id); setEditingNoteDraft(note.body) } },
+                                { label: '削除', onSelect: () => void handleDeleteNote(note.id), danger: true }
+                              ]
+                            : [])
+                        ]}
+                      />
                     </div>
                   )}
 

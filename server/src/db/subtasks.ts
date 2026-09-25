@@ -81,9 +81,9 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
   return { ...created, parent_due_date_extended_to: extendedTo }
 }
 
-export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
+export function updateSubTask(id: string, data: UpdateSubTaskInput, changedByUserId: string | null = null): SubTask {
   const db = getDb()
-  const current = db.prepare('SELECT done, progress, completed_at FROM SubTasks WHERE id = ?').get(id) as { done: number; progress: number; completed_at: string | null } | undefined
+  const current = db.prepare('SELECT done, progress, completed_at, due_date FROM SubTasks WHERE id = ?').get(id) as { done: number; progress: number; completed_at: string | null; due_date: string | null } | undefined
 
   if (data.title !== undefined) {
     db.prepare('UPDATE SubTasks SET title = ? WHERE id = ?').run(data.title, id)
@@ -116,8 +116,27 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
     db.prepare('UPDATE SubTasks SET progress = ?, done = ?, completed_at = ? WHERE id = ?').run(nextProgress, nextDone ? 1 : 0, nextCompletedAt, id)
   }
   const updated = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
+  if (current) recordSubTaskChanges(current, updated, changedByUserId)
   const extendedTo = syncTodoDueDateWithSubTasks(updated.todo_id)
   return { ...updated, parent_due_date_extended_to: extendedTo }
+}
+
+/** 進捗率・期限が変わったときだけ SubTaskChangeLogs に残す（報告タブの期間中の変化表示用） */
+function recordSubTaskChanges(
+  before: { progress: number; due_date: string | null },
+  after: SubTask,
+  changedByUserId: string | null
+): void {
+  const now = new Date().toISOString()
+  const insert = getDb().prepare(
+    'INSERT INTO SubTaskChangeLogs (id, subtask_id, todo_id, user_id, field, old_value, new_value, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  )
+  if (before.progress !== after.progress) {
+    insert.run(crypto.randomUUID(), after.id, after.todo_id, changedByUserId, 'progress', String(before.progress), String(after.progress), now)
+  }
+  if ((before.due_date ?? null) !== (after.due_date ?? null)) {
+    insert.run(crypto.randomUUID(), after.id, after.todo_id, changedByUserId, 'due_date', before.due_date, after.due_date, now)
+  }
 }
 
 export function deleteSubTask(id: string): void {

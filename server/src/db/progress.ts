@@ -199,19 +199,23 @@ export function setProgressNoteNeedsDiscussion(id: string, value: boolean, curre
   return note
 }
 
-/** 期間内（ローカル日付）の進捗率・期限の変更履歴。古い順 */
+/** 期間内（ローカル日付）のタスク・サブタスクの進捗率・期限の変更履歴。古い順 */
 export function getTodoChangesByRange(from: string, to: string): TodoChangeEntry[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
     throw new Error('変更履歴の期間が不正です')
   }
   return getDb()
     .prepare(
-      `SELECT id, todo_id, field, old_value, new_value, created_at
+      `SELECT id, todo_id, NULL AS subtask_id, field, old_value, new_value, created_at
        FROM TodoChangeLogs
+       WHERE field IN ('progress', 'due_date') AND date(created_at, 'localtime') BETWEEN ? AND ?
+       UNION ALL
+       SELECT id, todo_id, subtask_id, field, old_value, new_value, created_at
+       FROM SubTaskChangeLogs
        WHERE field IN ('progress', 'due_date') AND date(created_at, 'localtime') BETWEEN ? AND ?
        ORDER BY created_at ASC`
     )
-    .all(from, to) as TodoChangeEntry[]
+    .all(from, to, from, to) as TodoChangeEntry[]
 }
 
 /** 全タスクの最終報告日時（進捗ログの最新投稿・メモの最終変更）。報告のないタスクは両方 null */

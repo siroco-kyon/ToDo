@@ -138,6 +138,18 @@ function createTables(): void {
       FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE
     );
 
+    -- サブタスクの進捗率・期限の変更履歴（報告タブの期間中の変化表示に使う）
+    CREATE TABLE IF NOT EXISTS SubTaskChangeLogs (
+      id TEXT PRIMARY KEY,
+      subtask_id TEXT NOT NULL,
+      todo_id TEXT NOT NULL,
+      field TEXT NOT NULL,
+      old_value TEXT,
+      new_value TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (subtask_id) REFERENCES SubTasks(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS ProgressNoteComments (
       id TEXT PRIMARY KEY,
       note_id TEXT NOT NULL,
@@ -174,6 +186,7 @@ function createTables(): void {
 
     CREATE INDEX IF NOT EXISTS idx_progress_notes_todo ON ProgressNotes(todo_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_todo_changes_todo_created ON TodoChangeLogs(todo_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_subtask_changes_created ON SubTaskChangeLogs(created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_comments_note ON ProgressNoteComments(note_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_reactions_note ON ProgressNoteReactions(note_id, emoji);
     CREATE INDEX IF NOT EXISTS idx_comment_reactions_comment ON ProgressCommentReactions(comment_id, emoji);
@@ -1155,7 +1168,7 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
 }
 
 export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
-  const current = db.prepare('SELECT done, progress, completed_at FROM SubTasks WHERE id = ?').get(id) as { done: number; progress: number; completed_at: string | null } | undefined
+  const current = db.prepare('SELECT done, progress, completed_at, due_date FROM SubTasks WHERE id = ?').get(id) as { done: number; progress: number; completed_at: string | null; due_date: string | null } | undefined
 
   if (data.title !== undefined) {
     db.prepare('UPDATE SubTasks SET title = ? WHERE id = ?').run(data.title, id)
@@ -1188,8 +1201,23 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
     db.prepare('UPDATE SubTasks SET progress = ?, done = ?, completed_at = ? WHERE id = ?').run(nextProgress, nextDone ? 1 : 0, nextCompletedAt, id)
   }
   const updated = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
+  if (current) recordSubTaskChanges(current, updated)
   const extendedTo = syncTodoDueDateWithSubTasks(updated.todo_id)
   return { ...updated, parent_due_date_extended_to: extendedTo }
+}
+
+/** 進捗率・期限が変わったときだけ SubTaskChangeLogs に残す（報告タブの期間中の変化表示用） */
+function recordSubTaskChanges(before: { progress: number; due_date: string | null }, after: SubTask): void {
+  const now = new Date().toISOString()
+  const insert = db.prepare(
+    'INSERT INTO SubTaskChangeLogs (id, subtask_id, todo_id, field, old_value, new_value, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  )
+  if (before.progress !== after.progress) {
+    insert.run(crypto.randomUUID(), after.id, after.todo_id, 'progress', String(before.progress), String(after.progress), now)
+  }
+  if ((before.due_date ?? null) !== (after.due_date ?? null)) {
+    insert.run(crypto.randomUUID(), after.id, after.todo_id, 'due_date', before.due_date, after.due_date, now)
+  }
 }
 
 export function deleteSubTask(id: string): void {
@@ -1758,19 +1786,23 @@ export function setProgressNoteNeedsDiscussion(id: string, value: boolean): Prog
   return note
 }
 
-/** 期間内（ローカル日付）の進捗率・期限の変更履歴。古い順 */
+/** 期間内（ローカル日付）のタスク・サブタスクの進捗率・期限の変更履歴。古い順 */
 export function getTodoChangesByRange(from: string, to: string): TodoChangeEntry[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
     throw new Error('変更履歴の期間が不正です')
   }
   return db
     .prepare(
-      `SELECT id, todo_id, field, old_value, new_value, created_at
+      `SELECT id, todo_id, NULL AS subtask_id, field, old_value, new_value, created_at
        FROM TodoChangeLogs
+       WHERE field IN ('progress', 'due_date') AND date(created_at, 'localtime') BETWEEN ? AND ?
+       UNION ALL
+       SELECT id, todo_id, subtask_id, field, old_value, new_value, created_at
+       FROM SubTaskChangeLogs
        WHERE field IN ('progress', 'due_date') AND date(created_at, 'localtime') BETWEEN ? AND ?
        ORDER BY created_at ASC`
     )
-    .all(from, to) as TodoChangeEntry[]
+    .all(from, to, from, to) as TodoChangeEntry[]
 }
 
 /** 全タスクの最終報告日時（進捗ログの最新投稿・メモの最終変更）。報告のないタスクは両方 null */
@@ -2108,10 +2140,12 @@ export interface TeamDashboard {
   workloads: TeamMemberWorkload[]
 }
 
-/** タスクの変更履歴（報告タブの期間中の進捗差分・期限変更の表示用。progress と due_date のみ） */
+/** タスク・サブタスクの変更履歴（報告タブの期間中の進捗差分・期限変更の表示用。progress と due_date のみ） */
 export interface TodoChangeEntry {
   id: string
   todo_id: string
+  /** サブタスクの変更のときそのID。タスク自体の変更は null */
+  subtask_id: string | null
   field: 'progress' | 'due_date'
   old_value: string | null
   new_value: string | null
