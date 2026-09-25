@@ -387,6 +387,13 @@ export interface TeamDashboard {
 
 // ─── Progress notes & digest ──────────────────────────────────
 
+/** タスクごとの最終報告日時（報告タブの鮮度判定用）。進捗ログの最新投稿とメモの最終変更 */
+export interface TodoReportActivity {
+  todo_id: string
+  last_note_at: string | null
+  last_memo_at: string | null
+}
+
 /** A timestamped, authored progress note attached to a task. On desktop the author fields are null. */
 export interface ProgressNote {
   id: string

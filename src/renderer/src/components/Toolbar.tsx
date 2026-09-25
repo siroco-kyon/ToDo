@@ -8,7 +8,7 @@ interface Props {
   showArchived: boolean
   onToggleArchived: () => void
   onOpenSettings: () => void
-  activeView: 'detail' | 'overview' | 'log' | 'progress' | 'plan' | 'gantt' | 'team' | 'kanban'
+  activeView: 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban'
   scopeLens: 'personal' | 'team'
   onSetScopeLens: (lens: 'personal' | 'team') => void
   showPlanRail: boolean
@@ -23,6 +23,7 @@ interface Props {
   onToggleLogView: () => void
   onToggleOverviewView: () => void
   onToggleProgressView: () => void
+  onToggleReportView: () => void
   onTogglePlanView: () => void
   onToggleGanttView: () => void
   onToggleKanbanView: () => void
@@ -33,7 +34,7 @@ interface Props {
 }
 
 interface ViewButton {
-  key: 'overview' | 'plan' | 'gantt' | 'kanban' | 'log' | 'progress' | 'team'
+  key: 'overview' | 'plan' | 'gantt' | 'kanban' | 'log' | 'progress' | 'report' | 'team'
   label: string
   active: boolean
   onClick: () => void
@@ -60,6 +61,7 @@ export function Toolbar({
   onToggleLogView,
   onToggleOverviewView,
   onToggleProgressView,
+  onToggleReportView,
   onTogglePlanView,
   onToggleGanttView,
   onToggleKanbanView,
@@ -74,6 +76,7 @@ export function Toolbar({
     { key: 'kanban', label: 'カンバン', active: activeView === 'kanban', onClick: onToggleKanbanView },
     ...(showTeamButton ? [{ key: 'team' as const, label: 'チーム', active: activeView === 'team', onClick: onToggleTeamView }] : []),
     { key: 'progress', label: '進捗', active: activeView === 'progress', onClick: onToggleProgressView },
+    { key: 'report', label: '報告', active: activeView === 'report', onClick: onToggleReportView },
     { key: 'plan', label: '計画', active: activeView === 'plan', onClick: onTogglePlanView },
     { key: 'log', label: '記録', active: activeView === 'log', onClick: onToggleLogView }
   ]

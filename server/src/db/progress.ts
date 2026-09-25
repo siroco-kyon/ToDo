@@ -12,7 +12,8 @@ import type {
   ProgressDigestSubTask,
   ProgressDigestTaskChange,
   ProgressDigestTodo,
-  ProgressDigestUser
+  ProgressDigestUser,
+  TodoReportActivity
 } from './types'
 
 const NOTE_SELECT = `SELECT pn.id, pn.todo_id, pn.user_id, pn.body, pn.created_at, pn.updated_at,
@@ -180,6 +181,18 @@ export function getProgressNotesByRange(from: string, to: string, currentUserId?
     .prepare(`${NOTE_SELECT} WHERE date(pn.created_at, 'localtime') BETWEEN ? AND ? GROUP BY pn.id ORDER BY pn.created_at DESC`)
     .all(from, to) as ProgressNote[]
   return hydrateNotes(notes, currentUserId)
+}
+
+/** 全タスクの最終報告日時（進捗ログの最新投稿・メモの最終変更）。報告のないタスクは両方 null */
+export function getTodoReportActivity(): TodoReportActivity[] {
+  return getDb()
+    .prepare(
+      `SELECT t.id AS todo_id,
+              (SELECT MAX(pn.created_at) FROM ProgressNotes pn WHERE pn.todo_id = t.id) AS last_note_at,
+              (SELECT MAX(tcl.created_at) FROM TodoChangeLogs tcl WHERE tcl.todo_id = t.id AND tcl.field = 'memo') AS last_memo_at
+       FROM Todos t`
+    )
+    .all() as TodoReportActivity[]
 }
 
 export function getProgressNote(id: string, currentUserId?: string | null): ProgressNote | undefined {

@@ -1739,6 +1739,18 @@ export function getProgressNotesByRange(from: string, to: string): ProgressNote[
   return hydrateProgressNotes(notes)
 }
 
+/** 全タスクの最終報告日時（進捗ログの最新投稿・メモの最終変更）。報告のないタスクは両方 null */
+export function getTodoReportActivity(): TodoReportActivity[] {
+  return db
+    .prepare(
+      `SELECT t.id AS todo_id,
+              (SELECT MAX(pn.created_at) FROM ProgressNotes pn WHERE pn.todo_id = t.id) AS last_note_at,
+              (SELECT MAX(tcl.created_at) FROM TodoChangeLogs tcl WHERE tcl.todo_id = t.id AND tcl.field = 'memo') AS last_memo_at
+       FROM Todos t`
+    )
+    .all() as TodoReportActivity[]
+}
+
 export function getProgressNote(id: string): ProgressNote | undefined {
   const note = db.prepare(`${PROGRESS_NOTE_SELECT} WHERE pn.id = ? GROUP BY pn.id`).get(id) as ProgressNote | undefined
   return note ? hydrateProgressNotes([note])[0] : undefined
@@ -2060,6 +2072,13 @@ export interface TeamDashboard {
   overdue: TeamDeadlineItem[]
   dueSoon: TeamDeadlineItem[]
   workloads: TeamMemberWorkload[]
+}
+
+/** タスクごとの最終報告日時（報告タブの鮮度判定用）。進捗ログの最新投稿とメモの最終変更 */
+export interface TodoReportActivity {
+  todo_id: string
+  last_note_at: string | null
+  last_memo_at: string | null
 }
 
 /** A timestamped, authored progress note attached to a task. On desktop the author fields are null. */

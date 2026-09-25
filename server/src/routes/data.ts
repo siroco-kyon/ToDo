@@ -55,6 +55,7 @@ import { getTeamDashboard } from '../db/team'
 import {
   getProgressNotesByTodo,
   getProgressNotesByRange,
+  getTodoReportActivity,
   getProgressNote,
   createProgressNote,
   updateProgressNote,
@@ -405,6 +406,8 @@ dataRouter.get('/progress-notes/timeline', (req, res) =>
     const to = String(req.query.to ?? date)
     return getProgressNotesByRange(from, to, req.user!.id)
   }))
+dataRouter.get('/progress-notes/last-activity', (_req, res) =>
+  run(res, () => getTodoReportActivity()))
 dataRouter.post('/todos/:todoId/progress-notes', (req, res) =>
   run(res, () => {
     const created = createProgressNote(req.params.todoId, req.user!.id, req.body.body)

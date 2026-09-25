@@ -27,6 +27,7 @@ import type {
   TeamNowItem,
   TeamDeadlineItem,
   TeamMemberWorkload,
+  TodoReportActivity,
   ProgressNote,
   ProgressNoteComment,
   ProgressNoteReaction,
@@ -69,6 +70,7 @@ export type {
   TeamNowItem,
   TeamDeadlineItem,
   TeamMemberWorkload,
+  TodoReportActivity,
   ProgressNote,
   ProgressNoteComment,
   ProgressNoteReaction,
@@ -196,6 +198,8 @@ const api = {
     ipcRenderer.invoke('progressNote:getByDate', dateStr),
   progressNoteGetByRange: (from: string, to: string): Promise<ProgressNote[]> =>
     ipcRenderer.invoke('progressNote:getByRange', from, to),
+  progressNoteGetLastActivity: (): Promise<TodoReportActivity[]> =>
+    ipcRenderer.invoke('progressNote:getLastActivity'),
   progressNoteCreate: (todoId: string, body: string): Promise<ProgressNote> =>
     ipcRenderer.invoke('progressNote:create', todoId, body),
   progressNoteUpdate: (id: string, body: string): Promise<ProgressNote> =>
