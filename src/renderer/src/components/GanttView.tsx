@@ -135,6 +135,8 @@ interface ScheduleHealthInfo {
   status: ScheduleHealthStatus
   expectedProgress: number
   delta: number
+  /** 予定より何日分遅れているか（先行しているときは負） */
+  behindDays: number
   label: string
   accent: string
   background: string
@@ -154,9 +156,10 @@ const GANTT_LEFT_COLUMN_WIDTHS_STORAGE_KEY = 'gantt-left-column-widths'
 const PARENT_ROW_HEIGHT = 38
 const SUBTASK_ROW_HEIGHT = 28
 const SUBTASK_ADD_ROW_HEIGHT = 70
-const TASK_GROUP_GAP = 12
-const CATEGORY_HEADER_HEIGHT = 40
-const CATEGORY_GROUP_GAP = 16
+// タスクの間はすき間を空けず表のように続ける。すき間はカテゴリの境目だけ
+const TASK_GROUP_GAP = 0
+const CATEGORY_HEADER_HEIGHT = 34
+const CATEGORY_GROUP_GAP = 10
 const PARENT_BAR_HEIGHT = 20
 const SUBTASK_BAR_HEIGHT = 14
 const DEPENDENCY_HANDLE_SIZE = 10
@@ -228,6 +231,14 @@ const HEALTH_BAR_TONE: Record<ScheduleHealthStatus, { fill: string; track: strin
 }
 const OVERDUE_HATCH = 'repeating-linear-gradient(135deg, rgba(239, 68, 68, 0.45) 0 4px, transparent 4px 8px)'
 const TODAY_LINE_COLOR = '#f43f5e'
+/** 「遅れ」と判定する日数の選択肢（予定より何日分以上遅れていたら遅れにするか） */
+const BEHIND_THRESHOLD_OPTIONS = [1, 2, 3, 5, 7]
+const DEFAULT_BEHIND_THRESHOLD_DAYS = 2
+/** 親タスクの行の上に引く区切り線（タスクのまとまりが分かるように、サブタスク間より濃くする） */
+const TASK_DIVIDER_COLOR = '#3b4258'
+const SUBTASK_DIVIDER_COLOR = '#23283a'
+/** サブタスク行の背景（親タスクより少し暗くして、配下だと分かるようにする） */
+const GANTT_SUBTASK_SURFACE = '#23263a'
 
 function getTodayKey(): string {
   const now = new Date()
@@ -339,6 +350,8 @@ interface PersistedGanttViewSettings {
   zoom: ZoomMode
   timeScale: TimeScale
   groupMode: GroupMode
+  behindThresholdDays: number
+  workingDaysOnly: boolean
   statusFilter: StatusFilter
   showSubtasks: boolean
   showOutOfRange: boolean
@@ -434,6 +447,8 @@ function defaultGanttViewSettings(): PersistedGanttViewSettings {
     zoom: 'detail',
     timeScale: 'day',
     groupMode: 'category',
+    behindThresholdDays: DEFAULT_BEHIND_THRESHOLD_DAYS,
+    workingDaysOnly: false,
     statusFilter: 'active',
     showSubtasks: true,
     showOutOfRange: true,
@@ -465,6 +480,10 @@ function loadGanttViewSettings(): PersistedGanttViewSettings {
         ? parsed.timeScale
         : defaults.timeScale,
       groupMode: parsed.groupMode === 'assignee' ? 'assignee' : defaults.groupMode,
+      behindThresholdDays: typeof parsed.behindThresholdDays === 'number' && BEHIND_THRESHOLD_OPTIONS.includes(parsed.behindThresholdDays)
+        ? parsed.behindThresholdDays
+        : defaults.behindThresholdDays,
+      workingDaysOnly: typeof parsed.workingDaysOnly === 'boolean' ? parsed.workingDaysOnly : defaults.workingDaysOnly,
       statusFilter: parsed.statusFilter === 'active' || parsed.statusFilter === 'done' || parsed.statusFilter === 'all'
         ? parsed.statusFilter
         : defaults.statusFilter,
@@ -590,7 +609,7 @@ function isCurrentUnit(unitStart: string, todayKey: string, scale: TimeScale): b
 }
 
 function getUnitBackground(unitStart: string, todayKey: string, scale: TimeScale, dayKind: DayKind): string {
-  if (isCurrentUnit(unitStart, todayKey, scale)) return '#172554'
+  if (isCurrentUnit(unitStart, todayKey, scale)) return scale === 'day' ? '#4c0519' : '#172554'
   if (dayKind === 'sunday' || dayKind === 'holiday') return '#3f1d1d80'
   if (dayKind === 'saturday') return '#0c2a4480'
   return 'transparent'
@@ -642,95 +661,82 @@ function outOfRangeDirection(bar: TodoBar, rangeStart: string, rangeEnd: string)
   return null
 }
 
-function calculateExpectedProgress(bar: TodoBar, todayKey: string): number {
-  if (todayKey < bar.startDate) return 0
-  if (todayKey > bar.endDate) return 100
-
-  const totalDays = Math.max(diffCalendarDays(bar.endDate, bar.startDate), 0) + 1
-  const elapsedDays = clamp(diffCalendarDays(todayKey, bar.startDate), 0, totalDays - 1)
-
-  return clamp(Math.round(((elapsedDays + 0.5) / totalDays) * 100), 0, 100)
+interface ScheduleHealthOptions {
+  /** 予定より何日分以上遅れていたら「遅れ」にするか */
+  behindThresholdDays: number
+  /** true のとき土日・祝日を数えない */
+  workingDaysOnly: boolean
+  holidayNames: Map<string, string>
 }
 
-function getScheduleHealth(todo: Todo, todoBar: TodoBar | null, todayKey: string): ScheduleHealthInfo | null {
+function isCountedDay(dateKey: string, options: ScheduleHealthOptions): boolean {
+  if (!options.workingDaysOnly) return true
+  const day = parseDateKey(dateKey).getDay()
+  return day !== 0 && day !== 6 && !options.holidayNames.has(dateKey)
+}
+
+/** 開始日から終了日まで（両端を含む）の日数。workingDaysOnly のときは土日・祝日を除く */
+function countDays(startKey: string, endKey: string, options: ScheduleHealthOptions): number {
+  if (endKey < startKey) return 0
+  if (!options.workingDaysOnly) return diffCalendarDays(endKey, startKey) + 1
+  let count = 0
+  for (let key = startKey; key <= endKey; key = addDays(key, 1)) {
+    if (isCountedDay(key, options)) count += 1
+  }
+  return count
+}
+
+/**
+ * 予定の進捗（今日時点で何%進んでいるはずか）と、期間の日数。
+ * 期間のうち昨日までに過ぎた日数に、今日の半日分を足した割合を予定とする
+ */
+function calculateSchedule(bar: TodoBar, todayKey: string, options: ScheduleHealthOptions): { expectedProgress: number; totalDays: number } {
+  let effective = options
+  let totalDays = countDays(bar.startDate, bar.endDate, effective)
+  // 期間がすべて休日のタスクは、暦日で数える
+  if (totalDays === 0) {
+    effective = { ...options, workingDaysOnly: false }
+    totalDays = countDays(bar.startDate, bar.endDate, effective)
+  }
+  if (todayKey < bar.startDate) return { expectedProgress: 0, totalDays }
+  if (todayKey > bar.endDate) return { expectedProgress: 100, totalDays }
+  const passedDays = countDays(bar.startDate, addDays(todayKey, -1), effective) + (isCountedDay(todayKey, effective) ? 0.5 : 0)
+  return { expectedProgress: clamp(Math.round((passedDays / totalDays) * 100), 0, 100), totalDays }
+}
+
+function getScheduleHealth(todo: Todo, todoBar: TodoBar | null, todayKey: string, options: ScheduleHealthOptions): ScheduleHealthInfo | null {
   if (!todoBar) return null
 
   const progress = clamp(todo.status === 'done' ? 100 : todo.progress, 0, 100)
-  const expectedProgress = calculateExpectedProgress(todoBar, todayKey)
+  const { expectedProgress, totalDays } = calculateSchedule(todoBar, todayKey, options)
   const delta = Math.round(progress - expectedProgress)
+  // 予定との差を、期間の日数に換算する（例: 10日間のタスクで 25% 足りなければ 2.5日分の遅れ）
+  const behindDays = ((expectedProgress - progress) / 100) * totalDays
   const daysOverdue = todo.status === 'done' || todayKey <= todoBar.endDate
     ? 0
     : diffCalendarDays(todayKey, todoBar.endDate)
 
   if (todo.status === 'done') {
-    return {
-      status: 'done',
-      expectedProgress: 100,
-      delta: 0,
-      label: '完了',
-      accent: '#22c55e',
-      background: '#052e16',
-      text: '#dcfce7'
-    }
+    return { status: 'done', expectedProgress: 100, delta: 0, behindDays: 0, label: '完了', accent: '#22c55e', background: '#052e16', text: '#dcfce7' }
   }
 
   if (daysOverdue > 0 && progress < 100) {
-    return {
-      status: 'overdue',
-      expectedProgress,
-      delta,
-      label: daysOverdue + '日超過',
-      accent: '#ef4444',
-      background: '#450a0a',
-      text: '#fecaca'
-    }
+    return { status: 'overdue', expectedProgress, delta, behindDays, label: `期限を${daysOverdue}日超過`, accent: '#ef4444', background: '#450a0a', text: '#fecaca' }
   }
 
   if (todayKey < todoBar.startDate && progress === 0) {
-    return {
-      status: 'future',
-      expectedProgress,
-      delta,
-      label: '開始前',
-      accent: '#64748b',
-      background: '#0f172a',
-      text: '#cbd5e1'
-    }
+    return { status: 'future', expectedProgress, delta, behindDays, label: '開始前', accent: '#64748b', background: '#0f172a', text: '#cbd5e1' }
   }
 
-  if (delta <= -12) {
-    return {
-      status: 'behind',
-      expectedProgress,
-      delta,
-      label: Math.abs(delta) + 'pt遅れ',
-      accent: '#f59e0b',
-      background: '#451a03',
-      text: '#fde68a'
-    }
+  if (behindDays >= options.behindThresholdDays) {
+    return { status: 'behind', expectedProgress, delta, behindDays, label: `約${Math.max(1, Math.round(behindDays))}日遅れ`, accent: '#f59e0b', background: '#451a03', text: '#fde68a' }
   }
 
-  if (delta >= 12) {
-    return {
-      status: 'ahead',
-      expectedProgress,
-      delta,
-      label: delta + 'pt先行',
-      accent: '#22c55e',
-      background: '#052e16',
-      text: '#dcfce7'
-    }
+  if (-behindDays >= options.behindThresholdDays) {
+    return { status: 'ahead', expectedProgress, delta, behindDays, label: `約${Math.round(-behindDays)}日先行`, accent: '#22c55e', background: '#052e16', text: '#dcfce7' }
   }
 
-  return {
-    status: 'onTrack',
-    expectedProgress,
-    delta,
-    label: '順調',
-    accent: '#38bdf8',
-    background: '#082f49',
-    text: '#e0f2fe'
-  }
+  return { status: 'onTrack', expectedProgress, delta, behindDays, label: '順調', accent: '#38bdf8', background: '#082f49', text: '#e0f2fe' }
 }
 
 function isDateKeyFormat(value: string): boolean {
@@ -830,14 +836,14 @@ function subTaskTone(subTask: SubTask, todayKey: string): {
     }
 }
 
-function rowTimelineStyle(height: number, unitWidth: number, timelineWidth: number, nonWorkingBackground: string | null): React.CSSProperties {
+function rowTimelineStyle(height: number, unitWidth: number, timelineWidth: number, nonWorkingBackground: string | null, surface: string = GANTT_SURFACE): React.CSSProperties {
   const gridLines = `repeating-linear-gradient(to right, transparent 0, transparent ${unitWidth - 1}px, ${GANTT_LINE} ${unitWidth - 1}px, ${GANTT_LINE} ${unitWidth}px)`
   return {
     position: 'relative',
     width: timelineWidth,
     minWidth: timelineWidth,
     height,
-    backgroundColor: GANTT_SURFACE,
+    backgroundColor: surface,
     // 罫線を上に、土日祝の塗り（1枚の SVG）を下に重ねる
     backgroundImage: nonWorkingBackground ? `${gridLines}, ${nonWorkingBackground}` : gridLines,
     backgroundSize: nonWorkingBackground ? `auto, ${timelineWidth}px 100%` : undefined,
@@ -870,7 +876,12 @@ function buildTodoBarTooltip(options: {
     `担当: ${assignees.length > 0 ? assignees.join('、') : '未割り当て'} ・ 進捗 ${progress}%${health ? ` ・ ${health.label}` : ''}`,
     `期間: ${shortDateLabel(bar.startDate)} → ${shortDateLabel(bar.endDate)}${outside ? `（${outside === 'before' ? '表示期間より前' : '表示期間より後'}）` : ''}`
   ]
-  if (health && health.status !== 'done' && health.status !== 'future') lines.push(`予定では今日時点で ${health.expectedProgress}%`)
+  if (health && health.status !== 'done' && health.status !== 'future') {
+    const gap = health.behindDays >= 0.5
+      ? `（約${Math.round(health.behindDays)}日分の遅れ）`
+      : health.behindDays <= -0.5 ? `（約${Math.round(-health.behindDays)}日分の先行）` : ''
+    lines.push(`今日時点の予定 ${health.expectedProgress}% ／ 実績 ${progress}%${gap}`)
+  }
   lines.push('')
   if (latestNote) {
     const body = latestNote.body.replace(/\s+/g, ' ').trim()
@@ -987,6 +998,8 @@ export function GanttView({
   const [newSubTaskDraft, setNewSubTaskDraft] = useState<NewSubTaskDraft>({ title: '', startDate: '', dueDate: '' })
   const [creatingSubTask, setCreatingSubTask] = useState(false)
   const [groupMode, setGroupMode] = useState<GroupMode>(initialSettings.groupMode)
+  const [behindThresholdDays, setBehindThresholdDays] = useState(initialSettings.behindThresholdDays)
+  const [workingDaysOnly, setWorkingDaysOnly] = useState(initialSettings.workingDaysOnly)
   // 祝日（YYYY-MM-DD → 名前）。ライブラリが大きいので表示後に読み込む
   const [holidayNames, setHolidayNames] = useState<Map<string, string>>(() => new Map())
   // バーのツールチップ・要相談マーク用
@@ -1124,6 +1137,8 @@ export function GanttView({
       zoom,
       timeScale,
       groupMode,
+      behindThresholdDays,
+      workingDaysOnly,
       statusFilter,
       showSubtasks,
       showOutOfRange,
@@ -1140,6 +1155,7 @@ export function GanttView({
 
     window.localStorage.setItem(GANTT_VIEW_SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings))
   }, [
+    behindThresholdDays,
     controlsCollapsed,
     groupMode,
     manualEnd,
@@ -1154,6 +1170,7 @@ export function GanttView({
     showUnscheduled,
     statusFilter,
     timeScale,
+    workingDaysOnly,
     zoom
   ])
 
@@ -2318,7 +2335,9 @@ export function GanttView({
       void window.api.subtaskUpdate(current.targetId, {
         start_date: current.previewStartDate,
         due_date: current.previewEndDate
-      }).then(async () => {
+      }).then(async (updated) => {
+        // 変更通知を待たずに、動かしたサブタスクをすぐ反映する（通知が遅れても元の位置に戻って見えないように）
+        setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
         if (shouldExtendOwnerDue) {
           const latestTodos = await window.api.todoGetAll()
           ensureRangeIncludesTodos(affectedTodoIds, latestTodos)
@@ -2638,11 +2657,11 @@ export function GanttView({
   const scheduleHealthEntries = useMemo(() => (
     chartGroups
       .map((group) => {
-        const health = getScheduleHealth(group.todo, group.todoBar, todayKey)
+        const health = getScheduleHealth(group.todo, group.todoBar, todayKey, { behindThresholdDays, workingDaysOnly, holidayNames })
         return health ? { todoId: group.todo.id, health } : null
       })
       .filter((entry): entry is { todoId: string; health: ScheduleHealthInfo } => Boolean(entry))
-  ), [chartGroups, todayKey])
+  ), [behindThresholdDays, chartGroups, holidayNames, todayKey, workingDaysOnly])
   const scheduleHealthByTodoId = useMemo(() => (
     new Map(scheduleHealthEntries.map((entry) => [entry.todoId, entry.health]))
   ), [scheduleHealthEntries])
@@ -2712,7 +2731,8 @@ export function GanttView({
       const endIndex = clamp(diffUnits(displayedTodoBar.endDate, timelineStart, timeScale), 0, totalUnits - 1)
 
       next.set(group.todo.id, {
-        sourceX: endIndex * unitWidth + unitWidth - 6,
+        // 依存関係を引くつかみはバーの右端のすぐ外に置く。バーの中に置くと、期限を変える右端のつかみと重なってドラッグできなくなる
+        sourceX: endIndex * unitWidth + unitWidth + 3,
         targetX: startIndex * unitWidth + DEPENDENCY_TARGET_INSET,
         centerY: row.centerY
       })
@@ -2841,38 +2861,14 @@ export function GanttView({
       })
   ), [todoById, visibleDependencies])
 
-  const renderTodayOverlay = (): React.JSX.Element | null => {
-    if (todayIndex < 0 || todayIndex >= totalUnits || todayX === null) return null
-    return (
-      <>
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            bottom: 0,
-            left: todayIndex * unitWidth,
-            width: unitWidth,
-            background: '#2563eb12',
-            pointerEvents: 'none'
-          }}
-        />
-        {/* 全行を貫く今日の線。左の一覧（z-index 3 以上）より下、バーの文字より下に置く */}
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            bottom: 0,
-            left: todayX - 1,
-            width: 2,
-            background: TODAY_LINE_COLOR,
-            opacity: 0.8,
-            pointerEvents: 'none',
-            zIndex: 2
-          }}
-        />
-      </>
-    )
-  }
+  // 今日の列を囲む枠。行ごとに描くとカテゴリの境目で途切れるので、チャート全体に1つだけ重ねる。
+  // 週・月・年表示では、単位の中の今日1日分の幅にする
+  const todayBox = todayIndex >= 0 && todayIndex < totalUnits && todayX !== null
+    ? (() => {
+        const width = Math.max(unitWidth / todayUnitDays, 6)
+        return { left: todayX - width / 2, width }
+      })()
+    : null
 
   const datedSubTaskCount = chartGroups.reduce((sum, group) => sum + group.datedSubTasks.length, 0)
   const taskSelectionSummary = selectedTodoIds.length === 0
@@ -3018,7 +3014,7 @@ export function GanttView({
           <span style={healthSummaryChipStyle('#450a0a', '#ef4444', '#fecaca')}>期限超過 {scheduleHealthSummary.overdue}</span>
         )}
         {showScheduleSignals && scheduleHealthSummary.behind > 0 && (
-          <span style={healthSummaryChipStyle('#451a03', '#f59e0b', '#fde68a')}>遅れ {scheduleHealthSummary.behind}</span>
+          <span style={healthSummaryChipStyle('#451a03', '#f59e0b', '#fde68a')} title={`予定より${behindThresholdDays}日分以上遅れているタスク（表示設定で変更できます）`}>遅れ {scheduleHealthSummary.behind}</span>
         )}
         {showScheduleSignals && scheduleHealthSummary.healthy > 0 && (
           <span style={healthSummaryChipStyle('#082f49', '#38bdf8', '#e0f2fe')}>順調 {scheduleHealthSummary.healthy}</span>
@@ -3036,7 +3032,7 @@ export function GanttView({
           </span>
         )}
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }} aria-label="凡例">
-          <span style={legendItemStyle()}><span style={{ width: 2, height: 12, background: TODAY_LINE_COLOR, borderRadius: 1 }} />今日</span>
+          <span style={legendItemStyle()}><span style={{ width: 10, height: 12, border: `2px solid ${TODAY_LINE_COLOR}`, borderTop: 'none', borderBottom: 'none', background: 'rgba(244, 63, 94, 0.15)' }} />今日</span>
           {timeScale === 'day' && (
             <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: '#f8717140', border: '1px solid #f8717166' }} />土日祝</span>
           )}
@@ -3046,7 +3042,6 @@ export function GanttView({
               <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: HEALTH_BAR_TONE.behind.fill }} />遅れ</span>
               <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: HEALTH_BAR_TONE.overdue.fill }} />期限超過</span>
               <span style={legendItemStyle()}><span style={{ width: 14, height: 8, background: OVERDUE_HATCH, border: '1px dashed #ef4444' }} />超過している日数</span>
-              <span style={legendItemStyle()}><span style={{ width: 2, height: 10, background: '#f8fafc', opacity: 0.8 }} />予定の進捗</span>
             </>
           )}
         </span>
@@ -3179,6 +3174,30 @@ export function GanttView({
                   </button>
                 </div>
               )}
+            </div>
+
+            <div style={settingsSectionStyle}>
+              <label style={controlLabelStyle}>遅れの判定</label>
+              <div style={{ fontSize: '0.74rem', color: '#94a3b8', lineHeight: 1.6 }}>
+                期間のうち今日までに過ぎた日数の割合を「予定の進捗」とし、実際の進捗が予定より何日分遅れているかで判定します。
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.76rem', color: '#cbd5e1' }}>予定より</span>
+                {BEHIND_THRESHOLD_OPTIONS.map((days) => (
+                  <button key={days} onClick={() => setBehindThresholdDays(days)} style={chipStyle(behindThresholdDays === days)}>
+                    {days}日
+                  </button>
+                ))}
+                <span style={{ fontSize: '0.76rem', color: '#cbd5e1' }}>以上遅れていたら「遅れ」</span>
+              </div>
+              <label style={toggleLabelStyle}>
+                <input type="checkbox" checked={workingDaysOnly} onChange={(event) => setWorkingDaysOnly(event.target.checked)} />
+                <span>土日・祝日を除いて数える</span>
+              </label>
+              <div style={{ fontSize: '0.7rem', color: '#64748b', lineHeight: 1.6 }}>
+                例: 10日間のタスクの5日目なら予定は45%。実際が20%なら約2.5日分の遅れです。
+                期限を過ぎて100%未満は「期限超過」、開始日前で0%は「開始前」になります。
+              </div>
             </div>
 
             {categoryOptions.length > 0 && (
@@ -3363,10 +3382,14 @@ export function GanttView({
                         padding: '5px 0 6px',
                         textAlign: 'center',
                         background: unit.background,
-                        borderRight: '1px solid #1e293b'
+                        borderRight: '1px solid #1e293b',
+                        // 日表示では、下の今日の列の枠とつながるように上と左右を囲む
+                        boxShadow: unit.isCurrent && timeScale === 'day'
+                          ? `inset 2px 0 0 ${TODAY_LINE_COLOR}, inset -2px 0 0 ${TODAY_LINE_COLOR}, inset 0 2px 0 ${TODAY_LINE_COLOR}`
+                          : undefined
                       }}
                     >
-                      <div style={{ fontSize: '0.62rem', color: unit.isCurrent ? '#bfdbfe' : unit.dayKind === 'saturday' ? '#7dd3fc' : unit.dayKind ? '#fca5a5' : '#64748b' }}>{unit.primaryLabel}</div>
+                      <div style={{ fontSize: '0.62rem', color: unit.isCurrent ? (timeScale === 'day' ? '#fecdd3' : '#bfdbfe') : unit.dayKind === 'saturday' ? '#7dd3fc' : unit.dayKind ? '#fca5a5' : '#64748b' }}>{unit.primaryLabel}</div>
                       <div style={{ marginTop: 2, fontSize: '0.68rem', color: unit.isCurrent ? '#dbeafe' : '#cbd5e1', fontWeight: unit.isCurrent ? 700 : 500 }}>{unit.secondaryLabel}</div>
                     </div>
                   ))}
@@ -3418,19 +3441,34 @@ export function GanttView({
                   </svg>
                 )}
 
+                {todayBox && (
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      bottom: 0,
+                      left: leftTableWidth + todayBox.left,
+                      width: todayBox.width,
+                      borderLeft: `2px solid ${TODAY_LINE_COLOR}`,
+                      borderRight: `2px solid ${TODAY_LINE_COLOR}`,
+                      background: 'rgba(244, 63, 94, 0.08)',
+                      boxSizing: 'border-box',
+                      pointerEvents: 'none',
+                      // 左の一覧（z-index 3 以上）より下、バーの文字（同じ 2 で後から描かれる）より下
+                      zIndex: 2
+                    }}
+                  />
+                )}
+
                 {chartSections.map((section) => (
                   <React.Fragment key={section.key}>
                     {showCategoryGrouping && (
                       <div
-                        className="nm-raised-sm"
                         style={{
                           display: 'flex',
                           minHeight: CATEGORY_HEADER_HEIGHT,
-                          marginBottom: TASK_GROUP_GAP,
-                          borderRadius: 8,
-                          overflow: 'visible',
-                          border: `1px solid ${GANTT_LINE}`,
-                          background: GANTT_SURFACE_RAISED
+                          background: `${section.color}14`
                         }}
                       >
                         <div
@@ -3441,9 +3479,12 @@ export function GanttView({
                             width: leftTableWidth,
                             minWidth: leftTableWidth,
                             boxSizing: 'border-box',
-                            backgroundColor: GANTT_SURFACE_RAISED,
-                            backgroundImage: `linear-gradient(90deg, ${section.color}24, transparent 72%)`,
+                            backgroundColor: '#161b2c',
+                            backgroundImage: `linear-gradient(90deg, ${section.color}55, ${section.color}14 80%)`,
                             borderRight: `1px solid ${GANTT_LINE}`,
+                            borderLeft: `3px solid ${section.color}`,
+                            // 上端にカテゴリ色の線を引いて、ここから新しいまとまりだと分かるようにする
+                            boxShadow: `inset 0 2px 0 ${section.color}`,
                             padding: '0 12px',
                             display: 'flex',
                             alignItems: 'center',
@@ -3457,14 +3498,20 @@ export function GanttView({
                           >
                             ▾
                           </button>
-                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: section.color, flexShrink: 0, boxShadow: `0 0 0 3px ${section.color}24` }} />
-                          <span style={{ color: GANTT_TEXT, fontSize: '0.82rem', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{section.label}</span>
+                          <span style={{ color: GANTT_TEXT, fontSize: '0.86rem', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{section.label}</span>
                           <span className="nm-pressed-xs" style={categoryCountBadgeStyle}>{section.totalCount}</span>
                           {section.allDone && <span style={{ ...statusDotStyle, width: 8, height: 8, background: STATUS_TONE.done.fill }} title="すべて完了" />}
                         </div>
-                        <div style={rowTimelineStyle(CATEGORY_HEADER_HEIGHT, unitWidth, timelineWidth, nonWorkingBackground)} onPointerDown={beginPan}>
-                          {renderTodayOverlay()}
-                        </div>
+                        <div
+                          onPointerDown={beginPan}
+                          style={{
+                            width: timelineWidth,
+                            minWidth: timelineWidth,
+                            minHeight: CATEGORY_HEADER_HEIGHT,
+                            boxShadow: `inset 0 2px 0 ${section.color}`,
+                            cursor: 'grab'
+                          }}
+                        />
                       </div>
                     )}
                     {!section.collapsed && section.groups.map((group, groupIndex) => {
@@ -3524,7 +3571,9 @@ export function GanttView({
                   ? { left: barEnd, width: Math.min(todayX, timelineWidth) - barEnd, title: `${scheduleHealth.label}（期限 ${shortDateLabel(displayedTodoBar.endDate)} から今日まで）` }
                   : null
                 const discussionCount = discussionCountByTodo.get(group.todo.id) ?? 0
-                const discussionMarkerLeft = Math.min((overdueTail ? overdueTail.left + overdueTail.width : barEnd) + 6, Math.max(timelineWidth - 60, 0))
+                const sectionStripeColor = showCategoryGrouping ? section.color : (group.todo.category_color ?? 'transparent')
+                // 要相談の印は、バーの右外にある依存関係のつかみ（または期限超過の斜線）を避けて置く
+                const discussionMarkerLeft = Math.min(overdueTail ? overdueTail.left + overdueTail.width + 6 : barEnd + 18, Math.max(timelineWidth - 60, 0))
                 const barTooltip = displayedTodoBar
                   ? buildTodoBarTooltip({
                     todo: group.todo,
@@ -3541,14 +3590,10 @@ export function GanttView({
                 return (
                   <div
                     key={group.todo.id}
-                    className="nm-raised-sm"
                     style={{
                       marginBottom: groupIndex === section.groups.length - 1 ? CATEGORY_GROUP_GAP : TASK_GROUP_GAP,
-                      borderRadius: 8,
-                      overflow: 'visible',
-                      border: `1px solid ${GANTT_LINE}`,
                       background: GANTT_SURFACE_PRESSED,
-                      boxShadow: isReorderDragTarget ? '0 0 0 2px rgba(56, 189, 248, 0.34)' : undefined
+                      boxShadow: isReorderDragTarget ? '0 0 0 2px rgba(56, 189, 248, 0.34) inset' : undefined
                     }}
                   >
                     <div
@@ -3562,11 +3607,11 @@ export function GanttView({
                       style={{
                         display: 'flex',
                         minHeight: PARENT_ROW_HEIGHT,
-                        borderTop: isReorderDragTarget ? '2px solid #38bdf8' : '1px solid #111827',
+                        borderTop: isReorderDragTarget ? '2px solid #38bdf8' : `1px solid ${TASK_DIVIDER_COLOR}`,
                         opacity: isReorderDragSource ? 0.7 : 1
                       }}
                     >
-                      <div style={{ position: 'sticky', left: 0, zIndex: 4, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0f172a', borderRight: '1px solid #1e293b', padding: '0 8px', borderLeft: `3px solid ${group.todo.category_color ?? 'transparent'}` }}>
+                      <div style={{ position: 'sticky', left: 0, zIndex: 4, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0f172a', borderRight: '1px solid #1e293b', padding: '0 8px', borderLeft: `3px solid ${sectionStripeColor}` }}>
                         <div style={{ ...leftRowGridStyle, gridTemplateColumns: leftGridTemplate }}>
                           <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                           {isReorderMode && (
@@ -3734,7 +3779,6 @@ export function GanttView({
                       </div>
 
                       <div style={rowTimelineStyle(PARENT_ROW_HEIGHT, unitWidth, timelineWidth, nonWorkingBackground)} onPointerDown={beginPan}>
-                        {renderTodayOverlay()}
                         {baselineBar && baselineVisible && (
                           <div
                             style={{
@@ -3780,9 +3824,6 @@ export function GanttView({
                               <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${progress}%`, background: barTone.fill }} />
                               {group.todo.assignee_color && (
                                 <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: group.todo.assignee_color }} />
-                              )}
-                              {showScheduleSignals && scheduleHealth && scheduleHealth.status !== 'done' && scheduleHealth.status !== 'future' && scheduleHealth.expectedProgress > 0 && scheduleHealth.expectedProgress < 100 && (
-                                <div style={expectedProgressTickStyle(scheduleHealth.expectedProgress)} />
                               )}
                             </div>
                             <div
@@ -3867,7 +3908,9 @@ export function GanttView({
                       </div>
                     </div>
 
-                    {showSubtasks && isExpanded && group.datedSubTasks.map(({ subTask, bar }) => {
+                    {showSubtasks && isExpanded && group.datedSubTasks.map(({ subTask, bar }, subTaskIndex) => {
+                      // ツリーの枝: 最後のサブタスク（追加欄が開いていないとき）は └、それ以外は ├
+                      const isLastSubTask = subTaskIndex === group.datedSubTasks.length - 1 && addingSubTaskTodoId !== group.todo.id
                       const tone = subTaskTone(subTask, todayKey)
                       const isSubTaskReorderSource = isReorderMode && draggingSubTaskId === subTask.id
                       const isSubTaskReorderTarget = isReorderMode && dragOverSubTaskId === subTask.id && draggingSubTaskId !== subTask.id
@@ -3912,12 +3955,12 @@ export function GanttView({
                           style={{
                             display: 'flex',
                             minHeight: SUBTASK_ROW_HEIGHT,
-                            borderTop: isSubTaskReorderTarget ? '2px solid #38bdf8' : '1px solid #111827',
+                            borderTop: isSubTaskReorderTarget ? '2px solid #38bdf8' : `1px solid ${SUBTASK_DIVIDER_COLOR}`,
                             opacity: isSubTaskReorderSource ? 0.65 : 1,
                             boxShadow: isSubTaskReorderTarget ? '0 0 0 2px rgba(56, 189, 248, 0.22) inset' : undefined
                           }}
                         >
-                          <div style={{ position: 'sticky', left: 0, zIndex: 3, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0b1220', borderRight: '1px solid #1e293b', padding: '0 8px 0 24px' }}>
+                          <div style={{ position: 'sticky', left: 0, zIndex: 3, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0b1220', borderRight: '1px solid #1e293b', borderLeft: `3px solid ${sectionStripeColor}`, padding: '0 8px 0 21px' }}>
                             <div style={{ ...leftSubRowGridStyle, gridTemplateColumns: leftGridTemplate }}>
                               <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
                                 {isReorderMode && (
@@ -3940,6 +3983,10 @@ export function GanttView({
                                     style={{ ...tableInputStyle, width: '100%' }}
                                   />
                                 ) : (
+                                <>
+                                <span aria-hidden="true" style={{ color: '#64748b', fontSize: '0.74rem', flexShrink: 0, width: 12, textAlign: 'center' }}>
+                                  {isLastSubTask ? '└' : '├'}
+                                </span>
                                 <button
                                   onClick={() => beginSubTaskCellEdit(subTask, 'title')}
                                   title={subTask.title}
@@ -3954,6 +4001,7 @@ export function GanttView({
                                 >
                                   {subTask.title}
                                 </button>
+                                </>
                               )}
                               </div>
                               {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'start_date' ? (
@@ -4051,8 +4099,7 @@ export function GanttView({
                             </div>
                           </div>
 
-                          <div style={rowTimelineStyle(SUBTASK_ROW_HEIGHT, unitWidth, timelineWidth, nonWorkingBackground)} onPointerDown={beginPan}>
-                            {renderTodayOverlay()}
+                          <div style={rowTimelineStyle(SUBTASK_ROW_HEIGHT, unitWidth, timelineWidth, nonWorkingBackground, GANTT_SUBTASK_SURFACE)} onPointerDown={beginPan}>
                             {baselineBar && baselineVisible && (
                               <div
                                 style={{
@@ -4069,28 +4116,30 @@ export function GanttView({
                                 }}
                               />
                             )}
-                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTaskOutsideRange ? `${subTaskOutsideRange === 'before' ? '期間前' : '期間後'}: ` : ''}${subTask.title} ${subTaskProgress}% (${displayedBar.startDate}${displayedBar.startDate === displayedBar.endDate ? '' : ` - ${displayedBar.endDate}`})`} style={{ position: 'absolute', left: subTaskBarLeft, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: subTaskBarWidth, height: SUBTASK_BAR_HEIGHT, borderRadius: 3, background: tone.background, border: `1px ${subTaskOutsideRange ? 'dashed' : tone.borderStyle} ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: subTaskOutsideRange || !isTimelineEditable ? 'pointer' : 'grab', overflow: 'hidden', boxShadow: subTaskActiveState ? '0 0 0 2px rgba(59, 130, 246, 0.22)' : Boolean(subTask.done) ? '0 0 0 1px rgba(134, 239, 172, 0.18) inset' : 'none' }}>
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  bottom: 0,
-                                  left: 0,
-                                  width: `${subTaskProgress}%`,
-                                  background: Boolean(subTask.done)
-                                    ? 'linear-gradient(90deg, #166534, #15803d)'
-                                    : 'linear-gradient(90deg, #22c55e, #10b981)',
-                                  pointerEvents: 'none'
-                                }}
-                              />
+                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTaskOutsideRange ? `${subTaskOutsideRange === 'before' ? '期間前' : '期間後'}: ` : ''}${subTask.title} ${subTaskProgress}% (${displayedBar.startDate}${displayedBar.startDate === displayedBar.endDate ? '' : ` - ${displayedBar.endDate}`})`} style={{ position: 'absolute', left: subTaskBarLeft, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: subTaskBarWidth, height: SUBTASK_BAR_HEIGHT, borderRadius: 3, background: tone.background, border: `1px ${subTaskOutsideRange ? 'dashed' : tone.borderStyle} ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: subTaskOutsideRange || !isTimelineEditable ? 'pointer' : 'grab', boxShadow: subTaskActiveState ? '0 0 0 2px rgba(59, 130, 246, 0.22)' : Boolean(subTask.done) ? '0 0 0 1px rgba(134, 239, 172, 0.18) inset' : 'none' }}>
+                              {/* 塗りは内側で切り取る。バー自体は overflow を切らない（名前を sticky で左端に留めるため） */}
+                              <div style={{ position: 'absolute', inset: 0, borderRadius: 2, overflow: 'hidden', pointerEvents: 'none' }}>
+                                <div
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    bottom: 0,
+                                    left: 0,
+                                    width: `${subTaskProgress}%`,
+                                    background: Boolean(subTask.done)
+                                      ? 'linear-gradient(90deg, #166534, #15803d)'
+                                      : 'linear-gradient(90deg, #22c55e, #10b981)'
+                                  }}
+                                />
+                              </div>
                               <div
                                 onPointerDown={(event) => {
                                   if (event.button !== 0 || !isTimelineEditable || subTaskOutsideRange) return
                                   beginInteraction('move', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX)
                                 }}
-                                style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: subTaskOutsideRange || !isTimelineEditable ? 'pointer' : 'grab' }}
+                                style={{ position: 'absolute', left: 4, right: 4, top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: subTaskOutsideRange ? 'center' : 'flex-start', cursor: subTaskOutsideRange || !isTimelineEditable ? 'pointer' : 'grab', zIndex: 2 }}
                               >
-                                <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0 5px', whiteSpace: 'nowrap', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
+                                <span style={{ position: subTaskOutsideRange ? undefined : 'sticky', left: leftTableWidth + 10, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.6rem', fontWeight: 700, padding: '0 2px', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0, 0, 0, 0.6)', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
                                   {subTaskOutsideRange
                                     ? subTaskOutsideRange === 'before' ? '← 期間前' : '期間後 →'
                                     : <>{Boolean(subTask.done) && unitWidth >= UNIT_WIDTH[timeScale].normal ? '完了 ' : ''}{unitWidth >= UNIT_WIDTH[timeScale].normal ? `${subTaskProgress}% ${subTask.title}` : barStartLabel(displayedBar.startDate, timeScale)}</>}
@@ -4098,8 +4147,8 @@ export function GanttView({
                               </div>
                               {isTimelineEditable && !subTaskOutsideRange && (
                                 <>
-                                  <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeStart', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX) }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'transparent' }} />
-                                  <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeEnd', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX) }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'transparent' }} />
+                                  <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeStart', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX) }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'transparent', zIndex: 3 }} />
+                                  <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeEnd', 'subtask', subTask.id, group.todo.id, displayedBar.startDate, displayedBar.endDate, event.clientX) }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'transparent', zIndex: 3 }} />
                                 </>
                               )}
                             </div>
@@ -4127,7 +4176,8 @@ export function GanttView({
                               boxSizing: 'border-box',
                               background: GANTT_SURFACE_DARK,
                               borderRight: `1px solid ${GANTT_LINE}`,
-                              padding: '8px 10px 8px 32px'
+                              borderLeft: `3px solid ${sectionStripeColor}`,
+                              padding: '8px 10px 8px 29px'
                             }}
                           >
                             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) 116px 116px auto auto', gap: 8, alignItems: 'center', height: '100%' }}>
@@ -4175,8 +4225,7 @@ export function GanttView({
                               </button>
                             </div>
                           </div>
-                          <div style={rowTimelineStyle(SUBTASK_ADD_ROW_HEIGHT, unitWidth, timelineWidth, nonWorkingBackground)} onPointerDown={beginPan}>
-                            {renderTodayOverlay()}
+                          <div style={rowTimelineStyle(SUBTASK_ADD_ROW_HEIGHT, unitWidth, timelineWidth, nonWorkingBackground, GANTT_SUBTASK_SURFACE)} onPointerDown={beginPan}>
                             {draftBar && draftVisible && (
                               <div
                                 style={{
@@ -4683,22 +4732,6 @@ const secondaryActionChipStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontSize: '0.76rem',
   fontWeight: 700
-}
-
-/** 今日時点で予定されている進捗の位置を示す、バーの中の白い目盛り */
-function expectedProgressTickStyle(expectedProgress: number): React.CSSProperties {
-  return {
-    position: 'absolute',
-    top: 2,
-    bottom: 2,
-    left: `calc(${expectedProgress}% - 1px)`,
-    width: 2,
-    borderRadius: 1,
-    background: '#f8fafc',
-    opacity: 0.75,
-    boxShadow: '0 0 0 1px rgba(15, 23, 42, 0.45)',
-    pointerEvents: 'none'
-  }
 }
 
 function legendItemStyle(): React.CSSProperties {
