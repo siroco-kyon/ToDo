@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AddDailyPlanItemOptions, Category, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateSubTaskInput, UpdateTodoInput, UserNotification } from './types'
+import type { AddDailyPlanItemOptions, Category, CreateSubTaskInput, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateSubTaskInput, UpdateTodoInput, UserNotification } from './types'
 import { useTimer } from './hooks/useTimer'
 import { Toolbar } from './components/Toolbar'
 import { CategoryList } from './components/CategoryList'
@@ -652,6 +652,12 @@ export function App(): React.JSX.Element {
     setAllSubTasks(nextSubTasks)
   }, [loadTodos])
 
+  const handleCreateSubTask = useCallback(async (todoId: string, data: CreateSubTaskInput) => {
+    await window.api.subtaskCreate(todoId, data)
+    const [nextSubTasks] = await Promise.all([window.api.subtaskGetAll(), loadTodos()])
+    setAllSubTasks(nextSubTasks)
+  }, [loadTodos])
+
   const handleOpenGanttWindow = useCallback(async () => {
     await window.api.windowOpenGantt()
   }, [])
@@ -1219,6 +1225,7 @@ export function App(): React.JSX.Element {
               onSelectTodo={openTodoDetail}
               onUpdateTodo={handleUpdate}
               onUpdateSubTask={handleUpdateSubTask}
+              onCreateSubTask={handleCreateSubTask}
               onShowToast={showToast}
             />
           ) : activeView === 'team' ? (

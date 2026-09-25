@@ -3,9 +3,10 @@ import { copyTextToClipboard } from '../lib/clipboard'
 import { dateStamp, downloadCsv, toCsv } from '../lib/csv'
 import { diffDaysFromToday, getDueDateColor, isoToDateKey, toDateKey } from '../lib/dueDate'
 import { LIKE_EMOJI } from './LikeButton'
-import { ProgressNoteThread } from './ProgressNoteThread'
+import { ProgressNoteThread, discussionBadgeStyle } from './ProgressNoteThread'
 import { ProgressSlider } from './ProgressSlider'
 import type {
+  CreateSubTaskInput,
   ProgressNote,
   ProgressNoteComment,
   PublicUser,
@@ -31,6 +32,7 @@ interface Props {
   onSelectTodo: (id: string) => void
   onUpdateTodo: (id: string, data: UpdateTodoInput) => Promise<void>
   onUpdateSubTask: (id: string, data: UpdateSubTaskInput) => Promise<void>
+  onCreateSubTask: (todoId: string, data: CreateSubTaskInput) => Promise<void>
   onShowToast: (message: string, type?: 'success' | 'error') => void
 }
 
@@ -43,7 +45,7 @@ type PeriodPreset = '7' | '14' | '30' | 'custom'
 type GroupMode = 'assignee' | 'category'
 type Freshness = 'fresh' | 'quiet' | 'stale' | 'none' | 'done' | 'notStarted'
 
-interface ReportRow {
+interface ReportRow extends ChangeSummary {
   todo: Todo
   subTasks: SubTask[]
   /** 期間内の進捗ログ（新しい順） */
@@ -51,14 +53,24 @@ interface ReportRow {
   lastReportAt: string | null
   lastMemoAt: string | null
   freshness: Freshness
+  /** サブタスクごとの期間中の変化 */
+  subTaskSummaries: Map<string, SubTaskChangeSummary>
+  /** 未解決の「要相談」進捗ログ（期間に関係なく） */
+  discussions: ProgressNote[]
+}
+
+/** 期間中の進捗・期限の変化（タスク・サブタスク共通） */
+interface ChangeSummary {
   /** 期間の最初の進捗率（期間中に進捗の変更がなければ null） */
   progressStart: number | null
   /** 期間中の期限の変更（古い順） */
   dueChanges: TodoChangeEntry[]
   /** 期間中に期限を後ろへずらした回数 */
   postponedCount: number
-  /** 未解決の「要相談」進捗ログ（期間に関係なく） */
-  discussions: ProgressNote[]
+}
+
+interface SubTaskChangeSummary extends ChangeSummary {
+  addedInPeriod: boolean
 }
 
 interface ReportGroup {
@@ -223,6 +235,16 @@ function buildRow(
     freshness = 'quiet'
   }
 
+  const summary = summarizeChanges(changes.filter((change) => change.subtask_id == null))
+  const subTaskSummaries = new Map(subTasks.map((subTask) => [subTask.id, {
+    ...summarizeChanges(changes.filter((change) => change.subtask_id === subTask.id)),
+    addedInPeriod: isInRange(isoToDateKey(subTask.created_at), range)
+  }]))
+
+  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, ...summary, subTaskSummaries, discussions }
+}
+
+function summarizeChanges(changes: TodoChangeEntry[]): ChangeSummary {
   // 期間中の最初の変更の「変更前」が、期間開始時点の値
   const progressChanges = changes.filter((change) => change.field === 'progress')
   const progressStart = progressChanges.length > 0 ? Number(progressChanges[0].old_value ?? 0) : null
@@ -230,8 +252,7 @@ function buildRow(
   const postponedCount = dueChanges.filter((change) =>
     change.old_value != null && change.new_value != null && change.new_value.slice(0, 10) > change.old_value.slice(0, 10)
   ).length
-
-  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, progressStart, dueChanges, postponedCount, discussions }
+  return { progressStart, dueChanges, postponedCount }
 }
 
 function groupRows(rows: ReportRow[], mode: GroupMode, users: PublicUser[], currentUserId: string | null): ReportGroup[] {
@@ -299,31 +320,42 @@ function statusSummary(row: ReportRow, separator: string): string {
 }
 
 /** 期間中の進捗の変化。変更がなければ null */
-function progressDeltaText(row: ReportRow): string | null {
-  if (row.progressStart === null) return null
-  const delta = row.todo.progress - row.progressStart
+function progressDeltaText(summary: ChangeSummary, current: number): string | null {
+  if (summary.progressStart === null) return null
+  const delta = current - summary.progressStart
   const sign = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : '±0'
-  return `${row.progressStart}% → ${row.todo.progress}%（${sign}）`
+  return `${summary.progressStart}% → ${current}%（${sign}）`
 }
 
-function progressDeltaColor(row: ReportRow): string {
-  if (row.progressStart === null) return '#64748b'
-  const delta = row.todo.progress - row.progressStart
+function progressDeltaColor(summary: ChangeSummary, current: number): string {
+  if (summary.progressStart === null) return '#64748b'
+  const delta = current - summary.progressStart
   if (delta > 0) return '#86efac'
   if (delta < 0) return '#fca5a5'
   return '#94a3b8'
 }
 
 /** 期間中の期限の変更。変更がなければ null */
-function dueChangeText(row: ReportRow): string | null {
-  if (row.dueChanges.length === 0) return null
-  const first = row.dueChanges[0].old_value
-  const current = row.todo.due_date
+function dueChangeText(summary: ChangeSummary, current: string | null): string | null {
+  if (summary.dueChanges.length === 0) return null
+  const first = summary.dueChanges[0].old_value
   const route = `${formatShortDate(first)} → ${formatShortDate(current)}`
-  if (row.postponedCount > 0) return `延期${row.postponedCount}回（${route}）`
+  if (summary.postponedCount > 0) return `延期${summary.postponedCount}回（${route}）`
   if (first && current && current.slice(0, 10) < first.slice(0, 10)) return `前倒し（${route}）`
   if (!first && current) return `期限を設定（${formatShortDate(current)}）`
   return `期限を変更（${route}）`
+}
+
+/** サブタスクの期間中の変化（追加・進捗・期限）。何もなければ null */
+function subTaskChangeText(subTask: SubTask, summary: SubTaskChangeSummary | undefined): string | null {
+  if (!summary) return null
+  const parts: string[] = []
+  if (summary.addedInPeriod) parts.push('期間中に追加')
+  const delta = progressDeltaText(summary, subTask.progress)
+  if (delta) parts.push(`期間中 ${delta}`)
+  const due = dueChangeText(summary, subTask.due_date)
+  if (due) parts.push(due)
+  return parts.length > 0 ? parts.join('・') : null
 }
 
 function assigneeText(todo: Todo): string {
@@ -374,9 +406,9 @@ function reportToMarkdown(groups: ReportGroup[], range: DateRange, mode: GroupMo
       const { todo } = row
       lines.push(`### ${todo.title}（${todo.progress}%・${statusSummary(row, '・')}）`)
       lines.push(`- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} / 期限 ${todo.due_date?.slice(0, 10) ?? '未設定'}`)
-      const delta = progressDeltaText(row)
+      const delta = progressDeltaText(row, row.todo.progress)
       if (delta) lines.push(`- 期間中の進捗: ${delta}`)
-      const dueChange = dueChangeText(row)
+      const dueChange = dueChangeText(row, row.todo.due_date)
       if (dueChange) lines.push(`- 期限の変更: ${dueChange}`)
       if (mode === 'assignee') lines.push(`- カテゴリ: ${todo.category_name ?? '未分類'}`)
       else if (multiUser) lines.push(`- 担当: ${assigneeText(todo)}`)
@@ -393,7 +425,8 @@ function reportToMarkdown(groups: ReportGroup[], range: DateRange, mode: GroupMo
             subTask.due_date ? `期限 ${subTask.due_date.slice(0, 10)}` : null,
             `${subTask.progress}%`
           ].filter(Boolean).join('・')
-          lines.push(`  - [${subTask.done ? 'x' : ' '}] ${subTask.title}（${meta}）`)
+          const change = subTaskChangeText(subTask, row.subTaskSummaries.get(subTask.id))
+          lines.push(`  - [${subTask.done ? 'x' : ' '}] ${subTask.title}（${meta}${change ? `・${change}` : ''}）`)
         }
       }
       if (row.notes.length === 0) {
@@ -441,25 +474,26 @@ function reportToCsv(groups: ReportGroup[]): string {
         todo.start_date?.slice(0, 10) ?? '',
         todo.due_date?.slice(0, 10) ?? '',
         todo.progress,
-        progressDeltaText(row) ?? '',
-        dueChangeText(row) ?? '',
+        progressDeltaText(row, row.todo.progress) ?? '',
+        dueChangeText(row, row.todo.due_date) ?? '',
         row.lastReportAt ? formatDateTime(row.lastReportAt) : '',
         row.discussions.length > 0 ? `${row.discussions.length}件` : '',
         notesToPlainText(row.notes),
         todo.memo.trim()
       ])
       for (const subTask of row.subTasks) {
+        const summary = row.subTaskSummaries.get(subTask.id)
         rows.push([
           subTask.assignee_name ?? '',
           todo.category_name ?? '未分類',
           todo.title,
           subTask.title,
-          subTask.done ? '完了' : '未完了',
+          `${subTask.done ? '完了' : '未完了'}${summary?.addedInPeriod ? '（期間中に追加）' : ''}`,
           subTask.start_date?.slice(0, 10) ?? '',
           subTask.due_date?.slice(0, 10) ?? '',
           subTask.progress,
-          '',
-          '',
+          summary ? progressDeltaText(summary, subTask.progress) ?? '' : '',
+          summary ? dueChangeText(summary, subTask.due_date) ?? '' : '',
           '',
           '',
           '',
@@ -473,7 +507,7 @@ function reportToCsv(groups: ReportGroup[]): string {
 
 // ─── 画面 ─────────────────────────────────────────────────────
 
-export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, onUpdateTodo, onUpdateSubTask, onShowToast }: Props): React.JSX.Element {
+export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, onUpdateTodo, onUpdateSubTask, onCreateSubTask, onShowToast }: Props): React.JSX.Element {
   const multiUser = users.length > 0
   const [preset, setPreset] = useState<PeriodPreset>(loadPreset)
   const [range, setRange] = useState<DateRange>(() => presetRange(PRESETS.find((item) => item.value === loadPreset())?.days ?? 7))
@@ -695,7 +729,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     pendingReactionsRef.current.add(key)
     try {
       patchNote(await window.api.progressNoteSetNeedsDiscussion(noteId, value))
-      onShowToast(value ? '要相談にしました' : '相談済みにしました')
+      onShowToast(value ? '要相談にしました' : '要相談を外しました')
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '要相談を切り替えられませんでした', 'error')
     } finally {
@@ -706,13 +740,28 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
   const updateSubTask = useCallback(async (subTask: SubTask, data: UpdateSubTaskInput, successMessage: string): Promise<boolean> => {
     try {
       await onUpdateSubTask(subTask.id, data)
+      // 進捗・期限は期間中の変化の表示に、期限は親タスクの期限延長にも影響するので取り直す
+      await load()
       onShowToast(successMessage)
       return true
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : 'サブタスクを更新できませんでした', 'error')
       return false
     }
-  }, [onShowToast, onUpdateSubTask])
+  }, [load, onShowToast, onUpdateSubTask])
+
+  const createSubTask = useCallback(async (todo: Todo, data: CreateSubTaskInput): Promise<boolean> => {
+    try {
+      await onCreateSubTask(todo.id, data)
+      // 親タスクの期限が自動で延びた場合の変更履歴を反映する
+      await load()
+      onShowToast(`サブタスク「${data.title}」を追加しました`)
+      return true
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : 'サブタスクを追加できませんでした', 'error')
+      return false
+    }
+  }, [load, onCreateSubTask, onShowToast])
 
   const updateTask = useCallback(async (todo: Todo, data: UpdateTodoInput, successMessage: string): Promise<boolean> => {
     try {
@@ -738,9 +787,11 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     onToggleDiscussion: (noteId, value) => void toggleDiscussion(noteId, value),
     onUpdateTask: updateTask,
     onUpdateSubTask: updateSubTask,
+    onCreateSubTask: createSubTask,
     onSelectTodo,
-    onShowToast
-  }), [canModifyNote, createNote, deleteNote, onSelectTodo, onShowToast, replyNote, toggleDiscussion, toggleLike, updateNote, updateSubTask, updateTask])
+    onShowToast,
+    users
+  }), [canModifyNote, createNote, createSubTask, deleteNote, onSelectTodo, onShowToast, replyNote, toggleDiscussion, toggleLike, updateNote, updateSubTask, updateTask, users])
 
   const handleCopyMarkdown = async (): Promise<void> => {
     try {
@@ -831,7 +882,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
               期間前に完了したタスクも表示
             </label>
             <label style={checkboxLabelStyle}>
-              <input type="checkbox" checked={onlyDiscussion} onChange={(event) => setOnlyDiscussion(event.target.checked)} style={{ accentColor: '#f97316' }} />
+              <input type="checkbox" checked={onlyDiscussion} onChange={(event) => setOnlyDiscussion(event.target.checked)} style={{ accentColor: '#6366f1' }} />
               要相談があるタスクのみ
             </label>
           </div>
@@ -842,7 +893,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
             <span style={summaryChipStyle(needsReportCount > 0 ? '#fde68a' : '#64748b')}>報告なし {needsReportCount}件</span>
             <span style={summaryChipStyle(overdueCount > 0 ? '#fca5a5' : '#64748b')}>期限超過 {overdueCount}件</span>
             <span style={summaryChipStyle('#93c5fd')}>進捗ログ {noteCount}件</span>
-            <span style={summaryChipStyle(discussionCount > 0 ? '#fdba74' : '#64748b')}>要相談 {discussionCount}件</span>
+            <span style={summaryChipStyle(discussionCount > 0 ? '#d6b38a' : '#64748b')}>要相談 {discussionCount}件</span>
             <span style={summaryChipStyle(postponedTaskCount > 0 ? '#fde68a' : '#64748b')}>期間中に延期 {postponedTaskCount}件</span>
           </div>
         </div>
@@ -879,14 +930,14 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
                   報告なし {groupNeeds}
                 </span>
                 {groupDiscussions.length > 0 && (
-                  <span style={{ fontSize: '0.76rem', color: '#fdba74', fontWeight: 700 }}>要相談 {groupDiscussions.length}</span>
+                  <span style={{ fontSize: '0.76rem', color: '#d6b38a' }}>要相談 {groupDiscussions.length}</span>
                 )}
               </div>
               {groupDiscussions.length > 0 && (
                 <div style={discussionBoxStyle}>
-                  <div style={{ fontSize: '0.8rem', color: '#fdba74', fontWeight: 800 }}>
+                  <div style={{ fontSize: '0.76rem', color: '#cbd5e1', fontWeight: 700 }}>
                     要相談（{groupDiscussions.length}件）
-                    <span style={{ marginLeft: 8, fontSize: '0.7rem', color: '#94a3b8', fontWeight: 400 }}>相談が済んだら「相談済みにする」で外します</span>
+                    <span style={{ marginLeft: 8, fontSize: '0.7rem', color: '#64748b', fontWeight: 400 }}>相談が済んだら ⋯ から外します</span>
                   </div>
                   {groupDiscussions.map((note) => (
                     <InteractiveNote key={`discussion-${note.id}`} note={note} actions={actions} showTask />
@@ -923,8 +974,11 @@ interface ReportCardActions {
   onToggleDiscussion: (noteId: string, value: boolean) => void
   onUpdateTask: (todo: Todo, data: UpdateTodoInput, successMessage: string) => Promise<boolean>
   onUpdateSubTask: (subTask: SubTask, data: UpdateSubTaskInput, successMessage: string) => Promise<boolean>
+  onCreateSubTask: (todo: Todo, data: CreateSubTaskInput) => Promise<boolean>
   onSelectTodo: (id: string) => void
   onShowToast: (message: string, type?: 'success' | 'error') => void
+  /** サブタスクの担当の選択肢（デスクトップ版は空） */
+  users: PublicUser[]
 }
 
 /** 報告タブ用に操作をすべて有効にした進捗ログ表示 */
@@ -946,12 +1000,16 @@ function InteractiveNote({ note, actions, showTask = false }: { note: ProgressNo
 }
 
 /** サブタスク1行。完了チェック・期限・進捗率（ドラッグ）をその場で変えられる */
-function SubTaskRow({ subTask, actions }: { subTask: SubTask; actions: ReportCardActions }): React.JSX.Element {
+function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: SubTaskChangeSummary | undefined; actions: ReportCardActions }): React.JSX.Element {
   const [editingDue, setEditingDue] = useState(false)
   const [dueDraft, setDueDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const done = subTask.done === 1
   const dueColor = done ? '' : getDueDateColor(subTask.due_date)
+  const change = subTaskChangeText(subTask, summary)
+  const changeColor = summary && summary.progressStart !== null
+    ? progressDeltaColor(summary, subTask.progress)
+    : summary && summary.postponedCount > 0 ? '#fde68a' : '#93c5fd'
 
   const run = async (data: UpdateSubTaskInput, successMessage: string): Promise<boolean> => {
     setSaving(true)
@@ -1035,6 +1093,88 @@ function SubTaskRow({ subTask, actions }: { subTask: SubTask; actions: ReportCar
           onCommit={(progress) => run({ progress }, `サブタスクの進捗を${progress}%に更新しました`)}
         />
       </div>
+      {change && (
+        <div style={{ paddingLeft: 20, fontSize: '0.68rem', color: changeColor }}>{change}</div>
+      )}
+    </div>
+  )
+}
+
+/** サブタスクの追加欄。追加後も開いたままにして、続けて入力できるようにする */
+function AddSubTaskForm({ todo, actions }: { todo: Todo; actions: ReportCardActions }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState('')
+  const [assigneeId, setAssigneeId] = useState('')
+  const [dueDate, setDueDate] = useState('')
+  const [saving, setSaving] = useState(false)
+  const activeUsers = actions.users.filter((user) => user.is_active === 1)
+  const canSave = !saving && title.trim().length > 0
+
+  const openForm = (): void => {
+    setTitle('')
+    // 担当の初期値は親タスクの主担当（いなければ未割り当て）
+    setAssigneeId(todo.assignee_id ?? '')
+    setDueDate('')
+    setOpen(true)
+  }
+
+  const submit = async (): Promise<void> => {
+    if (!canSave) return
+    setSaving(true)
+    const ok = await actions.onCreateSubTask(todo, {
+      title: title.trim(),
+      assignee_id: assigneeId || null,
+      due_date: dueDate || null
+    })
+    setSaving(false)
+    if (ok) {
+      setTitle('')
+      setDueDate('')
+    }
+  }
+
+  if (!open) {
+    return (
+      <button onClick={openForm} style={{ ...inlineActionStyle, textDecoration: 'none', alignSelf: 'flex-start', color: '#64748b' }}>
+        ＋ サブタスクを追加
+      </button>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: '#111827', border: '1px solid #334155', borderRadius: 8, padding: 8 }}>
+      <input
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+        onKeyDown={(event) => {
+          // 日本語入力の確定の Enter では追加しない
+          if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+            event.preventDefault()
+            void submit()
+          }
+          if (event.key === 'Escape') setOpen(false)
+        }}
+        placeholder="サブタスク名（Enterで追加）"
+        aria-label="追加するサブタスク名"
+        autoFocus
+        style={{ ...inputStyle, width: '100%' }}
+      />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        {activeUsers.length > 0 && (
+          <select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)} aria-label="追加するサブタスクの担当" style={inputStyle}>
+            <option value="">担当なし</option>
+            {activeUsers.map((user) => <option key={user.id} value={user.id}>{user.display_name}</option>)}
+          </select>
+        )}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.74rem', color: '#94a3b8' }}>
+          期限
+          <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} aria-label="追加するサブタスクの期限" style={inputStyle} />
+        </label>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <button onClick={() => setOpen(false)} style={secondaryButtonStyle}>閉じる</button>
+          <button onClick={() => void submit()} disabled={!canSave} style={primaryButtonStyle(canSave)}>{saving ? '追加中…' : '追加'}</button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1069,8 +1209,8 @@ function ReportTaskCard({
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
   const dueLabel = formatDueLabel(todo.due_date, todo.status)
   const memo = todo.memo.trim()
-  const progressDelta = progressDeltaText(row)
-  const dueChange = dueChangeText(row)
+  const progressDelta = progressDeltaText(row, row.todo.progress)
+  const dueChange = dueChangeText(row, row.todo.due_date)
   const canPost = !posting && draft.trim().length > 0
   const memoChanged = memoDraft !== todo.memo
 
@@ -1226,19 +1366,22 @@ function ReportTaskCard({
             label={`${todo.title}の進捗率`}
             onCommit={(progress) => updateField({ progress }, `進捗を${progress}%に更新しました`)}
           />
-          <div style={{ fontSize: '0.72rem', color: progressDeltaColor(row), marginTop: -2 }}>
+          <div style={{ fontSize: '0.72rem', color: progressDeltaColor(row, row.todo.progress), marginTop: -2 }}>
             {progressDelta ? `期間中 ${progressDelta}` : '期間中の進捗の変更なし'}
           </div>
         </div>
 
-        {subTasks.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 2, paddingTop: 8, borderTop: '1px dashed #1e293b' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 2, paddingTop: 8, borderTop: '1px dashed #1e293b' }}>
+          {subTasks.length > 0 && (
             <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
               サブタスク {subTasks.filter((subTask) => subTask.done).length}/{subTasks.length} 完了
             </div>
-            {subTasks.map((subTask) => <SubTaskRow key={subTask.id} subTask={subTask} actions={actions} />)}
-          </div>
-        )}
+          )}
+          {subTasks.map((subTask) => (
+            <SubTaskRow key={subTask.id} subTask={subTask} summary={row.subTaskSummaries.get(subTask.id)} actions={actions} />
+          ))}
+          <AddSubTaskForm todo={todo} actions={actions} />
+        </div>
       </div>
 
       {/* ─── 右: 報告内容（メモ・進捗ログ） ─── */}
@@ -1251,9 +1394,7 @@ function ReportTaskCard({
             {lastReportAt ? `最終報告 ${formatDateTime(lastReportAt)}（${formatDaysAgo(lastReportAt)}）` : '最終報告 なし'}
           </span>
           {row.discussions.length > 0 && (
-            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#fed7aa', background: '#7c2d12', border: '1px solid #c2410c', borderRadius: 999, padding: '1px 8px' }}>
-              要相談 {row.discussions.length}
-            </span>
+            <span style={discussionBadgeStyle}>要相談 {row.discussions.length}</span>
           )}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             {!memo && !editingMemo && (
@@ -1283,8 +1424,8 @@ function ReportTaskCard({
               style={{ ...inputStyle, width: '100%', resize: 'vertical', lineHeight: 1.55, minHeight: 72 }}
             />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-              <label style={{ ...checkboxLabelStyle, marginRight: 'auto', color: draftNeedsDiscussion ? '#fdba74' : '#94a3b8' }}>
-                <input type="checkbox" checked={draftNeedsDiscussion} onChange={(event) => setDraftNeedsDiscussion(event.target.checked)} style={{ accentColor: '#f97316' }} />
+              <label style={{ ...checkboxLabelStyle, marginRight: 'auto', color: draftNeedsDiscussion ? '#d6b38a' : '#94a3b8' }}>
+                <input type="checkbox" checked={draftNeedsDiscussion} onChange={(event) => setDraftNeedsDiscussion(event.target.checked)} style={{ accentColor: '#6366f1' }} />
                 要相談として投稿（定例で話したいこと）
               </label>
               <button onClick={() => { setComposerOpen(false); setDraft(''); setDraftNeedsDiscussion(false) }} style={secondaryButtonStyle}>キャンセル</button>
@@ -1477,12 +1618,14 @@ const pillSelectStyle: React.CSSProperties = {
   outline: 'none'
 }
 
+// 要相談のまとめ枠。ほかのカードと同じ落ち着いた配色にし、左端の細い線だけで区別する
 const discussionBoxStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
-  background: '#1c1210',
-  border: '1px solid #9a3412',
+  background: '#0b1220',
+  border: '1px solid #1e293b',
+  borderLeft: '3px solid #4b3b2c',
   borderRadius: 12,
   padding: '10px 12px'
 }

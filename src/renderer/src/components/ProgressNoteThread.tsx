@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { LikeButton, getLikeReaction } from './LikeButton'
 import type { ProgressNote, ProgressNoteComment } from '../types'
 
@@ -194,7 +194,7 @@ export function ProgressNoteThread({
     <article
       style={{
         background: '#111827',
-        border: `1px solid ${needsDiscussion ? '#c2410c' : '#1f2937'}`,
+        border: '1px solid #1f2937',
         borderRadius: 10,
         padding: '9px 11px',
         minWidth: 0
@@ -254,21 +254,15 @@ export function ProgressNoteThread({
           {onReply && replyingTo !== 'note' && (
             <button onClick={() => setReplyingTo('note')} style={inlineActionStyle}>返信</button>
           )}
-          {onToggleDiscussion && (
-            <button
-              onClick={() => onToggleDiscussion(note.id, !needsDiscussion)}
-              title={needsDiscussion ? '相談が済んだら外します' : '定例で相談したい内容に印を付けます'}
-              style={{ ...inlineActionStyle, color: needsDiscussion ? '#86efac' : '#fdba74' }}
-            >
-              {needsDiscussion ? '相談済みにする' : '要相談にする'}
-            </button>
-          )}
-          {canEdit && (
-            <button onClick={() => { setDraft(note.body); setEditing(true) }} style={inlineActionStyle}>編集</button>
-          )}
-          {canDelete && (
-            <button onClick={() => onDelete?.(note.id)} style={inlineActionStyle}>削除</button>
-          )}
+          <NoteMenu
+            items={[
+              ...(onToggleDiscussion
+                ? [{ label: needsDiscussion ? '要相談を外す' : '要相談にする', onSelect: () => onToggleDiscussion(note.id, !needsDiscussion) }]
+                : []),
+              ...(canEdit ? [{ label: '編集', onSelect: () => { setDraft(note.body); setEditing(true) } }] : []),
+              ...(canDelete ? [{ label: '削除', onSelect: () => onDelete?.(note.id), danger: true }] : [])
+            ]}
+          />
         </div>
       )}
 
@@ -299,14 +293,133 @@ export function ProgressNoteThread({
   )
 }
 
-const discussionBadgeStyle: React.CSSProperties = {
+/** 「要相談」の印。目立ちすぎないよう、塗りなしの細い枠と落ち着いた色にする（報告タブ・進捗タブで共通） */
+export const discussionBadgeStyle: React.CSSProperties = {
   fontSize: '0.68rem',
-  fontWeight: 800,
-  color: '#fed7aa',
-  background: '#7c2d12',
-  border: '1px solid #c2410c',
+  fontWeight: 600,
+  color: '#d6b38a',
+  background: 'transparent',
+  border: '1px solid #4b3b2c',
   borderRadius: 999,
-  padding: '0 7px'
+  padding: '0 7px',
+  whiteSpace: 'nowrap'
+}
+
+export interface NoteMenuItem {
+  label: string
+  onSelect: () => void
+  danger?: boolean
+}
+
+/** 要相談・編集・削除など、ふだんは見せなくてよい操作をまとめる「⋯」メニュー（報告タブ・進捗タブで共通） */
+export function NoteMenu({ items }: { items: NoteMenuItem[] }): React.JSX.Element | null {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
+
+  if (items.length === 0) return null
+
+  return (
+    <span ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
+      <button
+        onClick={() => setOpen((value) => !value)}
+        aria-label="その他の操作"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="その他の操作"
+        style={moreButtonStyle(open)}
+      >
+        ⋯
+      </button>
+      {open && (
+        <div role="menu" style={menuStyle}>
+          {items.map((item) => (
+            <NoteMenuButton
+              key={item.label}
+              item={item}
+              onSelect={() => {
+                setOpen(false)
+                item.onSelect()
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </span>
+  )
+}
+
+function NoteMenuButton({ item, onSelect }: { item: NoteMenuItem; onSelect: () => void }): React.JSX.Element {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <button
+      role="menuitem"
+      onClick={onSelect}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ ...menuItemStyle(item.danger === true), background: hovered ? '#1e293b' : 'transparent' }}
+    >
+      {item.label}
+    </button>
+  )
+}
+
+function moreButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    background: active ? '#1e293b' : 'transparent',
+    border: 'none',
+    borderRadius: 5,
+    color: '#94a3b8',
+    cursor: 'pointer',
+    fontSize: '0.8rem',
+    fontWeight: 800,
+    lineHeight: 1,
+    padding: '1px 5px'
+  }
+}
+
+const menuStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 'calc(100% + 4px)',
+  left: 0,
+  zIndex: 40,
+  minWidth: 120,
+  display: 'flex',
+  flexDirection: 'column',
+  padding: 4,
+  background: '#0f172a',
+  border: '1px solid #334155',
+  borderRadius: 8,
+  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
+}
+
+function menuItemStyle(danger: boolean): React.CSSProperties {
+  return {
+    background: 'transparent',
+    border: 'none',
+    borderRadius: 5,
+    color: danger ? '#fca5a5' : '#cbd5e1',
+    cursor: 'pointer',
+    fontSize: '0.76rem',
+    padding: '6px 10px',
+    textAlign: 'left',
+    whiteSpace: 'nowrap'
+  }
 }
 
 const textareaStyle: React.CSSProperties = {

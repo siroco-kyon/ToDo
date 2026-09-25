@@ -89,6 +89,7 @@ server/src/routes/         auth / data / users の REST ルート
 - 現在ユーザーの取得は `window.api.authGetCurrentUser()` を使う（デスクトップ版は `null` を返す）。`web/auth` の `useCurrentUser()` は Web 専用なので共通の `App.tsx` からは使わない
 - マルチユーザー判定は `users.length > 0`、管理者判定は `currentUser?.role === 'admin'`。どちらもデスクトップ版では false
 - 依存連鎖ロジックはサーバー版 `server/src/db/todos.ts` に同じものを移植している（両方を直す）
+- 報告タブの「期間中の変化」は変更履歴から計算する。タスクは `TodoChangeLogs`（`updateTodo` で記録）、サブタスクは `SubTaskChangeLogs`（`updateSubTask` で progress / due_date が変わったときだけ記録）。`todoChangeGetByRange` が両方を返し、`subtask_id` で区別する
 
 ## 注意点
 

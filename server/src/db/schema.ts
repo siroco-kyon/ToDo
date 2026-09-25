@@ -158,6 +158,20 @@ export function createSchema(db: Database.Database): void {
       FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE SET NULL
     );
 
+    -- サブタスクの進捗率・期限の変更履歴（報告タブの期間中の変化表示に使う）
+    CREATE TABLE IF NOT EXISTS SubTaskChangeLogs (
+      id TEXT PRIMARY KEY,
+      subtask_id TEXT NOT NULL,
+      todo_id TEXT NOT NULL,
+      user_id TEXT,
+      field TEXT NOT NULL,
+      old_value TEXT,
+      new_value TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (subtask_id) REFERENCES SubTasks(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS ProgressNotes (
       id TEXT PRIMARY KEY,
       todo_id TEXT NOT NULL,
@@ -253,6 +267,7 @@ export function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_co_assignees_user ON TodoCoAssignees(user_id);
     CREATE INDEX IF NOT EXISTS idx_todo_changes_todo_created ON TodoChangeLogs(todo_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_todo_changes_user_created ON TodoChangeLogs(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_subtask_changes_created ON SubTaskChangeLogs(created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_notes_todo ON ProgressNotes(todo_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_notes_user ON ProgressNotes(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_comments_note ON ProgressNoteComments(note_id, created_at);
