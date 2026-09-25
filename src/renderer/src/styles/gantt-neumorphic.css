@@ -98,3 +98,18 @@
 body.theme-light .tarbo-gantt {
   color-scheme: dark;
 }
+
+/* マウスを乗せた行を、左の一覧からバーまで横一列で薄く光らせる（長い行を目で追いやすくする） */
+.tarbo-gantt .tarbo-gantt-row {
+  position: relative;
+}
+
+.tarbo-gantt .tarbo-gantt-row:hover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(56, 189, 248, 0.12);
+  box-shadow: inset 3px 0 0 rgba(56, 189, 248, 0.85), inset 0 0 0 1px rgba(56, 189, 248, 0.28);
+  pointer-events: none;
+  z-index: 5;
+}
