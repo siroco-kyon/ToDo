@@ -43,7 +43,7 @@ interface DateRange {
 
 type PeriodPreset = '7' | '14' | '30' | 'custom'
 type GroupMode = 'assignee' | 'category'
-type AssigneeFilter = 'all' | 'mine' | 'mineWithSubTasks'
+type AssigneeFilter = 'all' | 'mine' | 'mineWithSubTasks' | `user:${string}`
 type Freshness = 'fresh' | 'quiet' | 'stale' | 'none' | 'done' | 'notStarted'
 
 interface ReportRow extends ChangeSummary {
@@ -95,7 +95,8 @@ const STORAGE_KEYS = {
   preset: 'report.periodPreset',
   groupMode: 'report.groupMode',
   onlyMine: 'report.onlyMine',
-  assigneeFilter: 'report.assigneeFilter'
+  assigneeFilter: 'report.assigneeFilter',
+  excludeCoAssigned: 'report.excludeCoAssigned'
 }
 
 const STATUS_LABEL: Record<TodoStatus, string> = {
@@ -137,6 +138,7 @@ function loadPreset(): Exclude<PeriodPreset, 'custom'> {
 function loadAssigneeFilter(): AssigneeFilter {
   const stored = readStorage(STORAGE_KEYS.assigneeFilter)
   if (stored === 'all' || stored === 'mine' || stored === 'mineWithSubTasks') return stored
+  if (stored?.startsWith('user:') && stored.length > 5) return stored as AssigneeFilter
   // 以前のチェックボックスの設定は、サブタスク担当を含む絞り込みとして引き継ぐ。
   return readStorage(STORAGE_KEYS.onlyMine) === '1' ? 'mineWithSubTasks' : 'all'
 }
@@ -264,18 +266,19 @@ function summarizeChanges(changes: TodoChangeEntry[]): ChangeSummary {
   return { progressStart, dueChanges, postponedCount }
 }
 
-function groupRows(rows: ReportRow[], mode: GroupMode, users: PublicUser[], currentUserId: string | null): ReportGroup[] {
+function groupRows(rows: ReportRow[], mode: GroupMode, users: PublicUser[], currentUserId: string | null, selectedUserId: string | null = null): ReportGroup[] {
   const groups = new Map<string, ReportGroup>()
   for (const row of rows) {
     const { todo } = row
-    const key = mode === 'assignee' ? (todo.assignee_id ?? '') : (todo.category_id ?? '')
+    const key = mode === 'assignee' ? (selectedUserId ?? todo.assignee_id ?? '') : (todo.category_id ?? '')
+    const selectedUser = selectedUserId == null ? undefined : users.find((user) => user.id === selectedUserId)
     let group = groups.get(key)
     if (!group) {
       group = mode === 'assignee'
         ? {
             key,
-            label: todo.assignee_name ?? '未割り当て',
-            color: todo.assignee_color,
+            label: selectedUser?.display_name ?? todo.assignee_name ?? '未割り当て',
+            color: selectedUser?.color ?? todo.assignee_color,
             isMe: key !== '' && key === currentUserId,
             rows: []
           }
@@ -522,6 +525,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
   const [range, setRange] = useState<DateRange>(() => presetRange(PRESETS.find((item) => item.value === loadPreset())?.days ?? 7))
   const [groupMode, setGroupMode] = useState<GroupMode>(() => readStorage(STORAGE_KEYS.groupMode) === 'category' ? 'category' : 'assignee')
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>(loadAssigneeFilter)
+  const [excludeCoAssigned, setExcludeCoAssigned] = useState(() => readStorage(STORAGE_KEYS.excludeCoAssigned) === '1')
   const [onlyNeedsReport, setOnlyNeedsReport] = useState(false)
   const [includeOldDone, setIncludeOldDone] = useState(false)
   const [onlyDiscussion, setOnlyDiscussion] = useState(false)
@@ -537,6 +541,9 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
   // デスクトップ版には担当者がいないのでカテゴリ別に固定する
   const effectiveGroupMode: GroupMode = multiUser ? groupMode : 'category'
   const effectiveAssigneeFilter = multiUser && currentUser != null ? assigneeFilter : 'all'
+  const selectedUserId = effectiveAssigneeFilter.startsWith('user:')
+    ? effectiveAssigneeFilter.slice(5)
+    : effectiveAssigneeFilter === 'all' ? null : currentUser!.id
 
   const load = useCallback(async (): Promise<void> => {
     if (range.from > range.to) return
@@ -622,9 +629,9 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     .filter((todo) => todo.status !== 'archived')
     // 期間より前に完了したタスクは既定で隠す（期間中・期間後に完了したものは報告対象）
     .filter((todo) => includeOldDone || todo.status !== 'done' || (todo.completed_at != null && isoToDateKey(todo.completed_at) >= range.from))
-    .filter((todo) => effectiveAssigneeFilter === 'all' || (effectiveAssigneeFilter === 'mine'
-      ? isMyTask(todo, [], currentUser!.id)
-      : isMyTask(todo, subTasksByTodo.get(todo.id) ?? [], currentUser!.id)))
+    .filter((todo) => selectedUserId == null || isMyTask(todo,
+      effectiveAssigneeFilter === 'mineWithSubTasks' ? subTasksByTodo.get(todo.id) ?? [] : [], selectedUserId))
+    .filter((todo) => selectedUserId == null || !excludeCoAssigned || todo.assignee_id === selectedUserId)
     .map((todo) => buildRow(
       todo,
       subTasksByTodo.get(todo.id) ?? [],
@@ -636,11 +643,11 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     ))
     .filter((row) => !onlyNeedsReport || needsReport(row.freshness))
     .filter((row) => !onlyDiscussion || row.discussions.length > 0),
-  [activity, changesByTodo, currentUser, discussionsByTodo, effectiveAssigneeFilter, includeOldDone, notesByTodo, onlyDiscussion, onlyNeedsReport, range, subTasksByTodo, todos])
+  [activity, changesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, includeOldDone, notesByTodo, onlyDiscussion, onlyNeedsReport, range, selectedUserId, subTasksByTodo, todos])
 
   const groups = useMemo(
-    () => groupRows(rows, effectiveGroupMode, users, currentUser?.id ?? null),
-    [currentUser, effectiveGroupMode, rows, users]
+    () => groupRows(rows, effectiveGroupMode, users, currentUser?.id ?? null, selectedUserId),
+    [currentUser, effectiveGroupMode, rows, selectedUserId, users]
   )
 
   const reportedCount = rows.filter((row) => row.freshness === 'fresh').length
@@ -885,7 +892,27 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
                   <option value="all">すべて</option>
                   <option value="mine">自分の担当のみ</option>
                   <option value="mineWithSubTasks">自分の担当＋サブタスク担当</option>
+                  <optgroup label="担当者を選ぶ">
+                    {users.map((user) => (
+                      <option key={user.id} value={`user:${user.id}`}>{user.display_name}</option>
+                    ))}
+                  </optgroup>
                 </select>
+              </label>
+            )}
+            {multiUser && currentUser && (
+              <label style={{ ...checkboxLabelStyle, opacity: selectedUserId == null ? 0.5 : 1 }}>
+                <input
+                  type="checkbox"
+                  checked={excludeCoAssigned}
+                  disabled={selectedUserId == null}
+                  onChange={(event) => {
+                    setExcludeCoAssigned(event.target.checked)
+                    writeStorage(STORAGE_KEYS.excludeCoAssigned, event.target.checked ? '1' : '0')
+                  }}
+                  style={{ accentColor: '#6366f1' }}
+                />
+                副担当のタスクを除く（主担当のみ）
               </label>
             )}
             <label style={checkboxLabelStyle}>
@@ -965,6 +992,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
                   row={row}
                   periodFrom={range.from}
                   groupMode={effectiveGroupMode}
+                  showAssignee={selectedUserId != null}
                   multiUser={multiUser}
                   isMine={currentUser != null && isMyTask(row.todo, row.subTasks, currentUser.id)}
                   onSelectTodo={onSelectTodo}
@@ -1199,6 +1227,7 @@ function ReportTaskCard({
   row,
   periodFrom,
   groupMode,
+  showAssignee,
   multiUser,
   isMine,
   onSelectTodo,
@@ -1207,6 +1236,7 @@ function ReportTaskCard({
   row: ReportRow
   periodFrom: string
   groupMode: GroupMode
+  showAssignee: boolean
   multiUser: boolean
   isMine: boolean
   onSelectTodo: (id: string) => void
@@ -1335,12 +1365,13 @@ function ReportTaskCard({
             <span style={{ ...pillStyle, color: todo.category_color ?? '#94a3b8', borderColor: `${todo.category_color ?? '#475569'}80` }}>
               {todo.category_name ?? '未分類'}
             </span>
-          ) : multiUser ? (
+          ) : null}
+          {multiUser && (groupMode !== 'assignee' || showAssignee) && (
             <span style={{ ...pillStyle, color: '#cbd5e1' }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: todo.assignee_color ?? '#475569' }} />
-              {todo.assignee_name ?? '未割り当て'}
+              主: {todo.assignee_name ?? '未割り当て'}
             </span>
-          ) : null}
+          )}
           {(todo.co_assignees ?? []).length > 0 && (
             <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
               副: {(todo.co_assignees ?? []).map((assignee) => assignee.display_name).join('、')}
