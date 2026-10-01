@@ -43,6 +43,7 @@ interface DateRange {
 
 type PeriodPreset = '7' | '14' | '30' | 'custom'
 type GroupMode = 'assignee' | 'category'
+type AssigneeFilter = 'all' | 'mine' | 'mineWithSubTasks'
 type Freshness = 'fresh' | 'quiet' | 'stale' | 'none' | 'done' | 'notStarted'
 
 interface ReportRow extends ChangeSummary {
@@ -93,7 +94,8 @@ const PRESETS: Array<{ value: Exclude<PeriodPreset, 'custom'>; label: string; da
 const STORAGE_KEYS = {
   preset: 'report.periodPreset',
   groupMode: 'report.groupMode',
-  onlyMine: 'report.onlyMine'
+  onlyMine: 'report.onlyMine',
+  assigneeFilter: 'report.assigneeFilter'
 }
 
 const STATUS_LABEL: Record<TodoStatus, string> = {
@@ -130,6 +132,13 @@ function writeStorage(key: string, value: string): void {
 function loadPreset(): Exclude<PeriodPreset, 'custom'> {
   const stored = readStorage(STORAGE_KEYS.preset)
   return PRESETS.some((preset) => preset.value === stored) ? stored as Exclude<PeriodPreset, 'custom'> : '7'
+}
+
+function loadAssigneeFilter(): AssigneeFilter {
+  const stored = readStorage(STORAGE_KEYS.assigneeFilter)
+  if (stored === 'all' || stored === 'mine' || stored === 'mineWithSubTasks') return stored
+  // 以前のチェックボックスの設定は、サブタスク担当を含む絞り込みとして引き継ぐ。
+  return readStorage(STORAGE_KEYS.onlyMine) === '1' ? 'mineWithSubTasks' : 'all'
 }
 
 function presetRange(days: number): DateRange {
@@ -512,7 +521,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
   const [preset, setPreset] = useState<PeriodPreset>(loadPreset)
   const [range, setRange] = useState<DateRange>(() => presetRange(PRESETS.find((item) => item.value === loadPreset())?.days ?? 7))
   const [groupMode, setGroupMode] = useState<GroupMode>(() => readStorage(STORAGE_KEYS.groupMode) === 'category' ? 'category' : 'assignee')
-  const [onlyMine, setOnlyMine] = useState(() => readStorage(STORAGE_KEYS.onlyMine) === '1')
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>(loadAssigneeFilter)
   const [onlyNeedsReport, setOnlyNeedsReport] = useState(false)
   const [includeOldDone, setIncludeOldDone] = useState(false)
   const [onlyDiscussion, setOnlyDiscussion] = useState(false)
@@ -527,7 +536,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
 
   // デスクトップ版には担当者がいないのでカテゴリ別に固定する
   const effectiveGroupMode: GroupMode = multiUser ? groupMode : 'category'
-  const effectiveOnlyMine = multiUser && currentUser != null && onlyMine
+  const effectiveAssigneeFilter = multiUser && currentUser != null ? assigneeFilter : 'all'
 
   const load = useCallback(async (): Promise<void> => {
     if (range.from > range.to) return
@@ -579,9 +588,9 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     writeStorage(STORAGE_KEYS.groupMode, mode)
   }
 
-  const changeOnlyMine = (value: boolean): void => {
-    setOnlyMine(value)
-    writeStorage(STORAGE_KEYS.onlyMine, value ? '1' : '0')
+  const changeAssigneeFilter = (value: AssigneeFilter): void => {
+    setAssigneeFilter(value)
+    writeStorage(STORAGE_KEYS.assigneeFilter, value)
   }
 
   const notesByTodo = useMemo(() => {
@@ -613,7 +622,9 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     .filter((todo) => todo.status !== 'archived')
     // 期間より前に完了したタスクは既定で隠す（期間中・期間後に完了したものは報告対象）
     .filter((todo) => includeOldDone || todo.status !== 'done' || (todo.completed_at != null && isoToDateKey(todo.completed_at) >= range.from))
-    .filter((todo) => !effectiveOnlyMine || isMyTask(todo, subTasksByTodo.get(todo.id) ?? [], currentUser!.id))
+    .filter((todo) => effectiveAssigneeFilter === 'all' || (effectiveAssigneeFilter === 'mine'
+      ? isMyTask(todo, [], currentUser!.id)
+      : isMyTask(todo, subTasksByTodo.get(todo.id) ?? [], currentUser!.id)))
     .map((todo) => buildRow(
       todo,
       subTasksByTodo.get(todo.id) ?? [],
@@ -625,7 +636,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     ))
     .filter((row) => !onlyNeedsReport || needsReport(row.freshness))
     .filter((row) => !onlyDiscussion || row.discussions.length > 0),
-  [activity, changesByTodo, currentUser, discussionsByTodo, effectiveOnlyMine, includeOldDone, notesByTodo, onlyDiscussion, onlyNeedsReport, range, subTasksByTodo, todos])
+  [activity, changesByTodo, currentUser, discussionsByTodo, effectiveAssigneeFilter, includeOldDone, notesByTodo, onlyDiscussion, onlyNeedsReport, range, subTasksByTodo, todos])
 
   const groups = useMemo(
     () => groupRows(rows, effectiveGroupMode, users, currentUser?.id ?? null),
@@ -869,8 +880,12 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
             {multiUser && currentUser && (
               <label style={checkboxLabelStyle}>
-                <input type="checkbox" checked={onlyMine} onChange={(event) => changeOnlyMine(event.target.checked)} style={{ accentColor: '#6366f1' }} />
-                自分の担当のみ（サブタスク担当を含む）
+                担当
+                <select value={assigneeFilter} onChange={(event) => changeAssigneeFilter(event.target.value as AssigneeFilter)} style={inputStyle}>
+                  <option value="all">すべて</option>
+                  <option value="mine">自分の担当のみ</option>
+                  <option value="mineWithSubTasks">自分の担当＋サブタスク担当</option>
+                </select>
               </label>
             )}
             <label style={checkboxLabelStyle}>
@@ -948,6 +963,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
                 <ReportTaskCard
                   key={row.todo.id}
                   row={row}
+                  periodFrom={range.from}
                   groupMode={effectiveGroupMode}
                   multiUser={multiUser}
                   isMine={currentUser != null && isMyTask(row.todo, row.subTasks, currentUser.id)}
@@ -1181,6 +1197,7 @@ function AddSubTaskForm({ todo, actions }: { todo: Todo; actions: ReportCardActi
 
 function ReportTaskCard({
   row,
+  periodFrom,
   groupMode,
   multiUser,
   isMine,
@@ -1188,6 +1205,7 @@ function ReportTaskCard({
   actions
 }: {
   row: ReportRow
+  periodFrom: string
   groupMode: GroupMode
   multiUser: boolean
   isMine: boolean
@@ -1195,6 +1213,10 @@ function ReportTaskCard({
   actions: ReportCardActions
 }): React.JSX.Element {
   const { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness } = row
+  // 完了日が不明なものは隠さず、期間より前に完了したものだけを折りたたむ。
+  const oldDoneSubTasks = subTasks.filter((subTask) => subTask.done && subTask.completed_at != null && isoToDateKey(subTask.completed_at) < periodFrom)
+  const oldDoneIds = new Set(oldDoneSubTasks.map((subTask) => subTask.id))
+  const visibleSubTasks = subTasks.filter((subTask) => !oldDoneIds.has(subTask.id))
   const [composerOpen, setComposerOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const [draftNeedsDiscussion, setDraftNeedsDiscussion] = useState(false)
@@ -1377,9 +1399,21 @@ function ReportTaskCard({
               サブタスク {subTasks.filter((subTask) => subTask.done).length}/{subTasks.length} 完了
             </div>
           )}
-          {subTasks.map((subTask) => (
+          {visibleSubTasks.map((subTask) => (
             <SubTaskRow key={subTask.id} subTask={subTask} summary={row.subTaskSummaries.get(subTask.id)} actions={actions} />
           ))}
+          {oldDoneSubTasks.length > 0 && (
+            <details>
+              <summary style={{ cursor: 'pointer', fontSize: '0.76rem', color: '#94a3b8', padding: '5px 0' }}>
+                完了済み {oldDoneSubTasks.length}件（期間前）
+              </summary>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingTop: 5 }}>
+                {oldDoneSubTasks.map((subTask) => (
+                  <SubTaskRow key={subTask.id} subTask={subTask} summary={row.subTaskSummaries.get(subTask.id)} actions={actions} />
+                ))}
+              </div>
+            </details>
+          )}
           <AddSubTaskForm todo={todo} actions={actions} />
         </div>
       </div>
