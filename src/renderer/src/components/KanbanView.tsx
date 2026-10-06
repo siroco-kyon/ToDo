@@ -13,6 +13,7 @@ interface Props {
 const COLUMNS: { status: TodoStatus; label: string; accent: string }[] = [
   { status: 'not_started', label: '未着手', accent: '#64748b' },
   { status: 'active', label: '進行中', accent: '#3b82f6' },
+  { status: 'on_hold', label: '保留中', accent: '#c084fc' },
   { status: 'done', label: '完了', accent: '#22c55e' }
 ]
 
@@ -169,7 +170,7 @@ export function KanbanView({
   )
 
   const byStatus = useMemo(() => {
-    const map: Record<TodoStatus, Todo[]> = { not_started: [], active: [], done: [], archived: [] }
+    const map: Record<TodoStatus, Todo[]> = { not_started: [], active: [], on_hold: [], done: [], archived: [] }
     for (const todo of todos) {
       if (todo.status === 'archived') continue
       map[todo.status].push(todo)

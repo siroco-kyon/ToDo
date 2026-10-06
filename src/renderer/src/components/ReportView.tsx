@@ -5,6 +5,7 @@ import { diffDaysFromToday, getDueDateColor, isoToDateKey, toDateKey } from '../
 import { LIKE_EMOJI } from './LikeButton'
 import { ProgressNoteThread, discussionBadgeStyle } from './ProgressNoteThread'
 import { ProgressSlider } from './ProgressSlider'
+import { getOnHoldInfo } from '../lib/onHold'
 import type {
   CreateSubTaskInput,
   ProgressNote,
@@ -44,7 +45,7 @@ interface DateRange {
 type PeriodPreset = '7' | '14' | '30' | 'custom'
 type GroupMode = 'assignee' | 'category'
 type AssigneeFilter = 'all' | 'mine' | 'mineWithSubTasks' | `user:${string}`
-type Freshness = 'fresh' | 'quiet' | 'stale' | 'none' | 'done' | 'notStarted'
+type Freshness = 'onHold' | 'fresh' | 'quiet' | 'stale' | 'none' | 'done' | 'notStarted'
 
 interface ReportRow extends ChangeSummary {
   todo: Todo
@@ -54,6 +55,7 @@ interface ReportRow extends ChangeSummary {
   lastReportAt: string | null
   lastMemoAt: string | null
   freshness: Freshness
+  reportedInPeriod: boolean
   /** サブタスクごとの期間中の変化 */
   subTaskSummaries: Map<string, SubTaskChangeSummary>
   /** 未解決の「要相談」進捗ログ（期間に関係なく） */
@@ -102,6 +104,7 @@ const STORAGE_KEYS = {
 const STATUS_LABEL: Record<TodoStatus, string> = {
   not_started: '未着手',
   active: '進行中',
+  on_hold: '保留中',
   done: '完了',
   archived: 'アーカイブ'
 }
@@ -109,6 +112,7 @@ const STATUS_LABEL: Record<TodoStatus, string> = {
 const STATUS_COLOR: Record<TodoStatus, string> = {
   not_started: '#64748b',
   active: '#3b82f6',
+  on_hold: '#c084fc',
   done: '#22c55e',
   archived: '#475569'
 }
@@ -234,6 +238,8 @@ function buildRow(
   let freshness: Freshness
   if (todo.status === 'done') {
     freshness = 'done'
+  } else if (todo.status === 'on_hold') {
+    freshness = 'onHold'
   } else if (notes.length > 0 || memoUpdatedInPeriod) {
     freshness = 'fresh'
   } else if (todo.status === 'not_started' && (!todo.start_date || todo.start_date.slice(0, 10) > range.to)) {
@@ -252,7 +258,7 @@ function buildRow(
     addedInPeriod: isInRange(isoToDateKey(subTask.created_at), range)
   }]))
 
-  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, ...summary, subTaskSummaries, discussions }
+  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, reportedInPeriod: notes.length > 0 || memoUpdatedInPeriod, ...summary, subTaskSummaries, discussions }
 }
 
 function summarizeChanges(changes: TodoChangeEntry[]): ChangeSummary {
@@ -301,6 +307,8 @@ function groupRows(rows: ReportRow[], mode: GroupMode, users: PublicUser[], curr
 
 function freshnessText(row: ReportRow): string {
   switch (row.freshness) {
+    case 'onHold':
+      return getOnHoldInfo(row.todo.on_hold_since).durationLabel
     case 'fresh':
       return '期間内に報告あり'
     case 'quiet':
@@ -317,6 +325,7 @@ function freshnessText(row: ReportRow): string {
 }
 
 function freshnessTone(freshness: Freshness): { color: string; background: string; border: string } {
+  if (freshness === 'onHold') return { color: '#e9d5ff', background: '#3b0764', border: '#a855f7' }
   if (freshness === 'fresh') return { color: '#86efac', background: '#052e16', border: '#166534' }
   if (freshness === 'quiet') return { color: '#fde68a', background: '#422006', border: '#a16207' }
   if (freshness === 'stale' || freshness === 'none') return { color: '#fecaca', background: '#450a0a', border: '#b91c1c' }
@@ -417,6 +426,10 @@ function reportToMarkdown(groups: ReportGroup[], range: DateRange, mode: GroupMo
     for (const row of group.rows) {
       const { todo } = row
       lines.push(`### ${todo.title}（${todo.progress}%・${statusSummary(row, '・')}）`)
+      if (todo.status === 'on_hold') {
+        const hold = getOnHoldInfo(todo.on_hold_since)
+        lines.push(`- 保留開始: ${hold.sinceLabel} / ${hold.durationLabel}`)
+      }
       lines.push(`- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} / 期限 ${todo.due_date?.slice(0, 10) ?? '未設定'}`)
       const delta = progressDeltaText(row, row.todo.progress)
       if (delta) lines.push(`- 期間中の進捗: ${delta}`)
@@ -472,7 +485,7 @@ function notesToPlainText(notes: ProgressNote[]): string {
 }
 
 function reportToCsv(groups: ReportGroup[]): string {
-  const headers = ['担当', 'カテゴリ', 'タスク', 'サブタスク', '状態', '開始', '期限', '進捗(%)', '期間中の進捗', '期限の変更', '最終報告', '要相談', '期間内の進捗コメント', 'メモ']
+  const headers = ['担当', 'カテゴリ', 'タスク', 'サブタスク', '状態', '保留開始', '保留期間', '開始', '期限', '進捗(%)', '期間中の進捗', '期限の変更', '最終報告', '要相談', '期間内の進捗コメント', 'メモ']
   const rows: Array<Array<string | number | null>> = []
   for (const group of groups) {
     for (const row of group.rows) {
@@ -483,6 +496,8 @@ function reportToCsv(groups: ReportGroup[]): string {
         todo.title,
         '',
         statusSummary(row, ' / '),
+        todo.status === 'on_hold' ? getOnHoldInfo(todo.on_hold_since).sinceLabel : '',
+        todo.status === 'on_hold' ? getOnHoldInfo(todo.on_hold_since).durationLabel : '',
         todo.start_date?.slice(0, 10) ?? '',
         todo.due_date?.slice(0, 10) ?? '',
         todo.progress,
@@ -501,6 +516,8 @@ function reportToCsv(groups: ReportGroup[]): string {
           todo.title,
           subTask.title,
           `${subTask.done ? '完了' : '未完了'}${summary?.addedInPeriod ? '（期間中に追加）' : ''}`,
+          '',
+          '',
           subTask.start_date?.slice(0, 10) ?? '',
           subTask.due_date?.slice(0, 10) ?? '',
           subTask.progress,
@@ -527,6 +544,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>(loadAssigneeFilter)
   const [excludeCoAssigned, setExcludeCoAssigned] = useState(() => readStorage(STORAGE_KEYS.excludeCoAssigned) === '1')
   const [onlyNeedsReport, setOnlyNeedsReport] = useState(false)
+  const [onlyOnHold, setOnlyOnHold] = useState(false)
   const [includeOldDone, setIncludeOldDone] = useState(false)
   const [onlyDiscussion, setOnlyDiscussion] = useState(false)
   const [notes, setNotes] = useState<ProgressNote[]>([])
@@ -641,16 +659,19 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
       changesByTodo.get(todo.id) ?? [],
       discussionsByTodo.get(todo.id) ?? []
     ))
+    .filter((row) => !onlyOnHold || row.todo.status === 'on_hold')
+    .sort((a, b) => onlyOnHold ? (a.todo.on_hold_since ?? '9999').localeCompare(b.todo.on_hold_since ?? '9999') : 0)
     .filter((row) => !onlyNeedsReport || needsReport(row.freshness))
     .filter((row) => !onlyDiscussion || row.discussions.length > 0),
-  [activity, changesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, includeOldDone, notesByTodo, onlyDiscussion, onlyNeedsReport, range, selectedUserId, subTasksByTodo, todos])
+  [activity, changesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, includeOldDone, notesByTodo, onlyDiscussion, onlyNeedsReport, onlyOnHold, range, selectedUserId, subTasksByTodo, todos])
 
   const groups = useMemo(
     () => groupRows(rows, effectiveGroupMode, users, currentUser?.id ?? null, selectedUserId),
     [currentUser, effectiveGroupMode, rows, selectedUserId, users]
   )
 
-  const reportedCount = rows.filter((row) => row.freshness === 'fresh').length
+  const onHoldCount = rows.filter((row) => row.todo.status === 'on_hold').length
+  const reportedCount = rows.filter((row) => row.reportedInPeriod).length
   const needsReportCount = rows.filter((row) => needsReport(row.freshness)).length
   const overdueCount = rows.filter((row) => isOverdue(row.todo)).length
   const noteCount = rows.reduce((sum, row) => sum + row.notes.length, 0)
@@ -916,6 +937,13 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
               </label>
             )}
             <label style={checkboxLabelStyle}>
+              <input type="checkbox" checked={onlyOnHold} onChange={(event) => {
+                setOnlyOnHold(event.target.checked)
+                if (event.target.checked) { setOnlyNeedsReport(false); setOnlyDiscussion(false) }
+              }} style={{ accentColor: '#a855f7' }} />
+              保留中のみ
+            </label>
+            <label style={checkboxLabelStyle}>
               <input type="checkbox" checked={onlyNeedsReport} onChange={(event) => setOnlyNeedsReport(event.target.checked)} style={{ accentColor: '#6366f1' }} />
               期間内の報告がないタスクのみ
             </label>
@@ -931,6 +959,8 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <span style={summaryChipStyle('#cbd5e1')}>対象 {rows.length}件</span>
+            <span style={summaryChipStyle(onHoldCount > 0 ? '#d8b4fe' : '#64748b')}>保留中 {onHoldCount}件</span>
+            {onlyOnHold && <span style={{ fontSize: '0.74rem', color: '#d8b4fe', alignSelf: 'center' }}>担当者・カテゴリごとに保留開始が古い順</span>}
             <span style={summaryChipStyle('#86efac')}>期間内に報告あり {reportedCount}件</span>
             <span style={summaryChipStyle(needsReportCount > 0 ? '#fde68a' : '#64748b')}>報告なし {needsReportCount}件</span>
             <span style={summaryChipStyle(overdueCount > 0 ? '#fca5a5' : '#64748b')}>期限超過 {overdueCount}件</span>
@@ -950,13 +980,13 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
 
         {loaded && groups.length === 0 && (
           <div style={emptyStyle}>
-            {onlyNeedsReport || onlyDiscussion ? '条件に合うタスクはありません。' : '表示できるタスクがありません。左のタスク一覧の絞り込みも確認してください。'}
+            {onlyOnHold || onlyNeedsReport || onlyDiscussion ? '条件に合うタスクはありません。' : '表示できるタスクがありません。左のタスク一覧の絞り込みも確認してください。'}
           </div>
         )}
 
         {loaded && groups.map((group) => {
           const groupNeeds = group.rows.filter((row) => needsReport(row.freshness)).length
-          const groupReported = group.rows.filter((row) => row.freshness === 'fresh').length
+          const groupReported = group.rows.filter((row) => row.reportedInPeriod).length
           const groupDiscussions = group.rows
             .flatMap((row) => row.discussions)
             .sort((a, b) => b.created_at.localeCompare(a.created_at))
@@ -1260,6 +1290,7 @@ function ReportTaskCard({
   const tone = freshnessTone(freshness)
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
   const dueLabel = formatDueLabel(todo.due_date, todo.status)
+  const hold = getOnHoldInfo(todo.on_hold_since)
   const memo = todo.memo.trim()
   const progressDelta = progressDeltaText(row, row.todo.progress)
   const dueChange = dueChangeText(row, row.todo.due_date)
@@ -1358,7 +1389,7 @@ function ReportTaskCard({
             style={{ ...pillSelectStyle, color: STATUS_COLOR[todo.status], borderColor: `${STATUS_COLOR[todo.status]}80` }}
           >
             <option value="not_started">未着手</option>
-            <option value="active">進行中</option>
+            <option value="active">進行中</option><option value="on_hold">保留中</option>
             <option value="done">完了</option>
           </select>
           {groupMode === 'assignee' ? (
@@ -1378,6 +1409,18 @@ function ReportTaskCard({
             </span>
           )}
         </div>
+
+        {todo.status === 'on_hold' && (
+          <div style={{ background: '#3b0764', border: '1px solid #a855f7', borderRadius: 10, padding: '12px 14px', color: '#e9d5ff', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <strong style={{ fontSize: '0.92rem' }}>保留中 · {hold.durationLabel}</strong>
+            <div style={{ fontSize: '0.8rem' }}>保留開始: {hold.sinceLabel}</div>
+            <div style={{ fontSize: '0.74rem', color: '#d8b4fe' }}>作業を停止しています。保留理由や再開の条件をメモに残せます。</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+              <button onClick={() => void updateField({ status: 'active' }, '進行中に戻しました')} disabled={saving} style={secondaryButtonStyle}>進行中に戻す</button>
+              <button onClick={openMemoEditor} style={secondaryButtonStyle}>{memo ? 'メモを編集' : '保留理由をメモする'}</button>
+            </div>
+          </div>
+        )}
 
         {editingSchedule ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: '#111827', border: '1px solid #334155', borderRadius: 8, padding: 8 }}>

@@ -6,6 +6,7 @@
   "author": "",
   "private": true,
   "scripts": {
+    "test:on-hold": "node tests/on-hold-display.cjs && node tests/on-hold-desktop.cjs && npm --prefix server run test:on-hold",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",

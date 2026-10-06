@@ -288,7 +288,7 @@ dataRouter.put('/todos/:id', (req, res) =>
 dataRouter.post('/todos/reorder', (req, res) => run(res, () => reorderTodos(req.body.orderedIds), 'todo'))
 dataRouter.post('/todos/:id/archive', (req, res) => run(res, () => archiveTodo(req.params.id, req.user!.id), 'todo'))
 dataRouter.post('/todos/:id/unarchive', (req, res) => run(res, () => {
-  const restoreStatus = ['not_started', 'active', 'done'].includes(req.body?.status) ? req.body.status : 'active'
+  const restoreStatus = ['not_started', 'active', 'on_hold', 'done'].includes(req.body?.status) ? req.body.status : 'active'
   return unarchiveTodo(req.params.id, req.user!.id, restoreStatus)
 }, 'todo'))
 dataRouter.delete('/todos/:id', (req, res) => run(res, () => deleteTodo(req.params.id), 'todo'))

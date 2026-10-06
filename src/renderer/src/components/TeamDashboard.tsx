@@ -188,7 +188,7 @@ function DeadlineRow({ item, accent, label, onSelectTodo }: { item: TeamDeadline
           onClick={() => onSelectTodo(item.todo_id)}
           style={{ flex: 1, minWidth: 0, background: 'transparent', border: 'none', padding: 0, textAlign: 'left', color: '#e2e8f0', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
         >
-          {item.title}
+          {item.status === 'on_hold' && <span style={{ color: '#d8b4fe' }}>保留中 · </span>}{item.title}
         </button>
         <span style={{ flexShrink: 0, fontSize: '0.72rem', color: accent, fontWeight: 700 }}>{label}</span>
       </div>
@@ -211,8 +211,9 @@ function WorkloadCard({ member }: { member: TeamMemberWorkload }): React.JSX.Ele
         <span style={{ width: 11, height: 11, borderRadius: '50%', background: member.user_color }} />
         <span style={{ fontSize: '0.86rem', color: '#e2e8f0', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.display_name}</span>
       </div>
-      <div style={{ display: 'flex', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
         <Metric label="進行中" value={`${member.active_tasks}`} color="#e2e8f0" />
+        <Metric label="保留中" value={`${member.on_hold_tasks}`} color="#d8b4fe" />
         <Metric label="超過" value={`${member.overdue_tasks}`} color={member.overdue_tasks > 0 ? '#f87171' : '#64748b'} />
         <Metric label="今日" value={formatMinutes(member.today_minutes)} color="#4ade80" />
       </div>

@@ -93,9 +93,9 @@ export function getTeamWorkloads(includePrivate = true): TeamMemberWorkload[] {
 
   return users.map((user) => {
     const assigned = db
-      .prepare(`SELECT t.due_date FROM Todos t LEFT JOIN Categories c ON t.category_id = c.id
+      .prepare(`SELECT t.due_date, t.status FROM Todos t LEFT JOIN Categories c ON t.category_id = c.id
                 WHERE t.assignee_id = ? AND t.status NOT IN ('done', 'archived') ${privateClause}`)
-      .all(user.id) as Array<{ due_date: string | null }>
+      .all(user.id) as Array<{ due_date: string | null; status: string }>
 
     const overdueTasks = assigned.filter(
       (t) => t.due_date && diffCalendarDays(t.due_date, todayKey) < 0
@@ -118,7 +118,8 @@ export function getTeamWorkloads(includePrivate = true): TeamMemberWorkload[] {
       user_id: user.id,
       display_name: user.display_name,
       user_color: user.color,
-      active_tasks: assigned.length,
+      active_tasks: assigned.filter((todo) => todo.status !== 'on_hold').length,
+      on_hold_tasks: assigned.filter((todo) => todo.status === 'on_hold').length,
       overdue_tasks: overdueTasks,
       today_minutes: Math.round((loggedRow.total + runningToday) / 60)
     }

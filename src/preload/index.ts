@@ -113,7 +113,7 @@ const api = {
   todoUpdate: (id: string, data: UpdateTodoInput): Promise<Todo> =>
     ipcRenderer.invoke('todo:update', id, data),
   todoArchive: (id: string): Promise<void> => ipcRenderer.invoke('todo:archive', id),
-  todoUnarchive: (id: string, status?: 'not_started' | 'active' | 'done'): Promise<void> => ipcRenderer.invoke('todo:unarchive', id, status),
+  todoUnarchive: (id: string, status?: 'not_started' | 'active' | 'on_hold' | 'done'): Promise<void> => ipcRenderer.invoke('todo:unarchive', id, status),
   todoDelete: (id: string): Promise<void> => ipcRenderer.invoke('todo:delete', id),
   todoReorder: (orderedIds: string[]): Promise<void> => ipcRenderer.invoke('todo:reorder', orderedIds),
   todoDependencyGetAll: (): Promise<TodoDependency[]> => ipcRenderer.invoke('todoDependency:getAll'),

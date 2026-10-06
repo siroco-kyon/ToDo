@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import { stopTimer } from './timer'
 import HolidayJp from '@holiday-jp/holiday_jp'
 import { getDb } from './connection'
 import {
@@ -120,6 +121,12 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
   if (data.status !== undefined) {
     fields.push('status = ?')
     values.push(data.status)
+    if (data.status === 'on_hold') {
+      fields.push("on_hold_since = CASE WHEN status = 'on_hold' THEN on_hold_since ELSE COALESCE(on_hold_since, ?) END")
+      values.push(updatedAt)
+    } else if (data.status !== 'archived') {
+      fields.push('on_hold_since = NULL')
+    }
     if (data.status === 'done') {
       fields.push('completed_at = COALESCE(completed_at, ?)')
       values.push(updatedAt)
@@ -130,9 +137,9 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
   if (data.priority !== undefined) { fields.push('priority = ?'); values.push(data.priority) }
   if (data.progress !== undefined) {
     fields.push('progress = ?'); values.push(data.progress)
-    // 進捗100%で自動完了（status を明示指定していない時のみ）。
+    // 進捗100%で自動完了（status を明示指定しておらず、保留中ではない時のみ）。
     // updateTodo 側が done 遷移を検知して繰り返し次回分も生成する。
-    if (data.status === undefined && data.progress >= 100) {
+    if (data.status === undefined && data.progress >= 100 && getTodoById(id).status !== 'on_hold') {
       fields.push('status = ?'); values.push('done')
       fields.push('completed_at = COALESCE(completed_at, ?)'); values.push(updatedAt)
     }
@@ -248,8 +255,8 @@ export function createTodo(data: CreateTodoInput, createdByUserId: string | null
   const dueDate = normalizeDateKey(data.due_date)
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) AS m FROM Todos').get() as { m: number }).m
   db.prepare(
-    `INSERT INTO Todos (id, title, description, memo, category_id, assignee_id, created_by, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, recurrence_skip_weekends, recurrence_skip_holidays, created_at, updated_at, completed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO Todos (id, title, description, memo, category_id, assignee_id, created_by, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, recurrence_skip_weekends, recurrence_skip_holidays, created_at, updated_at, completed_at, on_hold_since)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     data.title,
@@ -270,7 +277,8 @@ export function createTodo(data: CreateTodoInput, createdByUserId: string | null
     data.recurrence_skip_holidays ? 1 : 0,
     now,
     now,
-    status === 'done' ? now : null
+    status === 'done' ? now : null,
+    status === 'on_hold' ? now : null
   )
   return getTodoById(id)
 }
@@ -386,6 +394,10 @@ export function updateTodo(id: string, data: UpdateTodoInput, changedByUserId: s
   const constrainedData = keepTodoDueDateAfterSubTasks(id, data)
   db.transaction(() => {
     applyTodoUpdate(id, constrainedData, now)
+    if (constrainedData.status === 'on_hold') {
+      const running = db.prepare('SELECT user_id FROM RunningState WHERE todo_id = ?').all(id) as Array<{ user_id: string }>
+      for (const row of running) stopTimer(row.user_id, 'タスクを保留しました')
+    }
     if (constrainedData.co_assignee_ids !== undefined) {
       replaceCoAssignees(id, constrainedData.co_assignee_ids, now)
     }
@@ -421,12 +433,12 @@ export function archiveTodo(id: string, changedByUserId: string | null = null): 
   })()
 }
 
-export function unarchiveTodo(id: string, changedByUserId: string | null = null, restoreStatus: 'not_started' | 'active' | 'done' = 'active'): void {
+export function unarchiveTodo(id: string, changedByUserId: string | null = null, restoreStatus: 'not_started' | 'active' | 'on_hold' | 'done' = 'active'): void {
   const db = getDb()
   const now = new Date().toISOString()
   const before = getTodoById(id)
   db.transaction(() => {
-    db.prepare("UPDATE Todos SET status = ?, archived_at = NULL, completed_at = CASE WHEN ? = 'done' THEN completed_at ELSE NULL END, updated_at = ? WHERE id = ?").run(restoreStatus, restoreStatus, now, id)
+    db.prepare("UPDATE Todos SET status = ?, archived_at = NULL, completed_at = CASE WHEN ? = 'done' THEN completed_at ELSE NULL END, on_hold_since = CASE WHEN ? = 'on_hold' THEN COALESCE(on_hold_since, ?) ELSE NULL END, updated_at = ? WHERE id = ?").run(restoreStatus, restoreStatus, restoreStatus, now, now, id)
     recordTodoChanges(before, getTodoById(id), changedByUserId, now)
   })()
 }

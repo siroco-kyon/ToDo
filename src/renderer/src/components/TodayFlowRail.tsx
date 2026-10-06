@@ -86,7 +86,7 @@ function StatusCard({
             onClick={() => onSelect(item.todo_id)}
             style={{ background: 'transparent', border: 'none', padding: 0, marginTop: 8, color: '#f8fafc', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700, textAlign: 'left' }}
           >
-            {item.title}
+            {item.status === 'on_hold' && <span style={{ color: '#d8b4fe' }}>保留中 · </span>}{item.title}
           </button>
           <div style={{ marginTop: 6, fontSize: '0.75rem', color: accent }}>
             {formatClock(item.startMinutes)} - {formatClock(item.endMinutes)}
@@ -114,11 +114,11 @@ export function TodayFlowRail({
 
   const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes()
   const currentItem = date === getTodayKey()
-    ? timedItems.find((item) => nowMinutes >= item.startMinutes && nowMinutes < item.endMinutes) ?? null
+    ? timedItems.find((item) => item.status !== 'on_hold' && nowMinutes >= item.startMinutes && nowMinutes < item.endMinutes) ?? null
     : null
   const nextItem = date === getTodayKey()
-    ? timedItems.find((item) => item.startMinutes > nowMinutes && item.status !== 'done' && item.status !== 'archived') ?? null
-    : timedItems.find((item) => item.status !== 'done' && item.status !== 'archived') ?? null
+    ? timedItems.find((item) => item.startMinutes > nowMinutes && item.status !== 'done' && item.status !== 'archived' && item.status !== 'on_hold') ?? null
+    : timedItems.find((item) => item.status !== 'done' && item.status !== 'archived' && item.status !== 'on_hold') ?? null
 
   return (
     <aside style={{ height: '100%', background: '#0b1220', display: 'flex', flexDirection: 'column' }}>
@@ -201,7 +201,7 @@ export function TodayFlowRail({
                         </span>
                       )}
                     </div>
-                    <div style={{ marginTop: 6, fontSize: '0.82rem', fontWeight: 700, color: '#f8fafc' }}>{item.title}</div>
+                    <div style={{ marginTop: 6, fontSize: '0.82rem', fontWeight: 700, color: '#f8fafc' }}>{item.status === 'on_hold' && <span style={{ color: '#d8b4fe' }}>保留中 · </span>}{item.title}</div>
                     {(item.category_name || item.due_date) && (
                       <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: '#94a3b8' }}>
                         {item.category_name && <span>{item.category_name}</span>}
@@ -236,7 +236,7 @@ export function TodayFlowRail({
                     color: '#cbd5e1'
                   }}
                 >
-                  <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>{item.title}</div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>{item.status === 'on_hold' && <span style={{ color: '#d8b4fe' }}>保留中 · </span>}{item.title}</div>
                   <div style={{ marginTop: 4, fontSize: '0.68rem', color: '#64748b' }}>
                     {formatDuration(normalizeDuration(item.estimated_minutes))}
                   </div>

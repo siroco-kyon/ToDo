@@ -650,6 +650,12 @@ export function TodoDetail({
               {isInTodayPlan ? '今日の計画に追加済み' : '今日の計画に追加'}
             </button>
           )}
+          {!editing && todo.status === 'on_hold' && <Badge color="#c084fc">保留中</Badge>}
+          {!editing && todo.status !== 'done' && todo.status !== 'archived' && (
+            <button onClick={() => void onUpdate(todo.id, { status: todo.status === 'on_hold' ? 'active' : 'on_hold' }).then(() => onShowToast(todo.status === 'on_hold' ? '進行中に戻しました' : 'タスクを保留しました')).catch(() => onShowToast('状態を変更できませんでした', 'error'))} style={buttonStyle('#6b21a8')}>
+              {todo.status === 'on_hold' ? '進行中に戻す' : '保留する'}
+            </button>
+          )}
           <button onClick={editing ? cancelEditing : startEditing} style={buttonStyle('#334155')}>
             {editing ? '閉じる' : '編集'}
           </button>
@@ -731,7 +737,7 @@ export function TodoDetail({
               日本の祝日をスキップする
             </label>
           )}
-          <div><label style={labelStyle}>状態</label><select value={editData.status ?? 'active'} onChange={(event) => setEditData((previous) => ({ ...previous, status: event.target.value as 'not_started' | 'active' | 'done' | 'archived' }))} style={inputStyle}><option value="not_started">未着手</option><option value="active">進行中</option><option value="done">完了</option><option value="archived">アーカイブ</option></select></div>
+          <div><label style={labelStyle}>状態</label><select value={editData.status ?? 'active'} onChange={(event) => setEditData((previous) => ({ ...previous, status: event.target.value as Todo['status'] }))} style={inputStyle}><option value="not_started">未着手</option><option value="active">進行中</option><option value="on_hold">保留中</option><option value="done">完了</option><option value="archived">アーカイブ</option></select></div>
           {users.length > 0 && (
             <div><label style={labelStyle}>担当者</label><AssigneePicker users={users} value={editData.assignee_id ?? null} onChange={(assigneeId) => setEditData((previous) => ({ ...previous, assignee_id: assigneeId, co_assignee_ids: (previous.co_assignee_ids ?? []).filter((id) => id !== assigneeId) }))} selectStyle={inputStyle} /></div>
           )}
