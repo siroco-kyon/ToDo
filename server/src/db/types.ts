@@ -458,6 +458,9 @@ export interface ProgressNote {
   body: string
   created_at: string
   updated_at: string
+  /** 投稿日時と全返信の作成日時の最大値（編集やいいねは含めない） */
+  last_activity_at: string
+  last_reply_at: string | null
   /** 1 のとき「要相談」。報告タブで担当者ごとの先頭に集める */
   needs_discussion: number
   comment_count: number

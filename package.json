@@ -6,6 +6,7 @@
   "author": "",
   "private": true,
   "scripts": {
+    "test:progress-timeline": "node tests/progress-timeline-desktop.cjs && node tests/progress-timeline-display.cjs && npm --prefix server run test:progress-timeline",
     "test:links-members": "node tests/links.cjs && npm --prefix server run test:members",
     "test:on-hold": "node tests/on-hold-display.cjs && node tests/on-hold-desktop.cjs && npm --prefix server run test:on-hold",
     "dev": "electron-vite dev",

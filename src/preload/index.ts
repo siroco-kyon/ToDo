@@ -204,6 +204,8 @@ const api = {
     ipcRenderer.invoke('progressNote:getByDate', dateStr),
   progressNoteGetByRange: (from: string, to: string): Promise<ProgressNote[]> =>
     ipcRenderer.invoke('progressNote:getByRange', from, to),
+  progressNoteGetTimeline: (from: string, to: string): Promise<ProgressNote[]> =>
+    ipcRenderer.invoke('progressNote:getTimeline', from, to),
   progressNoteGetLastActivity: (): Promise<TodoReportActivity[]> =>
     ipcRenderer.invoke('progressNote:getLastActivity'),
   progressNoteGetOpenDiscussions: (): Promise<ProgressNote[]> =>

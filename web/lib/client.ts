@@ -316,6 +316,7 @@ export const api: Api = {
   progressNoteGetByTodo: (todoId) => get<ProgressNote[]>(`/todos/${todoId}/progress-notes`),
   progressNoteGetByDate: (dateStr) => get<ProgressNote[]>('/progress-notes/timeline', { date: dateStr }),
   progressNoteGetByRange: (from, to) => get<ProgressNote[]>('/progress-notes/timeline', { from, to }),
+  progressNoteGetTimeline: (from, to) => get<ProgressNote[]>('/progress-notes/activity-timeline', { from, to }),
   progressNoteGetLastActivity: () => get<TodoReportActivity[]>('/progress-notes/last-activity'),
   progressNoteGetOpenDiscussions: () => get<ProgressNote[]>('/progress-notes/discussions'),
   progressNoteSetNeedsDiscussion: (id, value) => put<ProgressNote>(`/progress-notes/${id}/discussion`, { value }),
