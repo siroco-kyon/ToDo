@@ -241,7 +241,7 @@ export function QuickAddModal({ categories, users = [], onAdd, onClose, onShowTo
                 style={selectStyle}
               >
                 <option value="not_started">未着手</option>
-                <option value="active">進行中</option>
+                <option value="active">進行中</option><option value="on_hold">保留中</option>
                 <option value="done">完了</option>
               </select>
             </div>

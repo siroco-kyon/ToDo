@@ -23,6 +23,7 @@ interface Props {
 const STATUS_LABEL: Record<Todo['status'], string> = {
   not_started: '未着手',
   active: '進行中',
+  on_hold: '保留中',
   done: '完了',
   archived: 'アーカイブ'
 }

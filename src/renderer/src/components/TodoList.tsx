@@ -144,6 +144,7 @@ function TodoItem({
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
+              {todo.status === 'on_hold' && <span style={{ fontSize: '0.68rem', color: '#d8b4fe' }}>保留中</span>}
               {todo.category_name && (
                 <span style={{
                   fontSize: '0.68rem', padding: '1px 5px', borderRadius: 99,

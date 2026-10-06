@@ -541,7 +541,7 @@ function UnscheduledCard({
           onClick={() => onSelect(item.todo_id)}
           style={{ background: 'transparent', border: 'none', padding: 0, color: '#e2e8f0', cursor: 'pointer', fontSize: '0.86rem', fontWeight: 600, textAlign: 'left', lineHeight: 1.4 }}
         >
-          {item.title}
+          {item.status === 'on_hold' && <span style={{ color: '#d8b4fe' }}>保留中 · </span>}{item.title}
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
           {item.category_name && (
@@ -627,7 +627,7 @@ export function PlanView({
 
   const availableTodos = useMemo(() => (
     todos
-      .filter((todo) => todo.status !== 'done' && todo.status !== 'archived')
+      .filter((todo) => todo.status !== 'done' && todo.status !== 'archived' && todo.status !== 'on_hold')
       .sort((a, b) => {
         // 未配置のタスクを先に出しつつ、配置済みも再配置できるよう一覧には残す
         const aPlanned = (plannedCountByTodoId.get(a.id) ?? 0) > 0 ? 1 : 0
@@ -1372,7 +1372,7 @@ export function PlanView({
                               whiteSpace: 'nowrap'
                             }}
                           >
-                            {item.title}
+                            {item.status === 'on_hold' && <span style={{ color: '#d8b4fe' }}>保留中 · </span>}{item.title}
                           </button>
 
                           {!compactBlock && (

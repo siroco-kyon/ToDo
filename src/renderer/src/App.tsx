@@ -247,7 +247,21 @@ export function App(): React.JSX.Element {
     void loadSelectedPlan(planDate).catch((error) => showToast(error instanceof Error ? error.message : '計画を読み込めませんでした', 'error'))
   }, [isFirstLaunch, loadSelectedPlan, planDate, showToast])
 
-  const { isRunning, runningTodoId, elapsedSeconds, start, stop, restore } = useTimer(loadTodos)
+  const { isRunning, runningTodoId, elapsedSeconds, start: startTimer, stop, restore, sync: syncTimer } = useTimer(loadTodos)
+
+  const start = useCallback(async (todoId: string) => {
+    if (todos.find((todo) => todo.id === todoId)?.status === 'on_hold') {
+      setSelectedTodoId(todoId)
+      setActiveView('detail')
+      showToast('保留中のタスクは、進行中に戻してから計測を開始してください')
+      return
+    }
+    try {
+      await startTimer(todoId)
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '計測を開始できませんでした', 'error')
+    }
+  }, [showToast, startTimer, todos])
 
   useEffect(() => {
     window.api.appIsFirstLaunch().then(setIsFirstLaunch)
@@ -292,7 +306,9 @@ export function App(): React.JSX.Element {
       }
 
       if (scope === 'todo') {
-        void Promise.all([loadTodos(), loadSelectedPlan(planDate)])
+        void Promise.all([loadTodos(), loadSelectedPlan(planDate), syncTimer()]).catch((error) => {
+          showToast(error instanceof Error ? error.message : 'タスクを再読み込みできませんでした', 'error')
+        })
         return
       }
 
@@ -308,7 +324,7 @@ export function App(): React.JSX.Element {
       }
     })
     return () => unsubscribe()
-  }, [isFirstLaunch, loadCategories, loadSelectedPlan, loadTodayPlan, loadTodos, planDate, showToast])
+  }, [isFirstLaunch, loadCategories, loadSelectedPlan, loadTodayPlan, loadTodos, planDate, showToast, syncTimer])
 
   useEffect(() => {
     if (!currentUser) {
@@ -642,8 +658,8 @@ export function App(): React.JSX.Element {
 
   const handleUpdate = useCallback(async (id: string, data: UpdateTodoInput) => {
     await window.api.todoUpdate(id, data)
-    await loadTodos()
-  }, [loadTodos])
+    await Promise.all([loadTodos(), loadSelectedPlan(planDate), syncTimer()])
+  }, [loadTodos, loadSelectedPlan, planDate, syncTimer])
 
   // サブタスクの期限は親タスクの期限を延長することがあるので、タスクも取り直す
   const handleUpdateSubTask = useCallback(async (id: string, data: UpdateSubTaskInput) => {
@@ -844,7 +860,7 @@ export function App(): React.JSX.Element {
     // 同じタスクの複数配置に対応するため、タスク単位ではなく「タスク×開始時刻」単位で重複を判定する
     const planKey = (item: DailyPlanItem): string => `${item.todo_id}|${item.scheduled_start ?? ''}`
     const existingKeys = new Set(lensSelectedPlanItems.map(planKey))
-    const carry = visiblePreviousItems.filter((item) => item.status !== 'done' && !existingKeys.has(planKey(item)))
+    const carry = visiblePreviousItems.filter((item) => item.status !== 'done' && item.status !== 'on_hold' && !existingKeys.has(planKey(item)))
     for (const item of carry) {
       await window.api.dailyPlanAdd(planDate, item.todo_id, {
         allowDuplicate: true,

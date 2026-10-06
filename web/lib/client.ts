@@ -123,6 +123,9 @@ function openSocket(): void {
   const ws = new WebSocket(`${proto}://${location.host}/ws`)
   socket = ws
 
+  // 切断中に保留されたタスクと、停止した計測も再接続時に取り直す。
+  ws.onopen = () => emit(dataChangedListeners, 'todo')
+
   ws.onmessage = (event) => {
     let msg: { type?: string; scope?: DataScope; online?: string[]; unreadCount?: number }
     try {

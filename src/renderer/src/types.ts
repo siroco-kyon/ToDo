@@ -9,7 +9,7 @@ export interface Category {
   created_at: string
 }
 
-export type TodoStatus = 'not_started' | 'active' | 'done' | 'archived'
+export type TodoStatus = 'not_started' | 'active' | 'on_hold' | 'done' | 'archived'
 
 export type UserRole = 'admin' | 'member'
 
@@ -91,6 +91,8 @@ export interface Todo {
   updated_at: string
   completed_at: string | null
   archived_at: string | null
+  /** 現在の保留を開始した日時。再開でクリアし、保留中の編集では保持する */
+  on_hold_since: string | null
 }
 
 export interface TodoCoAssignee {
@@ -158,7 +160,7 @@ export interface CreateTodoInput {
   category_id?: string | null
   assignee_id?: string | null
   /** 省略時は 'not_started'。カンバンの列からの追加でその列のステータスを指定する */
-  status?: 'not_started' | 'active' | 'done'
+  status?: 'not_started' | 'active' | 'on_hold' | 'done'
   priority?: number
   progress?: number
   start_date?: string | null
@@ -374,6 +376,7 @@ export interface TeamMemberWorkload {
   display_name: string
   user_color: string
   active_tasks: number
+  on_hold_tasks: number
   overdue_tasks: number
   today_minutes: number
 }

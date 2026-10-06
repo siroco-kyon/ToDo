@@ -30,6 +30,7 @@ interface Props {
 const STATUS_LABEL: Record<TodoStatus, string> = {
   not_started: '未着手',
   active: '進行中',
+  on_hold: '保留中',
   done: '完了',
   archived: 'アーカイブ'
 }
@@ -37,6 +38,7 @@ const STATUS_LABEL: Record<TodoStatus, string> = {
 const STATUS_COLOR: Record<TodoStatus, string> = {
   not_started: '#64748b',
   active: '#3b82f6',
+  on_hold: '#c084fc',
   done: '#22c55e',
   archived: '#475569'
 }

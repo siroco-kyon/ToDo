@@ -6,8 +6,9 @@ export function startTimer(userId: string, todoId: string): RunningState {
   const db = getDb()
   return db.transaction(() => {
     // 切替先を先に検証し、旧タイマーの停止だけが確定する部分更新を防ぐ。
-    const target = db.prepare('SELECT id FROM Todos WHERE id = ?').get(todoId) as { id: string } | undefined
+    const target = db.prepare('SELECT id, status FROM Todos WHERE id = ?').get(todoId) as { id: string; status: string } | undefined
     if (!target) throw new Error('開始するタスクが見つかりません')
+    if (target.status === 'on_hold') throw new Error('保留中のタスクは、進行中に戻してから計測を開始してください')
 
     // 実行中のタイマーがあれば自動停止（WorkLog 記録）してから開始する。
     // 同じタスクを再度開始した場合は計測中のものを維持する（リセットしない）。

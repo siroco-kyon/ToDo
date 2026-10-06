@@ -123,7 +123,7 @@ type EditableTodoField = 'start_date' | 'due_date' | 'progress' | 'assignee_id'
 type EditableSubTaskField = 'title' | 'start_date' | 'due_date' | 'progress' | 'done' | 'assignee_id'
 type GanttLeftColumnKey = 'title' | 'start' | 'due' | 'progress' | 'assignee'
 type ZoomMode = 'compact' | 'normal' | 'detail' | 'focus'
-type StatusFilter = 'active' | 'done' | 'all'
+type StatusFilter = 'active' | 'on_hold' | 'done' | 'all'
 type TimeScale = 'day' | 'week' | 'month' | 'year'
 type GroupMode = 'category' | 'assignee'
 type DayKind = 'saturday' | 'sunday' | 'holiday' | null
@@ -216,6 +216,7 @@ const GANTT_TEXT = '#edf2f7'
 const GANTT_MUTED = '#bac5d8'
 const STATUS_TONE: Record<TodoStatus, { background: string; border: string; text: string; fill: string; label: string }> = {
   not_started: { background: '#343b46', border: '#cbd5e1', text: '#ffffff', fill: '#647181', label: '未着手' },
+  on_hold: { background: '#6b21a8', border: '#d8b4fe', text: '#faf5ff', fill: '#c084fc', label: '保留中' },
   active: { background: '#4338ca', border: '#a5b4fc', text: '#ffffff', fill: '#818cf8', label: '進行中' },
   done: { background: '#047857', border: '#6ee7b7', text: '#ffffff', fill: '#34d399', label: '完了' },
   archived: { background: '#475569', border: '#94a3b8', text: '#e2e8f0', fill: '#94a3b8', label: 'アーカイブ' }
@@ -484,7 +485,7 @@ function loadGanttViewSettings(): PersistedGanttViewSettings {
         ? parsed.behindThresholdDays
         : defaults.behindThresholdDays,
       workingDaysOnly: typeof parsed.workingDaysOnly === 'boolean' ? parsed.workingDaysOnly : defaults.workingDaysOnly,
-      statusFilter: parsed.statusFilter === 'active' || parsed.statusFilter === 'done' || parsed.statusFilter === 'all'
+      statusFilter: parsed.statusFilter === 'on_hold' || parsed.statusFilter === 'active' || parsed.statusFilter === 'done' || parsed.statusFilter === 'all'
         ? parsed.statusFilter
         : defaults.statusFilter,
       showSubtasks: typeof parsed.showSubtasks === 'boolean' ? parsed.showSubtasks : defaults.showSubtasks,
@@ -873,6 +874,7 @@ function buildTodoBarTooltip(options: {
   const assignees = [todo.assignee_name, ...(todo.co_assignees ?? []).map((item) => item.display_name)].filter(Boolean)
   const lines = [
     todo.title,
+    `状態: ${STATUS_TONE[todo.status].label}`,
     `担当: ${assignees.length > 0 ? assignees.join('、') : '未割り当て'} ・ 進捗 ${progress}%${health ? ` ・ ${health.label}` : ''}`,
     `期間: ${shortDateLabel(bar.startDate)} → ${shortDateLabel(bar.endDate)}${outside ? `（${outside === 'before' ? '表示期間より前' : '表示期間より後'}）` : ''}`
   ]
@@ -1627,9 +1629,10 @@ export function GanttView({
 
   const filteredGroups = useMemo(() => {
     return groups.map((group): ChartGroup | null => {
-      const parentMatches = matchesStatusFilter(group.todo.status === 'done', statusFilter)
+      if (statusFilter === 'on_hold' && group.todo.status !== 'on_hold') return null
+      const parentMatches = statusFilter === 'on_hold' || matchesStatusFilter(group.todo.status === 'done', statusFilter)
       const matchingSubTasks = showSubtasks
-        ? group.allSubTasks.filter((subTask) => matchesStatusFilter(Boolean(subTask.done), statusFilter))
+        ? group.allSubTasks.filter((subTask) => statusFilter === 'on_hold' || matchesStatusFilter(Boolean(subTask.done), statusFilter))
         : []
       if (!parentMatches && matchingSubTasks.length === 0) return null
 
@@ -3032,6 +3035,7 @@ export function GanttView({
           </span>
         )}
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }} aria-label="凡例">
+          <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: STATUS_TONE.on_hold.background, border: `1px solid ${STATUS_TONE.on_hold.border}` }} />保留中</span>
           <span style={legendItemStyle()}><span style={{ width: 10, height: 12, border: `2px solid ${TODAY_LINE_COLOR}`, borderTop: 'none', borderBottom: 'none', background: 'rgba(244, 63, 94, 0.15)' }} />今日</span>
           {timeScale === 'day' && (
             <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: '#f8717140', border: '1px solid #f8717166' }} />土日祝</span>
@@ -3131,6 +3135,7 @@ export function GanttView({
               <label style={controlLabelStyle}>フィルター</label>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button onClick={() => setStatusFilter('active')} style={chipStyle(statusFilter === 'active')}>未完了</button>
+                <button onClick={() => setStatusFilter('on_hold')} style={chipStyle(statusFilter === 'on_hold')}>保留中</button>
                 <button onClick={() => setStatusFilter('done')} style={chipStyle(statusFilter === 'done')}>完了</button>
                 <button onClick={() => setStatusFilter('all')} style={chipStyle(statusFilter === 'all')}>すべて</button>
               </div>
@@ -3562,7 +3567,7 @@ export function GanttView({
                 const baselineStartIndex = baselineBar ? clamp(diffUnits(baselineBar.startDate, timelineStart, timeScale), 0, totalUnits - 1) : 0
                 const baselineEndIndex = baselineBar ? clamp(diffUnits(baselineBar.endDate, timelineStart, timeScale), 0, totalUnits - 1) : 0
                 // 進捗シグナルを出すときは、バーの色で順調／遅れ／期限超過が分かるようにする
-                const barTone = showScheduleSignals && scheduleHealth
+                const barTone = group.todo.status !== 'on_hold' && showScheduleSignals && scheduleHealth
                   ? HEALTH_BAR_TONE[scheduleHealth.status]
                   : { fill: tone.background, track: trackBackground, border: tone.border, text: tone.text }
                 const barEnd = barLeft + barWidth
@@ -3659,6 +3664,14 @@ export function GanttView({
                             >
                               {group.todo.title}
                             </button>
+                            {group.todo.status !== 'done' && group.todo.status !== 'archived' && (
+                              <button
+                                onClick={() => void onUpdateTodo(group.todo.id, { status: group.todo.status === 'on_hold' ? 'active' : 'on_hold' }).catch(() => window.alert('状態を変更できませんでした'))}
+                                title={group.todo.status === 'on_hold' ? '進行中に戻す' : 'タスクを保留する'}
+                                aria-label={group.todo.status === 'on_hold' ? '進行中に戻す' : 'タスクを保留する'}
+                                style={{ ...subTaskAddButtonStyle(false), color: '#d8b4fe' }}
+                              >{group.todo.status === 'on_hold' ? '▶' : 'Ⅱ'}</button>
+                            )}
                             <button
                               onClick={(event) => {
                                 event.stopPropagation()
@@ -3838,7 +3851,7 @@ export function GanttView({
                               ) : barWidth > 56 && (
                                 // 開始日が画面の左外にあっても、見えている範囲の左端にタスク名を出し続ける
                                 <span style={{ position: 'sticky', left: leftTableWidth + 10, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0, 0, 0, 0.6)' }}>
-                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.todo.title}</span>
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.todo.status === 'on_hold' ? '保留中 · ' : ''}{group.todo.title}</span>
                                   {barWidth > 170 && (
                                     <span style={{ fontSize: '0.64rem', fontWeight: 600, opacity: 0.85, flexShrink: 0 }}>
                                       {[group.todo.assignee_name, `${progress}%`].filter(Boolean).join('・')}

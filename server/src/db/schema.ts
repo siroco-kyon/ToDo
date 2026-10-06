@@ -54,6 +54,7 @@ export function createSchema(db: Database.Database): void {
       updated_at TEXT NOT NULL,
       completed_at TEXT,
       archived_at TEXT,
+      on_hold_since TEXT,
       FOREIGN KEY (category_id) REFERENCES Categories(id),
       FOREIGN KEY (assignee_id) REFERENCES Users(id),
       FOREIGN KEY (created_by) REFERENCES Users(id)
@@ -298,6 +299,20 @@ export function runMigrations(db: Database.Database): void {
   }
   if (!todoColumns.some((c) => c.name === 'recurrence_skip_holidays')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN recurrence_skip_holidays INTEGER DEFAULT 0').run()
+  }
+  if (!todoColumns.some((c) => c.name === 'on_hold_since')) {
+    db.prepare('ALTER TABLE Todos ADD COLUMN on_hold_since TEXT').run()
+    // 最後の保留開始を履歴から復元する。アーカイブの取り消しは開始日時を変えない。
+    // 履歴がない場合は推測せずNULLにし、報告画面で開始日時不明と表示する。
+    db.prepare(`UPDATE Todos SET on_hold_since = (
+      SELECT MAX(created_at) FROM TodoChangeLogs
+      WHERE todo_id = Todos.id AND field = 'status' AND new_value = 'on_hold'
+        AND old_value NOT IN ('on_hold', 'archived')
+    ) WHERE status = 'on_hold' OR (status = 'archived' AND (
+      SELECT old_value FROM TodoChangeLogs
+      WHERE todo_id = Todos.id AND field = 'status'
+      ORDER BY created_at DESC, rowid DESC LIMIT 1
+    ) = 'on_hold')`).run()
   }
   if (!todoColumns.some((c) => c.name === 'completed_at')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN completed_at TEXT').run()

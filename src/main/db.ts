@@ -50,6 +50,7 @@ function createTables(): void {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       archived_at TEXT,
+      on_hold_since TEXT,
       FOREIGN KEY (category_id) REFERENCES Categories(id)
     );
 
@@ -264,6 +265,20 @@ function migrateDb(): void {
   }
   if (!todoColumns.some((c) => c.name === 'recurrence_skip_holidays')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN recurrence_skip_holidays INTEGER DEFAULT 0').run()
+  }
+  if (!todoColumns.some((c) => c.name === 'on_hold_since')) {
+    db.prepare('ALTER TABLE Todos ADD COLUMN on_hold_since TEXT').run()
+    // 最後の保留開始を履歴から復元する。アーカイブの取り消しは開始日時を変えない。
+    // 履歴がない場合は推測せずNULLにし、報告画面で開始日時不明と表示する。
+    db.prepare(`UPDATE Todos SET on_hold_since = (
+      SELECT MAX(created_at) FROM TodoChangeLogs
+      WHERE todo_id = Todos.id AND field = 'status' AND new_value = 'on_hold'
+        AND old_value NOT IN ('on_hold', 'archived')
+    ) WHERE status = 'on_hold' OR (status = 'archived' AND (
+      SELECT old_value FROM TodoChangeLogs
+      WHERE todo_id = Todos.id AND field = 'status'
+      ORDER BY created_at DESC, rowid DESC LIMIT 1
+    ) = 'on_hold')`).run()
   }
   if (!todoColumns.some((c) => c.name === 'completed_at')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN completed_at TEXT').run()
@@ -585,6 +600,12 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
   if (data.status !== undefined) {
     fields.push('status = ?')
     values.push(data.status)
+    if (data.status === 'on_hold') {
+      fields.push("on_hold_since = CASE WHEN status = 'on_hold' THEN on_hold_since ELSE COALESCE(on_hold_since, ?) END")
+      values.push(updatedAt)
+    } else if (data.status !== 'archived') {
+      fields.push('on_hold_since = NULL')
+    }
     if (data.status === 'done') {
       fields.push('completed_at = COALESCE(completed_at, ?)')
       values.push(updatedAt)
@@ -595,9 +616,9 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
   if (data.priority !== undefined) { fields.push('priority = ?'); values.push(data.priority) }
   if (data.progress !== undefined) {
     fields.push('progress = ?'); values.push(data.progress)
-    // 進捗100%で自動完了（status を明示指定していない時のみ）。
+    // 進捗100%で自動完了（status を明示指定しておらず、保留中ではない時のみ）。
     // updateTodo 側が done 遷移を検知して繰り返し次回分も生成する。
-    if (data.status === undefined && data.progress >= 100) {
+    if (data.status === undefined && data.progress >= 100 && getTodoById(id).status !== 'on_hold') {
       fields.push('status = ?'); values.push('done')
       fields.push('completed_at = COALESCE(completed_at, ?)'); values.push(updatedAt)
     }
@@ -713,8 +734,8 @@ export function createTodo(data: CreateTodoInput): Todo {
   // 新規タスクはsort_orderを最小値-1にして先頭に表示
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) as m FROM Todos').get() as { m: number }).m
   db.prepare(
-    `INSERT INTO Todos (id, title, description, memo, category_id, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, recurrence_skip_weekends, recurrence_skip_holidays, created_at, updated_at, completed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO Todos (id, title, description, memo, category_id, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, recurrence_skip_weekends, recurrence_skip_holidays, created_at, updated_at, completed_at, on_hold_since)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     data.title,
@@ -733,7 +754,8 @@ export function createTodo(data: CreateTodoInput): Todo {
     data.recurrence_skip_holidays ? 1 : 0,
     now,
     now,
-    status === 'done' ? now : null
+    status === 'done' ? now : null,
+    status === 'on_hold' ? now : null
   )
   return db
     .prepare(
@@ -841,6 +863,9 @@ export function updateTodo(id: string, data: UpdateTodoInput): Todo {
   const constrainedData = keepTodoDueDateAfterSubTasks(id, data)
   db.transaction(() => {
     applyTodoUpdate(id, constrainedData, now)
+    if (constrainedData.status === 'on_hold' && getRunningState()?.todo_id === id) {
+      stopTimer('タスクを保留しました')
+    }
     resolveDependencyCascade(id, now)
     const updated = getTodoById(id)
     recordTodoChanges(before, updated, now)
@@ -872,11 +897,11 @@ export function archiveTodo(id: string): void {
   })()
 }
 
-export function unarchiveTodo(id: string, restoreStatus: 'not_started' | 'active' | 'done' = 'active'): void {
+export function unarchiveTodo(id: string, restoreStatus: 'not_started' | 'active' | 'on_hold' | 'done' = 'active'): void {
   const now = new Date().toISOString()
   const before = getTodoById(id)
   db.transaction(() => {
-    db.prepare(`UPDATE Todos SET status = ?, archived_at = NULL, completed_at = CASE WHEN ? = 'done' THEN completed_at ELSE NULL END, updated_at = ? WHERE id = ?`).run(restoreStatus, restoreStatus, now, id)
+    db.prepare(`UPDATE Todos SET status = ?, archived_at = NULL, completed_at = CASE WHEN ? = 'done' THEN completed_at ELSE NULL END, on_hold_since = CASE WHEN ? = 'on_hold' THEN COALESCE(on_hold_since, ?) ELSE NULL END, updated_at = ? WHERE id = ?`).run(restoreStatus, restoreStatus, restoreStatus, now, now, id)
     recordTodoChanges(before, getTodoById(id), now)
   })()
 }
@@ -1229,8 +1254,9 @@ export function deleteSubTask(id: string): void {
 export function startTimer(todoId: string): RunningState {
   return db.transaction(() => {
     // 切替先を先に検証し、旧タイマーの停止だけが確定する部分更新を防ぐ。
-    const target = db.prepare('SELECT id FROM Todos WHERE id = ?').get(todoId) as { id: string } | undefined
+    const target = db.prepare('SELECT id, status FROM Todos WHERE id = ?').get(todoId) as { id: string; status: string } | undefined
     if (!target) throw new Error('開始するタスクが見つかりません')
+    if (target.status === 'on_hold') throw new Error('保留中のタスクは、進行中に戻してから計測を開始してください')
 
     // 実行中のタイマーがあれば自動停止（WorkLog 記録）してから開始する。
     // 同じタスクを再度開始した場合は計測中のものを維持する（リセットしない）。
@@ -2043,7 +2069,7 @@ export interface Category {
   created_at: string
 }
 
-export type TodoStatus = 'not_started' | 'active' | 'done' | 'archived'
+export type TodoStatus = 'not_started' | 'active' | 'on_hold' | 'done' | 'archived'
 
 export type UserRole = 'admin' | 'member'
 
@@ -2129,6 +2155,7 @@ export interface TeamMemberWorkload {
   display_name: string
   user_color: string
   active_tasks: number
+  on_hold_tasks: number
   overdue_tasks: number
   today_minutes: number
 }
@@ -2339,6 +2366,8 @@ export interface Todo {
   updated_at: string
   completed_at: string | null
   archived_at: string | null
+  /** 現在の保留を開始した日時。再開でクリアし、保留中の編集では保持する */
+  on_hold_since: string | null
 }
 
 export interface TodoCoAssignee {
@@ -2406,7 +2435,7 @@ export interface CreateTodoInput {
   category_id?: string | null
   assignee_id?: string | null
   /** 省略時は 'not_started'。カンバンの列からの追加でその列のステータスを指定する */
-  status?: 'not_started' | 'active' | 'done'
+  status?: 'not_started' | 'active' | 'on_hold' | 'done'
   priority?: number
   progress?: number
   start_date?: string | null

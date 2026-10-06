@@ -12,6 +12,7 @@ interface UseTimerReturn extends TimerState {
   start: (todoId: string) => Promise<void>
   stop: (note?: string) => Promise<void>
   restore: (running: RunningState) => void
+  sync: () => Promise<void>
 }
 
 export function useTimer(onStopped?: () => void): UseTimerReturn {
@@ -77,6 +78,17 @@ export function useTimer(onStopped?: () => void): UseTimerReturn {
     [startInterval, onStopped]
   )
 
+  // 他ユーザーや別ウィンドウによる保留でDB側が停止した計測も反映する。
+  const sync = useCallback(async () => {
+    const running = await window.api.timerGetRunning()
+    if (running) {
+      restore(running)
+    } else {
+      stopInterval()
+      setState({ isRunning: false, runningTodoId: null, elapsedSeconds: 0, startTime: null })
+    }
+  }, [restore, stopInterval])
+
   const stop = useCallback(
     async (note?: string) => {
       await window.api.timerStop(note)
@@ -87,5 +99,5 @@ export function useTimer(onStopped?: () => void): UseTimerReturn {
     [stopInterval, onStopped]
   )
 
-  return { ...state, start, stop, restore }
+  return { ...state, start, stop, restore, sync }
 }
