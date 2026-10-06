@@ -1,3 +1,4 @@
+import { LinkedText, TextLinks } from './LinkedText'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { Category, CreateSubTaskInput, DailyPlanItem, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, UpdateTodoInput, WorkLog } from '../types'
 import { TimerDisplay } from './TimerDisplay'
@@ -818,6 +819,7 @@ export function TodoDetail({
               rows={4}
               style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: 100 }}
             />
+            <TextLinks text={descriptionDraft} />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
               <div style={{ fontSize: '0.72rem', color: descriptionDraft !== descriptionBase ? '#93c5fd' : '#64748b' }}>
                 {descriptionDraft !== descriptionBase ? '未保存の変更があります' : '保存済み'}
@@ -845,6 +847,7 @@ export function TodoDetail({
               進捗、気づき、次にやることを残せます。Ctrl/Cmd + Enter でも保存できます。
             </div>
             <textarea value={memoDraft} onChange={(event) => setMemoDraft(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void handleMemoSave() } }} placeholder="進捗メモ、引き継ぎ、次にやることなど..." rows={5} style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: 120 }} />
+            <TextLinks text={memoDraft} />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
               <div style={{ fontSize: '0.72rem', color: memoDraft !== memoBase ? '#93c5fd' : '#64748b' }}>{memoDraft !== memoBase ? '未保存の変更があります' : '保存済み'}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -918,7 +921,7 @@ export function TodoDetail({
                         </div>
                       </div>
                     ) : (
-                      <div style={{ fontSize: '0.84rem', color: '#cbd5e1', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{note.body}</div>
+                      <div style={{ fontSize: '0.84rem', color: '#cbd5e1', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}><LinkedText text={note.body} /></div>
                     )}
                   </div>
                 ))}
@@ -1264,7 +1267,7 @@ function ReadonlySubTaskItem({ subTask, onToggle, onSave, onDelete, onShowToast 
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '0.85rem', color: subTask.done ? '#475569' : '#cbd5e1', textDecoration: subTask.done ? 'line-through' : 'none' }}>{subTask.title}</div>
         {(subTask.start_date || subTask.due_date) && <div style={{ marginTop: 4, fontSize: '0.68rem', color: '#94a3b8' }}>{subTask.start_date ?? ''}{subTask.start_date && subTask.due_date ? ' - ' : ''}{subTask.due_date ?? ''}</div>}
-        {subTask.description && <div style={{ marginTop: 2, fontSize: '0.75rem', color: subTask.done ? '#334155' : '#64748b', whiteSpace: 'pre-wrap' }}>{subTask.description}</div>}
+        {subTask.description && <div style={{ marginTop: 2, fontSize: '0.75rem', color: subTask.done ? '#334155' : '#64748b', whiteSpace: 'pre-wrap' }}><LinkedText text={subTask.description} /></div>}
         <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
           <div
             ref={progressBarRef}

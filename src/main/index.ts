@@ -122,7 +122,7 @@ function attachWindowDiagnostics(targetWindow: BrowserWindow, hash = ''): void {
 
 function attachExternalLinkGuard(targetWindow: BrowserWindow): void {
   targetWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    if (/^https?:\/\//i.test(details.url)) void shell.openExternal(details.url)
     return { action: 'deny' }
   })
 }

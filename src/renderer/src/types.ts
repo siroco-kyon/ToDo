@@ -14,6 +14,13 @@ export type TodoStatus = 'not_started' | 'active' | 'on_hold' | 'done' | 'archiv
 export type UserRole = 'admin' | 'member'
 
 /** A user as exposed to clients. Web-only; the Electron build returns an empty user list. */
+export interface UserDeletePreview {
+  user: PublicUser
+  taskCount: number
+  subtaskCount: number
+  coAssignedTaskCount: number
+}
+
 export interface PublicUser {
   id: string
   username: string

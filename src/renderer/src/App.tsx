@@ -212,6 +212,7 @@ export function App(): React.JSX.Element {
     ])
     setUsers(allUsers)
     setCurrentUser(me)
+    setSelectedAssigneeId((previous) => previous && !allUsers.some((user) => user.id === previous) ? null : previous)
   }, [])
 
   const loadNotifications = useCallback(async () => {
@@ -300,6 +301,11 @@ export function App(): React.JSX.Element {
     if (isFirstLaunch !== false) return
 
     const unsubscribe = window.api.onDataChanged((scope) => {
+      if (scope === 'user') {
+        void Promise.all([loadUsers(), loadTodos(), window.api.subtaskGetAll().then(setAllSubTasks)])
+          .catch((error) => showToast(error instanceof Error ? error.message : 'メンバー情報を再読み込みできませんでした', 'error'))
+        return
+      }
       if (scope === 'category') {
         void Promise.all([loadCategories(), loadTodos()])
         return
@@ -324,7 +330,7 @@ export function App(): React.JSX.Element {
       }
     })
     return () => unsubscribe()
-  }, [isFirstLaunch, loadCategories, loadSelectedPlan, loadTodayPlan, loadTodos, planDate, showToast, syncTimer])
+  }, [isFirstLaunch, loadCategories, loadSelectedPlan, loadTodayPlan, loadTodos, loadUsers, planDate, showToast, syncTimer])
 
   useEffect(() => {
     if (!currentUser) {

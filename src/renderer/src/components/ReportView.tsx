@@ -1,3 +1,4 @@
+import { LinkedText } from './LinkedText'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { dateStamp, downloadCsv, toCsv } from '../lib/csv'
@@ -558,7 +559,8 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
 
   // デスクトップ版には担当者がいないのでカテゴリ別に固定する
   const effectiveGroupMode: GroupMode = multiUser ? groupMode : 'category'
-  const effectiveAssigneeFilter = multiUser && currentUser != null ? assigneeFilter : 'all'
+  const unavailableAssignee = assigneeFilter.startsWith('user:') && !users.some((user) => user.id === assigneeFilter.slice(5))
+  const effectiveAssigneeFilter = multiUser && currentUser != null && !unavailableAssignee ? assigneeFilter : 'all'
   const selectedUserId = effectiveAssigneeFilter.startsWith('user:')
     ? effectiveAssigneeFilter.slice(5)
     : effectiveAssigneeFilter === 'all' ? null : currentUser!.id
@@ -1578,7 +1580,7 @@ function ReportTaskCard({
               <button onClick={openMemoEditor} style={{ ...inlineActionStyle, marginLeft: 'auto' }}>編集</button>
             </div>
             <div style={{ fontSize: '0.82rem', color: '#cbd5e1', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
-              {memo}
+              <LinkedText text={memo} />
             </div>
           </div>
         ) : null}

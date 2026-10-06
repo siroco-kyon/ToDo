@@ -111,7 +111,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 }
 
 export function verifyCredentials(username: string, password: string): UserRecord | null {
-  const user = getDb().prepare('SELECT * FROM Users WHERE username = ?').get(username) as UserRecord | undefined
+  const user = getDb().prepare('SELECT * FROM Users WHERE username = ? AND deleted_at IS NULL').get(username) as UserRecord | undefined
   if (!user || user.is_active !== 1) return null
   if (!verifyPassword(password, user.password_hash)) return null
   return user

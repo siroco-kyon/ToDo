@@ -1,7 +1,10 @@
+import { broadcastDataChanged, disconnectUser } from '../realtime'
 import { Router } from 'express'
 import { hashPassword, requireAdmin, requireAuth, verifyPassword } from '../auth'
 import {
   createUser,
+  deleteUser,
+  getUserDeletePreview,
   getUserById,
   getUserByUsername,
   listUsers,
@@ -118,4 +121,23 @@ usersRouter.post('/:id/password', requireAdmin, (req, res) => {
   }
   setUserPassword(target.id, hashPassword(password))
   res.json({ user: toPublicUser(getUserById(target.id)!) })
+})
+
+usersRouter.get('/:id/delete-preview', requireAdmin, (req, res) => {
+  if (!getUserById(req.params.id)) {
+    res.status(404).json({ error: 'ユーザーが見つかりません' })
+    return
+  }
+  res.json(getUserDeletePreview(req.params.id))
+})
+
+usersRouter.delete('/:id', requireAdmin, (req, res) => {
+  try {
+    deleteUser(req.params.id, req.user!.id, req.body?.confirmationUsername)
+    disconnectUser(req.params.id)
+    for (const scope of ['user', 'todo', 'subtask', 'plan', 'progress'] as const) broadcastDataChanged(scope)
+    res.status(204).end()
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'メンバーを削除できませんでした' })
+  }
 })

@@ -47,7 +47,7 @@ function broadcastPresence(): void {
   }
 }
 
-export type DataScope = 'category' | 'todo' | 'subtask' | 'plan' | 'progress'
+export type DataScope = 'category' | 'todo' | 'subtask' | 'plan' | 'progress' | 'user'
 
 /** Mirror of the desktop app's `data:changed` IPC signal: tells every client to refetch. */
 export function broadcastDataChanged(scope: DataScope): void {
@@ -101,4 +101,15 @@ export function initRealtime(server: Server): void {
       clients.delete(client)
     })
   })
+}
+
+/** Revoke live connections as well as stored sessions. */
+export function disconnectUser(userId: string): void {
+  for (const client of clients) {
+    if (client.user.id === userId) {
+      clients.delete(client)
+      client.socket.close(4401, 'unauthorized')
+    }
+  }
+  broadcastPresence()
 }

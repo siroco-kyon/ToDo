@@ -1,3 +1,4 @@
+import { assertAssignableUser } from './users'
 import crypto from 'crypto'
 import { getDb } from './connection'
 import { clampProgress, normalizeDateKey } from './helpers'
@@ -65,6 +66,7 @@ export function reorderSubTasks(todoId: string, orderedIds: string[]): void {
 }
 
 export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask {
+  assertAssignableUser(data.assignee_id)
   const db = getDb()
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
@@ -82,6 +84,7 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
 }
 
 export function updateSubTask(id: string, data: UpdateSubTaskInput, changedByUserId: string | null = null): SubTask {
+  assertAssignableUser(data.assignee_id)
   const db = getDb()
   const current = db.prepare('SELECT done, progress, completed_at, due_date FROM SubTasks WHERE id = ?').get(id) as { done: number; progress: number; completed_at: string | null; due_date: string | null } | undefined
 

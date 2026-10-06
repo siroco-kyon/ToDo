@@ -1,3 +1,4 @@
+import { LinkedText } from './LinkedText'
 import React, { useEffect, useRef, useState } from 'react'
 import { LikeButton, getLikeReaction } from './LikeButton'
 import type { ProgressNote, ProgressNoteComment } from '../types'
@@ -120,7 +121,7 @@ function CommentItem({
           )}
         </div>
         <div style={{ marginTop: 2, fontSize: '0.8rem', color: '#cbd5e1', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
-          {comment.body}
+          <LinkedText text={comment.body} />
         </div>
         {replyingToId === comment.id && renderReplyComposer(comment)}
       </div>
@@ -244,7 +245,7 @@ export function ProgressNoteThread({
         </div>
       ) : (
         <div style={{ marginTop: 5, fontSize: '0.84rem', color: '#e2e8f0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.6 }}>
-          {note.body}
+          <LinkedText text={note.body} />
         </div>
       )}
 

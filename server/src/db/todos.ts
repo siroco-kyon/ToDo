@@ -1,3 +1,4 @@
+import { assertAssignableUser } from './users'
 import crypto from 'crypto'
 import { stopTimer } from './timer'
 import HolidayJp from '@holiday-jp/holiday_jp'
@@ -69,6 +70,7 @@ export function getTodoById(id: string): Todo {
 }
 
 function replaceCoAssignees(todoId: string, userIds: string[], now: string): void {
+  for (const id of userIds) assertAssignableUser(id)
   const db = getDb()
   db.prepare('DELETE FROM TodoCoAssignees WHERE todo_id = ?').run(todoId)
   const insert = db.prepare(
@@ -247,6 +249,7 @@ function dependencyCreatesCycle(predecessorTodoId: string, successorTodoId: stri
 }
 
 export function createTodo(data: CreateTodoInput, createdByUserId: string | null = null): Todo {
+  assertAssignableUser(data.assignee_id)
   const db = getDb()
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
@@ -388,6 +391,7 @@ function spawnNextRecurrence(source: Todo): void {
 }
 
 export function updateTodo(id: string, data: UpdateTodoInput, changedByUserId: string | null = null): Todo {
+  assertAssignableUser(data.assignee_id)
   const db = getDb()
   const now = new Date().toISOString()
   const before = getTodoById(id)
