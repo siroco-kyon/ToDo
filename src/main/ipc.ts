@@ -43,6 +43,7 @@ import {
   getProgressNotesByTodo,
   getProgressNotesByDate,
   getProgressNotesByRange,
+  getProgressTimeline,
   getTodoReportActivity,
   getOpenDiscussionNotes,
   setProgressNoteNeedsDiscussion,
@@ -171,6 +172,7 @@ export function registerIpcHandlers(
   ipcMain.handle('progressNote:getByTodo', (_, todoId: string) => getProgressNotesByTodo(todoId))
   ipcMain.handle('progressNote:getByDate', (_, dateStr: string) => getProgressNotesByDate(dateStr))
   ipcMain.handle('progressNote:getByRange', (_, from: string, to: string) => getProgressNotesByRange(from, to))
+  ipcMain.handle('progressNote:getTimeline', (_, from: string, to: string) => getProgressTimeline(from, to))
   ipcMain.handle('progressNote:getLastActivity', () => getTodoReportActivity())
   ipcMain.handle('progressNote:getOpenDiscussions', () => getOpenDiscussionNotes())
   ipcMain.handle('progressNote:setNeedsDiscussion', handleMutation('progress', (id: string, value: boolean) => setProgressNoteNeedsDiscussion(id, value)))

@@ -31,8 +31,8 @@ interface TimelineRange {
 }
 
 const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
-  { value: 'newest', label: '新しい順' },
-  { value: 'oldest', label: '古い順' },
+  { value: 'newest', label: '更新が新しい順' },
+  { value: 'oldest', label: '更新が古い順' },
   { value: 'todo', label: 'タスク別' },
   { value: 'category', label: 'カテゴリ別' },
   { value: 'author', label: '投稿者別' }
@@ -50,12 +50,14 @@ function loadSortMode(): SortMode {
 }
 
 function compareNewest(a: ProgressNote, b: ProgressNote): number {
-  return b.created_at.localeCompare(a.created_at)
+  return b.last_activity_at.localeCompare(a.last_activity_at)
+    || b.created_at.localeCompare(a.created_at)
+    || a.id.localeCompare(b.id)
 }
 
 function sortNotes(notes: ProgressNote[], mode: SortMode): ProgressNote[] {
   const sorted = notes.slice()
-  if (mode === 'oldest') return sorted.sort((a, b) => a.created_at.localeCompare(b.created_at))
+  if (mode === 'oldest') return sorted.sort((a, b) => -compareNewest(a, b))
   if (mode === 'todo') return sorted.sort((a, b) => a.todo_title.localeCompare(b.todo_title, 'ja') || compareNewest(a, b))
   if (mode === 'category') return sorted.sort((a, b) => (a.category_name ?? '').localeCompare(b.category_name ?? '', 'ja') || compareNewest(a, b))
   if (mode === 'author') return sorted.sort((a, b) => getAuthorName(a.author_name).localeCompare(getAuthorName(b.author_name), 'ja') || compareNewest(a, b))
@@ -221,7 +223,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
     const seq = ++loadSeqRef.current
     if (mode === 'initial') setLoading(true)
     try {
-      const loaded = await window.api.progressNoteGetByRange(range.from, range.to)
+      const loaded = await window.api.progressNoteGetTimeline(range.from, range.to)
       if (seq !== loadSeqRef.current) return
       setNotes(loaded.map(normalizeNote))
     } catch (error) {
@@ -239,10 +241,27 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
 
   useEffect(() => {
     if (!focusTarget) return
-    if (focusTarget.date) setRange({ from: focusTarget.date, to: focusTarget.date })
-    if (focusTarget.todoId) setSelectedTodoId(focusTarget.todoId)
-    setFocusedNoteId(focusTarget.noteId ?? null)
-    setFocusedCommentId(focusTarget.commentId ?? null)
+    let cancelled = false
+    const focus = async (): Promise<void> => {
+      let date = focusTarget.date
+      if (focusTarget.todoId && focusTarget.noteId) {
+        try {
+          const taskNotes = await window.api.progressNoteGetByTodo(focusTarget.todoId)
+          const note = taskNotes.find((item) => item.id === focusTarget.noteId)
+          if (note) date = getDateKeyFromIso(note.last_activity_at)
+        } catch {
+          // 取得できない場合は通知の日時で開く。
+        }
+      }
+      if (cancelled) return
+      if (date) setRange({ from: date, to: date })
+      if (focusTarget.todoId) setSelectedTodoId(focusTarget.todoId)
+      setSelectedAuthorId('')
+      setFocusedNoteId(focusTarget.noteId ?? null)
+      setFocusedCommentId(focusTarget.commentId ?? null)
+    }
+    void focus()
+    return () => { cancelled = true }
   }, [focusTarget])
 
   useEffect(() => {
@@ -401,11 +420,12 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   const visibleNotes = useMemo(
     () => sortNotes(
       notes.filter((note) =>
+        isInRange(getDateKeyFromIso(note.last_activity_at), range) &&
         !hiddenTodoIds.has(note.todo_id) && (!selectedAuthorId || note.user_id === selectedAuthorId)
       ),
       sortMode
     ),
-    [notes, hiddenTodoIds, selectedAuthorId, sortMode]
+    [notes, hiddenTodoIds, selectedAuthorId, sortMode, range]
   )
   const totalComments = visibleNotes.reduce((sum, note) => sum + countComments(note.comments ?? []), 0)
   const today = getTodayKey()
@@ -636,6 +656,9 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ color: '#f8fafc', fontSize: '0.9rem', fontWeight: 800 }}>{authorName}</span>
                     <span style={{ color: '#64748b', fontSize: '0.74rem' }}>{formatDateTime(note.created_at)}</span>
+                    {note.last_reply_at && (
+                      <span style={{ color: '#94a3b8', fontSize: '0.74rem' }}>最終返信：{formatDateTime(note.last_reply_at)}</span>
+                    )}
                     {note.updated_at !== note.created_at && <span style={editedStyle}>編集済み</span>}
                     {note.needs_discussion === 1 && (
                       <span style={discussionBadgeStyle}>要相談</span>

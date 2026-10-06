@@ -55,6 +55,7 @@ import { getTeamDashboard } from '../db/team'
 import {
   getProgressNotesByTodo,
   getProgressNotesByRange,
+  getProgressTimeline,
   getTodoReportActivity,
   getOpenDiscussionNotes,
   setProgressNoteNeedsDiscussion,
@@ -409,6 +410,9 @@ dataRouter.get('/progress-notes/timeline', (req, res) =>
     const to = String(req.query.to ?? date)
     return getProgressNotesByRange(from, to, req.user!.id)
   }))
+dataRouter.get('/progress-notes/activity-timeline', (req, res) =>
+  run(res, () => getProgressTimeline(String(req.query.from ?? ''), String(req.query.to ?? ''), req.user!.id)))
+
 dataRouter.get('/progress-notes/last-activity', (_req, res) =>
   run(res, () => getTodoReportActivity()))
 dataRouter.get('/progress-notes/discussions', (req, res) =>

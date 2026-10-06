@@ -1684,7 +1684,9 @@ export function setSetting(key: string, value: string): void {
 const PROGRESS_NOTE_SELECT = `SELECT pn.id, pn.todo_id, pn.user_id, pn.body, pn.needs_discussion, pn.created_at, pn.updated_at,
               t.title AS todo_title, c.name AS category_name, c.color AS category_color,
               NULL AS author_name, NULL AS author_color,
-              COUNT(pnc.id) AS comment_count
+              COUNT(pnc.id) AS comment_count,
+              MAX(pnc.created_at) AS last_reply_at,
+              MAX(pn.created_at, COALESCE(MAX(pnc.created_at), pn.created_at)) AS last_activity_at
        FROM ProgressNotes pn
        JOIN Todos t ON pn.todo_id = t.id
        LEFT JOIN Categories c ON t.category_id = c.id
@@ -1793,6 +1795,19 @@ export function getProgressNotesByRange(from: string, to: string): ProgressNote[
   }
   const notes = db
     .prepare(`${PROGRESS_NOTE_SELECT} WHERE date(pn.created_at, 'localtime') BETWEEN ? AND ? GROUP BY pn.id ORDER BY pn.created_at DESC`)
+    .all(from, to) as ProgressNote[]
+  return hydrateProgressNotes(notes)
+}
+
+/** 進捗タブ専用。最新の投稿・返信日時で期間を絞る（報告用の投稿期間とは別）。 */
+export function getProgressTimeline(from: string, to: string): ProgressNote[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
+    throw new Error('進捗タイムラインの期間が不正です')
+  }
+  const notes = getDb()
+    .prepare(`${PROGRESS_NOTE_SELECT} GROUP BY pn.id
+      HAVING date(last_activity_at, 'localtime') BETWEEN ? AND ?
+      ORDER BY last_activity_at DESC, pn.created_at DESC, pn.id ASC`)
     .all(from, to) as ProgressNote[]
   return hydrateProgressNotes(notes)
 }
@@ -2206,6 +2221,9 @@ export interface ProgressNote {
   body: string
   created_at: string
   updated_at: string
+  /** 投稿日時と全返信の作成日時の最大値（編集やいいねは含めない） */
+  last_activity_at: string
+  last_reply_at: string | null
   /** 1 のとき「要相談」。報告タブで担当者ごとの先頭に集める */
   needs_discussion: number
   comment_count: number
