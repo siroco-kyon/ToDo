@@ -1,6 +1,7 @@
 import crypto from 'crypto'
+import { stopTimer } from './timer'
 import { getDb } from './connection'
-import type { PublicUser, UserRecord, UserRole } from './types'
+import type { PublicUser, UserRecord, UserRole, UserDeletePreview } from './types'
 
 const USER_COLORS = [
   '#6366f1', '#ec4899', '#14b8a6', '#f59e0b', '#8b5cf6',
@@ -31,13 +32,13 @@ export function countUsers(): number {
 
 export function listUsers(): PublicUser[] {
   const rows = getDb()
-    .prepare('SELECT * FROM Users ORDER BY is_active DESC, display_name ASC')
+    .prepare('SELECT * FROM Users WHERE deleted_at IS NULL ORDER BY is_active DESC, display_name ASC')
     .all() as UserRecord[]
   return rows.map(toPublicUser)
 }
 
 export function getUserById(id: string): UserRecord | undefined {
-  return getDb().prepare('SELECT * FROM Users WHERE id = ?').get(id) as UserRecord | undefined
+  return getDb().prepare('SELECT * FROM Users WHERE id = ? AND deleted_at IS NULL').get(id) as UserRecord | undefined
 }
 
 export function getUserByUsername(username: string): UserRecord | undefined {
@@ -73,6 +74,7 @@ export interface UpdateUserInput {
 }
 
 export function updateUser(id: string, input: UpdateUserInput): PublicUser {
+  if (!getUserById(id)) throw new Error('ユーザーが見つかりません')
   const fields: string[] = ['updated_at = ?']
   const values: unknown[] = [new Date().toISOString()]
 
@@ -90,4 +92,44 @@ export function setUserPassword(id: string, passwordHash: string): void {
   getDb()
     .prepare('UPDATE Users SET password_hash = ?, updated_at = ? WHERE id = ?')
     .run(passwordHash, new Date().toISOString(), id)
+}
+
+// Deleted records remain for authorship and work history; login IDs stay reserved.
+export function getUserDeletePreview(id: string): UserDeletePreview {
+  const user = getUserById(id)
+  if (!user) throw new Error('ユーザーが見つかりません')
+  const count = (sql: string): number => (getDb().prepare(sql).get(id) as { count: number }).count
+  return {
+    user: toPublicUser(user),
+    taskCount: count('SELECT COUNT(*) AS count FROM Todos WHERE assignee_id = ?'),
+    subtaskCount: count('SELECT COUNT(*) AS count FROM SubTasks WHERE assignee_id = ?'),
+    coAssignedTaskCount: count('SELECT COUNT(*) AS count FROM TodoCoAssignees WHERE user_id = ?')
+  }
+}
+
+export function deleteUser(id: string, actorId: string, confirmationUsername: unknown): void {
+  const db = getDb()
+  db.transaction(() => {
+    const actor = getUserById(actorId)
+    if (!actor || actor.role !== 'admin' || actor.is_active !== 1) throw new Error('管理者権限が必要です')
+    const target = getUserById(id)
+    if (!target) throw new Error('ユーザーが見つかりません')
+    if (id === actorId) throw new Error('自分自身を削除することはできません')
+    if (confirmationUsername !== target.username) throw new Error('確認用のログインIDが一致しません')
+    const remaining = db.prepare("SELECT COUNT(*) AS count FROM Users WHERE id != ? AND role = 'admin' AND is_active = 1 AND deleted_at IS NULL").get(id) as { count: number }
+    if (remaining.count === 0) throw new Error('有効な管理者を最低1人残してください')
+    if (db.prepare('SELECT 1 FROM RunningState WHERE user_id = ?').get(id)) stopTimer(id, 'メンバーを削除したため計測を停止しました')
+    const now = new Date().toISOString()
+    db.prepare('UPDATE Todos SET assignee_id = NULL, updated_at = ? WHERE assignee_id = ?').run(now, id)
+    db.prepare('UPDATE SubTasks SET assignee_id = NULL WHERE assignee_id = ?').run(id)
+    db.prepare('DELETE FROM TodoCoAssignees WHERE user_id = ?').run(id)
+    db.prepare('DELETE FROM Sessions WHERE user_id = ?').run(id)
+    db.prepare('DELETE FROM TodoSubscriptions WHERE user_id = ?').run(id)
+    db.prepare('UPDATE Users SET is_active = 0, deleted_at = ?, updated_at = ? WHERE id = ?').run(now, now, id)
+  })()
+}
+
+/** Reject stale assignment requests from clients opened before deletion. */
+export function assertAssignableUser(id: string | null | undefined): void {
+  if (id && !getUserById(id)) throw new Error('担当者が見つかりません。再読み込みしてください')
 }

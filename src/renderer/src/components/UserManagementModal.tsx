@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import type { CreateUserInput, PublicUser, UpdateUserInput, UserRole } from '../types'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import type { CreateUserInput, PublicUser, UpdateUserInput, UserRole, UserDeletePreview } from '../types'
 
 interface Props {
   currentUserId: string
@@ -15,6 +15,8 @@ function roleLabel(role: UserRole): string {
 }
 
 export function UserManagementModal({ currentUserId, onClose, onShowToast, onChanged }: Props): React.JSX.Element {
+  const [deletePreview, setDeletePreview] = useState<UserDeletePreview | null>(null)
+  const actionPending = useRef(false)
   const [users, setUsers] = useState<PublicUser[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -55,12 +57,14 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
     const handler = (e: KeyboardEvent): void => {
       if (e.key === 'Escape' && !e.isComposing) {
         e.preventDefault()
-        onClose()
+        if (actionPending.current) return
+        if (deletePreview) setDeletePreview(null)
+        else onClose()
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+  }, [onClose, deletePreview])
 
   const beginEdit = (user: PublicUser): void => {
     setPwdId(null)
@@ -69,6 +73,44 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
     setEditRole(user.role)
     setEditColor(user.color)
     setEditActive(user.is_active === 1)
+  }
+
+  useEffect(() => window.api.onDataChanged((scope) => {
+    if (scope === 'user') void load()
+  }), [load])
+
+  const beginDelete = async (user: PublicUser): Promise<void> => {
+    if (actionPending.current) return
+    actionPending.current = true
+    setBusyId(user.id)
+    try {
+      setDeletePreview(await window.api.userDeletePreview(user.id))
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '削除対象を確認できませんでした', 'error')
+    } finally {
+      actionPending.current = false
+      setBusyId(null)
+    }
+  }
+
+  const handleDelete = async (username: string): Promise<void> => {
+    if (!deletePreview || actionPending.current) return
+    actionPending.current = true
+    setBusyId(deletePreview.user.id)
+    try {
+      await window.api.userDelete(deletePreview.user.id, username)
+      onShowToast('「' + deletePreview.user.display_name + '」を削除しました', 'success')
+      setDeletePreview(null)
+      setEditId(null)
+      setPwdId(null)
+      await load()
+      onChanged()
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : 'メンバーを削除できませんでした', 'error')
+    } finally {
+      actionPending.current = false
+      setBusyId(null)
+    }
   }
 
   const handleCreate = async (): Promise<void> => {
@@ -148,13 +190,18 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
     }
   }
 
+  if (deletePreview) {
+    return <DeleteMemberConfirmation key={deletePreview.user.id} preview={deletePreview} busy={busyId !== null}
+      onCancel={() => { if (!actionPending.current) setDeletePreview(null) }} onDelete={handleDelete} />
+  }
+
   return (
     <div
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100
       }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => e.target === e.currentTarget && !actionPending.current && onClose()}
     >
       <div role="dialog" aria-modal="true" aria-label="ユーザー管理" style={{
         background: '#1e293b', borderRadius: 14, padding: 28, width: 600,
@@ -179,7 +226,7 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
                 const inactive = user.is_active !== 1
                 const isEditing = editId === user.id
                 const isPwd = pwdId === user.id
-                const rowBusy = busyId === user.id
+                const rowBusy = busyId !== null
                 return (
                   <div key={user.id} style={{
                     border: `1px solid ${isEditing ? '#6366f1' : '#334155'}`,
@@ -209,6 +256,8 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
                           >
                             パスワード
                           </button>
+                          <button onClick={() => void beginDelete(user)} style={{ ...ghostBtn, color: '#fca5a5' }}
+                            disabled={isSelf || rowBusy} title={isSelf ? '自分自身は削除できません' : undefined}>削除</button>
                         </div>
                       )}
                     </div>
@@ -396,4 +445,35 @@ const selfBadge: React.CSSProperties = {
 const inactiveBadge: React.CSSProperties = {
   fontSize: '0.64rem', fontWeight: 700, padding: '1px 7px', borderRadius: 99,
   background: '#7f1d1d40', color: '#fca5a5'
+}
+
+function DeleteMemberConfirmation({ preview, busy, onCancel, onDelete }: {
+  preview: UserDeletePreview
+  busy: boolean
+  onCancel: () => void
+  onDelete: (username: string) => Promise<void>
+}): React.JSX.Element {
+  const [confirmation, setConfirmation] = useState('')
+  const { user } = preview
+  const canDelete = !busy && confirmation === user.username
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="delete-member-heading" style={{ background: '#1e293b', border: '1px solid #ef4444', borderRadius: 14, padding: 28, width: 480, maxWidth: '90vw', maxHeight: '88vh', overflowY: 'auto', color: '#e2e8f0', lineHeight: 1.6 }}>
+        <h2 id="delete-member-heading" style={{ margin: '0 0 14px' }}>メンバーの削除を確認</h2>
+        <div style={{ fontSize: '1.2rem', fontWeight: 700, overflowWrap: 'anywhere' }}>{user.display_name}</div>
+        <div style={{ color: '#cbd5e1', fontSize: '1rem', marginTop: 6, overflowWrap: 'anywhere' }}>ログインID: {user.username}</div>
+        <p style={{ margin: '14px 0' }}>担当タスク {preview.taskCount}件・サブタスク {preview.subtaskCount}件を未割り当てにします。共同担当のタスク {preview.coAssignedTaskCount}件からも外します。</p>
+        <p style={{ margin: '14px 0' }}>削除後はログインできなくなり、接続中のセッションを終了します。計測中の作業は停止してログを保存します。</p>
+        <p style={{ margin: '14px 0' }}>タスク・作業ログ・投稿・変更履歴は残ります。削除は取り消せません。同じログインIDは再利用できません。</p>
+        <label style={fieldLabel} htmlFor="delete-member-id">確認のため、対象のログインIDを入力してください</label>
+        <input id="delete-member-id" value={confirmation} onChange={(event) => setConfirmation(event.target.value)}
+          disabled={busy} autoComplete="off" spellCheck={false} style={inputStyle} />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+          <button autoFocus onClick={onCancel} disabled={busy} style={secondaryBtn}>キャンセル</button>
+          <button onClick={() => { if (canDelete) void onDelete(confirmation) }} disabled={!canDelete}
+            style={{ ...primaryBtn, background: canDelete ? '#b91c1c' : '#334155', opacity: canDelete ? 1 : 0.6 }}>{busy ? '削除中…' : '削除する'}</button>
+        </div>
+      </div>
+    </div>
+  )
 }

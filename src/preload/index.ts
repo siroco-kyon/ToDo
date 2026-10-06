@@ -19,6 +19,7 @@ import type {
   UpdateDailyPlanItemInput,
   AddDailyPlanItemOptions,
   PublicUser,
+  UserDeletePreview,
   UserRole,
   CreateUserInput,
   UpdateUserInput,
@@ -63,6 +64,7 @@ export type {
   UpdateDailyPlanItemInput,
   AddDailyPlanItemOptions,
   PublicUser,
+  UserDeletePreview,
   UserRole,
   CreateUserInput,
   UpdateUserInput,
@@ -177,6 +179,8 @@ const api = {
   userCreate: (input: CreateUserInput): Promise<PublicUser> => ipcRenderer.invoke('user:create', input),
   userUpdate: (id: string, input: UpdateUserInput): Promise<PublicUser> =>
     ipcRenderer.invoke('user:update', id, input),
+  userDeletePreview: (id: string): Promise<UserDeletePreview> => ipcRenderer.invoke('user:deletePreview', id),
+  userDelete: (id: string, confirmationUsername: string): Promise<void> => ipcRenderer.invoke('user:delete', id, confirmationUsername),
   userResetPassword: (id: string, password: string): Promise<void> =>
     ipcRenderer.invoke('user:resetPassword', id, password),
   /** デスクトップ版 todo.db を取り込む（サーバー版の管理者専用。デスクトップ版ではエラー） */
@@ -270,8 +274,8 @@ const api = {
     ipcRenderer.on('navigation:openTodo', handler)
     return () => ipcRenderer.removeListener('navigation:openTodo', handler)
   },
-  onDataChanged: (cb: (scope: 'category' | 'todo' | 'subtask' | 'plan' | 'progress') => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, scope: 'category' | 'todo' | 'subtask' | 'plan' | 'progress'): void => cb(scope)
+  onDataChanged: (cb: (scope: 'category' | 'todo' | 'subtask' | 'plan' | 'progress' | 'user') => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, scope: 'category' | 'todo' | 'subtask' | 'plan' | 'progress' | 'user'): void => cb(scope)
     ipcRenderer.on('data:changed', handler)
     return () => ipcRenderer.removeListener('data:changed', handler)
   },

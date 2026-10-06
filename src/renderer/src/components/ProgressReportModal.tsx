@@ -1,3 +1,4 @@
+import { LinkedText } from './LinkedText'
 import React, { useCallback, useEffect, useState } from 'react'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { writeTaskReportSnapshot } from '../lib/taskReportSnapshot'
@@ -651,7 +652,7 @@ export function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Eleme
         <div style={{ fontSize: '0.74rem', color: '#93c5fd', marginTop: 4 }}>{assignees}</div>
       )}
       {todo.memo && (
-        <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 6, whiteSpace: 'pre-wrap' }}>{todo.memo}</div>
+        <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 6, whiteSpace: 'pre-wrap' }}><LinkedText text={todo.memo} /></div>
       )}
       {subTasks.length > 0 && (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -676,7 +677,7 @@ export function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Eleme
                 <span>{formatDateTime(note.created_at)}</span>
                 <span style={{ color: '#93c5fd' }}>{note.author_name ?? '不明'}</span>
               </div>
-              <div style={{ fontSize: '0.82rem', color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>{note.body}</div>
+              <div style={{ fontSize: '0.82rem', color: '#cbd5e1', whiteSpace: 'pre-wrap' }}><LinkedText text={note.body} /></div>
               {note.comments.length > 0 && (
                 <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <CommentThread comments={note.comments} depth={0} />
@@ -696,7 +697,7 @@ function CommentThread({ comments, depth }: { comments: ProgressNoteComment[]; d
       {comments.map((comment) => (
         <div key={comment.id} style={{ marginLeft: depth * 16, fontSize: '0.78rem', color: '#cbd5e1' }}>
           <span style={{ color: '#a78bfa' }}>↳ {comment.author_name ?? '不明'}: </span>
-          {comment.body}
+          <LinkedText text={comment.body} />
           {comment.replies.length > 0 && <CommentThread comments={comment.replies} depth={depth + 1} />}
         </div>
       ))}
@@ -850,7 +851,7 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
                       </span>
                       <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{formatDateTime(comment.created_at)}</span>
                     </div>
-                    <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{comment.body}</div>
+                    <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}><LinkedText text={comment.body} /></div>
                   </div>
                 ))}
               </div>

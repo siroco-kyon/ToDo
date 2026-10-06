@@ -10,6 +10,7 @@ export function createSchema(db: Database.Database): void {
       role TEXT NOT NULL DEFAULT 'member',
       color TEXT NOT NULL DEFAULT '#6366f1',
       is_active INTEGER NOT NULL DEFAULT 1,
+      deleted_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -284,6 +285,10 @@ export function createSchema(db: Database.Database): void {
  * versions. Safe to run on every boot.
  */
 export function runMigrations(db: Database.Database): void {
+  const userColumns = db.prepare('PRAGMA table_info(Users)').all() as { name: string }[]
+  if (!userColumns.some((c) => c.name === 'deleted_at')) {
+    db.prepare('ALTER TABLE Users ADD COLUMN deleted_at TEXT').run()
+  }
   const todoColumns = db.prepare('PRAGMA table_info(Todos)').all() as { name: string }[]
   if (!todoColumns.some((c) => c.name === 'assignee_id')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN assignee_id TEXT').run()

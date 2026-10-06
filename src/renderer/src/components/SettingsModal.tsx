@@ -330,7 +330,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           <section>
             <h3 style={sectionHead}>管理者</h3>
             <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
-              メンバーの追加・編集・権限変更・パスワード再設定を行います。
+              メンバーの追加・編集・削除・権限変更・パスワード再設定を行います。
             </p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button onClick={onManageUsers} style={primaryBtn}>👤 ユーザー管理を開く</button>

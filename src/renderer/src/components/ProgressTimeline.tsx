@@ -1,3 +1,4 @@
+import { LinkedText } from './LinkedText'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProgressNote, ProgressNoteComment, PublicUser, Todo } from '../types'
 import { LIKE_EMOJI, LikeButton, getLikeReaction } from './LikeButton'
@@ -497,7 +498,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
               </div>
             </div>
           ) : (
-            <div style={commentBodyStyle}>{comment.body}</div>
+            <div style={commentBodyStyle}><LinkedText text={comment.body} /></div>
           )}
 
           {!editingThisComment && (
@@ -656,7 +657,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                       </div>
                     </div>
                   ) : (
-                    <div style={postBodyStyle}>{note.body}</div>
+                    <div style={postBodyStyle}><LinkedText text={note.body} /></div>
                   )}
 
                   {!editingNote && (

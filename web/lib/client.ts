@@ -19,6 +19,7 @@ import type {
   DailyPlanItem,
   UpdateDailyPlanItemInput,
   PublicUser,
+  UserDeletePreview,
   CreateUserInput,
   UpdateUserInput,
   UserNotification,
@@ -91,7 +92,7 @@ const del = <T>(path: string): Promise<T> => request<T>('DELETE', path)
 
 // ─── Realtime + local event bus ───────────────────────────────
 
-type DataScope = 'category' | 'todo' | 'subtask' | 'plan' | 'progress'
+type DataScope = 'category' | 'todo' | 'subtask' | 'plan' | 'progress' | 'user'
 
 const dataChangedListeners = new Set<(scope: DataScope) => void>()
 const navigateTodoListeners = new Set<(todoId: string) => void>()
@@ -143,10 +144,15 @@ function openSocket(): void {
     }
   }
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
     socket = null
     onlineUserIds = []
     emit(presenceListeners, onlineUserIds)
+    if (event.code === 4401) {
+      realtimeWanted = false
+      window.location.reload()
+      return
+    }
     scheduleReconnect()
   }
 
@@ -381,6 +387,8 @@ export const api: Api = {
     window.location.reload()
   },
   userCreate: (input: CreateUserInput) => post<PublicUser>('/users', input),
+  userDeletePreview: (id: string) => get<UserDeletePreview>('/users/' + id + '/delete-preview'),
+  userDelete: (id: string, confirmationUsername: string) => request<void>('DELETE', '/users/' + id, { body: { confirmationUsername } }),
   userUpdate: (id: string, input: UpdateUserInput) => put<PublicUser>(`/users/${id}`, input),
   userResetPassword: (id: string, password: string) =>
     post<void>(`/users/${id}/password`, { password }),

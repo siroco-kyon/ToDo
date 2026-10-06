@@ -4,6 +4,7 @@
   "private": true,
   "description": "Central server for the team Gantt TODO app",
   "scripts": {
+    "test:members": "tsx --test tests/member-delete.test.ts",
     "test:on-hold": "tsx --test tests/on-hold.test.ts",
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",

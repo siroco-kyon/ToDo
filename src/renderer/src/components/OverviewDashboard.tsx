@@ -1,3 +1,4 @@
+import { LinkedText } from './LinkedText'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ProgressNoteThread } from './ProgressNoteThread'
 import type {
@@ -353,7 +354,7 @@ function MemberActivityCard({
                 </button>
               </div>
               <div style={{ marginTop: 2, fontSize: '0.8rem', color: '#cbd5e1', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
-                {comment.body}
+                <LinkedText text={comment.body} />
               </div>
             </div>
           ))}

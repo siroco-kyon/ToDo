@@ -7,6 +7,7 @@ export interface UserRecord {
   username: string
   display_name: string
   password_hash: string
+  deleted_at: string | null
   role: UserRole
   color: string
   is_active: number
@@ -15,6 +16,13 @@ export interface UserRecord {
 }
 
 /** User as exposed to clients (never includes the password hash). */
+export interface UserDeletePreview {
+  user: PublicUser
+  taskCount: number
+  subtaskCount: number
+  coAssignedTaskCount: number
+}
+
 export interface PublicUser {
   id: string
   username: string
