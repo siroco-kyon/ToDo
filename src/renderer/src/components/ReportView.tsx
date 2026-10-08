@@ -1075,8 +1075,10 @@ function InteractiveNote({ note, actions, showTask = false }: { note: ProgressNo
   )
 }
 
-/** サブタスク1行。完了チェック・期限・進捗率（ドラッグ）をその場で変えられる */
+/** サブタスク1行。完了チェック・開始日・期限・進捗率（ドラッグ）をその場で変えられる */
 function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: SubTaskChangeSummary | undefined; actions: ReportCardActions }): React.JSX.Element {
+  const [editingStart, setEditingStart] = useState(false)
+  const [startDraft, setStartDraft] = useState('')
   const [editingDue, setEditingDue] = useState(false)
   const [dueDraft, setDueDraft] = useState('')
   const [saving, setSaving] = useState(false)
@@ -1095,11 +1097,33 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
   }
 
   const openDueEditor = (): void => {
+    setEditingStart(false)
     setDueDraft(subTask.due_date?.slice(0, 10) ?? '')
     setEditingDue(true)
   }
 
+  const openStartEditor = (): void => {
+    setEditingDue(false)
+    setStartDraft(subTask.start_date?.slice(0, 10) ?? '')
+    setEditingStart(true)
+  }
+
+  const saveStart = async (): Promise<void> => {
+    if (saving) return
+    const next = startDraft || null
+    if (next && subTask.due_date && next > subTask.due_date.slice(0, 10)) {
+      actions.onShowToast('サブタスクの開始日は期限以前にしてください', 'error')
+      return
+    }
+    if (next === (subTask.start_date?.slice(0, 10) ?? null)) {
+      setEditingStart(false)
+      return
+    }
+    if (await run({ start_date: next }, 'サブタスクの開始日を更新しました')) setEditingStart(false)
+  }
+
   const saveDue = async (): Promise<void> => {
+    if (saving) return
     const next = dueDraft || null
     if (next && subTask.start_date && subTask.start_date.slice(0, 10) > next) {
       actions.onShowToast('サブタスクの開始日は期限以前にしてください', 'error')
@@ -1134,7 +1158,35 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
           )}
         </span>
       </label>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 20, minHeight: 22 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 20, minHeight: 22, flexWrap: 'wrap' }}>
+        {editingStart ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+            <input
+              type="date"
+              value={startDraft}
+              onChange={(event) => setStartDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void saveStart()
+                if (event.key === 'Escape') setEditingStart(false)
+              }}
+              aria-label={`${subTask.title}の開始日`}
+              autoFocus
+              disabled={saving}
+              style={{ ...inputStyle, padding: '2px 6px', fontSize: '0.72rem' }}
+            />
+            <button onClick={() => void saveStart()} disabled={saving} style={{ ...inlineActionStyle, color: '#93c5fd' }}>保存</button>
+            <button onClick={() => setEditingStart(false)} style={inlineActionStyle}>取消</button>
+          </div>
+        ) : (
+          <button
+            onClick={openStartEditor}
+            disabled={saving}
+            title="開始日を変更"
+            style={{ ...inlineActionStyle, textDecoration: 'none', color: '#64748b', flexShrink: 0 }}
+          >
+            {subTask.start_date ? `開始 ${formatShortDate(subTask.start_date)}` : '開始日なし'}
+          </button>
+        )}
         {editingDue ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
             <input
@@ -1155,6 +1207,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
         ) : (
           <button
             onClick={openDueEditor}
+            disabled={saving}
             title="期限を変更"
             style={{ ...inlineActionStyle, textDecoration: 'none', color: dueColor || '#64748b', fontWeight: dueColor ? 800 : 600, flexShrink: 0 }}
           >
@@ -1181,6 +1234,7 @@ function AddSubTaskForm({ todo, actions }: { todo: Todo; actions: ReportCardActi
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
+  const [startDate, setStartDate] = useState(() => toDateKey(new Date()))
   const [dueDate, setDueDate] = useState('')
   const [saving, setSaving] = useState(false)
   const activeUsers = actions.users.filter((user) => user.is_active === 1)
@@ -1190,21 +1244,28 @@ function AddSubTaskForm({ todo, actions }: { todo: Todo; actions: ReportCardActi
     setTitle('')
     // 担当の初期値は親タスクの主担当（いなければ未割り当て）
     setAssigneeId(todo.assignee_id ?? '')
+    setStartDate(toDateKey(new Date()))
     setDueDate('')
     setOpen(true)
   }
 
   const submit = async (): Promise<void> => {
     if (!canSave) return
+    if (startDate && dueDate && startDate > dueDate) {
+      actions.onShowToast('サブタスクの開始日は期限以前にしてください', 'error')
+      return
+    }
     setSaving(true)
     const ok = await actions.onCreateSubTask(todo, {
       title: title.trim(),
       assignee_id: assigneeId || null,
+      start_date: startDate || null,
       due_date: dueDate || null
     })
     setSaving(false)
     if (ok) {
       setTitle('')
+      setStartDate(toDateKey(new Date()))
       setDueDate('')
     }
   }
@@ -1242,6 +1303,10 @@ function AddSubTaskForm({ todo, actions }: { todo: Todo; actions: ReportCardActi
             {activeUsers.map((user) => <option key={user.id} value={user.id}>{user.display_name}</option>)}
           </select>
         )}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.74rem', color: '#94a3b8' }}>
+          開始日
+          <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} aria-label="追加するサブタスクの開始日" style={inputStyle} />
+        </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.74rem', color: '#94a3b8' }}>
           期限
           <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} aria-label="追加するサブタスクの期限" style={inputStyle} />
