@@ -2456,7 +2456,7 @@ export function GanttView({
     setAddingSubTaskTodoId(todo.id)
     setNewSubTaskDraft({
       title: '',
-      startDate: todoBar?.startDate ?? todayKey,
+      startDate: formatDateKey(new Date()),
       dueDate: todoBar?.endDate ?? todoBar?.startDate ?? todayKey
     })
   }, [creatingSubTask, isReorderMode, todayKey])

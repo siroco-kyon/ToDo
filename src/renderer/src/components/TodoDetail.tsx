@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { Category, CreateSubTaskInput, DailyPlanItem, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, UpdateTodoInput, WorkLog } from '../types'
 import { TimerDisplay } from './TimerDisplay'
 import { AssigneeChip, AssigneePicker } from './AssigneePicker'
+import { toDateKey } from '../lib/dueDate'
 
 interface Props {
   todo: Todo | null
@@ -99,7 +100,7 @@ export function TodoDetail({
   const [newSubTask, setNewSubTask] = useState<CreateSubTaskInput>({
     title: '',
     description: '',
-    start_date: null,
+    start_date: toDateKey(new Date()),
     due_date: null,
     progress: 0
   })
@@ -479,7 +480,7 @@ export function TodoDetail({
       onShowToast(`${createdItems.length}件は追加済みです。残りを再試行できます: ${error instanceof Error ? error.message : '追加できませんでした'}`, 'error')
       return
     }
-    setNewSubTask({ title: '', description: '', start_date: null, due_date: null, progress: 0 })
+    setNewSubTask({ title: '', description: '', start_date: toDateKey(new Date()), due_date: null, progress: 0 })
     setSubTasks((previous) => [...previous, ...createdItems])
     if (editing) {
       setEditableSubTasks((previous) => [...previous, ...createdItems.map((created) => ({
