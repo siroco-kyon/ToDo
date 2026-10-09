@@ -139,6 +139,7 @@ export interface CreateTodoInput {
 }
 
 export interface UpdateTodoInput {
+  expected_values?: Record<string, unknown>
   title?: string
   description?: string
   memo?: string
@@ -202,6 +203,7 @@ export interface CreateSubTaskInput {
 }
 
 export interface UpdateSubTaskInput {
+  expected_values?: Record<string, unknown>
   title?: string
   description?: string
   assignee_id?: string | null

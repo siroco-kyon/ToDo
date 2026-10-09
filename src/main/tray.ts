@@ -3,9 +3,9 @@ import type { NativeImage } from 'electron'
 
 let tray: Tray | null = null
 
-export function createTray(mainWindow: BrowserWindow, icon: NativeImage): Tray {
+export function createTray(mainWindow: BrowserWindow, icon: NativeImage, openConnectionSettings?: () => void): Tray {
   tray = new Tray(icon)
-  tray.setToolTip('ToDo App')
+  tray.setToolTip('HAKOBI')
 
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -27,6 +27,7 @@ export function createTray(mainWindow: BrowserWindow, icon: NativeImage): Tray {
       }
     },
     { type: 'separator' },
+    ...(openConnectionSettings ? [{ label: 'チーム接続 / 個人用モード', click: openConnectionSettings }] : []),
     {
       label: '終了',
       click: () => {

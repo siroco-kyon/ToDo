@@ -66,64 +66,36 @@ function encodePng(rgba, width, height) {
   ])
 }
 
-function drawLine(buffer, size, x1, y1, x2, y2, thickness) {
-  const steps = Math.ceil(Math.hypot(x2 - x1, y2 - y1) * 3)
-  const radius = Math.ceil(thickness)
-
-  for (let step = 0; step <= steps; step += 1) {
-    const px = x1 + ((x2 - x1) * step) / steps
-    const py = y1 + ((y2 - y1) * step) / steps
-
-    for (let dy = -radius; dy <= radius; dy += 1) {
-      for (let dx = -radius; dx <= radius; dx += 1) {
-        if (dx * dx + dy * dy > thickness * thickness) continue
-
-        const ix = Math.round(px + dx)
-        const iy = Math.round(py + dy)
-        if (ix < 0 || ix >= size || iy < 0 || iy >= size) continue
-
-        const offset = (iy * size + ix) * 4
-        if (buffer[offset + 3] === 0) continue
-
-        buffer[offset + 0] = 255
-        buffer[offset + 1] = 255
-        buffer[offset + 2] = 255
-        buffer[offset + 3] = 255
+function drawRoundedRect(rgba, size, left, top, width, height, radius, color) {
+  const cx = left + width / 2
+  const cy = top + height / 2
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const qx = Math.max(0, Math.abs(x + 0.5 - cx) - (width / 2 - radius))
+      const qy = Math.max(0, Math.abs(y + 0.5 - cy) - (height / 2 - radius))
+      const distance = Math.hypot(qx, qy) - radius
+      if (distance >= 0.5) continue
+      const coverage = Math.min(1, 0.5 - distance)
+      const index = (y * size + x) * 4
+      const oldAlpha = rgba[index + 3] / 255
+      const alpha = coverage + oldAlpha * (1 - coverage)
+      for (let channel = 0; channel < 3; channel++) {
+        rgba[index + channel] = Math.round(
+          (color[channel] * coverage + rgba[index + channel] * oldAlpha * (1 - coverage)) / alpha
+        )
       }
+      rgba[index + 3] = Math.round(alpha * 255)
     }
   }
 }
 
 function generateIconRgba(size) {
   const rgba = Buffer.alloc(size * size * 4)
-  const center = size / 2
-  const padding = size * 0.07
-  const cornerRadius = size * 0.18
-
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const fx = x + 0.5
-      const fy = y + 0.5
-      const qx = Math.max(0, Math.abs(fx - center) - (center - padding - cornerRadius))
-      const qy = Math.max(0, Math.abs(fy - center) - (center - padding - cornerRadius))
-      const distance = Math.sqrt(qx * qx + qy * qy) - cornerRadius
-
-      if (distance >= 0.5) continue
-
-      const alpha = distance < -0.5 ? 255 : Math.round((0.5 - distance) * 255)
-      const offset = (y * size + x) * 4
-
-      rgba[offset + 0] = 99
-      rgba[offset + 1] = 102
-      rgba[offset + 2] = 241
-      rgba[offset + 3] = alpha
-    }
-  }
-
-  const thickness = Math.max(1.5, size * 0.075)
-  drawLine(rgba, size, size * 0.23, size * 0.52, size * 0.41, size * 0.7, thickness)
-  drawLine(rgba, size, size * 0.41, size * 0.7, size * 0.77, size * 0.3, thickness)
-
+  // Keep these shapes/colors in sync with src/main/icon.ts.
+  drawRoundedRect(rgba, size, size * 0.07, size * 0.07, size * 0.86, size * 0.86, size * 0.18, [15, 23, 42])
+  drawRoundedRect(rgba, size, size * 0.22, size * 0.27, size * 0.40, size * 0.12, size * 0.035, [45, 212, 191])
+  drawRoundedRect(rgba, size, size * 0.33, size * 0.44, size * 0.44, size * 0.12, size * 0.035, [94, 234, 212])
+  drawRoundedRect(rgba, size, size * 0.44, size * 0.61, size * 0.27, size * 0.12, size * 0.035, [251, 191, 36])
   return rgba
 }
 

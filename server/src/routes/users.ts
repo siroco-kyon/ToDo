@@ -77,6 +77,7 @@ usersRouter.post('/', requireAdmin, (req, res) => {
     role,
     color
   })
+  broadcastDataChanged('user')
   res.json(user)
 })
 
@@ -88,6 +89,10 @@ usersRouter.put('/:id', requireAdmin, (req, res) => {
   }
 
   const { display_name, role, color, is_active } = req.body ?? {}
+  if (is_active !== undefined && typeof is_active !== 'boolean') {
+    res.status(400).json({ error: '有効状態の指定が不正です' })
+    return
+  }
   if (role !== undefined && !VALID_ROLES.includes(role)) {
     res.status(400).json({ error: '権限の指定が不正です' })
     return
@@ -104,8 +109,14 @@ usersRouter.put('/:id', requireAdmin, (req, res) => {
     return
   }
 
-  const user = updateUser(target.id, { display_name, role, color, is_active })
-  res.json(user)
+  try {
+    const user = updateUser(target.id, { display_name, role, color, is_active })
+    if (is_active === false) disconnectUser(target.id)
+    for (const scope of ['user', 'todo', 'subtask', 'plan', 'progress'] as const) broadcastDataChanged(scope)
+    res.json(user)
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'メンバーを更新できませんでした' })
+  }
 })
 
 usersRouter.post('/:id/password', requireAdmin, (req, res) => {

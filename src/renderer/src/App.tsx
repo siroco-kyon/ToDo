@@ -158,6 +158,18 @@ export function App(): React.JSX.Element {
   const [initialLoadError, setInitialLoadError] = useState<string | null>(null)
   const toastIdRef = useRef(0)
   const selectedPlanRequestRef = useRef(0)
+  const resourceRequestsRef = useRef<Record<string, number>>({})
+  const resourcesMountedRef = useRef(true)
+  const selectedPlanDateRef = useRef(planDate)
+  selectedPlanDateRef.current = planDate
+  useEffect(() => {
+    resourcesMountedRef.current = true
+    return () => {
+      resourcesMountedRef.current = false
+      for (const resource of Object.keys(resourceRequestsRef.current)) resourceRequestsRef.current[resource]++
+      selectedPlanRequestRef.current++
+    }
+  }, [])
   const resizeRef = useRef<{ key: PaneKey; startX: number; startWidth: number } | null>(null)
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success', action?: { label: string; run: () => void }) => {
@@ -169,18 +181,19 @@ export function App(): React.JSX.Element {
     setToasts((prev) => prev.filter((toast) => toast.id !== id))
   }, [])
 
-  const loadTodos = useCallback(async () => {
-    const [allTodos, planItems] = await Promise.all([
-      window.api.todoGetAll(),
-      window.api.dailyPlanGetByDate(getTodayKey())
-    ])
-    setTodos(allTodos)
-    setTodayPlanItems(planItems)
+  const loadResource = useCallback(async <T,>(resource: string, get: () => Promise<T>, apply: (value: T) => void): Promise<void> => {
+    const request = (resourceRequestsRef.current[resource] ?? 0) + 1
+    resourceRequestsRef.current[resource] = request
+    const current = (): boolean => resourcesMountedRef.current && resourceRequestsRef.current[resource] === request
+    try { const result = await get(); if (current()) apply(result) }
+    catch (error) { if (current()) throw error }
   }, [])
 
-  const loadTodayPlan = useCallback(async () => {
-    setTodayPlanItems(await window.api.dailyPlanGetByDate(getTodayKey()))
-  }, [])
+  const loadTodayPlan = useCallback(() => loadResource('todayPlan', () => window.api.dailyPlanGetByDate(getTodayKey()), setTodayPlanItems), [loadResource])
+  const loadTodos = useCallback(async () => {
+    await Promise.all([loadResource('todos', () => window.api.todoGetAll(), setTodos), loadTodayPlan()])
+  }, [loadResource, loadTodayPlan])
+  const loadAllSubTasks = useCallback(() => loadResource('allSubTasks', () => window.api.subtaskGetAll(), setAllSubTasks), [loadResource])
 
   const loadSelectedPlan = useCallback(async (date: string) => {
     const requestId = ++selectedPlanRequestRef.current
@@ -189,69 +202,60 @@ export function App(): React.JSX.Element {
     setSelectedPlanItems([])
     try {
       const items = await window.api.dailyPlanGetByDate(date)
-      if (requestId === selectedPlanRequestRef.current) setSelectedPlanItems(items)
+      if (resourcesMountedRef.current && requestId === selectedPlanRequestRef.current) setSelectedPlanItems(items)
     } catch (error) {
-      if (requestId === selectedPlanRequestRef.current) {
+      if (resourcesMountedRef.current && requestId === selectedPlanRequestRef.current) {
         setSelectedPlanError(error instanceof Error ? error.message : '計画を読み込めませんでした')
+        throw error
       }
-      throw error
     } finally {
-      if (requestId === selectedPlanRequestRef.current) setSelectedPlanLoading(false)
+      if (resourcesMountedRef.current && requestId === selectedPlanRequestRef.current) setSelectedPlanLoading(false)
     }
   }, [])
 
-  const loadCategories = useCallback(async () => {
-    const all = await window.api.categoryGetAll()
-    setCategories(all)
-  }, [])
+  const loadCategories = useCallback(() => loadResource('categories', () => window.api.categoryGetAll(), setCategories), [loadResource])
 
-  const loadUsers = useCallback(async () => {
-    const [allUsers, me] = await Promise.all([
+  const loadUsers = useCallback(() => loadResource('users', () => Promise.all([
       window.api.userList(),
       window.api.authGetCurrentUser()
-    ])
+    ]), ([allUsers, me]) => {
     setUsers(allUsers)
     setCurrentUser(me)
     setSelectedAssigneeId((previous) => previous && !allUsers.some((user) => user.id === previous) ? null : previous)
-  }, [])
+  }), [loadResource])
 
-  const loadNotifications = useCallback(async () => {
-    const [items, unread] = await Promise.all([
+  const loadNotifications = useCallback(() => loadResource('notifications', () => Promise.all([
       window.api.notificationList(),
       window.api.notificationUnreadCount()
-    ])
+    ]), ([items, unread]) => {
     setNotifications(items)
     setNotificationUnreadCount(unread)
-  }, [])
+  }), [loadResource])
 
   const loadInitialData = useCallback(async () => {
     setInitialLoadError(null)
-    const [allTodos, allCategories, planItems, allUsers, me, nextSubTasks] = await Promise.all([
-      window.api.todoGetAll(),
-      window.api.categoryGetAll(),
-      window.api.dailyPlanGetByDate(getTodayKey()),
-      window.api.userList(),
-      window.api.authGetCurrentUser(),
-      window.api.subtaskGetAll()
-    ])
-    setTodos(allTodos)
-    setCategories(allCategories)
-    setTodayPlanItems(planItems)
-    setSelectedPlanItems(planItems)
-    setUsers(allUsers)
-    setCurrentUser(me)
-    setAllSubTasks(nextSubTasks)
-  }, [])
+    await Promise.all([loadTodos(), loadCategories(), loadUsers(), loadAllSubTasks(), loadSelectedPlan(selectedPlanDateRef.current)])
+  }, [loadAllSubTasks, loadCategories, loadSelectedPlan, loadTodos, loadUsers])
 
   useEffect(() => {
     if (isFirstLaunch !== false) return
     void loadSelectedPlan(planDate).catch((error) => showToast(error instanceof Error ? error.message : '計画を読み込めませんでした', 'error'))
   }, [isFirstLaunch, loadSelectedPlan, planDate, showToast])
 
-  const { isRunning, runningTodoId, elapsedSeconds, start: startTimer, stop, restore, sync: syncTimer } = useTimer(loadTodos)
+  const { isRunning, runningTodoId, elapsedSeconds, start: startTimer, stop: stopTimer, sync: syncTimer } = useTimer(loadTodos)
+
+  const stop = useCallback(async (note?: string) => {
+    try { await stopTimer(note) }
+    catch (error) {
+      showToast(error instanceof Error ? error.message : '計測を停止できませんでした', 'error')
+      // The caller keeps the stop memo on failure. List/detail handlers consume this rejection.
+      throw error
+    }
+  }, [showToast, stopTimer])
 
   const start = useCallback(async (todoId: string) => {
     if (todos.find((todo) => todo.id === todoId)?.status === 'on_hold') {
+      if ((todoId !== selectedTodoId || activeView !== 'detail') && detailDirty && !window.confirm('未保存の変更があります。タスク詳細へ移動しますか？')) return
       setSelectedTodoId(todoId)
       setActiveView('detail')
       showToast('保留中のタスクは、進行中に戻してから計測を開始してください')
@@ -262,7 +266,7 @@ export function App(): React.JSX.Element {
     } catch (error) {
       showToast(error instanceof Error ? error.message : '計測を開始できませんでした', 'error')
     }
-  }, [showToast, startTimer, todos])
+  }, [activeView, detailDirty, selectedTodoId, showToast, startTimer, todos])
 
   useEffect(() => {
     window.api.appIsFirstLaunch().then(setIsFirstLaunch)
@@ -289,8 +293,12 @@ export function App(): React.JSX.Element {
     }
   }, [isFirstLaunch])
 
+  const navigationStateRef = useRef({ detailDirty, selectedTodoId, activeView })
+  navigationStateRef.current = { detailDirty, selectedTodoId, activeView }
   useEffect(() => {
     const unsubscribe = window.api.onNavigateTodo((todoId) => {
+      const state = navigationStateRef.current
+      if ((todoId !== state.selectedTodoId || state.activeView !== 'detail') && state.detailDirty && !window.confirm('未保存の変更があります。タスク詳細へ移動しますか？')) return
       setSelectedTodoId(todoId)
       setActiveView('detail')
     })
@@ -302,12 +310,13 @@ export function App(): React.JSX.Element {
 
     const unsubscribe = window.api.onDataChanged((scope) => {
       if (scope === 'user') {
-        void Promise.all([loadUsers(), loadTodos(), window.api.subtaskGetAll().then(setAllSubTasks)])
+        void Promise.all([loadUsers(), loadTodos(), loadAllSubTasks()])
           .catch((error) => showToast(error instanceof Error ? error.message : 'メンバー情報を再読み込みできませんでした', 'error'))
         return
       }
       if (scope === 'category') {
         void Promise.all([loadCategories(), loadTodos()])
+          .catch((error) => showToast(error instanceof Error ? error.message : 'カテゴリを再読み込みできませんでした', 'error'))
         return
       }
 
@@ -319,7 +328,7 @@ export function App(): React.JSX.Element {
       }
 
       if (scope === 'subtask') {
-        void window.api.subtaskGetAll().then(setAllSubTasks).catch((error) => {
+        void loadAllSubTasks().catch((error) => {
           showToast(error instanceof Error ? error.message : 'サブタスクを再読み込みできませんでした', 'error')
         })
         return
@@ -327,10 +336,11 @@ export function App(): React.JSX.Element {
 
       if (scope === 'plan') {
         void Promise.all([loadTodayPlan(), loadSelectedPlan(planDate)])
+          .catch((error) => showToast(error instanceof Error ? error.message : '計画を再読み込みできませんでした', 'error'))
       }
     })
     return () => unsubscribe()
-  }, [isFirstLaunch, loadCategories, loadSelectedPlan, loadTodayPlan, loadTodos, loadUsers, planDate, showToast, syncTimer])
+  }, [isFirstLaunch, loadAllSubTasks, loadCategories, loadSelectedPlan, loadTodayPlan, loadTodos, loadUsers, planDate, showToast, syncTimer])
 
   useEffect(() => {
     if (!currentUser) {
@@ -342,6 +352,7 @@ export function App(): React.JSX.Element {
 
     void loadNotifications().catch((error) => console.error('Failed to load notifications', error))
     const unsubscribe = window.api.onNotificationsChanged((unreadCount) => {
+      resourceRequestsRef.current.notifications = (resourceRequestsRef.current.notifications ?? 0) + 1
       setNotificationUnreadCount(unreadCount)
       if (showNotifications) {
         void loadNotifications().catch((error) => console.error('Failed to load notifications', error))
@@ -433,23 +444,21 @@ export function App(): React.JSX.Element {
   const handleSetupComplete = useCallback(async () => {
     setIsFirstLaunch(false)
     await loadInitialData()
-    const running = await window.api.timerGetRunning()
-    if (running) restore(running)
-  }, [loadInitialData, restore])
+    await syncTimer()
+  }, [loadInitialData, syncTimer])
 
   useEffect(() => {
     if (isFirstLaunch !== false) return
 
     const init = async (): Promise<void> => {
       await loadInitialData()
-      const running = await window.api.timerGetRunning()
-      if (running) restore(running)
+      await syncTimer()
     }
 
     init().catch((error) => {
       setInitialLoadError(error instanceof Error ? error.message : 'データを読み込めませんでした')
     })
-  }, [isFirstLaunch, loadInitialData, restore])
+  }, [isFirstLaunch, loadInitialData, syncTimer])
 
   const handleExportClipboard = useCallback(async () => {
     const result = await window.api.markdownExport('clipboard')
@@ -618,6 +627,7 @@ export function App(): React.JSX.Element {
       }
       await loadNotifications()
       if ((notification.type === 'progress_reply' || notification.type === 'progress_reaction' || notification.type === 'mention') && notification.progress_note_id) {
+        if (navigationStateRef.current.detailDirty && !window.confirm('未保存の変更があります。進捗画面へ移動しますか？')) return
         setProgressTimelineFocus({
           date: getDateKeyFromIso(notification.created_at),
           todoId: notification.todo_id,
@@ -652,9 +662,10 @@ export function App(): React.JSX.Element {
   }, [])
 
   const hideGanttSidePanel = useCallback(() => {
+    if (detailDirty && !window.confirm('未保存の変更があります。詳細を閉じますか？')) return
     setGanttSidePanelMode('today')
     setShowPlanRail(false)
-  }, [])
+  }, [detailDirty])
 
   const handleAdd = useCallback(async (data: CreateTodoInput) => {
     const created = await window.api.todoCreate(data)
@@ -664,21 +675,20 @@ export function App(): React.JSX.Element {
 
   const handleUpdate = useCallback(async (id: string, data: UpdateTodoInput) => {
     await window.api.todoUpdate(id, data)
-    await Promise.all([loadTodos(), loadSelectedPlan(planDate), syncTimer()])
-  }, [loadTodos, loadSelectedPlan, planDate, syncTimer])
+    try { await Promise.all([loadTodos(), loadSelectedPlan(planDate), syncTimer()]) }
+    catch (error) { showToast(`変更は保存しましたが、表示を更新できませんでした: ${error instanceof Error ? error.message : '再読み込みしてください'}`, 'error') }
+  }, [loadTodos, loadSelectedPlan, planDate, showToast, syncTimer])
 
   // サブタスクの期限は親タスクの期限を延長することがあるので、タスクも取り直す
   const handleUpdateSubTask = useCallback(async (id: string, data: UpdateSubTaskInput) => {
     await window.api.subtaskUpdate(id, data)
-    const [nextSubTasks] = await Promise.all([window.api.subtaskGetAll(), loadTodos()])
-    setAllSubTasks(nextSubTasks)
-  }, [loadTodos])
+    await Promise.all([loadAllSubTasks(), loadTodos()])
+  }, [loadAllSubTasks, loadTodos])
 
   const handleCreateSubTask = useCallback(async (todoId: string, data: CreateSubTaskInput) => {
     await window.api.subtaskCreate(todoId, data)
-    const [nextSubTasks] = await Promise.all([window.api.subtaskGetAll(), loadTodos()])
-    setAllSubTasks(nextSubTasks)
-  }, [loadTodos])
+    await Promise.all([loadAllSubTasks(), loadTodos()])
+  }, [loadAllSubTasks, loadTodos])
 
   const handleOpenGanttWindow = useCallback(async () => {
     await window.api.windowOpenGantt()
@@ -1254,6 +1264,7 @@ export function App(): React.JSX.Element {
             <TeamDashboard onSelectTodo={openTodoDetail} includePrivate={scopeLens === 'personal'} />
           ) : (
             <TodoDetail
+              key={`${currentUser?.id ?? 'local'}:${selectedTodo?.id ?? 'none'}`}
               todo={selectedTodo}
               allTodos={lensTodos}
               categories={categories}
@@ -1292,6 +1303,7 @@ export function App(): React.JSX.Element {
                       </button>
                       <button
                         onClick={() => {
+                          if (detailDirty && !window.confirm('未保存の変更があります。今日の予定へ移動しますか？')) return
                           setGanttSidePanelMode('today')
                           if (!showPlanRail) setShowPlanRail(true)
                         }}
@@ -1309,6 +1321,7 @@ export function App(): React.JSX.Element {
                   <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
                     {ganttSidePanelMode === 'detail' ? (
                       <TodoDetail
+                        key={`${currentUser?.id ?? 'local'}:${selectedTodo?.id ?? 'none'}`}
                         todo={selectedTodo}
                         allTodos={lensTodos}
                         categories={categories}
@@ -1372,6 +1385,7 @@ export function App(): React.JSX.Element {
           fontScale={fontScale}
           onFontScaleChange={handleFontScaleChange}
           canManageUsers={isAdmin}
+          serverManaged={multiUser}
           onManageUsers={() => { setShowSettings(false); setShowUserManagement(true) }}
           onProgressReport={isAdmin ? () => { setShowSettings(false); setShowProgressReport(true) } : undefined}
           onDesktopImport={isAdmin && multiUser ? () => { setShowSettings(false); setShowDesktopImport(true) } : undefined}

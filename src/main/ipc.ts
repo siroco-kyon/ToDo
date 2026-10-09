@@ -1,7 +1,5 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import type { NativeImage } from 'electron'
-import fs from 'fs'
-import path from 'path'
 import {
   getAllCategories,
   createCategory,
@@ -73,7 +71,8 @@ import { exportMarkdown } from './markdown'
 import { pickAndSetIcon, resetIcon, getIconDataUrl } from './icon'
 import { getDataDir, setDataDir, isFirstLaunch, getDefaultDataDir } from './config'
 import { reregisterShortcuts } from './shortcuts'
-import { runArchiveCleanup } from './archive'
+import { runArchiveCleanupSafely } from './archive'
+import { changeLocalDataDirectory } from './data-migration'
 
 export function registerIpcHandlers(
   mainWindow: BrowserWindow,
@@ -223,40 +222,11 @@ export function registerIpcHandlers(
       setDataDir(dir)
     }
     initDb()
-    runArchiveCleanup()
+    const warning = runArchiveCleanupSafely()
+    if (warning) void dialog.showMessageBox(mainWindow, { type: 'warning', title: 'HAKOBI — データ保持期間', message: 'データの整理をスキップしました', detail: warning, buttons: ['閉じる'] }).catch(console.error)
   })
 
-  ipcMain.handle('data:changeDir', (_, newDir: string) => {
-    const oldDir = getDataDir()
-    if (oldDir === newDir) return { moved: false }
-
-    // 新しいフォルダ作成
-    if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true })
-
-    // DBコピー前にカスタムアイコンパスを更新（コピー後のパスを先にDBへ書き込む）
-    const oldIconsDir = path.join(oldDir, 'icons')
-    const newIconsDir = path.join(newDir, 'icons')
-    const customIconPath = getSetting('customIconPath')
-    if (customIconPath && customIconPath.startsWith(oldIconsDir)) {
-      setSetting('customIconPath', customIconPath.replace(oldIconsDir, newIconsDir))
-    }
-
-    // DB コピー
-    const oldDb = path.join(oldDir, 'todo.db')
-    const newDb = path.join(newDir, 'todo.db')
-    if (fs.existsSync(oldDb)) fs.copyFileSync(oldDb, newDb)
-
-    // iconsフォルダコピー
-    if (fs.existsSync(oldIconsDir)) {
-      if (!fs.existsSync(newIconsDir)) fs.mkdirSync(newIconsDir, { recursive: true })
-      for (const file of fs.readdirSync(oldIconsDir)) {
-        fs.copyFileSync(path.join(oldIconsDir, file), path.join(newIconsDir, file))
-      }
-    }
-
-    setDataDir(newDir)
-    return { moved: true }
-  })
+  ipcMain.handle('data:changeDir', (_, newDir: string) => changeLocalDataDirectory(newDir))
 
   // Window navigation
   ipcMain.handle('window:openGantt', () => {

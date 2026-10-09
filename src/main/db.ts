@@ -3,6 +3,8 @@ import fs from 'fs'
 import path from 'path'
 import HolidayJp from '@holiday-jp/holiday_jp'
 import { getDataDir } from './config'
+import { assertExpectedValues } from '../../server/src/shared/todo-update-guard'
+import { dependencyCascadeOrder } from '../../server/src/shared/dependency-order'
 
 let db: Database.Database
 
@@ -11,15 +13,29 @@ export function getDb(): Database.Database {
 }
 
 export function initDb(): void {
-  const dir = getDataDir()
+  switchDatabase(getDataDir())
+}
+
+/** Keep the old connection usable until the new DB and configuration are ready. */
+export function switchDatabase(dir: string, commit?: () => void): void {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
   const dbPath = path.join(dir, 'todo.db')
-  db = new Database(dbPath)
-  db.pragma('journal_mode = WAL')
-  db.pragma('foreign_keys = ON')
-  createTables()
-  migrateDb()
-  insertDefaultSettings()
+  const previous = db
+  const candidate = new Database(dbPath)
+  try {
+    db = candidate
+    db.pragma('journal_mode = WAL')
+    db.pragma('foreign_keys = ON')
+    createTables()
+    migrateDb()
+    insertDefaultSettings()
+    commit?.()
+  } catch (error) {
+    db = previous
+    candidate.close()
+    throw error
+  }
+  if (previous?.open) previous.close()
 }
 
 function createTables(): void {
@@ -691,19 +707,10 @@ function enforcePredecessorConstraints(todoId: string, updatedAt: string): TodoB
   return shiftTodoToStart(todoId, requiredStart, updatedAt)
 }
 
-function resolveDependencyCascade(todoId: string, updatedAt: string, visited = new Set<string>()): void {
-  if (visited.has(todoId)) return
-  visited.add(todoId)
-
-  enforcePredecessorConstraints(todoId, updatedAt)
-
-  const successors = db
-    .prepare('SELECT successor_todo_id FROM TodoDependencies WHERE predecessor_todo_id = ? ORDER BY created_at ASC')
-    .all(todoId) as Array<{ successor_todo_id: string }>
-
-  for (const row of successors) {
-    resolveDependencyCascade(row.successor_todo_id, updatedAt, visited)
-  }
+function resolveDependencyCascade(todoId: string, updatedAt: string): void {
+  const edges = db.prepare('SELECT predecessor_todo_id, successor_todo_id FROM TodoDependencies ORDER BY created_at ASC')
+    .all() as Array<{ predecessor_todo_id: string; successor_todo_id: string }>
+  for (const id of dependencyCascadeOrder(todoId, edges)) enforcePredecessorConstraints(id, updatedAt)
 }
 
 function dependencyCreatesCycle(predecessorTodoId: string, successorTodoId: string): boolean {
@@ -859,9 +866,11 @@ function spawnNextRecurrence(source: Todo): void {
 
 export function updateTodo(id: string, data: UpdateTodoInput): Todo {
   const now = new Date().toISOString()
-  const before = getTodoById(id)
-  const constrainedData = keepTodoDueDateAfterSubTasks(id, data)
   db.transaction(() => {
+    const before = getTodoById(id)
+    if (!before) throw new Error('タスクが見つかりません。再読み込みしてください')
+    assertExpectedValues(before, data)
+    const constrainedData = keepTodoDueDateAfterSubTasks(id, data)
     applyTodoUpdate(id, constrainedData, now)
     if (constrainedData.status === 'on_hold' && getRunningState()?.todo_id === id) {
       stopTimer('タスクを保留しました')
@@ -907,11 +916,13 @@ export function unarchiveTodo(id: string, restoreStatus: 'not_started' | 'active
 }
 
 export function deleteTodo(id: string): void {
-  db.prepare('DELETE FROM TodoDependencies WHERE predecessor_todo_id = ? OR successor_todo_id = ?').run(id, id)
-  db.prepare('DELETE FROM WorkLogs WHERE todo_id = ?').run(id)
-  db.prepare('DELETE FROM RunningState WHERE todo_id = ?').run(id)
-  db.prepare('DELETE FROM SubTasks WHERE todo_id = ?').run(id)
-  db.prepare('DELETE FROM Todos WHERE id = ?').run(id)
+  db.transaction(() => {
+    db.prepare('DELETE FROM TodoDependencies WHERE predecessor_todo_id = ? OR successor_todo_id = ?').run(id, id)
+    db.prepare('DELETE FROM WorkLogs WHERE todo_id = ?').run(id)
+    db.prepare('DELETE FROM RunningState WHERE todo_id = ?').run(id)
+    db.prepare('DELETE FROM SubTasks WHERE todo_id = ?').run(id)
+    db.prepare('DELETE FROM Todos WHERE id = ?').run(id)
+  })()
 }
 
 export function getAllTodoDependencies(): TodoDependency[] {
@@ -1177,58 +1188,64 @@ export function reorderSubTasks(todoId: string, orderedIds: string[]): void {
 }
 
 export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask {
-  const id = crypto.randomUUID()
-  const now = new Date().toISOString()
-  const maxOrder = (db.prepare('SELECT COALESCE(MAX(sort_order), -1) as m FROM SubTasks WHERE todo_id = ?').get(todoId) as { m: number }).m
-  const startDate = normalizeDateKey(data.start_date)
-  const dueDate = normalizeDateKey(data.due_date)
-  const progress = clampProgress(data.progress)
-  const done = progress >= 100 ? 1 : 0
-  db.prepare(
-    'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now)
-  const created = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
-  const extendedTo = syncTodoDueDateWithSubTasks(todoId)
-  return { ...created, parent_due_date_extended_to: extendedTo }
+  return db.transaction(() => {
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    const maxOrder = (db.prepare('SELECT COALESCE(MAX(sort_order), -1) as m FROM SubTasks WHERE todo_id = ?').get(todoId) as { m: number }).m
+    const startDate = normalizeDateKey(data.start_date)
+    const dueDate = normalizeDateKey(data.due_date)
+    const progress = clampProgress(data.progress)
+    const done = progress >= 100 ? 1 : 0
+    db.prepare(
+      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now)
+    const created = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
+    const extendedTo = syncTodoDueDateWithSubTasks(todoId)
+    return { ...created, parent_due_date_extended_to: extendedTo }
+  })()
 }
 
 export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
-  const current = db.prepare('SELECT done, progress, completed_at, due_date FROM SubTasks WHERE id = ?').get(id) as { done: number; progress: number; completed_at: string | null; due_date: string | null } | undefined
+  return db.transaction(() => {
+    const current = db.prepare('SELECT * FROM SubTasks WHERE id = ?').get(id) as SubTask | undefined
+    if (!current) throw new Error('サブタスクが見つかりません。再読み込みしてください')
+    assertExpectedValues(current, data, 'subtask')
 
-  if (data.title !== undefined) {
-    db.prepare('UPDATE SubTasks SET title = ? WHERE id = ?').run(data.title, id)
-  }
-  if (data.description !== undefined) {
-    db.prepare('UPDATE SubTasks SET description = ? WHERE id = ?').run(data.description, id)
-  }
-  if (data.assignee_id !== undefined) {
-    db.prepare('UPDATE SubTasks SET assignee_id = ? WHERE id = ?').run(data.assignee_id, id)
-  }
-  if (data.start_date !== undefined) {
-    db.prepare('UPDATE SubTasks SET start_date = ? WHERE id = ?').run(normalizeDateKey(data.start_date), id)
-  }
-  if (data.due_date !== undefined) {
-    db.prepare('UPDATE SubTasks SET due_date = ? WHERE id = ?').run(normalizeDateKey(data.due_date), id)
-  }
-  if ((data.done !== undefined || data.progress !== undefined) && current) {
-    const progressFromInput = data.progress !== undefined
-      ? clampProgress(Number(data.progress))
-      : current.progress
-    const nextProgress = data.done !== undefined
-      ? data.done ? 100 : Math.min(progressFromInput, 99)
-      : progressFromInput
-    const nextDone = data.done !== undefined
-      ? data.done
-      : nextProgress >= 100
-    const nextCompletedAt = nextDone
-      ? current.done ? current.completed_at ?? new Date().toISOString() : new Date().toISOString()
-      : null
-    db.prepare('UPDATE SubTasks SET progress = ?, done = ?, completed_at = ? WHERE id = ?').run(nextProgress, nextDone ? 1 : 0, nextCompletedAt, id)
-  }
-  const updated = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
-  if (current) recordSubTaskChanges(current, updated)
-  const extendedTo = syncTodoDueDateWithSubTasks(updated.todo_id)
-  return { ...updated, parent_due_date_extended_to: extendedTo }
+    if (data.title !== undefined) {
+      db.prepare('UPDATE SubTasks SET title = ? WHERE id = ?').run(data.title, id)
+    }
+    if (data.description !== undefined) {
+      db.prepare('UPDATE SubTasks SET description = ? WHERE id = ?').run(data.description, id)
+    }
+    if (data.assignee_id !== undefined) {
+      db.prepare('UPDATE SubTasks SET assignee_id = ? WHERE id = ?').run(data.assignee_id, id)
+    }
+    if (data.start_date !== undefined) {
+      db.prepare('UPDATE SubTasks SET start_date = ? WHERE id = ?').run(normalizeDateKey(data.start_date), id)
+    }
+    if (data.due_date !== undefined) {
+      db.prepare('UPDATE SubTasks SET due_date = ? WHERE id = ?').run(normalizeDateKey(data.due_date), id)
+    }
+    if ((data.done !== undefined || data.progress !== undefined) && current) {
+      const progressFromInput = data.progress !== undefined
+        ? clampProgress(Number(data.progress))
+        : current.progress
+      const nextProgress = data.done !== undefined
+        ? data.done ? 100 : Math.min(progressFromInput, 99)
+        : progressFromInput
+      const nextDone = data.done !== undefined
+        ? data.done
+        : nextProgress >= 100
+      const nextCompletedAt = nextDone
+        ? current.done ? current.completed_at ?? new Date().toISOString() : new Date().toISOString()
+        : null
+      db.prepare('UPDATE SubTasks SET progress = ?, done = ?, completed_at = ? WHERE id = ?').run(nextProgress, nextDone ? 1 : 0, nextCompletedAt, id)
+    }
+    const updated = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
+    if (current) recordSubTaskChanges(current, updated)
+    const extendedTo = syncTodoDueDateWithSubTasks(updated.todo_id)
+    return { ...updated, parent_due_date_extended_to: extendedTo }
+  })()
 }
 
 /** 進捗率・期限が変わったときだけ SubTaskChangeLogs に残す（報告タブの期間中の変化表示用） */
@@ -1272,25 +1289,27 @@ export function startTimer(todoId: string): RunningState {
 }
 
 export function stopTimer(note?: string): WorkLog {
-  const running = db.prepare('SELECT * FROM RunningState WHERE id = 1').get() as RunningState | undefined
-  if (!running) {
-    throw new Error('実行中のタイマーがありません')
-  }
-  const endTime = new Date().toISOString()
-  const startMs = new Date(running.start_time).getTime()
-  const endMs = new Date(endTime).getTime()
-  const durationSeconds = Math.floor((endMs - startMs) / 1000)
+  return db.transaction(() => {
+    const running = db.prepare('SELECT * FROM RunningState WHERE id = 1').get() as RunningState | undefined
+    if (!running) {
+      throw new Error('実行中のタイマーがありません')
+    }
+    const endTime = new Date().toISOString()
+    const startMs = new Date(running.start_time).getTime()
+    const endMs = new Date(endTime).getTime()
+    const durationSeconds = Math.floor((endMs - startMs) / 1000)
 
-  const id = crypto.randomUUID()
-  const now = new Date().toISOString()
-  db.prepare(
-    `INSERT INTO WorkLogs (id, todo_id, start_time, end_time, duration_seconds, note, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, running.todo_id, running.start_time, endTime, durationSeconds, note ?? '', now)
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    db.prepare(
+      `INSERT INTO WorkLogs (id, todo_id, start_time, end_time, duration_seconds, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, running.todo_id, running.start_time, endTime, durationSeconds, note ?? '', now)
 
-  db.prepare('DELETE FROM RunningState WHERE id = 1').run()
+    db.prepare('DELETE FROM RunningState WHERE id = 1').run()
 
-  return db.prepare('SELECT * FROM WorkLogs WHERE id = ?').get(id) as WorkLog
+    return db.prepare('SELECT * FROM WorkLogs WHERE id = ?').get(id) as WorkLog
+  })()
 }
 
 export function getRunningState(): RunningState | undefined {
@@ -2357,6 +2376,12 @@ export interface DesktopImportResult {
   dependencies: number
   workLogs: number
   planItems: number
+  progressNotes: number
+  progressComments: number
+  progressReactions: number
+  todoChanges: number
+  subTaskChanges: number
+  categoryConflicts: string[]
   skippedOrphans: number
   dryRun: boolean
 }
@@ -2444,6 +2469,7 @@ export interface CreateSubTaskInput {
 }
 
 export interface UpdateSubTaskInput {
+  expected_values?: Record<string, unknown>
   title?: string
   description?: string
   assignee_id?: string | null
@@ -2472,6 +2498,7 @@ export interface CreateTodoInput {
 }
 
 export interface UpdateTodoInput {
+  expected_values?: Record<string, unknown>
   title?: string
   description?: string
   memo?: string

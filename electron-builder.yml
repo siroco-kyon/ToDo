@@ -1,23 +1,21 @@
-appId: com.todo.app
-productName: ToDo
+appId: com.hakobi.app
+productName: HAKOBI
 directories:
   buildResources: build
 files:
-  - '!**/.vscode/*'
-  - '!src/*'
-  - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
-  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.*}'
-  - '!build/{icon,*}.{ico,icns,png}'
+  - 'out/**/*'
+  - 'package.json'
 asarUnpack:
   - resources/**
   - '**/*.{node,dll}'
 win:
-  executableName: ToDo
+  executableName: HAKOBI
   icon: build/icon.ico
 nsis:
-  artifactName: '${name}-${version}-setup.${ext}'
+  # Keep the original ToDo installer identity for upgrades and uninstall registration.
+  guid: 6d3bbc18-ec0d-50ad-9775-a5b726355fc6
+  include: build/hakobi-installer.nsh
+  artifactName: '${productName}-${version}-setup.${ext}'
   shortcutName: '${productName}'
   uninstallDisplayName: '${productName}'
   createDesktopShortcut: always

@@ -23,6 +23,16 @@ export function createSchema(db: Database.Database): void {
       FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS DesktopRequests (
+      user_id TEXT NOT NULL,
+      request_id TEXT NOT NULL,
+      fingerprint TEXT NOT NULL,
+      response_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, request_id),
+      FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS Categories (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,

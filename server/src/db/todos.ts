@@ -3,6 +3,8 @@ import crypto from 'crypto'
 import { stopTimer } from './timer'
 import HolidayJp from '@holiday-jp/holiday_jp'
 import { getDb } from './connection'
+import { assertExpectedValues } from '../shared/todo-update-guard'
+import { dependencyCascadeOrder } from '../shared/dependency-order'
 import {
   addDays,
   clampDependencyLagDays,
@@ -214,19 +216,10 @@ function enforcePredecessorConstraints(todoId: string, updatedAt: string): TodoB
   return shiftTodoToStart(todoId, requiredStart, updatedAt)
 }
 
-function resolveDependencyCascade(todoId: string, updatedAt: string, visited = new Set<string>()): void {
-  if (visited.has(todoId)) return
-  visited.add(todoId)
-
-  enforcePredecessorConstraints(todoId, updatedAt)
-
-  const successors = getDb()
-    .prepare('SELECT successor_todo_id FROM TodoDependencies WHERE predecessor_todo_id = ? ORDER BY created_at ASC')
-    .all(todoId) as Array<{ successor_todo_id: string }>
-
-  for (const row of successors) {
-    resolveDependencyCascade(row.successor_todo_id, updatedAt, visited)
-  }
+function resolveDependencyCascade(todoId: string, updatedAt: string): void {
+  const edges = getDb().prepare('SELECT predecessor_todo_id, successor_todo_id FROM TodoDependencies ORDER BY created_at ASC')
+    .all() as Array<{ predecessor_todo_id: string; successor_todo_id: string }>
+  for (const id of dependencyCascadeOrder(todoId, edges)) enforcePredecessorConstraints(id, updatedAt)
 }
 
 function dependencyCreatesCycle(predecessorTodoId: string, successorTodoId: string): boolean {
@@ -394,9 +387,11 @@ export function updateTodo(id: string, data: UpdateTodoInput, changedByUserId: s
   assertAssignableUser(data.assignee_id)
   const db = getDb()
   const now = new Date().toISOString()
-  const before = getTodoById(id)
-  const constrainedData = keepTodoDueDateAfterSubTasks(id, data)
   db.transaction(() => {
+    const before = getTodoById(id)
+    if (!before) throw new Error('タスクが見つかりません。再読み込みしてください')
+    assertExpectedValues(before, data)
+    const constrainedData = keepTodoDueDateAfterSubTasks(id, data)
     applyTodoUpdate(id, constrainedData, now)
     if (constrainedData.status === 'on_hold') {
       const running = db.prepare('SELECT user_id FROM RunningState WHERE todo_id = ?').all(id) as Array<{ user_id: string }>
@@ -449,12 +444,14 @@ export function unarchiveTodo(id: string, changedByUserId: string | null = null,
 
 export function deleteTodo(id: string): void {
   const db = getDb()
-  db.prepare('DELETE FROM TodoDependencies WHERE predecessor_todo_id = ? OR successor_todo_id = ?').run(id, id)
-  db.prepare('DELETE FROM WorkLogs WHERE todo_id = ?').run(id)
-  db.prepare('DELETE FROM RunningState WHERE todo_id = ?').run(id)
-  db.prepare('DELETE FROM SubTasks WHERE todo_id = ?').run(id)
-  db.prepare('DELETE FROM TodoCoAssignees WHERE todo_id = ?').run(id)
-  db.prepare('DELETE FROM Todos WHERE id = ?').run(id)
+  db.transaction(() => {
+    db.prepare('DELETE FROM TodoDependencies WHERE predecessor_todo_id = ? OR successor_todo_id = ?').run(id, id)
+    db.prepare('DELETE FROM WorkLogs WHERE todo_id = ?').run(id)
+    db.prepare('DELETE FROM RunningState WHERE todo_id = ?').run(id)
+    db.prepare('DELETE FROM SubTasks WHERE todo_id = ?').run(id)
+    db.prepare('DELETE FROM TodoCoAssignees WHERE todo_id = ?').run(id)
+    db.prepare('DELETE FROM Todos WHERE id = ?').run(id)
+  })()
 }
 
 // ─── Dependencies ─────────────────────────────────────────────

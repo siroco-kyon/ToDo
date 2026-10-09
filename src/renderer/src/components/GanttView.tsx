@@ -373,6 +373,7 @@ interface PersistedGanttScrollState {
   leftOffset: number
   scrollLeft: number
   scrollTop: number
+  unitWidth?: number
 }
 
 interface EditingTodoCell {
@@ -767,13 +768,17 @@ function loadGanttScrollState(): PersistedGanttScrollState | null {
     const scrollTop = typeof parsed.scrollTop === 'number' && Number.isFinite(parsed.scrollTop)
       ? Math.max(0, parsed.scrollTop)
       : 0
+    const unitWidth = typeof parsed.unitWidth === 'number' && Number.isFinite(parsed.unitWidth) && parsed.unitWidth > 0
+      ? parsed.unitWidth
+      : undefined
 
     return {
       timeScale,
       leftDate,
       leftOffset,
       scrollLeft,
-      scrollTop
+      scrollTop,
+      unitWidth
     }
   } catch {
     return null
@@ -1015,8 +1020,9 @@ export function GanttView({
   const dependencySourceHandleRefs = useRef(new Map<string, HTMLDivElement>())
   const dependencyTargetBarRefs = useRef(new Map<string, HTMLDivElement>())
   const suppressSelectionRef = useRef(false)
-  const lastAutoScrollKeyRef = useRef<string | null>(null)
   const initialScrollStateRef = useRef<PersistedGanttScrollState | null>(initialScrollState)
+  const viewportScrollStateRef = useRef<PersistedGanttScrollState | null>(null)
+  const jumpToTodayPendingRef = useRef(false)
   const panDragRef = useRef<PanDragState | null>(null)
 
   interactionRef.current = interaction
@@ -1027,7 +1033,7 @@ export function GanttView({
   const leftTableWidth = useMemo(() => leftTableWidthFor(leftColumnWidths), [leftColumnWidths])
 
   const loadGanttData = useCallback(async (): Promise<void> => {
-    setLoading(true)
+    // 更新中もチャートを残し、バーの編集や同期でスクロール領域を作り直さない。
     try {
       const [nextSubTasks, nextDependencies] = await Promise.all([
         window.api.subtaskGetAll(),
@@ -2152,7 +2158,6 @@ export function GanttView({
     const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${timelineWidth}' height='10' viewBox='0 0 ${timelineWidth} 10' preserveAspectRatio='none'>${rects}</svg>`
     return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
   }, [timelineUnits, timelineWidth, unitWidth])
-  const autoScrollKey = `${normalizedRange.start}:${normalizedRange.end}:${timeScale}:${zoom}:${totalUnits}:${todayIndex}`
   const getTodayScrollLeft = useCallback((container: HTMLDivElement): number => {
     // 今日を左端ではなく、見えている時間軸の左から 1/4 の位置に出して、進行中タスクの前半も見えるようにする
     const visibleTimelineWidth = Math.max(container.clientWidth - leftTableWidth, 0)
@@ -2167,21 +2172,19 @@ export function GanttView({
       return
     }
 
+    jumpToTodayPendingRef.current = true
     centerRangeOnToday()
   }, [centerRangeOnToday, getTodayScrollLeft, todayIndex, totalUnits])
 
   const hasScrollableChart = !loading && rangeChartGroups.length > 0
 
   useLayoutEffect(() => {
-    if (scrollStateReady) return
-
+    if (!hasScrollableChart) return
     const container = scrollRef.current
     if (!container) return
 
-    const snapshot = initialScrollStateRef.current
-    if (snapshot && loading) return
-
-    if (snapshot) {
+    const snapshot = viewportScrollStateRef.current ?? initialScrollStateRef.current
+    if (snapshot && !jumpToTodayPendingRef.current) {
       const maxScrollLeft = Math.max(container.scrollWidth - container.clientWidth, 0)
       const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
       let restoredLeft = clamp(snapshot.scrollLeft, 0, maxScrollLeft)
@@ -2189,68 +2192,76 @@ export function GanttView({
       if (snapshot.leftDate && snapshot.timeScale === timeScale) {
         const storedIndex = diffUnits(snapshot.leftDate, timelineStart, timeScale)
         if (Number.isFinite(storedIndex)) {
-          restoredLeft = clamp(storedIndex * unitWidth + snapshot.leftOffset, 0, maxScrollLeft)
+          const offset = snapshot.unitWidth
+            ? snapshot.leftOffset / snapshot.unitWidth * unitWidth
+            : snapshot.leftOffset
+          restoredLeft = clamp(storedIndex * unitWidth + offset, 0, maxScrollLeft)
         }
+      } else if (snapshot.leftDate) {
+        // 表示単位を変えても、今見ている日付を新しい時間軸へ移す。
+        const storedUnitDays = diffCalendarDays(endOfUnit(snapshot.leftDate, snapshot.timeScale), snapshot.leftDate) + 1
+        const fraction = snapshot.unitWidth ? snapshot.leftOffset / snapshot.unitWidth : 0
+        const anchorDate = addDays(snapshot.leftDate, Math.floor(fraction * storedUnitDays))
+        const nextUnitStart = startOfUnit(anchorDate, timeScale)
+        const nextUnitDays = diffCalendarDays(endOfUnit(anchorDate, timeScale), nextUnitStart) + 1
+        const nextOffset = diffCalendarDays(anchorDate, nextUnitStart) / nextUnitDays * unitWidth
+        restoredLeft = clamp(diffUnits(anchorDate, timelineStart, timeScale) * unitWidth + nextOffset, 0, maxScrollLeft)
       }
 
       container.scrollLeft = restoredLeft
       container.scrollTop = clamp(snapshot.scrollTop, 0, maxScrollTop)
-      lastAutoScrollKeyRef.current = autoScrollKey
+    } else {
+      container.scrollLeft = getTodayScrollLeft(container)
     }
-
+    jumpToTodayPendingRef.current = false
+    initialScrollStateRef.current = null
     setScrollStateReady(true)
-  }, [autoScrollKey, hasScrollableChart, loading, scrollStateReady, timeScale, timelineStart, unitWidth])
+  }, [getTodayScrollLeft, hasScrollableChart, timeScale, timelineStart, totalUnits, unitWidth])
 
-  useEffect(() => {
-    if (!scrollStateReady) return
-
-    const container = scrollRef.current
-    if (!container) return
-    if (lastAutoScrollKeyRef.current === autoScrollKey) return
-
-    container.scrollLeft = getTodayScrollLeft(container)
-    lastAutoScrollKeyRef.current = autoScrollKey
-  }, [autoScrollKey, getTodayScrollLeft, scrollStateReady])
-
-  useEffect(() => {
-    if (!scrollStateReady) return
+  useLayoutEffect(() => {
+    if (!scrollStateReady || !hasScrollableChart) return
 
     const container = scrollRef.current
     if (!container) return
 
     let frameId = 0
-    const persistScrollState = (): void => {
-      frameId = 0
+    const captureScrollState = (): PersistedGanttScrollState => {
       const scrollLeft = Math.max(container.scrollLeft, 0)
       const scrollTop = Math.max(container.scrollTop, 0)
       const unitIndex = totalUnits > 0 ? clamp(Math.floor(scrollLeft / unitWidth), 0, totalUnits - 1) : 0
       const leftDate = totalUnits > 0 ? addUnits(timelineStart, timeScale, unitIndex) : null
       const leftOffset = totalUnits > 0 ? Math.max(0, scrollLeft - unitIndex * unitWidth) : 0
 
-      const nextState: PersistedGanttScrollState = {
+      return {
         timeScale,
         leftDate,
         leftOffset,
         scrollLeft,
-        scrollTop
+        scrollTop,
+        unitWidth
       }
-
-      window.localStorage.setItem(GANTT_SCROLL_STATE_STORAGE_KEY, JSON.stringify(nextState))
+    }
+    const persistScrollState = (): void => {
+      frameId = 0
+      window.localStorage.setItem(GANTT_SCROLL_STATE_STORAGE_KEY, JSON.stringify(viewportScrollStateRef.current))
     }
 
     const handleScroll = (): void => {
+      // 次の描画前に期間が変わっても、最後に見ていた日付を使えるよう同期的に記録する。
+      viewportScrollStateRef.current = captureScrollState()
       if (frameId) window.cancelAnimationFrame(frameId)
       frameId = window.requestAnimationFrame(persistScrollState)
     }
 
     container.addEventListener('scroll', handleScroll, { passive: true })
+    viewportScrollStateRef.current = captureScrollState()
     persistScrollState()
 
     return () => {
       if (frameId) window.cancelAnimationFrame(frameId)
       container.removeEventListener('scroll', handleScroll)
     }
-  }, [scrollStateReady, timeScale, timelineStart, totalUnits, unitWidth])
+  }, [hasScrollableChart, scrollStateReady, timeScale, timelineStart, totalUnits, unitWidth])
 
   useEffect(() => {
     if (!interaction || !isTimelineEditable) return

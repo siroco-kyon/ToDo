@@ -37,6 +37,7 @@ import {
   deleteSubTask
 } from '../db/subtasks'
 import { startTimer, stopTimer, getRunningState } from '../db/timer'
+import { createQuickProgress, stopExpectedTimer } from '../db/desktop'
 import { getWorkLogsByTodo, getAllWorkLogRows, getWorkLogsByDate, getWorkLogsSummary } from '../db/worklogs'
 import { getUserById, listUsers } from '../db/users'
 import { getDb } from '../db/connection'
@@ -323,6 +324,23 @@ dataRouter.delete('/subtasks/:id', (req, res) => run(res, () => deleteSubTask(re
 dataRouter.post('/timer/start', (req, res) => run(res, () => startTimer(req.user!.id, req.body.todoId), 'todo'))
 dataRouter.post('/timer/stop', (req, res) => run(res, () => stopTimer(req.user!.id, req.body.note), 'todo'))
 dataRouter.get('/timer/running', (req, res) => run(res, () => getRunningState(req.user!.id) ?? null))
+
+// HAKOBI auxiliary windows use the timer instance they displayed, so a stale
+// window cannot stop a newly switched timer on another device.
+dataRouter.post('/desktop/timer/stop', (req, res) => run(res, () => {
+  if (req.body.expectedUserId !== req.user!.id) throw new Error('ログイン中のユーザーが変更されました')
+  return getDb().transaction(() => stopExpectedTimer(req.user!.id, req.body.todoId, req.body.expectedStartTime))()
+}, 'todo'))
+
+dataRouter.post('/desktop/quick-progress', (req, res) => run(res, () => getDb().transaction(() => {
+  if (req.body.expectedUserId !== req.user!.id) throw new Error('ログイン中のユーザーが変更されました')
+  const { result, replayed } = createQuickProgress(req.user!.id, req.body)
+  if (!replayed) {
+    const mentioned = notifyMentions(req.user!.id, result.note.body, result.note)
+    notifySubscribers(req.user!.id, result.note, undefined, mentioned)
+  }
+  return result
+})(), ['progress', 'todo']))
 
 // ─── WorkLogs ─────────────────────────────────────────────────
 dataRouter.get('/todos/:todoId/worklogs', (req, res) => run(res, () => getWorkLogsByTodo(req.params.todoId)))

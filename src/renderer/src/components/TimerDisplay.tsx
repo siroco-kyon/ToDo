@@ -16,6 +16,8 @@ export function TimerDisplay({ elapsedSeconds, isRunning }: Props): React.JSX.El
 
   return (
     <span
+      aria-label="計測時間"
+      data-running={isRunning}
       style={{
         fontFamily: 'monospace',
         fontSize: '1.1em',

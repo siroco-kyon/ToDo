@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from './App'
+import { HakobiLauncher } from './components/HakobiLauncher'
 import type { Api } from '../../preload/index'
 import './styles/gantt-neumorphic.css'
 
@@ -82,6 +83,7 @@ function Root(): React.JSX.Element {
     )
   }
 
+  if (window.location.hash === '#hakobi-launcher') return <HakobiLauncher />
   return <App />
 }
 
