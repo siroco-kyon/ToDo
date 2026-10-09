@@ -1,19 +1,22 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, dialog, shell } from 'electron'
 import fs from 'fs'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initDb } from './db'
-import { runArchiveCleanup } from './archive'
+import { runArchiveCleanupSafely } from './archive'
 import { registerIpcHandlers } from './ipc'
 import { createTray, destroyTray, updateTrayIcon } from './tray'
 import { registerShortcuts, unregisterShortcuts } from './shortcuts'
 import { loadAppIcon } from './icon'
 import { isFirstLaunch } from './config'
 import { checkDueNotifications } from './notifications'
+import { DesktopController } from './desktop-controller'
+import { WINDOWS_APP_ID } from './windows-branding'
 
 let mainWindow: BrowserWindow | null = null
 let ganttWindow: BrowserWindow | null = null
 let taskReportWindow: BrowserWindow | null = null
+let desktopController: DesktopController | null = null
 const DEV_USER_DATA_DIR = join(app.getPath('appData'), 'ToDo-dev')
 const DEV_RENDERER_RETRY_LIMIT = 20
 const DEV_RENDERER_RETRY_DELAY_MS = 500
@@ -40,7 +43,13 @@ function debugLog(...args: unknown[]): void {
 
 if (is.dev) {
   app.setPath('userData', DEV_USER_DATA_DIR)
+} else {
+  // Product-name changes must not hide existing ToDo data or preferences.
+  const candidates = ['ToDo', 'todo-app'].map((name) => join(app.getPath('appData'), name))
+  const existing = candidates.find((dir) => fs.existsSync(join(dir, 'config.json')) || fs.existsSync(join(dir, 'hakobi-desktop.json')))
+  app.setPath('userData', existing ?? candidates[0])
 }
+app.setName('HAKOBI')
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 
@@ -138,6 +147,7 @@ function createWindow(): void {
     minHeight: 600,
     show: is.dev,
     autoHideMenuBar: true,
+    title: 'HAKOBI',
     icon,
     backgroundColor: '#0f172a',
     webPreferences: {
@@ -297,6 +307,10 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on('second-instance', () => {
     debugLog('second-instance')
+    if (desktopController) {
+      desktopController.reveal()
+      return
+    }
     if (!mainWindow) {
       createWindow()
       return
@@ -313,31 +327,47 @@ if (!gotSingleInstanceLock) {
       // ignore logging failures in dev diagnostics
     }
     debugLog('app.whenReady')
-    electronApp.setAppUserModelId('com.todo.app')
+    electronApp.setAppUserModelId(WINDOWS_APP_ID)
 
     app.on('browser-window-created', (_, window) => {
       debugLog('browser-window-created', { id: window.id })
       optimizer.watchWindowShortcuts(window)
     })
 
-    if (!isFirstLaunch()) {
-      initDb()
-      runArchiveCleanup()
-      checkDueNotifications()
-      // 1時間ごとに期限通知をチェック
-      setInterval(() => { try { checkDueNotifications() } catch { /* ignore */ } }, 60 * 60 * 1000)
-    }
-
-    createWindow()
-
-    if (mainWindow) {
-      const icon = loadAppIcon()
-      createTray(mainWindow, icon)
-      registerIpcHandlers(mainWindow, updateTrayIcon, openGanttWindow, openTodoInMainWindow, openTaskReportWindow)
-      registerShortcuts(mainWindow)
-    }
+    desktopController = new DesktopController(() => {
+      let cleanupWarning: string | null = null
+      if (!isFirstLaunch()) {
+        initDb()
+        cleanupWarning = runArchiveCleanupSafely()
+        checkDueNotifications()
+        setInterval(() => { try { checkDueNotifications() } catch { /* ignore */ } }, 60 * 60 * 1000)
+      }
+      createWindow()
+      if (mainWindow) {
+        createTray(mainWindow, loadAppIcon(), () => desktopController?.showConnectionSettings())
+        registerIpcHandlers(mainWindow, updateTrayIcon, openGanttWindow, openTodoInMainWindow, openTaskReportWindow)
+        registerShortcuts(mainWindow)
+        if (cleanupWarning) {
+          const warning = cleanupWarning
+          const target = mainWindow
+          target.once('ready-to-show', () => {
+            if (!target.isDestroyed()) void dialog.showMessageBox(target, { type: 'warning', title: 'HAKOBI — データ保持期間', message: 'データの整理をスキップしました', detail: warning, buttons: ['閉じる'] }).catch(console.error)
+          })
+        }
+      }
+    }, () => {
+      if (!mainWindow || mainWindow.isDestroyed()) createWindow()
+      if (mainWindow?.isMinimized()) mainWindow.restore()
+      mainWindow?.show()
+      mainWindow?.focus()
+    })
+    desktopController.start()
 
     app.on('activate', () => {
+      if (desktopController) {
+        desktopController.reveal()
+        return
+      }
       if (!mainWindow || mainWindow.isDestroyed()) {
         createWindow()
       } else {
@@ -350,6 +380,7 @@ if (!gotSingleInstanceLock) {
 app.on('before-quit', () => {
   debugLog('before-quit')
   app.isQuitting = true
+  desktopController?.dispose()
 })
 
 app.on('will-quit', () => {

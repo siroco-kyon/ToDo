@@ -26,21 +26,16 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: CurrentUser) => v
       <form onSubmit={handleSubmit} style={styles.card}>
         <div style={styles.brand}>
           <div style={styles.logo}>
-            <svg width="28" height="28" viewBox="0 0 128 128" aria-hidden>
-              <rect width="128" height="128" rx="28" fill="#2563eb" />
-              <path
-                d="M36 66l18 18 38-42"
-                fill="none"
-                stroke="#fff"
-                strokeWidth="12"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+            <svg width="44" height="44" viewBox="0 0 128 128" aria-hidden>
+              <rect x="9" y="9" width="110" height="110" rx="23" fill="#0f172a" />
+              <rect x="28" y="35" width="51" height="15" rx="4.5" fill="#2dd4bf" />
+              <rect x="42" y="56" width="56" height="15" rx="4.5" fill="#5eead4" />
+              <rect x="56" y="78" width="35" height="15" rx="4.5" fill="#fbbf24" />
             </svg>
           </div>
           <div>
-            <div style={styles.title}>チーム ToDo</div>
-            <div style={styles.subtitle}>サインインして続行</div>
+            <div style={styles.title}>HAKOBI</div>
+            <div style={styles.subtitle}>チームの仕事を、前へ。</div>
           </div>
         </div>
 
@@ -106,7 +101,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   brand: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 },
   logo: { display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: '1.15rem', fontWeight: 700, color: '#f1f5f9' },
+  title: { fontSize: '1.25rem', fontWeight: 750, letterSpacing: '0.12em', color: '#f1f5f9' },
   subtitle: { fontSize: '0.82rem', color: '#94a3b8', marginTop: 2 },
   label: {
     display: 'flex',
@@ -138,8 +133,8 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '11px 12px',
     borderRadius: 10,
     border: 'none',
-    background: '#2563eb',
-    color: '#fff',
+    background: '#2dd4bf',
+    color: '#0f172a',
     fontSize: '0.95rem',
     fontWeight: 700,
     cursor: 'pointer'

@@ -11,6 +11,10 @@ import Database from 'better-sqlite3'
  *  - Todos keep their original UUIDs and gain assignee_id / created_by = target.
  *  - SubTasks / TodoDependencies copy as-is (their UUIDs do not collide).
  *  - WorkLogs / DailyPlanItems gain the missing user_id = target.
+ *  - Progress notes, replies, reactions and change history keep their UUIDs;
+ *    all desktop authors / reaction actors become the target web user.
+ *  - New categories keep their private flag. Existing same-named categories
+ *    keep the server setting, with differing flags reported as conflicts.
  *  - RunningState (a transient running timer) and Settings are skipped.
  *
  * Re-running is safe: every insert uses INSERT OR IGNORE / unique constraints,
@@ -23,6 +27,12 @@ export interface ImportResult {
   dependencies: number
   workLogs: number
   planItems: number
+  progressNotes: number
+  progressComments: number
+  progressReactions: number
+  todoChanges: number
+  subTaskChanges: number
+  categoryConflicts: string[]
   skippedOrphans: number
   dryRun: boolean
 }
@@ -41,6 +51,7 @@ const asInt = (v: unknown, fallback = 0): number =>
   typeof v === 'number' && Number.isFinite(v) ? Math.trunc(v) : fallback
 const asNullableText = (v: unknown): string | null =>
   typeof v === 'string' && v.trim() !== '' ? v : null
+const asStoredText = (v: unknown): string | null => (typeof v === 'string' ? v : null)
 
 function tableExists(db: Database.Database, name: string): boolean {
   return (
@@ -57,12 +68,10 @@ function readAll(db: Database.Database, table: string): Row[] {
 
 export function importDesktopDb(options: ImportOptions): ImportResult {
   const { webDb, sourceDbPath, targetUserId, dryRun = false } = options
+  const target = webDb.prepare('SELECT deleted_at FROM Users WHERE id = ?').get(targetUserId) as { deleted_at: string | null } | undefined
+  if (!target || target.deleted_at) throw new Error('取り込み先のユーザーが見つからないか、削除されています。別のメンバーを選択してください')
 
   const source = new Database(sourceDbPath, { readonly: true, fileMustExist: true })
-  if (!tableExists(source, 'Todos')) {
-    source.close()
-    throw new Error('指定したファイルはデスクトップ版の todo.db ではないようです（Todos テーブルがありません）。')
-  }
 
   const now = new Date().toISOString()
   const result: ImportResult = {
@@ -72,24 +81,39 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
     dependencies: 0,
     workLogs: 0,
     planItems: 0,
+    progressNotes: 0,
+    progressComments: 0,
+    progressReactions: 0,
+    todoChanges: 0,
+    subTaskChanges: 0,
+    categoryConflicts: [],
     skippedOrphans: 0,
     dryRun
   }
 
   try {
+    if (!tableExists(source, 'Todos')) {
+      throw new Error('指定したファイルはデスクトップ版の todo.db ではないようです（Todos テーブルがありません）。')
+    }
     const srcCategories = readAll(source, 'Categories')
     const srcTodos = readAll(source, 'Todos')
     const srcSubTasks = readAll(source, 'SubTasks')
     const srcDependencies = readAll(source, 'TodoDependencies')
     const srcWorkLogs = readAll(source, 'WorkLogs')
     const srcPlanItems = readAll(source, 'DailyPlanItems')
+    const srcProgressNotes = readAll(source, 'ProgressNotes')
+    const srcProgressComments = readAll(source, 'ProgressNoteComments')
+    const srcNoteReactions = readAll(source, 'ProgressNoteReactions')
+    const srcCommentReactions = readAll(source, 'ProgressCommentReactions')
+    const srcTodoChanges = readAll(source, 'TodoChangeLogs')
+    const srcSubTaskChanges = readAll(source, 'SubTaskChangeLogs')
 
     const validTodoIds = new Set(srcTodos.map((t) => asText(t.id)))
 
-    const findCategoryByName = webDb.prepare('SELECT id FROM Categories WHERE name = ?')
+    const findCategoryByName = webDb.prepare('SELECT id, is_private FROM Categories WHERE name = ?')
     const insertCategory = webDb.prepare(
-      `INSERT INTO Categories (id, name, color, description, sort_order, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO Categories (id, name, color, description, sort_order, is_private, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
     const insertTodo = webDb.prepare(
       `INSERT OR IGNORE INTO Todos
@@ -119,6 +143,33 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
         (id, plan_date, todo_id, user_id, scheduled_start, estimated_minutes, lane, sort_order, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
+    const insertNote = webDb.prepare(
+      `INSERT OR IGNORE INTO ProgressNotes (id, todo_id, user_id, body, needs_discussion, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    const findNote = webDb.prepare('SELECT todo_id FROM ProgressNotes WHERE id = ?')
+    const insertComment = webDb.prepare(
+      `INSERT OR IGNORE INTO ProgressNoteComments (id, note_id, parent_comment_id, user_id, body, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    const findComment = webDb.prepare('SELECT note_id FROM ProgressNoteComments WHERE id = ?')
+    const insertNoteReaction = webDb.prepare(
+      `INSERT OR IGNORE INTO ProgressNoteReactions (id, note_id, user_id, actor_key, emoji, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    const insertCommentReaction = webDb.prepare(
+      `INSERT OR IGNORE INTO ProgressCommentReactions (id, comment_id, user_id, actor_key, emoji, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    const insertTodoChange = webDb.prepare(
+      `INSERT OR IGNORE INTO TodoChangeLogs (id, todo_id, user_id, field, old_value, new_value, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    const insertSubTaskChange = webDb.prepare(
+      `INSERT OR IGNORE INTO SubTaskChangeLogs (id, subtask_id, todo_id, user_id, field, old_value, new_value, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    const findSubTask = webDb.prepare('SELECT todo_id FROM SubTasks WHERE id = ?')
 
     webDb.exec('BEGIN')
 
@@ -128,9 +179,11 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
       const srcId = asText(cat.id)
       const name = asText(cat.name)
       if (!name) continue
-      const existing = findCategoryByName.get(name) as { id: string } | undefined
+      const isPrivate = asInt(cat.is_private, 0) === 1 ? 1 : 0
+      const existing = findCategoryByName.get(name) as { id: string; is_private: number } | undefined
       if (existing) {
         categoryMap.set(srcId, existing.id)
+        if (existing.is_private !== isPrivate && !result.categoryConflicts.includes(name)) result.categoryConflicts.push(name)
         continue
       }
       const newId = crypto.randomUUID()
@@ -140,6 +193,7 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
         asText(cat.color, '#6366f1'),
         asText(cat.description, ''),
         asInt(cat.sort_order, 0),
+        isPrivate,
         asText(cat.created_at, now)
       )
       categoryMap.set(srcId, newId)
@@ -181,6 +235,7 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
     }
 
     // SubTasks
+    const validSubTaskIds = new Set<string>()
     for (const sub of srcSubTasks) {
       const todoId = asText(sub.todo_id)
       if (!validTodoIds.has(todoId)) {
@@ -201,6 +256,8 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
         asInt(sub.sort_order, 0),
         asText(sub.created_at, now)
       ).changes
+      const stored = findSubTask.get(asText(sub.id)) as { todo_id: string } | undefined
+      if (stored?.todo_id === todoId) validSubTaskIds.add(asText(sub.id))
     }
 
     // TodoDependencies
@@ -258,6 +315,112 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
         asInt(plan.sort_order, 0),
         asText(plan.created_at, now),
         asText(plan.updated_at, now)
+      ).changes
+    }
+
+    // Progress notes — older desktop databases may not have these optional tables.
+    const validNoteIds = new Set<string>()
+    for (const note of srcProgressNotes) {
+      const todoId = asText(note.todo_id)
+      const noteId = asText(note.id)
+      if (!validTodoIds.has(todoId)) {
+        result.skippedOrphans += 1
+        continue
+      }
+      const createdAt = asNullableText(note.created_at) ?? now
+      result.progressNotes += insertNote.run(
+        noteId, todoId, targetUserId, asText(note.body), asInt(note.needs_discussion, 0) === 1 ? 1 : 0,
+        createdAt, asNullableText(note.updated_at) ?? createdAt
+      ).changes
+      const stored = findNote.get(noteId) as { todo_id: string } | undefined
+      if (stored?.todo_id === todoId) validNoteIds.add(noteId)
+      else result.skippedOrphans += 1
+    }
+
+    // Insert parents before replies without depending on SQLite's source row order.
+    // Missing parents, cross-note links and cycles are skipped with their descendants.
+    const pendingComments = new Map<string, Row>()
+    for (const comment of srcProgressComments) {
+      if (!validNoteIds.has(asText(comment.note_id))) result.skippedOrphans += 1
+      else pendingComments.set(asText(comment.id), comment)
+    }
+    const commentChildren = new Map<string, string[]>()
+    const commentQueue: string[] = []
+    for (const [id, comment] of pendingComments) {
+      const parentId = asNullableText(comment.parent_comment_id)
+      if (!parentId) commentQueue.push(id)
+      else {
+        const parent = pendingComments.get(parentId)
+        if (parent && parent.note_id === comment.note_id) {
+          const children = commentChildren.get(parentId) ?? []
+          children.push(id)
+          commentChildren.set(parentId, children)
+        }
+      }
+    }
+    const validCommentIds = new Set<string>()
+    for (let index = 0; index < commentQueue.length; index += 1) {
+      const id = commentQueue[index]
+      const comment = pendingComments.get(id)!
+      const noteId = asText(comment.note_id)
+      const parentId = asNullableText(comment.parent_comment_id)
+      const createdAt = asNullableText(comment.created_at) ?? now
+      result.progressComments += insertComment.run(
+        id, noteId, parentId, targetUserId, asText(comment.body), createdAt,
+        asNullableText(comment.updated_at) ?? createdAt
+      ).changes
+      const stored = findComment.get(id) as { note_id: string } | undefined
+      if (stored?.note_id !== noteId) continue
+      validCommentIds.add(id)
+      for (const childId of commentChildren.get(id) ?? []) commentQueue.push(childId)
+    }
+    result.skippedOrphans += pendingComments.size - validCommentIds.size
+
+    // Server reactions use the user's ID as actor_key; desktop uses "desktop".
+    for (const reaction of srcNoteReactions) {
+      const noteId = asText(reaction.note_id)
+      if (!validNoteIds.has(noteId)) {
+        result.skippedOrphans += 1
+        continue
+      }
+      result.progressReactions += insertNoteReaction.run(
+        asText(reaction.id), noteId, targetUserId, targetUserId, asText(reaction.emoji), asNullableText(reaction.created_at) ?? now
+      ).changes
+    }
+    for (const reaction of srcCommentReactions) {
+      const commentId = asText(reaction.comment_id)
+      if (!validCommentIds.has(commentId)) {
+        result.skippedOrphans += 1
+        continue
+      }
+      result.progressReactions += insertCommentReaction.run(
+        asText(reaction.id), commentId, targetUserId, targetUserId, asText(reaction.emoji), asNullableText(reaction.created_at) ?? now
+      ).changes
+    }
+
+    // Preserve the date-stamped changes used by period progress reports.
+    for (const change of srcTodoChanges) {
+      const todoId = asText(change.todo_id)
+      if (!validTodoIds.has(todoId)) {
+        result.skippedOrphans += 1
+        continue
+      }
+      result.todoChanges += insertTodoChange.run(
+        asText(change.id), todoId, targetUserId, asText(change.field), asStoredText(change.old_value),
+        asStoredText(change.new_value), asNullableText(change.created_at) ?? now
+      ).changes
+    }
+    for (const change of srcSubTaskChanges) {
+      const subTaskId = asText(change.subtask_id)
+      const todoId = asText(change.todo_id)
+      const stored = findSubTask.get(subTaskId) as { todo_id: string } | undefined
+      if (!validSubTaskIds.has(subTaskId) || stored?.todo_id !== todoId) {
+        result.skippedOrphans += 1
+        continue
+      }
+      result.subTaskChanges += insertSubTaskChange.run(
+        asText(change.id), subTaskId, todoId, targetUserId, asText(change.field), asStoredText(change.old_value),
+        asStoredText(change.new_value), asNullableText(change.created_at) ?? now
       ).changes
     }
 

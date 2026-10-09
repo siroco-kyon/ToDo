@@ -1,11 +1,15 @@
 {
   "name": "todo-app",
-  "version": "1.0.0",
-  "description": "Electron TODO App with time tracking",
+  "version": "1.0.4",
+  "description": "HAKOBI team workspace with Gantt charts and time tracking",
   "main": "./out/main/index.js",
   "author": "",
   "private": true,
   "scripts": {
+    "test:installer": "node tests/hakobi-installer.cjs",
+    "test:gantt-scroll": "node tests/gantt-scroll-regressions.cjs",
+    "test:quality": "node tests/local-data-regressions.cjs && node tests/task-data-regressions.cjs && node tests/timer-sync-regressions.cjs && npm --prefix server run test:auth-import && node tests/server-deployment.cjs && node tests/hakobi-detail-electron.cjs",
+    "test:hakobi": "node tests/windows-branding.cjs && node tests/hakobi-desktop.cjs && node tests/service-config.cjs && node tests/server-clock.cjs && node tests/hakobi-progress-drafts.cjs && node tests/legacy-draft-recovery.cjs && node tests/web-client-regressions.cjs && node tests/auth-session.cjs && npm --prefix server run test:desktop && node tests/hakobi-native-electron.cjs && node tests/hakobi-electron.cjs",
     "test:progress-timeline": "node tests/progress-timeline-desktop.cjs && node tests/progress-timeline-display.cjs && npm --prefix server run test:progress-timeline",
     "test:links-members": "node tests/links.cjs && npm --prefix server run test:members",
     "test:on-hold": "node tests/on-hold-display.cjs && node tests/on-hold-desktop.cjs && npm --prefix server run test:on-hold",

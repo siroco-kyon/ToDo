@@ -72,6 +72,7 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
         <div style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.6 }}>
           デスクトップ版（1人用）の <code style={{ color: '#cbd5e1' }}>todo.db</code> を、担当者を指定してこのサーバーに取り込みます。
           同じファイルを再度取り込んでも二重登録はされません。まず「ドライラン」で件数を確認してから実行するのがおすすめです。
+          進捗・返信・リアクション・変更履歴の投稿者も、指定したメンバーとして引き継ぎます。
         </div>
 
         <div>
@@ -117,9 +118,19 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
                 <ResultRow label="依存関係" value={result.dependencies} />
                 <ResultRow label="作業ログ" value={result.workLogs} />
                 <ResultRow label="予定（レール）" value={result.planItems} />
-                {result.skippedOrphans > 0 && <ResultRow label="スキップ" value={result.skippedOrphans} note="（参照先タスクが無い孤立データ）" />}
+                <ResultRow label="進捗メモ" value={result.progressNotes ?? 0} />
+                <ResultRow label="コメント・返信" value={result.progressComments ?? 0} />
+                <ResultRow label="リアクション" value={result.progressReactions ?? 0} />
+                <ResultRow label="タスクの変更履歴" value={result.todoChanges ?? 0} />
+                <ResultRow label="サブタスクの変更履歴" value={result.subTaskChanges ?? 0} />
+                {result.skippedOrphans > 0 && <ResultRow label="スキップ" value={result.skippedOrphans} note="（参照先が無い、または不正なデータ）" />}
               </tbody>
             </table>
+            {!!result.categoryConflicts?.length && (
+              <p role="alert" style={{ margin: '10px 0 0', fontSize: '0.76rem', color: '#fbbf24' }}>
+                次の同名カテゴリは集計除外の設定が異なるため、サーバー側の設定を維持します：{result.categoryConflicts.join('、')}
+              </p>
+            )}
             {result.dryRun && (
               <div style={{ marginTop: 8, fontSize: '0.76rem', color: '#94a3b8' }}>
                 問題なければ「取り込みを実行」を押してください。

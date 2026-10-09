@@ -74,18 +74,26 @@ export interface UpdateUserInput {
 }
 
 export function updateUser(id: string, input: UpdateUserInput): PublicUser {
-  if (!getUserById(id)) throw new Error('ユーザーが見つかりません')
-  const fields: string[] = ['updated_at = ?']
-  const values: unknown[] = [new Date().toISOString()]
+  const db = getDb()
+  return db.transaction(() => {
+    if (!getUserById(id)) throw new Error('ユーザーが見つかりません')
+    if (input.is_active !== undefined && typeof input.is_active !== 'boolean') throw new Error('有効状態の指定が不正です')
+    const fields: string[] = ['updated_at = ?']
+    const values: unknown[] = [new Date().toISOString()]
 
-  if (input.display_name !== undefined) { fields.push('display_name = ?'); values.push(input.display_name) }
-  if (input.role !== undefined) { fields.push('role = ?'); values.push(input.role) }
-  if (input.color !== undefined) { fields.push('color = ?'); values.push(input.color) }
-  if (input.is_active !== undefined) { fields.push('is_active = ?'); values.push(input.is_active ? 1 : 0) }
+    if (input.display_name !== undefined) { fields.push('display_name = ?'); values.push(input.display_name) }
+    if (input.role !== undefined) { fields.push('role = ?'); values.push(input.role) }
+    if (input.color !== undefined) { fields.push('color = ?'); values.push(input.color) }
+    if (input.is_active !== undefined) { fields.push('is_active = ?'); values.push(input.is_active ? 1 : 0) }
 
-  values.push(id)
-  getDb().prepare(`UPDATE Users SET ${fields.join(', ')} WHERE id = ?`).run(...values)
-  return toPublicUser(getUserById(id)!)
+    if (input.is_active === false) {
+      if (db.prepare('SELECT 1 FROM RunningState WHERE user_id = ?').get(id)) stopTimer(id, 'メンバーを無効化したため計測を停止しました')
+      db.prepare('DELETE FROM Sessions WHERE user_id = ?').run(id)
+    }
+    values.push(id)
+    db.prepare(`UPDATE Users SET ${fields.join(', ')} WHERE id = ?`).run(...values)
+    return toPublicUser(getUserById(id)!)
+  })()
 }
 
 export function setUserPassword(id: string, passwordHash: string): void {

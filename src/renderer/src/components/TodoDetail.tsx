@@ -1,9 +1,11 @@
 import { LinkedText, TextLinks } from './LinkedText'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import type { Category, CreateSubTaskInput, DailyPlanItem, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, UpdateTodoInput, WorkLog } from '../types'
+import type { Category, CreateSubTaskInput, DailyPlanItem, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, UpdateSubTaskInput, UpdateTodoInput, WorkLog } from '../types'
 import { TimerDisplay } from './TimerDisplay'
 import { AssigneeChip, AssigneePicker } from './AssigneePicker'
 import { toDateKey } from '../lib/dueDate'
+import { subscribeProgressDraftChanges } from '../lib/legacyProgressDrafts'
+import { buildEditPatch } from '../lib/editChanges'
 
 interface Props {
   todo: Todo | null
@@ -84,18 +86,39 @@ export function TodoDetail({
   const [editingProgressNoteId, setEditingProgressNoteId] = useState<string | null>(null)
   const [editingProgressNoteDraft, setEditingProgressNoteDraft] = useState('')
   const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
+  const [saveError, setSaveError] = useState('')
+  const editBaseRef = useRef<UpdateTodoInput>({})
+  const subTaskBasesRef = useRef(new Map<string, EditableSubTask>())
   const [editData, setEditData] = useState<UpdateTodoInput>({})
   const [editableSubTasks, setEditableSubTasks] = useState<EditableSubTask[]>([])
   const [subTaskReorderPending, setSubTaskReorderPending] = useState(false)
   const [subscribed, setSubscribed] = useState(false)
+  const [subscriptionPending, setSubscriptionPending] = useState(false)
+  const subscriptionPendingRef = useRef(false)
+  const [childDraftIds, setChildDraftIds] = useState<Set<string>>(() => new Set())
+  const handleChildDirty = useCallback((id: string, dirty: boolean): void => {
+    setChildDraftIds((previous) => {
+      if (previous.has(id) === dirty) return previous
+      const next = new Set(previous)
+      if (dirty) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }, [])
   const [sectionLoadError, setSectionLoadError] = useState<string | null>(null)
   const [descriptionDraft, setDescriptionDraft] = useState('')
   const [descriptionBase, setDescriptionBase] = useState('')
   const [descriptionSaving, setDescriptionSaving] = useState(false)
+  const descriptionSavingRef = useRef(false)
   const [memoDraft, setMemoDraft] = useState('')
   const [memoBase, setMemoBase] = useState('')
   const [memoSaving, setMemoSaving] = useState(false)
+  const memoSavingRef = useRef(false)
   const [stopNote, setStopNote] = useState('')
+  const [timerStopping, setTimerStopping] = useState(false)
+  const timerStoppingRef = useRef(false)
   const [localProgress, setLocalProgress] = useState<number | null>(null)
   const [newSubTask, setNewSubTask] = useState<CreateSubTaskInput>({
     title: '',
@@ -115,9 +138,30 @@ export function TodoDetail({
   })
   const progressBarRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
+  const dragCleanupRef = useRef<(() => void) | null>(null)
   const initializedTodoIdRef = useRef<string | undefined>(undefined)
 
   const todoId = todo?.id
+  const liveTodoIdRef = useRef(todoId)
+  liveTodoIdRef.current = todoId
+  const mountedRef = useRef(true)
+  const sectionRequestsRef = useRef<Record<string, number>>({})
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      draggingRef.current = false
+      dragCleanupRef.current?.()
+      for (const section of Object.keys(sectionRequestsRef.current)) sectionRequestsRef.current[section]++
+    }
+  }, [])
+  const progressDraftKey = currentUser?.id ? `progress-note-draft:${currentUser.id}:${todoId}` : `progress-note-draft:${todoId}`
+
+  useEffect(() => {
+    const read = (): void => { setNoteDraft(todoId ? window.localStorage.getItem(progressDraftKey) ?? '' : '') }
+    read()
+    return subscribeProgressDraftChanges(progressDraftKey, read)
+  }, [progressDraftKey, todoId])
 
   const createEditData = useCallback((source: Todo): UpdateTodoInput => ({
     title: source.title,
@@ -154,48 +198,30 @@ export function TodoDetail({
       return
     }
     const structuredChanged = editing && (
-      JSON.stringify(editData) !== JSON.stringify(createEditData(todo))
-      || JSON.stringify(editableSubTasks) !== JSON.stringify(createEditableSubTasks(subTasks))
+      Object.keys(buildEditPatch(editBaseRef.current, editData)).length > 0
+      || editableSubTasks.some((draft) => {
+        const base = subTaskBasesRef.current.get(draft.id)
+        return base ? Object.keys(buildEditPatch(base, draft)).length > 0 : false
+      })
     )
-    onDirtyChange?.(structuredChanged || descriptionDraft !== descriptionBase || memoDraft !== memoBase)
-  }, [createEditData, createEditableSubTasks, descriptionBase, descriptionDraft, editData, editableSubTasks, editing, memoBase, memoDraft, onDirtyChange, subTasks, todo])
+    onDirtyChange?.(structuredChanged || childDraftIds.size > 0 || descriptionDraft !== descriptionBase || memoDraft !== memoBase || Boolean(newSubTask.title || newSubTask.description))
+  }, [childDraftIds, descriptionBase, descriptionDraft, editData, editableSubTasks, editing, memoBase, memoDraft, newSubTask.description, newSubTask.title, onDirtyChange, todo])
 
-  const loadSubTasks = useCallback(async (id: string) => {
+  const loadSection = useCallback(async <T,>(section: string, id: string, get: () => Promise<T>, apply: (value: T) => void, failure: string): Promise<void> => {
+    const request = (sectionRequestsRef.current[section] ?? 0) + 1
+    sectionRequestsRef.current[section] = request
+    const current = (): boolean => mountedRef.current && liveTodoIdRef.current === id && sectionRequestsRef.current[section] === request
     try {
-      setSubTasks(await window.api.subtaskGetByTodo(id))
+      const value = await get()
+      if (current()) apply(value)
     } catch (error) {
-      console.error('Failed to load subtasks', error)
-      setSectionLoadError('サブタスクを読み込めませんでした')
+      if (current()) { console.error(failure, error); setSectionLoadError(failure) }
     }
   }, [])
-
-  const loadDependencies = useCallback(async (id: string) => {
-    try {
-      const rows = await window.api.todoDependencyGetAll()
-      setDependencies(rows.filter((row) => row.predecessor_todo_id === id || row.successor_todo_id === id))
-    } catch (error) {
-      console.error('Failed to load dependencies', error)
-      setSectionLoadError('依存関係を読み込めませんでした')
-    }
-  }, [])
-
-  const loadProgressNotes = useCallback(async (id: string) => {
-    try {
-      setProgressNotes(await window.api.progressNoteGetByTodo(id))
-    } catch (error) {
-      console.error('Failed to load progress notes', error)
-      setSectionLoadError('進捗メモを読み込めませんでした')
-    }
-  }, [])
-
-  const loadWorkLogs = useCallback(async (id: string) => {
-    try {
-      setLogs(await window.api.worklogGetByTodo(id))
-    } catch (error) {
-      console.error('Failed to load worklogs', error)
-      setSectionLoadError('作業ログを読み込めませんでした')
-    }
-  }, [])
+  const loadSubTasks = useCallback((id: string) => loadSection('subtasks', id, () => window.api.subtaskGetByTodo(id), (rows) => setSubTasks(rows.filter((row) => row.todo_id === id)), 'サブタスクを読み込めませんでした'), [loadSection])
+  const loadDependencies = useCallback((id: string) => loadSection('dependencies', id, () => window.api.todoDependencyGetAll(), (rows) => setDependencies(rows.filter((row) => row.predecessor_todo_id === id || row.successor_todo_id === id)), '依存関係を読み込めませんでした'), [loadSection])
+  const loadProgressNotes = useCallback((id: string) => loadSection('progress', id, () => window.api.progressNoteGetByTodo(id), (rows) => setProgressNotes(rows.filter((row) => row.todo_id === id)), '進捗メモを読み込めませんでした'), [loadSection])
+  const loadWorkLogs = useCallback((id: string) => loadSection('logs', id, () => window.api.worklogGetByTodo(id), (rows) => setLogs(rows.filter((row) => row.todo_id === id)), '作業ログを読み込めませんでした'), [loadSection])
 
   useEffect(() => {
     if (!todoId) {
@@ -237,12 +263,13 @@ export function TodoDetail({
 
     if (selectedTodoChanged) {
       setEditing(false)
+      setSaveError('')
       setEditData(createEditData(todo))
       setDescriptionDraft(todo.description ?? '')
       setDescriptionBase(todo.description ?? '')
       setMemoDraft(todo.memo ?? '')
       setMemoBase(todo.memo ?? '')
-      setNoteDraft(window.localStorage.getItem(`progress-note-draft:${todoId}`) ?? '')
+      setNoteDraft(window.localStorage.getItem(progressDraftKey) ?? '')
       setEditingProgressNoteId(null)
       setEditingProgressNoteDraft('')
       return
@@ -254,11 +281,9 @@ export function TodoDetail({
     const nextMemo = todo.memo ?? ''
 
     setEditData(createEditData(todo))
-    setDescriptionDraft((previous) => previous === descriptionBase ? nextDescription : previous)
-    setDescriptionBase(nextDescription)
-    setMemoDraft((previous) => previous === memoBase ? nextMemo : previous)
-    setMemoBase(nextMemo)
-  }, [createEditData, descriptionBase, editing, memoBase, todo, todoId])
+    if (descriptionDraft === descriptionBase) { setDescriptionDraft(nextDescription); setDescriptionBase(nextDescription) }
+    if (memoDraft === memoBase) { setMemoDraft(nextMemo); setMemoBase(nextMemo) }
+  }, [createEditData, descriptionBase, descriptionDraft, editing, memoBase, memoDraft, todo, todoId])
 
   useEffect(() => {
     if (!editing) setEditableSubTasks(createEditableSubTasks(subTasks))
@@ -281,8 +306,29 @@ export function TodoDetail({
 
   useEffect(() => {
     if (!todoId || !currentUser) { setSubscribed(false); return }
-    void window.api.todoSubscriptionGet(todoId).then((result) => setSubscribed(result.subscribed)).catch(() => setSubscribed(false))
-  }, [currentUser, todoId])
+    void loadSection('subscription', todoId, () => window.api.todoSubscriptionGet(todoId), (result) => setSubscribed(result.subscribed), '更新通知の設定を読み込めませんでした')
+    return () => { sectionRequestsRef.current.subscription = (sectionRequestsRef.current.subscription ?? 0) + 1 }
+  }, [currentUser, loadSection, todoId])
+
+  const toggleSubscription = async (): Promise<void> => {
+    if (!todoId || subscriptionPendingRef.current) return
+    subscriptionPendingRef.current = true
+    setSubscriptionPending(true)
+    // A GET started before the local toggle must not replace its newer result.
+    sectionRequestsRef.current.subscription = (sectionRequestsRef.current.subscription ?? 0) + 1
+    try {
+      const result = await window.api.todoSubscriptionSet(todoId, !subscribed)
+      if (mountedRef.current && liveTodoIdRef.current === todoId) {
+        setSubscribed(result.subscribed)
+        onShowToast(result.subscribed ? 'このタスクの更新通知を受け取ります' : '更新通知をオフにしました')
+      }
+    } catch (error) {
+      if (mountedRef.current) onShowToast(error instanceof Error ? error.message : '更新通知を変更できませんでした', 'error')
+    } finally {
+      subscriptionPendingRef.current = false
+      if (mountedRef.current) setSubscriptionPending(false)
+    }
+  }
 
   const calcProgress = useCallback((clientX: number): number => {
     if (!progressBarRef.current) return 0
@@ -295,6 +341,7 @@ export function TodoDetail({
     if (!todoId) return
 
     event.preventDefault()
+    dragCleanupRef.current?.()
     draggingRef.current = true
     setLocalProgress(calcProgress(event.clientX))
 
@@ -302,19 +349,24 @@ export function TodoDetail({
       if (draggingRef.current) setLocalProgress(calcProgress(moveEvent.clientX))
     }
     const handleUp = (upEvent: MouseEvent): void => {
+      dragCleanupRef.current?.()
+      if (!mountedRef.current || liveTodoIdRef.current !== todoId) return
       draggingRef.current = false
       const progress = calcProgress(upEvent.clientX)
       setLocalProgress(null)
-      void onUpdate(todoId, { progress }).catch((error) => {
+      void onUpdate(todoId, { progress, expected_values: { progress: todo?.progress ?? 0 } }).catch((error) => {
         onShowToast(error instanceof Error ? error.message : '進捗を更新できませんでした', 'error')
       })
-      window.removeEventListener('mousemove', handleMove)
-      window.removeEventListener('mouseup', handleUp)
     }
 
+    dragCleanupRef.current = () => {
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+      dragCleanupRef.current = null
+    }
     window.addEventListener('mousemove', handleMove)
     window.addEventListener('mouseup', handleUp)
-  }, [calcProgress, onShowToast, onUpdate, todoId])
+  }, [calcProgress, onShowToast, onUpdate, todo?.progress, todoId])
 
   const handleDeleteSubTask = async (subTaskId: string): Promise<void> => {
     const target = subTasks.find((item) => item.id === subTaskId)
@@ -377,7 +429,8 @@ export function TodoDetail({
   }
 
   const handleSave = async (): Promise<void> => {
-    if (!todo) return
+    if (!todo || savingRef.current) return
+    if (!(editData.title ?? '').trim()) { onShowToast('タスク名を入力してください', 'error'); return }
 
     if (editableSubTasks.some((subTask) => !subTask.title.trim())) {
       onShowToast('サブタスク名を入力してください', 'error')
@@ -392,67 +445,97 @@ export function TodoDetail({
       return
     }
 
-    const changedSubTasks = editableSubTasks.filter((draft) => {
-      const current = subTasks.find((item) => item.id === draft.id)
-      if (!current) return false
-      return current.title !== draft.title.trim()
-        || (current.description ?? '') !== draft.description.trim()
-        || (current.start_date ?? null) !== draft.start_date
-        || (current.due_date ?? null) !== draft.due_date
-        || clampProgress(current.progress ?? 0) !== clampProgress(draft.progress)
-        || Boolean(current.done) !== draft.done
+    const nextEditData = { ...editData, title: editData.title!.trim() }
+    const taskPatch = buildEditPatch(editBaseRef.current, nextEditData)
+    const changedSubTasks = editableSubTasks.flatMap((draft) => {
+      const base = subTaskBasesRef.current.get(draft.id)
+      if (!base) return []
+      const normalized = { ...draft, title: draft.title.trim(), description: draft.description === base.description ? draft.description : draft.description.trim(), progress: clampProgress(draft.done ? 100 : draft.progress) }
+      const patch = buildEditPatch(base, normalized)
+      return Object.keys(patch).length ? [{ draft: normalized, patch }] : []
     })
-
-    await onUpdate(todo.id, editData)
-    const updatedSubTasks = await Promise.all(changedSubTasks.map((subTask) => window.api.subtaskUpdate(subTask.id, {
-      title: subTask.title.trim(),
-      description: subTask.description.trim(),
-      start_date: subTask.start_date ?? null,
-      due_date: subTask.due_date ?? null,
-      progress: clampProgress(subTask.done ? 100 : subTask.progress),
-      done: subTask.done
-    })))
-    setDescriptionDraft(editData.description ?? '')
-    setDescriptionBase(editData.description ?? '')
-    await loadSubTasks(todo.id)
-    setEditing(false)
-    const extendedTo = updatedSubTasks.map((item) => item.parent_due_date_extended_to).filter(Boolean).sort().at(-1)
-    onShowToast(extendedTo ? `タスクを更新し、親期限を${extendedTo}まで延長しました` : 'タスクを更新しました')
+    savingRef.current = true
+    setSaving(true)
+    setSaveError('')
+    let savedTask = false
+    let savedChildren = 0
+    let writesComplete = false
+    const updatedSubTasks: SubTask[] = []
+    try {
+      if (Object.keys(taskPatch).length) {
+        await onUpdate(todo.id, taskPatch)
+        savedTask = true
+        editBaseRef.current = { ...editBaseRef.current, ...nextEditData }
+      }
+      // Remember successful parts so a retry only saves the remaining drafts.
+      for (const { draft, patch } of changedSubTasks) {
+        updatedSubTasks.push(await window.api.subtaskUpdate(draft.id, patch))
+        subTaskBasesRef.current.set(draft.id, draft)
+        savedChildren++
+      }
+      writesComplete = true
+      if (!mountedRef.current) return
+      const latest = await window.api.todoGetAll()
+      if (!mountedRef.current) return
+      const saved = latest.find((item) => item.id === todo.id)
+      setDescriptionDraft(saved?.description ?? nextEditData.description ?? '')
+      setDescriptionBase(saved?.description ?? nextEditData.description ?? '')
+      await loadSubTasks(todo.id)
+      if (!mountedRef.current) return
+      setEditing(false)
+      const extendedTo = updatedSubTasks.map((item) => item.parent_due_date_extended_to).filter(Boolean).sort().at(-1)
+      onShowToast(extendedTo ? `タスクを更新し、親期限を${extendedTo}まで延長しました` : 'タスクを更新しました')
+    } catch (error) {
+      const failure = error instanceof Error ? error.message : 'タスクを保存できませんでした'
+      if (writesComplete) {
+        if (mountedRef.current) { setEditing(false); onShowToast(`変更は保存しましたが、表示を更新できませんでした: ${failure}`, 'error') }
+        return
+      }
+      const summary = savedTask || savedChildren ? `タスク${savedTask ? 'の変更は保存済み' : 'は未変更'}、サブタスク${savedChildren}件は保存済みです。残りの編集内容は保持しています。` : '編集内容は保持しています。'
+      if (mountedRef.current) { setSaveError(`${failure} ${summary}`); onShowToast(`${failure} ${summary}`, 'error') }
+    } finally {
+      savingRef.current = false
+      if (mountedRef.current) setSaving(false)
+    }
   }
 
   const handleDescriptionSave = async (): Promise<void> => {
-    if (!todoId || descriptionSaving) return
+    if (!todoId || descriptionSavingRef.current || descriptionDraft === descriptionBase) return
 
+    descriptionSavingRef.current = true
     try {
       setDescriptionSaving(true)
-      await onUpdate(todoId, { description: descriptionDraft })
+      await onUpdate(todoId, { description: descriptionDraft, expected_values: { description: descriptionBase } })
       setDescriptionBase(descriptionDraft)
       setEditData((previous) => ({ ...previous, description: descriptionDraft }))
       onShowToast('説明を保存しました')
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '説明を保存できませんでした', 'error')
     } finally {
+      descriptionSavingRef.current = false
       setDescriptionSaving(false)
     }
   }
 
   const handleMemoSave = async (): Promise<void> => {
-    if (!todoId || memoSaving) return
+    if (!todoId || memoSavingRef.current || memoDraft === memoBase) return
+    memoSavingRef.current = true
     try {
       setMemoSaving(true)
-      await onUpdate(todoId, { memo: memoDraft })
+      await onUpdate(todoId, { memo: memoDraft, expected_values: { memo: memoBase } })
       setMemoBase(memoDraft)
       onShowToast('メモを保存しました')
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : 'メモを保存できませんでした', 'error')
     } finally {
+      memoSavingRef.current = false
       setMemoSaving(false)
     }
   }
 
   const handleAddSubTask = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault()
-    if (!todo) return
+    if (!todo || savingRef.current) return
 
     const titles = newSubTask.title.split(/\r?\n/).map((value) => value.trim()).filter(Boolean)
     if (titles.length === 0) return
@@ -465,13 +548,19 @@ export function TodoDetail({
     const remainingTitles = [...titles]
     try {
       for (const title of titles) {
-        createdItems.push(await window.api.subtaskCreate(todo.id, {
+        const created = await window.api.subtaskCreate(todo.id, {
           title,
           description: newSubTask.description?.trim() ?? '',
           start_date: newSubTask.start_date ?? null,
           due_date: newSubTask.due_date ?? null,
           progress: clampProgress(newSubTask.progress ?? 0)
-        }))
+        })
+        createdItems.push(created)
+        if (editing) {
+          const base = createEditableSubTasks([created])[0]
+          subTaskBasesRef.current.set(created.id, base)
+          setEditableSubTasks((previous) => previous.some((item) => item.id === created.id) ? previous : [...previous, base])
+        }
         remainingTitles.shift()
         setNewSubTask((previous) => ({ ...previous, title: remainingTitles.join('\n') }))
       }
@@ -482,13 +571,6 @@ export function TodoDetail({
     }
     setNewSubTask({ title: '', description: '', start_date: toDateKey(new Date()), due_date: null, progress: 0 })
     setSubTasks((previous) => [...previous, ...createdItems])
-    if (editing) {
-      setEditableSubTasks((previous) => [...previous, ...createdItems.map((created) => ({
-        id: created.id, title: created.title, description: created.description ?? '',
-        start_date: created.start_date ?? null, due_date: created.due_date ?? null,
-        progress: clampProgress(created.progress ?? 0), done: Boolean(created.done)
-      }))])
-    }
     const extendedTo = createdItems.map((item) => item.parent_due_date_extended_to).filter(Boolean).sort().at(-1)
     if (extendedTo) onShowToast(`サブタスクに合わせて親タスクの期限を${extendedTo}まで延長しました`)
   }
@@ -516,7 +598,7 @@ export function TodoDetail({
       const created = await window.api.progressNoteCreate(todoId, body)
       setProgressNotes((previous) => [created, ...previous])
       setNoteDraft('')
-      window.localStorage.removeItem(`progress-note-draft:${todoId}`)
+      window.localStorage.removeItem(progressDraftKey)
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '進捗メモを追加できませんでした', 'error')
     } finally {
@@ -580,18 +662,29 @@ export function TodoDetail({
   const dependencyCandidates = allTodos.filter((candidate) => candidate.id !== todo.id && !blockedCandidateIds.has(candidate.id))
 
   const startEditing = (): void => {
-    setEditData(createEditData(todo))
-    setEditableSubTasks(createEditableSubTasks(subTasks))
+    if (childDraftIds.size > 0 && !window.confirm('未保存のサブタスクの変更があります。全体編集に切り替えますか？')) return
+    const base = createEditData(todo)
+    const childBases = createEditableSubTasks(subTasks)
+    editBaseRef.current = descriptionDraft !== descriptionBase ? { ...base, description: descriptionBase } : base
+    subTaskBasesRef.current = new Map(childBases.map((item) => [item.id, item]))
+    setEditData({ ...base, description: descriptionDraft })
+    setEditableSubTasks(childBases)
+    setSaveError('')
     setEditing(true)
   }
 
   const cancelEditing = (): void => {
-    const changed = JSON.stringify(editData) !== JSON.stringify(createEditData(todo))
-      || JSON.stringify(editableSubTasks) !== JSON.stringify(createEditableSubTasks(subTasks))
+    if (savingRef.current) return
+    const changed = Object.keys(buildEditPatch(editBaseRef.current, editData)).length > 0
+      || editableSubTasks.some((draft) => {
+        const base = subTaskBasesRef.current.get(draft.id)
+        return base ? Object.keys(buildEditPatch(base, draft)).length > 0 : false
+      })
     if (changed && !window.confirm('未保存の変更があります。編集を閉じてもよいですか？')) return
     setEditData(createEditData(todo))
     setEditableSubTasks(createEditableSubTasks(subTasks))
     setEditing(false)
+    setSaveError('')
   }
 
   const duplicateTodo = async (): Promise<void> => {
@@ -641,7 +734,7 @@ export function TodoDetail({
       >
         <div style={{ width: '100%', minWidth: 0 }}>
           {editing ? (
-            <input value={editData.title ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, title: event.target.value }))} style={inputStyle} />
+            <input disabled={saving} value={editData.title ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, title: event.target.value }))} style={inputStyle} />
           ) : (
             <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0', lineHeight: 1.4, margin: 0, overflowWrap: 'anywhere' }}>{todo.title}</h2>
           )}
@@ -658,16 +751,17 @@ export function TodoDetail({
               {todo.status === 'on_hold' ? '進行中に戻す' : '保留する'}
             </button>
           )}
-          <button onClick={editing ? cancelEditing : startEditing} style={buttonStyle('#334155')}>
+          <button onClick={editing ? cancelEditing : startEditing} disabled={saving} style={buttonStyle('#334155')}>
             {editing ? '閉じる' : '編集'}
           </button>
           {!editing && <button onClick={() => void duplicateTodo()} style={buttonStyle('#334155')}>複製</button>}
           {!editing && <button onClick={saveAsTemplate} style={buttonStyle('#334155')}>テンプレート保存</button>}
-          {!editing && currentUser && <button onClick={() => void window.api.todoSubscriptionSet(todo.id, !subscribed).then((result) => { setSubscribed(result.subscribed); onShowToast(result.subscribed ? 'このタスクの更新通知を受け取ります' : '更新通知をオフにしました') })} style={buttonStyle(subscribed ? '#14532d' : '#334155')}>{subscribed ? '更新通知オン' : '更新通知を受け取る'}</button>}
+          {!editing && currentUser && <button disabled={subscriptionPending} onClick={() => void toggleSubscription()} style={buttonStyle(subscribed ? '#14532d' : '#334155')}>{subscribed ? '更新通知オン' : '更新通知を受け取る'}</button>}
         </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {saveError && <div role="alert" style={{ padding: 10, color: '#fecaca', border: '1px solid #ef4444', borderRadius: 8 }}>{saveError}</div>}
       {sectionLoadError && <div role="alert" style={{ padding: 10, borderRadius: 8, border: '1px solid #ef4444', background: '#450a0a', color: '#fecaca', fontSize: '0.8rem' }}>{sectionLoadError}<button onClick={() => { setSectionLoadError(null); void Promise.all([loadWorkLogs(todo.id), loadSubTasks(todo.id), loadDependencies(todo.id), loadProgressNotes(todo.id)]) }} style={{ marginLeft: 10, padding: '4px 8px', borderRadius: 6, border: '1px solid #ef4444', background: '#7f1d1d', color: '#fff' }}>再試行</button></div>}
       {!editing && (todo.start_date || todo.due_date || todo.assignee_name || (todo.co_assignees ?? []).length > 0) && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -691,8 +785,18 @@ export function TodoDetail({
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {isRunning ? (
             <>
-              <input value={stopNote} onChange={(event) => setStopNote(event.target.value)} placeholder="停止メモ" style={{ ...inputStyle, width: 160, fontSize: '0.8rem', padding: '6px 8px' }} />
-              <button onClick={() => void onStopTimer(stopNote || undefined).then(() => setStopNote(''))} style={buttonStyle('#ef4444')}>停止</button>
+              <input disabled={timerStopping} value={stopNote} onChange={(event) => setStopNote(event.target.value)} placeholder="停止メモ" style={{ ...inputStyle, width: 160, fontSize: '0.8rem', padding: '6px 8px' }} />
+              <button disabled={timerStopping} onClick={() => {
+                if (timerStoppingRef.current) return
+                timerStoppingRef.current = true
+                setTimerStopping(true)
+                void onStopTimer(stopNote || undefined).then(() => {
+                  if (mountedRef.current) setStopNote('')
+                }).catch(() => { /* App displays the error; preserve the memo for retry. */ }).finally(() => {
+                  timerStoppingRef.current = false
+                  if (mountedRef.current) setTimerStopping(false)
+                })
+              }} style={buttonStyle('#ef4444')}>{timerStopping ? '停止中…' : '停止'}</button>
             </>
           ) : (
             <button onClick={() => void onStartTimer(todo.id)} style={buttonStyle('#4ade80', '#000')}>開始</button>
@@ -701,7 +805,7 @@ export function TodoDetail({
       </div>
 
       {editing && (
-        <div style={{ background: '#1e293b', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <fieldset disabled={saving} style={{ border: 0, margin: 0, minWidth: 0, background: '#1e293b', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div><label style={labelStyle}>説明</label><textarea value={editData.description ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, description: event.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} /></div>
           <div><label style={labelStyle}>開始日</label><input type="date" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div>
           <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最低</option><option value={2}>低</option><option value={3}>中</option><option value={4}>高</option><option value={5}>最高</option></select></div></div>
@@ -776,8 +880,8 @@ export function TodoDetail({
             </div>
           )}
           <div><label style={labelStyle}>進捗 {editData.progress ?? 0}%</label><input type="range" min={0} max={100} step={5} value={editData.progress ?? 0} onChange={(event) => setEditData((previous) => ({ ...previous, progress: Number(event.target.value) }))} style={{ width: '100%', accentColor: '#6366f1' }} /></div>
-          <button onClick={() => void handleSave()} style={{ ...buttonStyle('#6366f1'), alignSelf: 'flex-end' }}>保存</button>
-        </div>
+          <button onClick={() => void handleSave()} disabled={saving} style={{ ...buttonStyle('#6366f1'), alignSelf: 'flex-end' }}>{saving ? '保存中…' : '保存'}</button>
+        </fieldset>
       )}
 
       {!editing && (
@@ -809,6 +913,7 @@ export function TodoDetail({
             </div>
             <textarea
               value={descriptionDraft}
+              disabled={descriptionSaving}
               onChange={(event) => setDescriptionDraft(event.target.value)}
               onKeyDown={(event) => {
                 if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
@@ -847,7 +952,7 @@ export function TodoDetail({
             <div style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.5 }}>
               進捗、気づき、次にやることを残せます。Ctrl/Cmd + Enter でも保存できます。
             </div>
-            <textarea value={memoDraft} onChange={(event) => setMemoDraft(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void handleMemoSave() } }} placeholder="進捗メモ、引き継ぎ、次にやることなど..." rows={5} style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: 120 }} />
+            <textarea disabled={memoSaving} value={memoDraft} onChange={(event) => setMemoDraft(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void handleMemoSave() } }} placeholder="進捗メモ、引き継ぎ、次にやることなど..." rows={5} style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: 120 }} />
             <TextLinks text={memoDraft} />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
               <div style={{ fontSize: '0.72rem', color: memoDraft !== memoBase ? '#93c5fd' : '#64748b' }}>{memoDraft !== memoBase ? '未保存の変更があります' : '保存済み'}</div>
@@ -875,8 +980,8 @@ export function TodoDetail({
                 const value = event.target.value
                 setNoteDraft(value)
                 if (todoId) {
-                  if (value) window.localStorage.setItem(`progress-note-draft:${todoId}`, value)
-                  else window.localStorage.removeItem(`progress-note-draft:${todoId}`)
+                  if (value) window.localStorage.setItem(progressDraftKey, value)
+                  else window.localStorage.removeItem(progressDraftKey)
                 }
               }}
               onKeyDown={(event) => {
@@ -932,7 +1037,7 @@ export function TodoDetail({
         </section>
       )}
 
-      <section>
+      <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div style={sectionTitleStyle}>サブタスク {subTasks.length > 0 && `(${doneCount}/${subTasks.length})`}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
           {editing
@@ -964,7 +1069,7 @@ export function TodoDetail({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <ReadonlySubTaskItem
                     subTask={subTask}
-                    onToggle={() => void window.api.subtaskUpdate(subTask.id, { done: !subTask.done }).then((updated) => setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item)))}
+                    onToggle={() => void window.api.subtaskUpdate(subTask.id, { done: !subTask.done, expected_values: { done: Boolean(subTask.done) } }).then((updated) => setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))).catch((error) => onShowToast(error instanceof Error ? error.message : 'サブタスクを更新できませんでした', 'error'))}
                     onSave={async (data) => {
                       const updated = await window.api.subtaskUpdate(subTask.id, data)
                       setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
@@ -972,6 +1077,7 @@ export function TodoDetail({
                     }}
                     onDelete={() => void handleDeleteSubTask(subTask.id)}
                     onShowToast={onShowToast}
+                    onDirtyChange={(dirty) => handleChildDirty(subTask.id, dirty)}
                   />
                 </div>
               </div>
@@ -998,7 +1104,7 @@ export function TodoDetail({
           </label>
           <button type="submit" style={buttonStyle('#6366f1')}>追加</button>
         </form>
-      </section>
+      </fieldset>
 
       <section>
         <div style={sectionTitleStyle}>依存関係</div>
@@ -1139,12 +1245,13 @@ interface SubTaskDraft {
 
 // 閲覧モードでもサブタスク単体をその場で編集できる項目。
 // ✎ でフォームに切り替わり、保存するとそのサブタスクだけ即時更新される。
-function ReadonlySubTaskItem({ subTask, onToggle, onSave, onDelete, onShowToast }: {
+function ReadonlySubTaskItem({ subTask, onToggle, onSave, onDelete, onShowToast, onDirtyChange }: {
   subTask: SubTask
   onToggle: () => void
-  onSave: (data: SubTaskDraft) => Promise<void>
+  onSave: (data: UpdateSubTaskInput) => Promise<void>
   onDelete: () => void
   onShowToast: (message: string, type?: 'success' | 'error') => void
+  onDirtyChange: (dirty: boolean) => void
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<SubTaskDraft>({ title: '', description: '', start_date: null, due_date: null, progress: 0 })
@@ -1152,22 +1259,34 @@ function ReadonlySubTaskItem({ subTask, onToggle, onSave, onDelete, onShowToast 
   const progressBarRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
   const [saving, setSaving] = useState(false)
+  const dragCleanupRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => { draggingRef.current = false; dragCleanupRef.current?.() }, [])
+  const savingRef = useRef(false)
+  const baseRef = useRef<SubTaskDraft>({ title: '', description: '', start_date: null, due_date: null, progress: 0 })
+  const [saveError, setSaveError] = useState('')
+  const dirtyCallbackRef = useRef(onDirtyChange)
+  dirtyCallbackRef.current = onDirtyChange
+  useEffect(() => { dirtyCallbackRef.current(editing && Object.keys(buildEditPatch(baseRef.current, draft)).length > 0) }, [draft, editing])
+  useEffect(() => () => dirtyCallbackRef.current(false), [])
   const progress = clampProgress(Boolean(subTask.done) ? 100 : subTask.progress ?? 0)
   const displayProgress = localProgress ?? progress
 
   const startEditing = (): void => {
-    setDraft({
+    const original = {
       title: subTask.title,
       description: subTask.description ?? '',
       start_date: subTask.start_date ?? null,
       due_date: subTask.due_date ?? null,
       progress: Boolean(subTask.done) ? 100 : clampProgress(subTask.progress ?? 0)
-    })
+    }
+    baseRef.current = original
+    setDraft(original)
+    setSaveError('')
     setEditing(true)
   }
 
   const handleSave = async (): Promise<void> => {
-    if (saving) return
+    if (savingRef.current) return
     if (!draft.title.trim()) {
       onShowToast('サブタスク名を入力してください', 'error')
       return
@@ -1176,13 +1295,19 @@ function ReadonlySubTaskItem({ subTask, onToggle, onSave, onDelete, onShowToast 
       onShowToast('サブタスクの日付が不正です', 'error')
       return
     }
+    savingRef.current = true
+    setSaveError('')
     try {
       setSaving(true)
-      await onSave({ ...draft, title: draft.title.trim() })
+      const patch = buildEditPatch(baseRef.current, { ...draft, title: draft.title.trim() })
+      if (Object.keys(patch).length) await onSave(patch)
       setEditing(false)
     } catch (error) {
-      onShowToast(error instanceof Error ? error.message : 'サブタスクを更新できませんでした', 'error')
+      const message = error instanceof Error ? error.message : 'サブタスクを更新できませんでした'
+      setSaveError(message)
+      onShowToast(message, 'error')
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }
@@ -1195,10 +1320,11 @@ function ReadonlySubTaskItem({ subTask, onToggle, onSave, onDelete, onShowToast 
   }
 
   const handleProgressMouseDown = (event: React.MouseEvent): void => {
-    if (saving) return
+    if (savingRef.current) return
 
     event.preventDefault()
     event.stopPropagation()
+    dragCleanupRef.current?.()
     draggingRef.current = true
     setLocalProgress(calcProgress(event.clientX))
 
@@ -1206,29 +1332,33 @@ function ReadonlySubTaskItem({ subTask, onToggle, onSave, onDelete, onShowToast 
       if (draggingRef.current) setLocalProgress(calcProgress(moveEvent.clientX))
     }
     const handleUp = (upEvent: MouseEvent): void => {
+      dragCleanupRef.current?.()
       draggingRef.current = false
       const nextProgress = calcProgress(upEvent.clientX)
       setLocalProgress(null)
-      void onSave({
-        title: subTask.title,
-        description: subTask.description ?? '',
-        start_date: subTask.start_date ?? null,
-        due_date: subTask.due_date ?? null,
-        progress: nextProgress
-      }).catch((error) => {
+      savingRef.current = true
+      setSaving(true)
+      void onSave({ progress: nextProgress, expected_values: { progress: subTask.progress ?? 0 } }).catch((error) => {
         onShowToast(error instanceof Error ? error.message : 'サブタスクの進捗を更新できませんでした', 'error')
+      }).finally(() => {
+        savingRef.current = false
+        setSaving(false)
       })
-      window.removeEventListener('mousemove', handleMove)
-      window.removeEventListener('mouseup', handleUp)
     }
 
+    dragCleanupRef.current = () => {
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+      dragCleanupRef.current = null
+    }
     window.addEventListener('mousemove', handleMove)
     window.addEventListener('mouseup', handleUp)
   }
 
   if (editing) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', borderRadius: 8, background: '#1e293b', border: '1px solid #6366f1' }}>
+      <fieldset disabled={saving} style={{ margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', borderRadius: 8, background: '#1e293b', border: '1px solid #6366f1' }}>
+        {saveError && <div role="alert" style={{ color: '#fecaca', fontSize: '0.8rem' }}>{saveError}</div>}
         <input
           value={draft.title}
           onChange={(event) => setDraft((previous) => ({ ...previous, title: event.target.value }))}
@@ -1258,7 +1388,7 @@ function ReadonlySubTaskItem({ subTask, onToggle, onSave, onDelete, onShowToast 
           <button onClick={() => setEditing(false)} style={buttonStyle('#334155')}>キャンセル</button>
           <button onClick={() => void handleSave()} disabled={saving} style={buttonStyle('#6366f1')}>{saving ? '保存中...' : '保存'}</button>
         </div>
-      </div>
+      </fieldset>
     )
   }
 

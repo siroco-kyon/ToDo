@@ -21,7 +21,8 @@ app.use(cookieParser())
 app.use(attachUser)
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, time: new Date().toISOString() })
+  res.json({ ok: true, time: new Date().toISOString(), desktopProtocol: 1,
+    webReady: fs.existsSync(path.join(WEB_DIST_DIR, 'index.html')) })
 })
 
 app.use('/api/auth', authRouter)

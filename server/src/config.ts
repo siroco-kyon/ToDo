@@ -2,13 +2,18 @@ import path from 'path'
 import fs from 'fs'
 
 /**
- * server/.env があれば読み込む（シェルで設定済みの環境変数が優先）。
+ * TODO_ENV_FILE または server/.env を読み込む（シェルの環境変数が優先）。
  * Windows サービス運用などで、起動シェルに依存せず設定を渡すための仕組み。
  * 形式は1行1つの `KEY=value`。`#` 始まりはコメント。値は引用符で囲んでもよい。
  */
 function loadEnvFile(): void {
-  const envPath = path.resolve(__dirname, '..', '.env')
-  if (!fs.existsSync(envPath)) return
+  const envPath = process.env.TODO_ENV_FILE
+    ? path.resolve(process.env.TODO_ENV_FILE)
+    : path.resolve(__dirname, '..', '.env')
+  if (!fs.existsSync(envPath)) {
+    if (process.env.TODO_ENV_FILE) throw new Error(`設定ファイルが見つかりません: ${envPath}`)
+    return
+  }
 
   for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
     const trimmed = line.trim()
@@ -54,7 +59,10 @@ export const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin'
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
 
 /** Session cookie name and lifetime. */
-export const SESSION_COOKIE = 'todo_session'
+export const SESSION_COOKIE = process.env.SESSION_COOKIE || 'todo_session'
+if (!/^[A-Za-z0-9_-]{1,64}$/.test(SESSION_COOKIE)) {
+  throw new Error('SESSION_COOKIE は英数字・ハイフン・アンダースコアで64文字以内にしてください')
+}
 export const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS) || 30
 
 export function ensureDataDir(): void {

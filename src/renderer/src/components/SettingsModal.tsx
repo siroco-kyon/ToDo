@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { toCsv, downloadCsv, dateStamp } from '../lib/csv'
 import type { Todo } from '../types'
+import type { DesktopContext, DesktopPreferences } from '../../../shared/desktop'
+import { LegacyDraftRecoveryModal } from './LegacyDraftRecoveryModal'
 
 interface Props {
   onClose: () => void
@@ -12,6 +14,7 @@ interface Props {
   fontScale: string
   onFontScaleChange: (value: string) => Promise<void>
   canManageUsers?: boolean
+  serverManaged?: boolean
   onManageUsers?: () => void
   onProgressReport?: () => void
   onDesktopImport?: () => void
@@ -100,8 +103,18 @@ function captureKeyEvent(e: React.KeyboardEvent): string | null {
   return modifiers.join('+')
 }
 
-export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, fontFamily, onFontFamilyChange, fontScale, onFontScaleChange, canManageUsers = false, onManageUsers, onProgressReport, onDesktopImport, onMySummary, onExportClipboard, onExportFile }: Props): React.JSX.Element {
+export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, fontFamily, onFontFamilyChange, fontScale, onFontScaleChange, canManageUsers = false, serverManaged = false, onManageUsers, onProgressReport, onDesktopImport, onMySummary, onExportClipboard, onExportFile }: Props): React.JSX.Element {
   const [exporting, setExporting] = useState(false)
+  const [showDraftRecovery, setShowDraftRecovery] = useState(false)
+  const [desktopContext, setDesktopContext] = useState<DesktopContext | null>(null)
+  const saveDesktopPreference = async (patch: Partial<DesktopPreferences>): Promise<void> => {
+    try {
+      const preferences = await window.desktop?.setPreferences(patch)
+      if (preferences) setDesktopContext((value) => value ? { ...value, preferences } : value)
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '設定を保存できませんでした', 'error')
+    }
+  }
 
   const exportCsv = async (kind: 'todos' | 'subtasks' | 'worklogs'): Promise<void> => {
     if (exporting) return
@@ -153,11 +166,14 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
   const [shortcuts, setShortcuts] = useState<ShortcutConfig[]>([
     { key: 'globalShortcutFocus', label: 'アプリを最前面に表示', value: 'CommandOrControl+Alt+T', editing: false },
     { key: 'globalShortcutQuickAdd', label: 'クイック追加モーダル', value: 'CommandOrControl+Alt+N', editing: false },
-    { key: 'globalShortcutExport', label: 'Markdownコピー', value: 'CommandOrControl+Alt+E', editing: false }
+    { key: 'globalShortcutExport', label: 'Markdownコピー', value: 'CommandOrControl+Alt+E', editing: false },
+    ...(window.desktop ? [{ key: 'globalShortcutProgress', label: '進捗のクイック投稿', value: 'CommandOrControl+Alt+P', editing: false }] : [])
   ])
   const [iconDataUrl, setIconDataUrl] = useState('')
   const [dataDir, setDataDir] = useState('')
   const [newDataDir, setNewDataDir] = useState('')
+  const [changingDir, setChangingDir] = useState(false)
+  const changingDirRef = useRef(false)
   const [archiveRetentionDays, setArchiveRetentionDays] = useState('90')
   const [workLogRetentionDays, setWorkLogRetentionDays] = useState('0')
   const [notifyBeforeDays, setNotifyBeforeDays] = useState('0')
@@ -168,6 +184,17 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
     mdFooterTpl: '**本日合計: {{total_min}}分**'
   })
   const captureRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (window.desktop) {
+      void window.desktop.getContext().then(setDesktopContext)
+      const unsubscribe = window.desktop.onCommand((command) => {
+        if (command.type === 'preferences') setDesktopContext((value) => value ? { ...value, preferences: command.preferences } : value)
+      })
+      return unsubscribe
+    }
+    return undefined
+  }, [])
 
   useEffect(() => {
     window.api.iconGetDataUrl().then(setIconDataUrl)
@@ -222,10 +249,15 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
     const updated = shortcuts.map((s, i) =>
       i === index ? { ...s, value: accelerator, editing: false } : s
     )
-    setShortcuts(updated)
-    await window.api.settingsSet(shortcuts[index].key, accelerator)
-    await window.api.shortcutsReregister()
-    onShowToast('ショートカットを更新しました')
+    try {
+      await window.api.settingsSet(shortcuts[index].key, accelerator)
+      await window.api.shortcutsReregister()
+      setShortcuts(updated)
+      onShowToast('ショートカットを更新しました')
+    } catch (error) {
+      cancelEdit()
+      onShowToast(error instanceof Error ? error.message : 'ショートカットを登録できませんでした', 'error')
+    }
   }
 
   // アイコン変更
@@ -245,16 +277,27 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
 
   // データ保存場所変更
   const handlePickDir = async (): Promise<void> => {
+    if (changingDirRef.current) return
     const picked = await window.api.dataPickDir()
     if (picked) setNewDataDir(picked)
   }
 
   const handleChangeDir = async (): Promise<void> => {
+    if (changingDirRef.current) return
     if (newDataDir === dataDir) { onShowToast('現在と同じ場所です', 'error'); return }
-    const result = await window.api.dataChangeDir(newDataDir)
-    if (result.moved) {
-      setDataDir(newDataDir)
-      onShowToast('コピーしました。再起動後に有効になります')
+    changingDirRef.current = true
+    setChangingDir(true)
+    try {
+      const result = await window.api.dataChangeDir(newDataDir)
+      if (result.moved) {
+        setDataDir(newDataDir)
+        onShowToast('保存場所を変更しました。元のフォルダにもデータを残しています')
+      }
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '保存場所を変更できませんでした', 'error')
+    } finally {
+      changingDirRef.current = false
+      setChangingDir(false)
     }
   }
 
@@ -292,6 +335,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
+      if (showDraftRecovery) return
       if (event.key !== 'Escape' || event.isComposing) return
       event.preventDefault()
       if (editingIndex >= 0) {
@@ -303,10 +347,10 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [cancelEdit, editingIndex, onClose])
+  }, [cancelEdit, editingIndex, onClose, showDraftRecovery])
 
   return (
-    <div
+    <><div
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
@@ -324,6 +368,34 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0' }}>⚙ 設定</h2>
           <button onClick={onClose} style={closeBtnStyle}>×</button>
         </div>
+
+        {desktopContext && <section>
+          <h3 style={sectionHead}>HAKOBI デスクトップ</h3>
+          <p style={{ fontSize: '0.8rem', color: '#cbd5e1', margin: '10px 0 4px' }}>{desktopContext.groupName}</p>
+          <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: 12, overflowWrap: 'anywhere' }}>{desktopContext.serverUrl}</p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => void window.desktop?.openConnectionSettings()} style={secondaryBtn}>接続先を変更</button>
+            <button disabled={desktopContext.serverVersion < 1} onClick={() => void window.desktop?.openTimer()} style={secondaryBtn}>右下タイマーを表示</button>
+            <button disabled={desktopContext.serverVersion < 1} onClick={() => void window.desktop?.openQuickProgress()} style={secondaryBtn}>進捗をひとこと</button>
+          </div>
+          {desktopContext.serverVersion < 1 && <p style={{ fontSize: '0.75rem', color: '#fbbf24', marginTop: 8 }}>タイマーとクイック投稿を使うにはサーバー版を更新してください。</p>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14, fontSize: '0.8rem', color: '#cbd5e1' }}>
+            {([
+              ['showTimer', '起動時に右下タイマーを表示'],
+              ['alwaysOnTop', 'タイマーを最前面に固定'],
+              ['hideTaskTitle', 'タイマーにタスク名を表示しない']
+            ] as const).map(([key, label]) => <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={desktopContext.preferences[key]} onChange={(event) => void saveDesktopPreference({ [key]: event.target.checked })} />{label}
+            </label>)}
+          </div>
+          <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 12 }}>接続先・タイマー・グローバルショートカットの設定は、このPCだけに保存されます。</p>
+        </section>}
+
+        {serverManaged && <section>
+          <h3 style={sectionHead}>旧版の下書き</h3>
+          <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '8px 0 12px', lineHeight: 1.6 }}>更新前にこのPCで入力した進捗やコメントが見つからない場合は、内容を確認して自分のアカウントへ復元できます。</p>
+          <button type="button" onClick={() => setShowDraftRecovery(true)} style={secondaryBtn}>旧版の下書きを確認・復元</button>
+        </section>}
 
         {/* ─── 管理者: ユーザー管理 ─── */}
         {canManageUsers && onManageUsers && (
@@ -456,7 +528,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           </div>
         </section>
 
-        <section>
+        {(!serverManaged || window.desktop) && <section>
           <h3 style={sectionHead}>キーボードショートカット</h3>
           <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
             キーをクリックして新しいキーを押すと変更できます。Escでキャンセル。<br/>
@@ -511,10 +583,10 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               <kbd style={kbdStyle}>Esc</kbd>
             </div>
           </div>
-        </section>
+        </section>}
 
         {/* ─── 2. アイコン ─── */}
-        <section>
+        {!serverManaged && <section>
           <h3 style={sectionHead}>アイコン</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 12 }}>
             {iconDataUrl && (
@@ -529,10 +601,10 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               <button onClick={handleResetIcon} style={secondaryBtn}>デフォルトに戻す</button>
             </div>
           </div>
-        </section>
+        </section>}
 
         {/* ─── 3. 通知 ─── */}
-        <section>
+        {!serverManaged && <section>
           <h3 style={sectionHead}>期限通知</h3>
           <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
             起動時・1時間ごとに期限が近いタスクを通知します。-1で通知しない。
@@ -556,10 +628,10 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             >保存</button>
           </div>
           <p style={{ fontSize: '0.72rem', color: '#475569', marginTop: 4 }}>0 = 当日のみ　1 = 前日から　-1 = 通知しない</p>
-        </section>
+        </section>}
 
         {/* ─── 4. 保持期間 ─── */}
-        <section>
+        {!serverManaged && <section>
           <h3 style={sectionHead}>データ保持期間</h3>
           <div style={{ display: 'flex', gap: 20, marginTop: 12 }}>
             <div style={{ flex: 1 }}>
@@ -607,7 +679,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               <p style={{ fontSize: '0.72rem', color: '#475569', marginTop: 4 }}>0 = 無期限保持</p>
             </div>
           </div>
-        </section>
+        </section>}
 
         {/* ─── 4. Markdownテンプレート ─── */}
         <section>
@@ -647,11 +719,12 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         </section>
 
         {/* ─── 5. データ保存場所 ─── */}
-        <section>
+        {!serverManaged && <section>
           <h3 style={sectionHead}>データ保存場所</h3>
           <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
             変更すると既存データを新しいフォルダにコピーします。<br/>
-            適用は<strong style={{ color: '#f59e0b' }}>再起動後</strong>に有効になります。
+            保存先はすぐに切り替わり、元のフォルダにもバックアップを残します。<br/>
+            データが入っているフォルダは選択できません。
           </p>
           <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: 4 }}>現在の場所</div>
           <div style={pathBox}>{dataDir || '読み込み中…'}</div>
@@ -661,15 +734,16 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             <div style={{ ...pathBox, flex: 1, cursor: 'default', color: newDataDir !== dataDir ? '#a5b4fc' : '#94a3b8' }}>
               {newDataDir || '…'}
             </div>
-            <button onClick={handlePickDir} style={secondaryBtn}>参照…</button>
+            <button onClick={handlePickDir} disabled={changingDir} style={secondaryBtn}>参照…</button>
           </div>
 
           {newDataDir !== dataDir && (
             <button
               onClick={handleChangeDir}
+              disabled={changingDir}
               style={{ ...primaryBtn, marginTop: 10, width: '100%' }}
             >
-              コピーして変更を適用（要再起動）
+              {changingDir ? '保存場所を変更中…' : 'コピーして保存場所を変更'}
             </button>
           )}
 
@@ -684,9 +758,10 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               </div>
             ))}
           </div>
-        </section>
+        </section>}
       </div>
     </div>
+    {serverManaged && showDraftRecovery && <LegacyDraftRecoveryModal onClose={() => setShowDraftRecovery(false)} onShowToast={onShowToast} />}</>
   )
 }
 

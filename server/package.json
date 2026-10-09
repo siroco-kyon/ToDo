@@ -1,9 +1,11 @@
 {
   "name": "todo-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Central server for the team Gantt TODO app",
   "scripts": {
+    "test:auth-import": "tsx --test tests/auth-import-regressions.test.ts",
+    "test:desktop": "tsx --test tests/desktop.test.ts",
     "test:progress-timeline": "tsx --test tests/progress-timeline.test.ts",
     "test:members": "tsx --test tests/member-delete.test.ts",
     "test:on-hold": "tsx --test tests/on-hold.test.ts",

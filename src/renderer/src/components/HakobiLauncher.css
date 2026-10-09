@@ -1,0 +1,86 @@
+.hakobi-launcher {
+  min-height: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(245px, .86fr) minmax(340px, 1.14fr);
+  background: #f3f7f8;
+  color: #16324a;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Yu Gothic UI', 'Meiryo', sans-serif;
+  overflow: auto;
+}
+.hakobi-launcher button, .hakobi-launcher input { font: inherit; }
+.hakobi-launcher button { cursor: pointer; }
+.hakobi-launcher button:disabled { cursor: default; opacity: .5; }
+.hakobi-launcher-brand {
+  padding: 44px 30px 26px;
+  background: radial-gradient(circle at 20% 20%, #21465b 0, transparent 48%), #112c43;
+  color: #e8f5f3;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+.hakobi-launcher-brand-lockup { display: flex; align-items: center; gap: 13px; position: relative; z-index: 1; }
+.hakobi-launcher-mark { width: 58px; height: 58px; flex: 0 0 auto; filter: drop-shadow(0 6px 10px #061a3040); }
+.hakobi-launcher-wordmark { font-size: 29px; font-weight: 750; letter-spacing: 3.5px; }
+.hakobi-launcher-caption { margin: 5px 0 0; font-size: 11px; letter-spacing: .4px; color: #aecfcf; }
+.hakobi-launcher-illustration { margin: 46px -4px 40px; }
+.hakobi-launcher-grid {
+  height: 185px;
+  position: relative;
+  background-image: linear-gradient(to right, #91b7c512 1px, transparent 1px), linear-gradient(to bottom, #91b7c512 1px, transparent 1px);
+  background-size: 37px 37px;
+  border: 1px solid #709bad24;
+  border-radius: 15px;
+  background-color: #122f46;
+  overflow: hidden;
+  box-shadow: 0 22px 44px #061b2c30;
+}
+.hakobi-launcher-bar { height: 18px; border-radius: 6px; position: absolute; box-shadow: inset 0 1px #ffffff1f; }
+.hakobi-launcher-bar-one { left: 19px; top: 23px; width: 52%; background: #63d4bf; }
+.hakobi-launcher-bar-two { left: 29%; top: 60px; width: 53%; background: #37a994; }
+.hakobi-launcher-bar-three { left: 44%; top: 97px; width: 41%; background: #d1e6e8; }
+.hakobi-launcher-bar-four { left: 56%; top: 134px; width: 30%; background: #ecb56e; }
+.hakobi-launcher-current-line { left: 62%; top: 0; bottom: 0; border-left: 1px dashed #9ce5d66e; position: absolute; }
+.hakobi-launcher-illustration-note { font-size: 11px; margin-top: 17px; line-height: 1.8; color: #b7d4d8; display: flex; gap: 7px; align-items: center; }
+.hakobi-launcher-illustration-note span { width: 5px; height: 5px; background: #65d9c2; border-radius: 50%; flex: 0 0 auto; }
+.hakobi-launcher-brand-footer { color: #91b2c0; font-size: 10px; letter-spacing: .4px; line-height: 1.7; }
+.hakobi-launcher-content { padding: 40px 36px; display: flex; align-items: center; justify-content: center; }
+.hakobi-launcher-setup, .hakobi-launcher-splash { width: 100%; max-width: 420px; }
+.hakobi-launcher-eyebrow { color: #238978; font-size: 10px; font-weight: 750; letter-spacing: 2.5px; margin: 0 0 10px; }
+.hakobi-launcher h1 { font-size: 23px; font-weight: 700; line-height: 1.5; margin: 0; }
+.hakobi-launcher-help { font-size: 12px; line-height: 1.9; color: #607588; margin: 12px 0 23px; }
+.hakobi-launcher-form { display: flex; flex-direction: column; }
+.hakobi-launcher-form label { font-size: 12px; font-weight: 650; margin: 0 0 8px; }
+.hakobi-launcher-form input { width: 100%; border: 1px solid #cfdbdf; border-radius: 8px; background: #fff; color: #16324a; padding: 11px 12px; font-size: 13px; outline-offset: 2px; margin-bottom: 20px; }
+.hakobi-launcher-form input::placeholder { color: #99a9b6; }
+.hakobi-launcher-form input:focus { border-color: #2aa48f; }
+.hakobi-launcher-form #hakobi-server-url { margin-bottom: 8px; }
+.hakobi-launcher-field-help { color: #6e8291; font-size: 10px; line-height: 1.8; margin: 0 0 22px; }
+.hakobi-launcher-primary { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #fff; border: 0; border-radius: 8px; padding: 12px 15px; background: #197f72; font-size: 12px !important; font-weight: 650 !important; box-shadow: 0 5px 12px #197f721f; transition: background .15s; }
+.hakobi-launcher-primary:hover:not(:disabled) { background: #126d62; }
+.hakobi-launcher-primary span { font-size: 19px; font-weight: 400; line-height: 1; }
+.hakobi-launcher-secondary { width: 100%; background: transparent; border: 1px solid #ccd9df; color: #466577; border-radius: 8px; padding: 11px; font-size: 11px !important; margin-top: 10px; }
+.hakobi-launcher-secondary:hover { background: #eaf0f2; }
+.hakobi-launcher-bottom-actions { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; border-top: 1px solid #dee7ea; padding-top: 18px; margin-top: 22px; }
+.hakobi-launcher-text-button { background: transparent; border: 0; padding: 4px 0; font-size: 11px !important; color: #617b8d; text-align: left; }
+.hakobi-launcher-text-button:hover { color: #187d70; text-decoration: underline; }
+.hakobi-launcher-error { background: #fff3ee; border: 1px solid #eccabb; color: #9d4b32; border-radius: 8px; padding: 11px 12px; font-size: 11px; line-height: 1.8; margin-bottom: 18px; overflow-wrap: anywhere; }
+.hakobi-launcher-splash { text-align: center; }
+.hakobi-launcher-spinner { width: 38px; height: 38px; border: 3px solid #d1e4e0; border-top-color: #248f7e; border-radius: 50%; animation: hakobi-launcher-spin .85s linear infinite; margin: 0 auto 30px; }
+.hakobi-launcher-splash h1 { font-size: 20px; }
+.hakobi-launcher-destination { display: flex; flex-direction: column; gap: 7px; border: 1px solid #dae5e8; border-radius: 9px; padding: 14px; background: #fff9; margin: 26px 0 16px; font-size: 12px; }
+.hakobi-launcher-destination span { color: #748897; font-size: 10px; overflow-wrap: anywhere; }
+@keyframes hakobi-launcher-spin { to { transform: rotate(360deg); } }
+@media (max-width: 650px) {
+  .hakobi-launcher { grid-template-columns: 1fr; height: auto; min-height: 100%; }
+  .hakobi-launcher-brand { padding: 23px 28px; }
+  .hakobi-launcher-brand-lockup { gap: 12px; }
+  .hakobi-launcher-mark { width: 45px; height: 45px; }
+  .hakobi-launcher-wordmark { font-size: 24px; }
+  .hakobi-launcher-illustration, .hakobi-launcher-brand-footer { display: none; }
+  .hakobi-launcher-content { padding: 28px; }
+  .hakobi-launcher-splash { padding: 36px 0; }
+}
+@media (prefers-reduced-motion: reduce) { .hakobi-launcher-spinner { animation: none; } }

@@ -32,6 +32,8 @@ import type {
   DesktopImportResult
 } from '@preload'
 import { TASK_REPORT_SNAPSHOT_KEY } from '@renderer/lib/taskReportSnapshot'
+import { copyTextToClipboard } from '@renderer/lib/clipboard'
+import type { DesktopPreferences } from '../../src/shared/desktop'
 
 // ─── HTTP plumbing ────────────────────────────────────────────
 
@@ -62,27 +64,35 @@ function buildUrl(path: string, query?: Query): string {
 async function request<T>(
   method: string,
   path: string,
-  opts: { body?: unknown; query?: Query } = {}
+  opts: { body?: unknown; query?: Query; timeoutMs?: number; signal?: AbortSignal } = {}
 ): Promise<T> {
   const hasBody = opts.body !== undefined
-  const res = await fetch(buildUrl(path, opts.query), {
-    method,
-    credentials: 'same-origin',
-    headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
-    body: hasBody ? JSON.stringify(opts.body) : undefined
-  })
-
-  const text = await res.text()
-  const data = text ? JSON.parse(text) : undefined
-
-  if (!res.ok) {
-    const message =
-      (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
-        ? data.error
-        : null) ?? `リクエストに失敗しました (${res.status})`
-    throw new HttpError(res.status, message)
+  const controller = opts.timeoutMs ? new AbortController() : null
+  const timeout = controller ? setTimeout(() => controller.abort(), opts.timeoutMs) : null
+  try {
+    const res = await fetch(buildUrl(path, opts.query), {
+      method,
+      credentials: 'same-origin',
+      headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
+      body: hasBody ? JSON.stringify(opts.body) : undefined,
+      signal: controller?.signal ?? opts.signal
+    })
+    const text = await res.text()
+    const data = text ? JSON.parse(text) : undefined
+    if (!res.ok) {
+      const message =
+        (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+          ? data.error
+          : null) ?? `リクエストに失敗しました (${res.status})`
+      throw new HttpError(res.status, message)
+    }
+    return data as T
+  } catch (error) {
+    if (controller?.signal.aborted) throw new Error('サーバーからの応答を確認できませんでした。再試行してください')
+    throw error
+  } finally {
+    if (timeout !== null) clearTimeout(timeout)
   }
-  return data as T
 }
 
 const get = <T>(path: string, query?: Query): Promise<T> => request<T>('GET', path, { query })
@@ -100,11 +110,16 @@ const quickAddListeners = new Set<() => void>()
 const exportListeners = new Set<() => void>()
 const presenceListeners = new Set<(online: string[]) => void>()
 const notificationListeners = new Set<(unreadCount: number) => void>()
+const connectionListeners = new Set<(connected: boolean) => void>()
+let realtimeConnected = false
 
 let onlineUserIds: string[] = []
 let socket: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let realtimeWanted = false
+let pendingNavigation: string | null = null
+let pendingQuickAdd = false
+let pendingExport = false
 
 function emit<T>(listeners: Set<(arg: T) => void>, arg: T): void {
   for (const cb of [...listeners]) {
@@ -125,7 +140,11 @@ function openSocket(): void {
   socket = ws
 
   // 切断中に保留されたタスクと、停止した計測も再接続時に取り直す。
-  ws.onopen = () => emit(dataChangedListeners, 'todo')
+  ws.onopen = () => {
+    realtimeConnected = true
+    emit(connectionListeners, true)
+    emit(dataChangedListeners, 'todo')
+  }
 
   ws.onmessage = (event) => {
     let msg: { type?: string; scope?: DataScope; online?: string[]; unreadCount?: number }
@@ -146,6 +165,8 @@ function openSocket(): void {
 
   ws.onclose = (event) => {
     socket = null
+    realtimeConnected = false
+    emit(connectionListeners, false)
     onlineUserIds = []
     emit(presenceListeners, onlineUserIds)
     if (event.code === 4401) {
@@ -178,6 +199,8 @@ export function connectRealtime(): void {
 /** Tear down realtime on logout. */
 export function disconnectRealtime(): void {
   realtimeWanted = false
+  realtimeConnected = false
+  emit(connectionListeners, false)
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
@@ -200,6 +223,47 @@ export function subscribePresence(cb: (online: string[]) => void): () => void {
   return () => presenceListeners.delete(cb)
 }
 
+export function subscribeConnection(cb: (connected: boolean) => void): () => void {
+  connectionListeners.add(cb)
+  cb(realtimeConnected)
+  return () => connectionListeners.delete(cb)
+}
+
+/** A caller-owned controller bounds the whole refresh and cancels stale responses. */
+export async function fetchDesktopTaskSnapshot(signal: AbortSignal): Promise<{ user: PublicUser | null; todos: Todo[]; running: RunningState | null }> {
+  let user: PublicUser | null
+  try {
+    user = (await request<{ user: PublicUser }>('GET', '/auth/me', { signal })).user
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 401) return { user: null, todos: [], running: null }
+    throw error
+  }
+  const [todos, running] = await Promise.all([
+    request<Todo[]>('GET', '/todos', { signal }),
+    request<RunningState | null>('GET', '/timer/running', { signal })
+  ])
+  return { user, todos, running }
+}
+
+export interface QuickProgressRequest {
+  requestId: string
+  expectedUserId: string
+  todoId: string
+  body: string
+  stopTimer: boolean
+  expectedStartTime?: string | null
+}
+
+export const postQuickProgress = (input: QuickProgressRequest): Promise<{ note: ProgressNote; workLog: WorkLog | null }> =>
+  request('POST', '/desktop/quick-progress', { body: input, timeoutMs: 15000 })
+
+export const stopDesktopTimer = (userId: string, running: RunningState): Promise<WorkLog> =>
+  request('POST', '/desktop/timer/stop', { body: { expectedUserId: userId, todoId: running.todo_id, expectedStartTime: running.start_time }, timeoutMs: 15000 })
+
+const NATIVE_SHORTCUT_KEYS = new Set<keyof DesktopPreferences>([
+  'globalShortcutFocus', 'globalShortcutQuickAdd', 'globalShortcutExport', 'globalShortcutProgress'
+])
+
 // Browser-side stand-in for the desktop global shortcuts (Ctrl+Alt+N / Ctrl+Alt+E).
 // These only fire while the tab is focused, which is the best a web app can do.
 function installKeyboardShortcuts(): void {
@@ -217,27 +281,6 @@ function installKeyboardShortcuts(): void {
 }
 
 // ─── Clipboard / download helpers (markdown export) ───────────
-
-async function copyText(text: string): Promise<void> {
-  if (navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(text)
-    return
-  }
-  // LAN-over-http fallback: the async clipboard API requires a secure context.
-  const ta = document.createElement('textarea')
-  ta.value = text
-  ta.style.position = 'fixed'
-  ta.style.top = '-1000px'
-  ta.style.opacity = '0'
-  document.body.appendChild(ta)
-  ta.focus()
-  ta.select()
-  try {
-    document.execCommand('copy')
-  } finally {
-    ta.remove()
-  }
-}
 
 function downloadText(filename: string, text: string): void {
   const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' })
@@ -257,8 +300,10 @@ const DEFAULT_ICON_DATA_URL =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">' +
-      '<rect width="128" height="128" rx="28" fill="#2563eb"/>' +
-      '<path d="M36 66l18 18 38-42" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<rect width="128" height="128" rx="28" fill="#102034"/>' +
+      '<rect x="28" y="31" width="40" height="15" rx="4.5" fill="#5bddc4"/>' +
+      '<rect x="43" y="54" width="52" height="15" rx="4.5" fill="#a4e9dc"/>' +
+      '<rect x="56" y="78" width="35" height="15" rx="4.5" fill="#fbbf24"/>' +
       '</svg>'
   )
 
@@ -351,7 +396,7 @@ export const api: Api = {
     try {
       const { markdown } = await get<{ markdown: string }>('/markdown')
       if (mode === 'clipboard') {
-        await copyText(markdown)
+        await copyTextToClipboard(markdown)
         return { success: true, message: 'クリップボードにコピーしました' }
       }
       downloadText(`worklog-${new Date().toISOString().slice(0, 10)}.md`, markdown)
@@ -363,20 +408,32 @@ export const api: Api = {
 
   // Settings
   settingsGet: async (key) => {
+    if (window.desktop && NATIVE_SHORTCUT_KEYS.has(key as keyof DesktopPreferences)) {
+      const context = await window.desktop.getContext()
+      return String(context.preferences[key as keyof DesktopPreferences])
+    }
     const { value } = await get<{ value: string | null }>(`/settings/${encodeURIComponent(key)}`)
     return value
   },
-  settingsSet: (key, value) => put<void>(`/settings/${encodeURIComponent(key)}`, { value }),
+  settingsSet: async (key, value) => {
+    if (window.desktop && NATIVE_SHORTCUT_KEYS.has(key as keyof DesktopPreferences)) {
+      await window.desktop.setPreferences({ [key]: value })
+      return
+    }
+    await put<void>(`/settings/${encodeURIComponent(key)}`, { value })
+  },
 
   // Users & team
   userList: () => get<PublicUser[]>('/users'),
   teamGetDashboard: (includePrivate) => get<TeamDashboard>('/team', { includePrivate: includePrivate === false ? 'false' : undefined }),
   authGetCurrentUser: async (): Promise<PublicUser | null> => {
-    const res = await fetch('/api/auth/me', { credentials: 'same-origin' })
-    if (res.status === 401) return null
-    if (!res.ok) throw new HttpError(res.status, 'ユーザー情報の取得に失敗しました')
-    const data = await res.json()
-    return (data?.user ?? null) as PublicUser | null
+    try {
+      const data = await request<{ user?: PublicUser }>('GET', '/auth/me', { timeoutMs: 10000 })
+      return data?.user ?? null
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 401) return null
+      throw error
+    }
   },
   authLogout: async (): Promise<void> => {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
@@ -384,6 +441,7 @@ export const api: Api = {
     // 共有PCでの次ユーザーへのデータ漏えいを防ぐため、localStorageに残る
     // 別ウィンドウ用レポートスナップショットをログアウト時に消す
     window.localStorage.removeItem(TASK_REPORT_SNAPSHOT_KEY)
+    if (window.desktop) await window.desktop.publishState({ userId: null, taskId: null, taskTitle: '', startTime: null, online: false })
     // AuthGate が /auth/me を取り直してログイン画面に戻す
     window.location.reload()
   },
@@ -439,26 +497,32 @@ export const api: Api = {
   appGetDefaultDataDir: async () => '',
   appCompleteSetup: async () => {},
   windowOpenGantt: async () => {
+    if (window.desktop) return window.desktop.openGantt()
     window.open(`${location.pathname}#gantt-only`, '_blank', 'noopener')
   },
   windowOpenTodo: async (todoId) => {
+    if (window.desktop) return window.desktop.openMain(todoId)
     emit(navigateTodoListeners, todoId)
   },
   windowOpenTaskReport: async () => {
+    if (window.desktop) return window.desktop.openReport()
     window.open(`${location.pathname}#task-report-only`, '_blank', 'noopener')
   },
 
   // ─── Event listeners ─────────────────────────────────────────
   onShortcutQuickAdd: (cb) => {
     quickAddListeners.add(cb)
+    if (pendingQuickAdd) { pendingQuickAdd = false; queueMicrotask(cb) }
     return () => quickAddListeners.delete(cb)
   },
   onShortcutExport: (cb) => {
     exportListeners.add(cb)
+    if (pendingExport) { pendingExport = false; queueMicrotask(cb) }
     return () => exportListeners.delete(cb)
   },
   onNavigateTodo: (cb) => {
     navigateTodoListeners.add(cb)
+    if (pendingNavigation) { const todoId = pendingNavigation; pendingNavigation = null; queueMicrotask(() => cb(todoId)) }
     return () => navigateTodoListeners.delete(cb)
   },
   onDataChanged: (cb) => {
@@ -471,4 +535,19 @@ export const api: Api = {
   }
 }
 
-installKeyboardShortcuts()
+if (window.desktop) {
+  window.desktop.onCommand((command) => {
+    if (command.type === 'quick-add') {
+      if (quickAddListeners.size) emit(quickAddListeners, undefined as void)
+      else pendingQuickAdd = true
+    } else if (command.type === 'export') {
+      if (exportListeners.size) emit(exportListeners, undefined as void)
+      else pendingExport = true
+    } else if (command.type === 'navigate') {
+      if (navigateTodoListeners.size) emit(navigateTodoListeners, command.todoId)
+      else pendingNavigation = command.todoId
+    }
+  })
+} else {
+  installKeyboardShortcuts()
+}

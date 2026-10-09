@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProgressNote, ProgressNoteComment, PublicUser, Todo } from '../types'
 import { LIKE_EMOJI, LikeButton, getLikeReaction } from './LikeButton'
 import { NoteMenu, discussionBadgeStyle } from './ProgressNoteThread'
+import { subscribeProgressDraftChanges } from '../lib/legacyProgressDrafts'
 
 export interface ProgressTimelineFocusTarget {
   date?: string | null
@@ -154,6 +155,27 @@ function commentElementId(id: string): string {
   return `progress-comment-${id}`
 }
 
+function readDrafts(key: string): Record<string, string> {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) ?? '{}') as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, string> : {}
+  } catch { return {} }
+}
+
+function useStoredDrafts(key: string): [Record<string, string>, React.Dispatch<React.SetStateAction<Record<string, string>>>] {
+  const [state, setState] = useState(() => ({ key, values: readDrafts(key) }))
+  useEffect(() => { setState((value) => value.key === key ? value : { key, values: readDrafts(key) }) }, [key])
+  useEffect(() => subscribeProgressDraftChanges(key, () => setState({ key, values: readDrafts(key) })), [key])
+  useEffect(() => { window.localStorage.setItem(state.key, JSON.stringify(state.values)) }, [state])
+  const update: React.Dispatch<React.SetStateAction<Record<string, string>>> = (value) => {
+    setState((previous) => {
+      const source = previous.key === key ? previous.values : readDrafts(key)
+      return { key, values: typeof value === 'function' ? value(source) : value }
+    })
+  }
+  return [state.key === key ? state.values : {}, update]
+}
+
 export function ProgressTimeline({ todos, users = [], currentUser = null, focusTarget = null, onSelectTodo, onShowToast, hiddenTodoIds = NO_HIDDEN_TODOS }: Props): React.JSX.Element {
   const [range, setRange] = useState<TimelineRange>(getWeekRange)
   const [notes, setNotes] = useState<ProgressNote[]>([])
@@ -163,21 +185,12 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   const [selectedTodoId, setSelectedTodoId] = useState('')
   const [focusedNoteId, setFocusedNoteId] = useState<string | null>(null)
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null)
-  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>(() => {
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem('progress-timeline-note-drafts') ?? '{}') as unknown
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, string> : {}
-    } catch { return {} }
-  })
+  const draftSuffix = currentUser?.id ? `:${currentUser.id}` : ''
+  const [noteDrafts, setNoteDrafts] = useStoredDrafts(`progress-timeline-note-drafts${draftSuffix}`)
   const [savingNote, setSavingNote] = useState(false)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [editingNoteDraft, setEditingNoteDraft] = useState('')
-  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>(() => {
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem('progress-timeline-comment-drafts') ?? '{}') as unknown
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, string> : {}
-    } catch { return {} }
-  })
+  const [commentDrafts, setCommentDrafts] = useStoredDrafts(`progress-timeline-comment-drafts${draftSuffix}`)
   const [commentingOnNoteId, setCommentingOnNoteId] = useState<string | null>(null)
   const [replyingToCommentId, setReplyingToCommentId] = useState<string | null>(null)
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
@@ -202,9 +215,6 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
     if (selectedTodoId && taskOptions.some((todo) => todo.id === selectedTodoId)) return
     setSelectedTodoId(taskOptions[0]?.id ?? '')
   }, [selectedTodoId, taskOptions])
-
-  useEffect(() => { window.localStorage.setItem('progress-timeline-note-drafts', JSON.stringify(noteDrafts)) }, [noteDrafts])
-  useEffect(() => { window.localStorage.setItem('progress-timeline-comment-drafts', JSON.stringify(commentDrafts)) }, [commentDrafts])
 
   useEffect(() => {
     try {

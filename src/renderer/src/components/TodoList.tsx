@@ -286,7 +286,7 @@ export function TodoList({
           onUnarchive={() => onUnarchive(todo.id)}
           onDelete={() => onDelete(todo.id)}
           onStartTimer={() => { void onStartTimer(todo.id) }}
-          onStopTimer={() => { void onStopTimer() }}
+          onStopTimer={() => { void onStopTimer().catch(() => { /* App displays the error. */ }) }}
           onDragStart={() => { setDraggedId(todo.id); dragging.current = true }}
           onDragOver={() => { if (dragging.current) setDragOverId(todo.id) }}
           onDrop={() => handleDrop(todo.id)}

@@ -2,6 +2,7 @@ import { app } from 'electron'
 import Database from 'better-sqlite3'
 import fs from 'fs'
 import path from 'path'
+import { randomUUID } from 'crypto'
 
 function getBootstrapFile(): string {
   return path.join(app.getPath('userData'), 'config.json')
@@ -20,6 +21,7 @@ function legacyPackagedDataDir(): string {
 
 interface BootstrapConfig {
   dataDir?: string
+  skipLegacyRecovery?: boolean
 }
 
 interface DbBundleInfo {
@@ -29,6 +31,10 @@ interface DbBundleInfo {
   bundleSize: number
   latestMtimeMs: number
 }
+
+// Resolution happens before initDb opens the live connection. A later settings
+// read must never run legacy recovery over an intentionally emptied live DB.
+let resolvedDataDir: { bootstrapFile: string; dir: string } | null = null
 
 function readConfig(): BootstrapConfig {
   const bootstrapFile = getBootstrapFile()
@@ -46,7 +52,17 @@ function writeConfig(config: BootstrapConfig): void {
   const bootstrapFile = getBootstrapFile()
   const dir = path.dirname(bootstrapFile)
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-  fs.writeFileSync(bootstrapFile, JSON.stringify(config, null, 2))
+  const temporary = path.join(dir, `.config-${randomUUID()}.tmp`)
+  try {
+    const descriptor = fs.openSync(temporary, 'wx', 0o600)
+    try {
+      fs.writeFileSync(descriptor, JSON.stringify(config, null, 2))
+      fs.fsyncSync(descriptor)
+    } finally { fs.closeSync(descriptor) }
+    fs.renameSync(temporary, bootstrapFile)
+  } finally {
+    if (fs.existsSync(temporary)) fs.unlinkSync(temporary)
+  }
 }
 
 function normalizeForCompare(value: string): string {
@@ -116,13 +132,7 @@ function getDbBundleInfo(dirPath: string): DbBundleInfo | null {
   }
 }
 
-function copyFile(source: string, destination: string, overwrite: boolean): void {
-  if (!fs.existsSync(source)) return
-  if (!overwrite && fs.existsSync(destination)) return
-  fs.copyFileSync(source, destination)
-}
-
-function copyDirectoryIfMissing(sourceDir: string, destinationDir: string): void {
+function copyDirectoryIfMissing(sourceDir: string, destinationDir: string, overwriteFiles = false): void {
   if (!fs.existsSync(sourceDir)) return
   if (!fs.existsSync(destinationDir)) fs.mkdirSync(destinationDir, { recursive: true })
 
@@ -131,25 +141,101 @@ function copyDirectoryIfMissing(sourceDir: string, destinationDir: string): void
     const destinationPath = path.join(destinationDir, entry.name)
 
     if (entry.isDirectory()) {
-      copyDirectoryIfMissing(sourcePath, destinationPath)
+      copyDirectoryIfMissing(sourcePath, destinationPath, overwriteFiles)
       continue
     }
 
-    if (entry.isFile() && !fs.existsSync(destinationPath)) {
+    if (entry.isFile() && (overwriteFiles || !fs.existsSync(destinationPath))) {
       fs.copyFileSync(sourcePath, destinationPath)
     }
   }
 }
 
-function copyDbBundle(sourceDir: string, destinationDir: string, overwriteDb: boolean): void {
+function copyDbBundle(sourceDir: string, destinationDir: string, overwriteDb: boolean, commit: () => void): void {
   if (!fs.existsSync(destinationDir)) fs.mkdirSync(destinationDir, { recursive: true })
-
+  if (fs.existsSync(sourceDir) && pathsEqual(fs.realpathSync(sourceDir), fs.realpathSync(destinationDir))) {
+    commit()
+    return
+  }
   const sourceDb = path.join(sourceDir, 'todo.db')
   const destinationDb = path.join(destinationDir, 'todo.db')
-  copyFile(sourceDb, destinationDb, overwriteDb)
-  copyFile(`${sourceDb}-wal`, `${destinationDb}-wal`, overwriteDb)
-  copyFile(`${sourceDb}-shm`, `${destinationDb}-shm`, overwriteDb)
-  copyDirectoryIfMissing(path.join(sourceDir, 'icons'), path.join(destinationDir, 'icons'))
+  const sourceIcons = path.join(sourceDir, 'icons')
+  const destinationIcons = path.join(destinationDir, 'icons')
+  const replaceDb = fs.existsSync(sourceDb) && (overwriteDb || !fs.existsSync(destinationDb))
+  if (fs.existsSync(sourceIcons) && isSubPathOf(fs.realpathSync(destinationDir), fs.realpathSync(sourceIcons))) {
+    throw new Error('旧版のアイコン保存先の中にはデータを復旧できません')
+  }
+  const staging = path.join(destinationDir, `.hakobi-legacy-${randomUUID()}`)
+  fs.mkdirSync(staging)
+  const snapshot = path.join(staging, 'todo.db')
+  const stagedIcons = path.join(staging, 'icons')
+  const backups: { original: string; backup: string }[] = []
+  let publishedDb = false
+  let publishedIcons = false
+  let committed = false
+  let rollbackComplete = false
+  try {
+    if (replaceDb) {
+      const source = new Database(sourceDb, { readonly: true, fileMustExist: true })
+      try { source.prepare('VACUUM INTO ?').run(snapshot) }
+      finally { source.close() }
+      const staged = new Database(snapshot, { fileMustExist: true })
+      try {
+        if (staged.pragma('quick_check', { simple: true }) !== 'ok') throw new Error('旧版データのコピーを確認できませんでした')
+        const hasSettings = staged.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'Settings'").get()
+        const icon = hasSettings ? staged.prepare("SELECT value FROM Settings WHERE key = 'customIconPath'").get() as { value: string } | undefined : undefined
+        if (icon?.value && isSubPathOf(icon.value, sourceIcons)) {
+          staged.prepare("UPDATE Settings SET value = ? WHERE key = 'customIconPath'").run(path.join(destinationIcons, path.relative(sourceIcons, icon.value)))
+        }
+        staged.pragma('wal_checkpoint(TRUNCATE)')
+      } finally { staged.close() }
+    }
+    if (fs.existsSync(sourceIcons)) {
+      copyDirectoryIfMissing(destinationIcons, stagedIcons)
+      // When replacing the DB, its icon settings refer to the source files.
+      copyDirectoryIfMissing(sourceIcons, stagedIcons, replaceDb)
+    }
+    const retire = (original: string, name: string): void => {
+      if (!fs.existsSync(original)) return
+      const backup = path.join(staging, name)
+      fs.renameSync(original, backup)
+      backups.push({ original, backup })
+    }
+    if (replaceDb) {
+      // Retire every old sidecar even when the source is a closed main-only DB.
+      // A stale target WAL must never be applied to the new snapshot.
+      for (const suffix of ['', '-wal', '-shm', '-journal']) retire(`${destinationDb}${suffix}`, `previous.db${suffix}`)
+      fs.renameSync(snapshot, destinationDb)
+      publishedDb = true
+    }
+    if (fs.existsSync(stagedIcons)) {
+      retire(destinationIcons, 'previous-icons')
+      fs.renameSync(stagedIcons, destinationIcons)
+      publishedIcons = true
+    }
+    commit()
+    committed = true
+  } catch (error) {
+    try {
+      if (publishedIcons) {
+        if (!pathsEqual(path.dirname(destinationIcons), destinationDir)) throw new Error('旧版アイコンの復元先を確認できません')
+        fs.rmSync(destinationIcons, { recursive: true, force: true })
+      }
+      if (publishedDb) fs.unlinkSync(destinationDb)
+      for (const { original, backup } of [...backups].reverse()) fs.renameSync(backup, original)
+      rollbackComplete = true
+    } catch (rollbackError) {
+      // Keep the retired bundle for manual recovery rather than erase it.
+      console.error('[HAKOBI] 旧版データの復旧を元に戻せませんでした。一時フォルダに元データを保持します', staging, rollbackError)
+    }
+    throw error
+  } finally {
+    if (committed || rollbackComplete) {
+      if (!pathsEqual(path.dirname(staging), destinationDir) || !path.basename(staging).startsWith('.hakobi-legacy-')) throw new Error('旧版データの一時フォルダを確認できません')
+      try { fs.rmSync(staging, { recursive: true, force: true }) }
+      catch (error) { console.error('[HAKOBI] 旧版データの一時フォルダを整理できませんでした', staging, error) }
+    }
+  }
 }
 
 function isLikelyInstallDataDir(dirPath: string): boolean {
@@ -182,10 +268,11 @@ function migrateLegacyPackagedDataDir(config: BootstrapConfig): string {
 
     const targetInfo = getDbBundleInfo(persistentDir)
     const overwrite = !targetInfo || targetInfo.todoCount <= 0
-    copyDbBundle(configuredDir, persistentDir, overwrite)
-
-    config.dataDir = persistentDir
-    writeConfig(config)
+    copyDbBundle(configuredDir, persistentDir, overwrite, () => {
+      config.dataDir = persistentDir
+      config.skipLegacyRecovery = true
+      writeConfig(config)
+    })
     return persistentDir
   } catch {
     return configuredDir
@@ -193,11 +280,16 @@ function migrateLegacyPackagedDataDir(config: BootstrapConfig): string {
 }
 
 function recoverDbFromLegacyCandidates(config: BootstrapConfig, currentDir: string): string {
-  if (!app.isPackaged) return currentDir
+  if (!app.isPackaged || config.skipLegacyRecovery) return currentDir
 
   try {
     const currentInfo = getDbBundleInfo(currentDir)
-    if (currentInfo && currentInfo.todoCount > 0) return currentDir
+    if (currentInfo && currentInfo.todoCount > 0) {
+      config.dataDir = currentDir
+      config.skipLegacyRecovery = true
+      writeConfig(config)
+      return currentDir
+    }
 
     const candidates = [
       legacyPackagedDataDir(),
@@ -222,12 +314,11 @@ function recoverDbFromLegacyCandidates(config: BootstrapConfig, currentDir: stri
     })
 
     const best = infos[0]
-    copyDbBundle(best.dir, currentDir, true)
-
-    if (!config.dataDir || !pathsEqual(config.dataDir, currentDir)) {
+    copyDbBundle(best.dir, currentDir, true, () => {
       config.dataDir = currentDir
+      config.skipLegacyRecovery = true
       writeConfig(config)
-    }
+    })
 
     return currentDir
   } catch {
@@ -236,15 +327,23 @@ function recoverDbFromLegacyCandidates(config: BootstrapConfig, currentDir: stri
 }
 
 export function getDataDir(): string {
+  const bootstrapFile = getBootstrapFile()
+  if (resolvedDataDir?.bootstrapFile === bootstrapFile) return resolvedDataDir.dir
   const config = readConfig()
   const migratedDir = migrateLegacyPackagedDataDir(config)
-  return recoverDbFromLegacyCandidates(config, migratedDir)
+  const dir = recoverDbFromLegacyCandidates(config, migratedDir)
+  resolvedDataDir = { bootstrapFile, dir }
+  return dir
 }
 
 export function setDataDir(newDir: string): void {
   const config = readConfig()
   config.dataDir = newDir
+  // An explicitly chosen empty DB is intentional; an old backup must not be
+  // copied over it later just because the user deleted the last task.
+  config.skipLegacyRecovery = true
   writeConfig(config)
+  resolvedDataDir = { bootstrapFile: getBootstrapFile(), dir: newDir }
 }
 
 export function isFirstLaunch(): boolean {

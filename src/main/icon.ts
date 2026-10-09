@@ -66,60 +66,39 @@ function encodePNG(rgba: Buffer, w: number, h: number): Buffer {
 
 // ─── アイコン描画 ─────────────────────────────────────────────
 
-function drawLine(
-  buf: Buffer, size: number,
-  x1: number, y1: number, x2: number, y2: number,
-  thick: number
+function drawRoundedRect(
+  rgba: Buffer, size: number, left: number, top: number,
+  width: number, height: number, radius: number, color: readonly number[]
 ): void {
-  const steps = Math.ceil(Math.hypot(x2 - x1, y2 - y1) * 3)
-  for (let s = 0; s <= steps; s++) {
-    const px = x1 + (x2 - x1) * s / steps
-    const py = y1 + (y2 - y1) * s / steps
-    const tr = Math.ceil(thick)
-    for (let dy = -tr; dy <= tr; dy++) {
-      for (let dx = -tr; dx <= tr; dx++) {
-        if (dx * dx + dy * dy <= thick * thick) {
-          const ix = Math.round(px + dx)
-          const iy = Math.round(py + dy)
-          if (ix >= 0 && ix < size && iy >= 0 && iy < size) {
-            const idx = (iy * size + ix) * 4
-            if (buf[idx + 3] > 0) { // 背景がある部分のみ
-              buf[idx] = 255; buf[idx + 1] = 255
-              buf[idx + 2] = 255; buf[idx + 3] = 255
-            }
-          }
-        }
+  const cx = left + width / 2
+  const cy = top + height / 2
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const qx = Math.max(0, Math.abs(x + 0.5 - cx) - (width / 2 - radius))
+      const qy = Math.max(0, Math.abs(y + 0.5 - cy) - (height / 2 - radius))
+      const distance = Math.hypot(qx, qy) - radius
+      if (distance >= 0.5) continue
+      const coverage = Math.min(1, 0.5 - distance)
+      const index = (y * size + x) * 4
+      const oldAlpha = rgba[index + 3] / 255
+      const alpha = coverage + oldAlpha * (1 - coverage)
+      for (let channel = 0; channel < 3; channel++) {
+        rgba[index + channel] = Math.round(
+          (color[channel] * coverage + rgba[index + channel] * oldAlpha * (1 - coverage)) / alpha
+        )
       }
+      rgba[index + 3] = Math.round(alpha * 255)
     }
   }
 }
 
 function generateDefaultIconRGBA(size: number): Buffer {
-  const rgba = Buffer.alloc(size * size * 4) // 全透明
-  const cx = size / 2
-  const pad = size * 0.07
-  const cr = size * 0.18 // 角丸半径
-
-  // 角丸四角形の背景（インディゴ #6366f1）
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const fx = x + 0.5, fy = y + 0.5
-      const qx = Math.max(0, Math.abs(fx - cx) - (cx - pad - cr))
-      const qy = Math.max(0, Math.abs(fy - cx) - (cx - pad - cr))
-      const dist = Math.sqrt(qx * qx + qy * qy) - cr
-      if (dist < 0.5) {
-        const alpha = dist < -0.5 ? 255 : Math.round((0.5 - dist) * 255)
-        const i = (y * size + x) * 4
-        rgba[i] = 99; rgba[i + 1] = 102; rgba[i + 2] = 241; rgba[i + 3] = alpha
-      }
-    }
-  }
-
-  // 白いチェックマーク
-  const t = Math.max(1.5, size * 0.075)
-  drawLine(rgba, size, size * 0.23, size * 0.52, size * 0.41, size * 0.70, t)
-  drawLine(rgba, size, size * 0.41, size * 0.70, size * 0.77, size * 0.30, t)
-
+  const rgba = Buffer.alloc(size * size * 4)
+  // HAKOBI: 日程と仕事の流れを表す、右へ進む3本のガントバー。
+  drawRoundedRect(rgba, size, size * 0.07, size * 0.07, size * 0.86, size * 0.86, size * 0.18, [15, 23, 42])
+  drawRoundedRect(rgba, size, size * 0.22, size * 0.27, size * 0.40, size * 0.12, size * 0.035, [45, 212, 191])
+  drawRoundedRect(rgba, size, size * 0.33, size * 0.44, size * 0.44, size * 0.12, size * 0.035, [94, 234, 212])
+  drawRoundedRect(rgba, size, size * 0.44, size * 0.61, size * 0.27, size * 0.12, size * 0.035, [251, 191, 36])
   return rgba
 }
 

@@ -12,22 +12,26 @@ interface Client {
 const clients = new Set<Client>()
 let wss: WebSocketServer | null = null
 
-function parseCookies(header: string | undefined): Record<string, string> {
-  const out: Record<string, string> = {}
-  if (!header) return out
+function sessionCookie(header: string | undefined): string | undefined {
+  if (!header) return undefined
   for (const part of header.split(';')) {
     const idx = part.indexOf('=')
     if (idx === -1) continue
     const key = part.slice(0, idx).trim()
+    if (key !== SESSION_COOKIE) continue
     const value = part.slice(idx + 1).trim()
-    if (key) out[key] = decodeURIComponent(value)
+    try {
+      return decodeURIComponent(value)
+    } catch {
+      // Match cookie-parser's raw-value fallback; an invalid token fails authentication.
+      return value
+    }
   }
-  return out
+  return undefined
 }
 
 function authenticate(req: IncomingMessage): PublicUser | null {
-  const cookies = parseCookies(req.headers.cookie)
-  return getSessionUser(cookies[SESSION_COOKIE])
+  return getSessionUser(sessionCookie(req.headers.cookie))
 }
 
 function send(socket: WebSocket, payload: unknown): void {
@@ -71,7 +75,14 @@ export function initRealtime(server: Server): void {
     server,
     path: '/ws',
     verifyClient: ({ req }, cb) => {
-      const user = authenticate(req)
+      let user: PublicUser | null
+      try {
+        user = authenticate(req)
+      } catch (error) {
+        console.error('[realtime] WebSocket authentication failed', error)
+        cb(false, 401, 'unauthorized')
+        return
+      }
       if (!user) {
         cb(false, 401, 'unauthorized')
         return
@@ -103,7 +114,7 @@ export function initRealtime(server: Server): void {
   })
 }
 
-/** Revoke live connections as well as stored sessions. */
+/** Disconnect live clients after the caller revokes their stored sessions. */
 export function disconnectUser(userId: string): void {
   for (const client of clients) {
     if (client.user.id === userId) {

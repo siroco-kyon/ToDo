@@ -63,8 +63,10 @@ function main(): void {
   initDb()
 
   const target = getUserByUsername(args.user)
-  if (!target) {
-    console.error(`[取り込み] ユーザー名 "${args.user}" が見つかりません。先に「ユーザー管理」で作成してください。`)
+  if (!target || target.deleted_at) {
+    console.error(target?.deleted_at
+      ? '[取り込み] 削除済みのユーザーには取り込めません。別のユーザー名を指定してください。'
+      : `[取り込み] ユーザー名 "${args.user}" が見つかりません。先に「ユーザー管理」で作成してください。`)
     const names = listUsers().map((u) => u.username)
     if (names.length > 0) console.error(`  利用できるユーザー名: ${names.join(', ')}`)
     process.exit(1)
@@ -91,8 +93,16 @@ function main(): void {
     console.log(`  依存関係      : ${result.dependencies} 件`)
     console.log(`  作業ログ      : ${result.workLogs} 件`)
     console.log(`  予定（レール）: ${result.planItems} 件`)
+    console.log(`  進捗投稿      : ${result.progressNotes} 件`)
+    console.log(`  コメント      : ${result.progressComments} 件`)
+    console.log(`  リアクション  : ${result.progressReactions} 件`)
+    console.log(`  タスク変更履歴: ${result.todoChanges} 件`)
+    console.log(`  子タスク履歴  : ${result.subTaskChanges} 件`)
+    if (result.categoryConflicts.length > 0) {
+      console.log(`  公開設定の相違: ${result.categoryConflicts.join('、')}（同名カテゴリはサーバーの設定を維持しました）`)
+    }
     if (result.skippedOrphans > 0) {
-      console.log(`  スキップ      : ${result.skippedOrphans} 件（参照先タスクが無い孤立データ）`)
+      console.log(`  スキップ      : ${result.skippedOrphans} 件（参照先が無い、または不正な親子関係のデータ）`)
     }
     console.log('==============================================')
     if (args.dryRun) {

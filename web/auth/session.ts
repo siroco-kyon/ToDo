@@ -22,8 +22,8 @@ async function readError(res: Response, fallback: string): Promise<string> {
 }
 
 /** Returns the logged-in user, or null when the session is missing/expired. */
-export async function fetchMe(): Promise<CurrentUser | null> {
-  const res = await fetch('/api/auth/me', { credentials: 'same-origin' })
+export async function fetchMe(signal?: AbortSignal): Promise<CurrentUser | null> {
+  const res = await fetch('/api/auth/me', { credentials: 'same-origin', signal })
   if (res.status === 401) return null
   if (!res.ok) throw new Error(await readError(res, 'ユーザー情報の取得に失敗しました'))
   const data = await res.json()

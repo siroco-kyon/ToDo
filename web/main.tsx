@@ -4,6 +4,9 @@ import { App } from '@renderer/App'
 import type { Api } from '@preload'
 import { api } from './lib/client'
 import { AuthGate } from './auth/AuthGate'
+import { DesktopCompanion } from './desktop/DesktopCompanion'
+import { TimerWindow } from './desktop/TimerWindow'
+import { ProgressWindow } from './desktop/ProgressWindow'
 import '@renderer/styles/gantt-neumorphic.css'
 
 declare global {
@@ -15,6 +18,11 @@ declare global {
 // Install the HTTP/WebSocket-backed API before any component mounts, so the
 // renderer's `window.api.*` calls behave exactly as they did over Electron IPC.
 window.api = api
+
+const desktopView = location.hash.split('?')[0]
+const isTimerWindow = Boolean(window.desktop) && desktopView === '#hakobi-timer'
+const isProgressWindow = Boolean(window.desktop) && desktopView === '#hakobi-progress'
+const isDesktopMain = Boolean(window.desktop) && !isTimerWindow && !isProgressWindow && !location.hash
 
 class RootErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -116,7 +124,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <RootErrorBoundary>
       <AuthGate>
-        <App />
+        {isTimerWindow ? <TimerWindow /> : isProgressWindow ? <ProgressWindow /> : <>
+          {isDesktopMain && <DesktopCompanion />}
+          <App />
+        </>}
       </AuthGate>
     </RootErrorBoundary>
   </React.StrictMode>

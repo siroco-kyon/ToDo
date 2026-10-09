@@ -1,18 +1,17 @@
-// チーム ToDo サーバーの Windows サービス登録を解除する。
+// HAKOBI チームサーバーの Windows サービス登録を解除する。
 // 管理者として開いた PowerShell で `npm run service:uninstall` を実行すること。
 // データベース（server\data\）はサービス解除では消えない。
-const path = require('path')
 const { Service } = require('node-windows')
+const { getServiceConfiguration } = require('./config.cjs')
 
-const svc = new Service({
-  name: 'TodoTeamServer',
-  script: path.join(__dirname, 'run.cjs')
-})
+const config = getServiceConfiguration(process.env, { requireGroupSettings: false })
+const svc = new Service(config)
+svc.directory(config.directory)
 
 svc.on('uninstall', () => {
   console.log('[service] アンインストールしました。データ（server\\data\\）はそのまま残っています。')
 })
-svc.on('notinstalled', () => {
+svc.on('alreadyuninstalled', () => {
   console.log('[service] インストールされていません。')
 })
 svc.on('error', (err) => {
@@ -21,5 +20,5 @@ svc.on('error', (err) => {
   process.exitCode = 1
 })
 
-console.log('[service] TodoTeamServer をアンインストールします...')
+console.log(`[service] ${config.name} をアンインストールします...`)
 svc.uninstall()

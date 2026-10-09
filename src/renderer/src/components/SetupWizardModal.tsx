@@ -46,7 +46,7 @@ export function SetupWizardModal({ onComplete }: Props): React.JSX.Element {
         <div>
           <div style={{ fontSize: '1.6rem', marginBottom: 8 }}>📋</div>
           <h1 style={{ fontSize: '1.3rem', color: '#e2e8f0', marginBottom: 6 }}>
-            ToDoへようこそ
+            HAKOBIへようこそ
           </h1>
           <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.6 }}>
             データベースの保存場所を選択してください。<br />
