@@ -26,11 +26,13 @@ export function useProgressUnseenCount(userId: string | null, viewing: boolean, 
       setCount(0)
       return
     }
-    const earliest = new Date()
+    // 端末の時計がずれていても今日の投稿を取りこぼさないよう、期間もサーバーの時計で決める
+    const now = new Date(serverNow())
+    const earliest = new Date(now)
     earliest.setDate(earliest.getDate() - (MAX_LOOKBACK_DAYS - 1))
     const seenDate = new Date(seenAt)
     const from = toDateKey(Number.isNaN(seenDate.getTime()) || seenDate < earliest ? earliest : seenDate)
-    const to = toDateKey(new Date())
+    const to = toDateKey(now)
     try {
       const notes = await window.api.progressNoteGetTimeline(from > to ? to : from, to)
       if (request === requestRef.current) setCount(countUnseenActivity(notes, userId, seenAt, hiddenTodoIds))

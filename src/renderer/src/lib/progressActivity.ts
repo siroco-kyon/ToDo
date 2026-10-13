@@ -19,13 +19,16 @@ export function readProgressSeenAt(userId: string): string | null {
   }
 }
 
-export function writeProgressSeenAt(userId: string, iso: string): void {
+/** 覚えられたら true。覚えられなかったときは知らせない（読み直し→書き込みの繰り返しを起こさないため） */
+export function writeProgressSeenAt(userId: string, iso: string): boolean {
   try {
     window.localStorage.setItem(seenKey(userId), iso)
   } catch {
     // 覚えられなくても画面は使える（新着の印が出ないだけ）
+    return false
   }
   window.dispatchEvent(new CustomEvent(SEEN_EVENT))
+  return true
 }
 
 export function subscribeProgressSeenAt(callback: () => void): () => void {

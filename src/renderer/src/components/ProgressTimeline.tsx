@@ -233,7 +233,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   const [seenBefore] = useState<string | null>(() => userId ? readProgressSeenAt(userId) : null)
   useEffect(() => {
     if (!userId) return undefined
-    const markSeen = (): void => writeProgressSeenAt(userId, new Date(serverNow()).toISOString())
+    const markSeen = (): void => { writeProgressSeenAt(userId, new Date(serverNow()).toISOString()) }
     markSeen()
     return markSeen
   }, [userId])
