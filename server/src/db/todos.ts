@@ -412,7 +412,8 @@ export function updateTodo(id: string, data: UpdateTodoInput, changedByUserId: s
   return getTodoById(id)
 }
 
-export function syncTodoDueDateWithSubTasks(todoId: string): string | null {
+/** サブタスクの期限に合わせて親タスクの期限を延ばす。変更履歴はサブタスクを操作した人の変更として残す */
+export function syncTodoDueDateWithSubTasks(todoId: string, changedByUserId: string | null = null): string | null {
   const maxSubTaskDueDate = getMaxSubTaskDueDate(todoId)
   if (!maxSubTaskDueDate) return null
 
@@ -420,7 +421,7 @@ export function syncTodoDueDateWithSubTasks(todoId: string): string | null {
   const normalizedTodoDueDate = normalizeDateKey(todo.due_date)
   if (normalizedTodoDueDate && normalizedTodoDueDate >= maxSubTaskDueDate) return null
 
-  updateTodo(todoId, { due_date: maxSubTaskDueDate })
+  updateTodo(todoId, { due_date: maxSubTaskDueDate }, changedByUserId)
   return maxSubTaskDueDate
 }
 

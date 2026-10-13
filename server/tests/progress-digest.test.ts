@@ -40,6 +40,11 @@ test('progress digest attributes completions and added subtasks to the member wh
     archiveTodo(restored.id, 'u2')
     unarchiveTodo(restored.id, 'u2', 'done')
 
+    // 未完了のままアーカイブしたタスクを、佐藤が編集で完了にする（新しい完了操作なので佐藤の完了）
+    const fromArchive = createTodo({ title: 'アーカイブから完了', assignee_id: 'u1' }, 'u1')
+    archiveTodo(fromArchive.id, 'u1')
+    updateTodo(fromArchive.id, { status: 'done' }, 'u2')
+
     // 完了の履歴がない古いデータは主担当で数える
     db.prepare(`
       INSERT INTO Todos (id, title, assignee_id, status, progress, created_at, updated_at, completed_at)
@@ -53,18 +58,33 @@ test('progress digest attributes completions and added subtasks to the member wh
       INSERT INTO SubTasks (id, todo_id, title, created_at) VALUES ('legacy-sub', ?, '古いサブタスク', ?)
     `).run(shared.id, nowIso)
 
+    // 佐藤のサブタスクで田中のタスクの期限が延びたら、その変更は佐藤の変更
+    const extended = createTodo({ title: '期限が延びるタスク', assignee_id: 'u1', start_date: today, due_date: today }, 'u1')
+    const later = new Date()
+    later.setDate(later.getDate() + 5)
+    const extending = createSubTask(extended.id, { title: '佐藤の作業', start_date: today, due_date: dateKey(later) }, 'u2')
+
     const digest = getProgressDigest(today, today, ['u1', 'u2'])
     const byId = new Map(digest.users.map((user) => [user.user_id, user]))
     const tanaka = byId.get('u1')!
     const sato = byId.get('u2')!
 
-    assert.deepEqual(sato.completed_todos.map((todo) => todo.id), [shared.id], '副担当が完了にしたタスクは副担当の完了')
+    const dueChanges = (user: typeof tanaka) =>
+      user.task_changes.filter((change) => change.todo_id === extended.id && change.field === 'due_date')
+    assert.equal(dueChanges(sato).length, 1, 'サブタスクで延びた期限は延ばした人の変更')
+    assert.equal(dueChanges(tanaka).length, 0, '主担当の変更にしない')
+
+    assert.deepEqual(
+      new Set(sato.completed_todos.map((todo) => todo.id)),
+      new Set([shared.id, fromArchive.id]),
+      '副担当が完了にしたタスク（アーカイブから直接完了したものも）は副担当の完了'
+    )
     assert.deepEqual(
       new Set(tanaka.completed_todos.map((todo) => todo.id)),
       new Set([restored.id, 'legacy-done']),
       '主担当には自分が完了にしたタスクと履歴のない古いタスクだけが入る'
     )
-    assert.deepEqual(sato.added_subtasks.map((sub) => sub.id), [added.id], '副担当が追加したサブタスクは副担当の追加')
+    assert.deepEqual(sato.added_subtasks.map((sub) => sub.id), [added.id, extending.id], '副担当が追加したサブタスクは副担当の追加')
     assert.deepEqual(tanaka.added_subtasks.map((sub) => sub.id), ['legacy-sub'], '追加者のない古いサブタスクだけ主担当')
 
     // 繰り返しの次回分に複製したサブタスクは、元のサブタスクの追加者を引き継ぐ

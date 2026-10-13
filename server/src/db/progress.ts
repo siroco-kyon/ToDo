@@ -411,15 +411,20 @@ export function getProgressDigest(from: string, to: string, userIds?: string[], 
      ORDER BY t.created_at ASC`
   )
 
-  // 完了にした人（最後に status を done へ変えた履歴の操作者）で数える。
-  // アーカイブからの復元は完了日時を変えないので完了操作に数えない。
-  // 履歴がない・操作者不明の古いデータだけ主担当で数える。
+  // 完了にした人で数える。完了操作は completed_at と status → done の履歴を同じ時刻で書くので、
+  // まず完了日時と一致する履歴の操作者を使う（アーカイブからの復元は完了日時を変えないので、
+  // 元の完了操作の履歴が選ばれる）。一致しない古いデータは、アーカイブからの復元を除いた
+  // 最後の done 履歴、それもなければ主担当で数える。
   const completedTodosStmt = db.prepare(
     `SELECT t.id, t.title, t.status, t.progress, t.memo,
             c.name AS category_name, c.color AS category_color, t.completed_at
      FROM Todos t
      LEFT JOIN Categories c ON t.category_id = c.id
      WHERE COALESCE(
+             (SELECT tcl.user_id FROM TodoChangeLogs tcl
+              WHERE tcl.todo_id = t.id AND tcl.field = 'status' AND tcl.new_value = 'done'
+                AND tcl.created_at = t.completed_at
+              ORDER BY tcl.rowid DESC LIMIT 1),
              (SELECT tcl.user_id FROM TodoChangeLogs tcl
               WHERE tcl.todo_id = t.id AND tcl.field = 'status' AND tcl.new_value = 'done'
                 AND COALESCE(tcl.old_value, '') != 'archived'

@@ -81,7 +81,7 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput, createdB
       'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now, createdByUserId)
     const created = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
-    const extendedTo = syncTodoDueDateWithSubTasks(todoId)
+    const extendedTo = syncTodoDueDateWithSubTasks(todoId, createdByUserId)
     return { ...created, parent_due_date_extended_to: extendedTo }
   })()
 }
@@ -126,7 +126,7 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput, changedByUse
     }
     const updated = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
     if (current) recordSubTaskChanges(current, updated, changedByUserId)
-    const extendedTo = syncTodoDueDateWithSubTasks(updated.todo_id)
+    const extendedTo = syncTodoDueDateWithSubTasks(updated.todo_id, changedByUserId)
     return { ...updated, parent_due_date_extended_to: extendedTo }
   })()
 }
