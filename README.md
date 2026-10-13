@@ -171,7 +171,7 @@ npm run dist
 npm run publish:desktop
 ```
 
-`dist/` のインストーラーが `latest.yml` と `package.json` のバージョンに一致するかを確かめてから、サーバーの配布フォルダ（`TODO_DESKTOP_DIST`、既定 `dist-desktop/`）へコピーします。`latest.yml` は最後に置き換えます。メンバーは `http://<サーバーのIP>:4577/download` からダウンロードします。手順は [HAKOBI 運用ガイド](docs/HAKOBI.md#デスクトップ版の配布と更新のお知らせ) を参照してください。
+`dist/` のインストーラーが `latest.yml` と `package.json` のバージョンに一致するかを確かめてから、サーバーの配布フォルダ（`TODO_DESKTOP_DIST`、既定 `dist-desktop/`）へコピーします。`latest.yml` は最後に置き換えます。開発 PC でビルドした場合は、サーバーの配布フォルダを共有フォルダにして、開発 PC の `server/.env` の `TODO_DESKTOP_DIST` に `\\<サーバー名>\<共有名>` を書けば、開発 PC から直接公開できます。メンバーは `http://<サーバーのIP>:4577/download` からダウンロードします。手順は [HAKOBI 運用ガイド](docs/HAKOBI.md#デスクトップ版の配布と更新のお知らせ) を参照してください。
 
 ## 個人用のデータ保存先
 

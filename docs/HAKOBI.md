@@ -35,6 +35,43 @@ HAKOBI のデスクトップ版は、サーバーが配信する Web 画面を E
 
 サーバーの再起動は不要です。サーバーは `latest.yml` とインストーラーの差し替えを検出して読み直します。古いインストーラーは配布フォルダから消しません。公開元と公開先は `--from <フォルダ>` と `--to <フォルダ>` で変えられます。既定の公開先は `server/.env`（`TODO_ENV_FILE` を指定した場合はそのファイル）の `TODO_DESKTOP_DIST` です。バージョンが `package.json` と違うと公開は止まります。`package.json` と違う版を公開するときは、`--expect-version 1.0.5` のように指定します。
 
+配布中と同じバージョンで、中身の違うインストーラーは公開できません。配布中のファイルをその場で書き換えないためです。インストール済みの PC にも新しい版として伝わらないので、作り直したときは `version` を上げてから `npm run dist` を実行します。同じ中身の公開し直しはできます。
+
+#### ビルドする PC とサーバーが別のとき
+
+インストーラーは開発用の PC でビルドし、サーバーから配布できます。サーバーが配るのは配布フォルダの中身だけなので、ビルドした PC からその配布フォルダへ公開します。方法は2つあります。
+
+**方法1: サーバーの共有フォルダへ直接公開する（おすすめ）**
+
+最初に1回だけ準備します。
+
+1. サーバー PC に配布フォルダを作ります（例: `C:\HakobiServer\dist-desktop`）。
+2. このフォルダを Windows の共有フォルダにします（例: 共有名 `hakobi-desktop`）。書き込みは管理者だけに許可します。ここに書き込める人は、メンバーの PC に入るインストーラーを差し替えられるためです。
+3. サーバーの `server\.env` に `TODO_DESKTOP_DIST=C:\HakobiServer\dist-desktop` を書き、サービスを再起動します。グループごとの env ファイルを使っている場合は、そのすべてに書きます。
+4. ビルド PC で `npm --prefix server install` を実行します。公開コマンドが使います。`npm run dev:server` を使っている PC なら済んでいます。
+5. ビルド PC の `server\.env` に `TODO_DESKTOP_DIST=\\<サーバー名>\hakobi-desktop` を書きます。これがビルド PC からの公開先になります。
+
+公開するたびに、ビルド PC で次の操作をします。
+
+1. ルートの `package.json` の `version` を上げます。
+2. `npm run dist` を実行します。
+3. `npm run publish:desktop` を実行します。表示される「公開先:」が `\\<サーバー名>\hakobi-desktop` であることを確かめます。
+4. ブラウザで `http://<サーバー>:4577/download` を開き、新しいバージョンになったことを確かめます。
+
+サーバー PC での作業や再起動はいりません。`server\.env` を変えずに1回だけ公開先を変えるときは、`npm run publish:desktop -- --to \\<サーバー名>\hakobi-desktop` と指定します。
+
+**方法2: ファイルを持っていき、サーバーで公開する**
+
+共有フォルダを使えないときの方法です。
+
+1. ビルド PC で `version` を上げて `npm run dist` を実行します。
+2. `dist\` にできた `HAKOBI-<バージョン>-setup.exe`、`HAKOBI-<バージョン>-setup.exe.blockmap`、`latest.yml` の3つを、サーバー PC の `dist\` にコピーします。`dist\` は `server\` と同じ階層に作ります（例: `C:\HakobiServer\dist\`）。USB メモリなどで構いません。
+3. サーバー PC の `server\` フォルダで `npm run publish:desktop` を実行します。サーバーの `server\.env` の `TODO_DESKTOP_DIST` へ公開されます。グループごとの env ファイルを使っている場合は、`npm run publish:desktop -- --to <配布フォルダ>` と指定します。
+4. ブラウザで `http://<サーバー>:4577/download` を開き、新しいバージョンになったことを確かめます。
+
+- サーバー PC の `server\` は 1.0.5 以降のもの（`server\scripts\publish-desktop.ts` があるもの）にしておきます。
+- サーバー PC にルートの `package.json` があると、そのバージョンと照合します。古いままだと公開が止まるので、新しいものに置き換えるか、`npm run publish:desktop -- --expect-version 1.0.5` のように指定します。ルートの `package.json` がなければ照合しません。
+
 配布できないときは、管理者でログインして設定の「デスクトップ版（Windows）」を開くと理由が出ます。サーバーのログにも `[desktop]` で始まる行が出ます。理由には配布フォルダのパスが含まれるため、管理者にだけ表示します。設定のこの欄には、メンバーに案内するダウンロードページの URL も出ます。サーバー PC で `http://localhost:4577` から開いた場合は、ほかの PC では使えない URL になるため注意が出ます。メンバーにはサーバーの IP アドレス（例: `http://192.168.1.10:4577/download`）を案内してください。
 
 メンバーに見えるもの:

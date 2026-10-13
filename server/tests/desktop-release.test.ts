@@ -5,6 +5,7 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { Readable } from 'node:stream'
 import test from 'node:test'
 import express from 'express'
 import {
@@ -217,6 +218,36 @@ test('正しい配布物はログインなしで情報とファイルを返す�
   assert.equal(unsatisfiable.status, 416)
   assert.equal(unsatisfiable.headers.get('content-range'), `bytes */${fixture.content.length}`)
   await unsatisfiable.arrayBuffer()
+})
+
+test('送信の途中で読み込みに失敗したら、接続を閉じてダウンロードを止める', async (t) => {
+  const fixture = writeRelease(path.join(tempDir(t), 'dist-desktop'))
+  const server = await startServer(t, fixture.dir)
+  // send が使う fs.createReadStream を、このファイルだけ「少し送ってから読めなくなる」ものに差し替える
+  const original = fs.createReadStream
+  const target = path.join(fixture.dir, fixture.fileName)
+  ;(fs as { createReadStream: unknown }).createReadStream = (file: fs.PathLike, options?: unknown) => {
+    if (String(file) !== target) return (original as (...args: unknown[]) => fs.ReadStream)(file, options)
+    let sent = false
+    return new Readable({
+      read() {
+        if (sent) return
+        sent = true
+        this.push(fixture.content.subarray(0, 1024))
+        setTimeout(() => this.destroy(Object.assign(new Error('simulated read failure'), { code: 'EIO' })), 50)
+      }
+    })
+  }
+  t.after(() => { (fs as { createReadStream: unknown }).createReadStream = original })
+
+  const failure = await (async () => {
+    const response = await fetch(`${server.origin}/api/desktop-release/download`, { signal: AbortSignal.timeout(5000) })
+    assert.equal(response.status, 200)
+    await response.arrayBuffer()
+    return null
+  })().catch((error: Error) => error)
+  assert.ok(failure, '途中で読めなくなったのに、ダウンロードが完了扱いになった')
+  assert.notEqual(failure.name, 'TimeoutError', '接続が開いたままでダウンロードが止まらない')
 })
 
 test('latest.yml とインストーラーが食い違うものは配布しない', async (t) => {
@@ -468,6 +499,19 @@ test('publish:desktop は中身やバージョンが合わないものを公開�
   const ok = runPublish(['--from', current, '--to', target])
   assert.equal(ok.status, 0, ok.stdout + ok.stderr)
   assert.ok((await verifyDesktopRelease(target)).ok)
+
+  // 配布中のファイルをその場で差し替えると、確認済みでない中身を送るおそれがある
+  const servedBefore = fs.readFileSync(path.join(target, `HAKOBI-${rootVersion}-setup.exe`))
+  const servedYml = fs.readFileSync(path.join(target, 'latest.yml'), 'utf8')
+  const rebuilt = path.join(root, 'rebuilt')
+  writeBuildOutput(rebuilt, rootVersion)
+  const sameVersion = runPublish(['--from', rebuilt, '--to', target])
+  assert.equal(sameVersion.status, 1, sameVersion.stdout + sameVersion.stderr)
+  assert.match(sameVersion.stderr, /同じバージョン [0-9.]+ で中身の違うインストーラーは公開できません/)
+  assert.ok(fs.readFileSync(path.join(target, `HAKOBI-${rootVersion}-setup.exe`)).equals(servedBefore), '配布中のインストーラーは変えない')
+  assert.equal(fs.readFileSync(path.join(target, 'latest.yml'), 'utf8'), servedYml)
+  const again = runPublish(['--from', current, '--to', target])
+  assert.equal(again.status, 0, `同じ中身の公開し直しはできる: ${again.stdout}${again.stderr}`)
 
   const sameFolder = runPublish(['--from', target, '--to', target])
   assert.equal(sameFolder.status, 1)

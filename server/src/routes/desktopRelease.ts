@@ -58,6 +58,8 @@ export function createDesktopReleaseRouter(dir: string): Router {
         if (error.code !== 'ECONNABORTED' && error.code !== 'ECONNRESET') {
           console.warn(`[desktop] ${fileName} の送信に失敗しました: ${error.code ?? error.message}`)
         }
+        // コールバックを渡すと Express は接続を閉じないので、途中で切ってダウンロードを失敗させる（開いたまま止まらないように）
+        res.destroy()
         return
       }
       if (error.status === 412 || error.status === 416) {

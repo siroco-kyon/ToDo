@@ -138,8 +138,11 @@ async function publish(options: PublishOptions): Promise<DesktopRelease> {
   const current = await verifyDesktopRelease(to)
   if (current.ok) {
     console.log(`現在の公開: HAKOBI ${current.release.version}`)
-    if (current.release.version === release.version && current.release.sha512 !== release.sha512) {
-      console.warn(`注意: 中身の違う HAKOBI ${release.version} で置き換えます。インストール済みのPCには新しいバージョンとして通知されません。`)
+    // 配布中のファイルをその場で書き換えると、確認済みでない中身を送ってしまうおそれがある。
+    // インストール済みのPCにも新しい版として伝わらないので、バージョンを上げてもらう。
+    if (current.release.fileName === release.fileName && current.release.sha512 !== release.sha512) {
+      throw new PublishError(`同じバージョン ${release.version} で中身の違うインストーラーは公開できません。` +
+        'package.json の version を上げて npm run dist で作り直してください')
     }
   }
 
