@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { dateStamp, downloadCsv, toCsv } from '../lib/csv'
 import { diffDaysFromToday, getDueDateColor, isoToDateKey, toDateKey } from '../lib/dueDate'
-import { LIKE_EMOJI } from './LikeButton'
+import { MentionTextarea } from './MentionTextarea'
 import { ProgressNoteThread, discussionBadgeStyle } from './ProgressNoteThread'
 import { ProgressSlider } from './ProgressSlider'
 import { getOnHoldInfo } from '../lib/onHold'
@@ -803,21 +803,23 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     }
   }, [load, onShowToast])
 
-  // 送信中のいいね対象。連打で toggle が交錯しないようガードする
+  // 送信中のリアクション（対象と絵文字）。連打で toggle が交錯しないようガードする
   const pendingReactionsRef = useRef<Set<string>>(new Set())
 
-  const toggleLike = useCallback(async (
+  const toggleReaction = useCallback(async (
     id: string,
+    emoji: string,
     action: (id: string, emoji: string) => Promise<ProgressNote>
   ): Promise<void> => {
-    if (pendingReactionsRef.current.has(id)) return
-    pendingReactionsRef.current.add(id)
+    const key = `${id}:${emoji}`
+    if (pendingReactionsRef.current.has(key)) return
+    pendingReactionsRef.current.add(key)
     try {
-      patchNote(await action(id, LIKE_EMOJI))
+      patchNote(await action(id, emoji))
     } catch (error) {
-      onShowToast(error instanceof Error ? error.message : 'いいねを更新できませんでした', 'error')
+      onShowToast(error instanceof Error ? error.message : 'リアクションを更新できませんでした', 'error')
     } finally {
-      pendingReactionsRef.current.delete(id)
+      pendingReactionsRef.current.delete(key)
     }
   }, [onShowToast, patchNote])
 
@@ -892,8 +894,8 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     onCreateNote: createNote,
     onUpdateNote: updateNote,
     onDeleteNote: (noteId) => void deleteNote(noteId),
-    onToggleNoteLike: (noteId) => void toggleLike(noteId, (id, emoji) => window.api.progressNoteReactionToggle(id, emoji)),
-    onToggleCommentLike: (commentId) => void toggleLike(commentId, (id, emoji) => window.api.progressNoteCommentReactionToggle(id, emoji)),
+    onToggleNoteReaction: (noteId, emoji) => void toggleReaction(noteId, emoji, (id, value) => window.api.progressNoteReactionToggle(id, value)),
+    onToggleCommentReaction: (commentId, emoji) => void toggleReaction(commentId, emoji, (id, value) => window.api.progressNoteCommentReactionToggle(id, value)),
     onReply: replyNote,
     onToggleDiscussion: (noteId, value) => void toggleDiscussion(noteId, value),
     onUpdateTask: updateTask,
@@ -901,8 +903,10 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     onCreateSubTask: createSubTask,
     onSelectTodo,
     onShowToast,
-    users
-  }), [canModifyNote, createNote, createSubTask, deleteNote, onSelectTodo, onShowToast, replyNote, toggleDiscussion, toggleLike, updateNote, updateSubTask, updateTask, users])
+    users,
+    // 「@」の候補（自分を呼んでも通知は届かないので外す）
+    mentionUsers: users.filter((user) => user.id !== currentUser?.id)
+  }), [canModifyNote, createNote, createSubTask, currentUser, deleteNote, onSelectTodo, onShowToast, replyNote, toggleDiscussion, toggleReaction, updateNote, updateSubTask, updateTask, users])
 
   const handleCopyMarkdown = async (): Promise<void> => {
     try {
@@ -1156,8 +1160,8 @@ interface ReportCardActions {
   onCreateNote: (todo: Todo, body: string, needsDiscussion: boolean) => Promise<boolean>
   onUpdateNote: (noteId: string, body: string) => Promise<boolean>
   onDeleteNote: (noteId: string) => void
-  onToggleNoteLike: (noteId: string) => void
-  onToggleCommentLike: (commentId: string) => void
+  onToggleNoteReaction: (noteId: string, emoji: string) => void
+  onToggleCommentReaction: (commentId: string, emoji: string) => void
   onReply: (noteId: string, body: string, parentCommentId: string | null) => Promise<boolean>
   onToggleDiscussion: (noteId: string, value: boolean) => void
   onUpdateTask: (todo: Todo, data: UpdateTodoInput, successMessage: string) => Promise<boolean>
@@ -1167,6 +1171,8 @@ interface ReportCardActions {
   onShowToast: (message: string, type?: 'success' | 'error') => void
   /** サブタスクの担当の選択肢（デスクトップ版は空） */
   users: PublicUser[]
+  /** 進捗ログ・返信で「@」を打ったときの候補（自分を除く） */
+  mentionUsers: PublicUser[]
 }
 
 /** 報告タブ用に操作をすべて有効にした進捗ログ表示 */
@@ -1176,8 +1182,9 @@ function InteractiveNote({ note, actions, showTask = false }: { note: ProgressNo
       note={note}
       showTask={showTask}
       onSelectTodo={actions.onSelectTodo}
-      onToggleLike={actions.onToggleNoteLike}
-      onToggleCommentLike={actions.onToggleCommentLike}
+      onToggleReaction={actions.onToggleNoteReaction}
+      onToggleCommentReaction={actions.onToggleCommentReaction}
+      mentionUsers={actions.mentionUsers}
       onReply={actions.onReply}
       onToggleDiscussion={actions.onToggleDiscussion}
       canModify={actions.canModifyNote(note)}
@@ -1695,16 +1702,17 @@ function ReportTaskCard({
 
         {composerOpen && (
           <div style={{ background: '#111827', border: '1px solid #334155', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <textarea
+            <MentionTextarea
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              onValueChange={setDraft}
+              users={actions.mentionUsers}
               onKeyDown={(event) => {
                 if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                   event.preventDefault()
                   void submitNote()
                 }
               }}
-              placeholder="今週やったこと・次にやること・困っていることなど（Ctrl+Enterで投稿）"
+              placeholder="今週やったこと・次にやること・困っていることなど（@で名前を呼ぶと通知・Ctrl+Enterで投稿）"
               rows={3}
               autoFocus
               aria-label="進捗ログ"

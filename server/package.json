@@ -10,6 +10,7 @@
     "test:progress-digest": "tsx --test tests/progress-digest.test.ts",
     "test:members": "tsx --test tests/member-delete.test.ts",
     "test:on-hold": "tsx --test tests/on-hold.test.ts",
+    "test:mention": "tsx --test tests/mention.test.ts",
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "test:overview": "tsx --test tests/overview.test.ts",

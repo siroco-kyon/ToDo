@@ -1,7 +1,8 @@
 import { LinkedText } from './LinkedText'
 import React, { useEffect, useRef, useState } from 'react'
-import { LikeButton, getLikeReaction } from './LikeButton'
-import type { ProgressNote, ProgressNoteComment } from '../types'
+import { ReactionBar, countReactions } from './LikeButton'
+import { MentionTextarea } from './MentionTextarea'
+import type { ProgressNote, ProgressNoteComment, PublicUser } from '../types'
 
 // 進捗ログ1件を、返信スレッドまで省略せずに表示するカード（報告タブ・概要で共通）。
 // 操作用のコールバックを渡したときだけ、いいね・返信・要相談・編集・削除ができる。渡さなければ表示専用。
@@ -13,8 +14,11 @@ interface Props {
   /** true のときタスク名を見出しに出す（タスク横断の一覧で使う） */
   showTask?: boolean
   onSelectTodo?: (id: string) => void
-  onToggleLike?: (noteId: string) => void
-  onToggleCommentLike?: (commentId: string) => void
+  /** リアクション（👍 🎉 👀 🙏）の付け外し */
+  onToggleReaction?: (noteId: string, emoji: string) => void
+  onToggleCommentReaction?: (commentId: string, emoji: string) => void
+  /** 返信で「@」を打ったときの候補（デスクトップ版は空） */
+  mentionUsers?: PublicUser[]
   /** 返信を投稿する。parentCommentId が null のときは進捗ログへの返信。成功したら true */
   onReply?: (noteId: string, body: string, parentCommentId: string | null) => Promise<boolean>
   /** 「要相談」の付け外し */
@@ -42,10 +46,12 @@ function getAuthorName(authorName: string | null): string {
 /** 返信の入力欄。Ctrl+Enter で送信、Esc で閉じる */
 function ReplyComposer({
   placeholder,
+  users,
   onSubmit,
   onCancel
 }: {
   placeholder: string
+  users: PublicUser[]
   onSubmit: (body: string) => Promise<boolean>
   onCancel: () => void
 }): React.JSX.Element {
@@ -63,9 +69,10 @@ function ReplyComposer({
 
   return (
     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <textarea
+      <MentionTextarea
         value={draft}
-        onChange={(event) => setDraft(event.target.value)}
+        onValueChange={setDraft}
+        users={users}
         onKeyDown={(event) => {
           if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
             event.preventDefault()
@@ -90,14 +97,14 @@ function ReplyComposer({
 function CommentItem({
   comment,
   depth,
-  onToggleLike,
+  onToggleReaction,
   replyingToId,
   onStartReply,
   renderReplyComposer
 }: {
   comment: ProgressNoteComment
   depth: number
-  onToggleLike?: (commentId: string) => void
+  onToggleReaction?: (commentId: string, emoji: string) => void
   replyingToId: string | null
   onStartReply?: (commentId: string) => void
   renderReplyComposer: (comment: ProgressNoteComment) => React.ReactNode
@@ -112,9 +119,9 @@ function CommentItem({
           <span style={{ color: authorColor, fontWeight: 700 }}>{getAuthorName(comment.author_name)}</span>
           <span style={{ color: '#64748b' }}>{formatDateTime(comment.created_at)}</span>
           {comment.updated_at !== comment.created_at && <span style={{ color: '#475569' }}>編集済み</span>}
-          <LikeButton
-            reaction={getLikeReaction(comment)}
-            onClick={onToggleLike ? () => onToggleLike(comment.id) : undefined}
+          <ReactionBar
+            reactions={comment.reactions}
+            onToggle={onToggleReaction ? (emoji) => onToggleReaction(comment.id, emoji) : undefined}
           />
           {onStartReply && replyingToId !== comment.id && (
             <button onClick={() => onStartReply(comment.id)} style={inlineActionStyle}>返信</button>
@@ -132,7 +139,7 @@ function CommentItem({
               key={reply.id}
               comment={reply}
               depth={depth + 1}
-              onToggleLike={onToggleLike}
+              onToggleReaction={onToggleReaction}
               replyingToId={replyingToId}
               onStartReply={onStartReply}
               renderReplyComposer={renderReplyComposer}
@@ -148,8 +155,9 @@ export function ProgressNoteThread({
   note,
   showTask = false,
   onSelectTodo,
-  onToggleLike,
-  onToggleCommentLike,
+  onToggleReaction,
+  onToggleCommentReaction,
+  mentionUsers = [],
   onReply,
   onToggleDiscussion,
   canModify = false,
@@ -186,6 +194,7 @@ export function ProgressNoteThread({
   const renderCommentReplyComposer = (comment: ProgressNoteComment): React.ReactNode => (
     <ReplyComposer
       placeholder={`${getAuthorName(comment.author_name)}さんに返信`}
+      users={mentionUsers}
       onSubmit={(body) => submitReply(body, comment.id)}
       onCancel={() => setReplyingTo(null)}
     />
@@ -249,9 +258,9 @@ export function ProgressNoteThread({
         </div>
       )}
 
-      {!editing && (onToggleLike || getLikeReaction(note) || onReply || onToggleDiscussion || canEdit || canDelete) && (
+      {!editing && (onToggleReaction || countReactions(note) > 0 || onReply || onToggleDiscussion || canEdit || canDelete) && (
         <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <LikeButton reaction={getLikeReaction(note)} onClick={onToggleLike ? () => onToggleLike(note.id) : undefined} />
+          <ReactionBar reactions={note.reactions} onToggle={onToggleReaction ? (emoji) => onToggleReaction(note.id, emoji) : undefined} />
           {onReply && replyingTo !== 'note' && (
             <button onClick={() => setReplyingTo('note')} style={inlineActionStyle}>返信</button>
           )}
@@ -274,7 +283,7 @@ export function ProgressNoteThread({
               key={comment.id}
               comment={comment}
               depth={0}
-              onToggleLike={onToggleCommentLike}
+              onToggleReaction={onToggleCommentReaction}
               replyingToId={replyingTo}
               onStartReply={onReply ? (commentId) => setReplyingTo(commentId) : undefined}
               renderReplyComposer={renderCommentReplyComposer}
@@ -285,7 +294,8 @@ export function ProgressNoteThread({
 
       {replyingTo === 'note' && (
         <ReplyComposer
-          placeholder="この進捗ログに返信（Ctrl+Enterで送信）"
+          placeholder={mentionUsers.length > 0 ? 'この進捗ログに返信（@で名前を呼ぶと通知・Ctrl+Enterで送信）' : 'この進捗ログに返信（Ctrl+Enterで送信）'}
+          users={mentionUsers}
           onSubmit={(body) => submitReply(body, null)}
           onCancel={() => setReplyingTo(null)}
         />

@@ -1,7 +1,10 @@
 import { LinkedText } from './LinkedText'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProgressNote, ProgressNoteComment, PublicUser, Todo } from '../types'
-import { LIKE_EMOJI, LikeButton, getLikeReaction } from './LikeButton'
+import { ReactionBar, countReactions } from './LikeButton'
+import { MentionTextarea } from './MentionTextarea'
+import { isAddressedToUser, isUnseen, noteHasUnseen, readProgressSeenAt, writeProgressSeenAt } from '../lib/progressActivity'
+import { serverNow } from '../lib/serverClock'
 import { NoteMenu, discussionBadgeStyle } from './ProgressNoteThread'
 import { subscribeProgressDraftChanges } from '../lib/legacyProgressDrafts'
 
@@ -26,6 +29,8 @@ interface Props {
 
 const NO_HIDDEN_TODOS = new Set<string>()
 type SortMode = 'newest' | 'oldest' | 'todo' | 'category' | 'author'
+/** 件数チップで絞り込む条件 */
+type TimelineFilter = 'all' | 'unseen' | 'mine' | 'myTasks' | 'discussion' | 'noReaction'
 interface TimelineRange {
   from: string
   to: string
@@ -102,6 +107,19 @@ function getWeekRange(): TimelineRange {
 function getDateKeyFromIso(iso: string): string {
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? iso.slice(0, 10) : formatDateKey(date)
+}
+
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
+
+/** 日付の区切りの見出し（今日・昨日・10/11（土）） */
+function dayHeading(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  const label = `${month}/${day}（${WEEKDAYS[date.getDay()]}）`
+  const today = getTodayKey()
+  if (dateKey === today) return `今日 ${label}`
+  if (dateKey === addDays(today, -1)) return `昨日 ${label}`
+  return label
 }
 
 function isInRange(dateKey: string, range: TimelineRange): boolean {
@@ -208,6 +226,17 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   }, [lastTodoKey])
   const [focusedNoteId, setFocusedNoteId] = useState<string | null>(null)
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null)
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all')
+  // 前回このタブを見た時刻。表示中は固定し、それより後にほかの人が書いたものに「新着」を付ける。
+  // 開いた時点と離れる時点で今の時刻（サーバーの時計）を覚えるので、次に開いたときは新しい分だけが新着になる
+  const userId = currentUser?.id ?? null
+  const [seenBefore] = useState<string | null>(() => userId ? readProgressSeenAt(userId) : null)
+  useEffect(() => {
+    if (!userId) return undefined
+    const markSeen = (): void => { writeProgressSeenAt(userId, new Date(serverNow()).toISOString()) }
+    markSeen()
+    return markSeen
+  }, [userId])
   const draftSuffix = currentUser?.id ? `:${currentUser.id}` : ''
   const [noteDrafts, setNoteDrafts] = useStoredDrafts(`progress-timeline-note-drafts${draftSuffix}`)
   const [savingNote, setSavingNote] = useState(false)
@@ -303,6 +332,8 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       if (date) setRange({ from: date, to: date })
       if (focusTarget.todoId) setSelectedTodoId(focusTarget.todoId)
       setSelectedAuthorId('')
+      // 通知から開いた投稿が件数チップで隠れないようにする
+      setTimelineFilter('all')
       setFocusedNoteId(focusTarget.noteId ?? null)
       setFocusedCommentId(focusTarget.commentId ?? null)
     }
@@ -384,30 +415,32 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
     }
   }
 
-  // 送信中のいいね対象。連打で toggle が交錯しないようガードする
+  // 送信中のリアクション（対象と絵文字）。連打で toggle が交錯しないようガードする
   const pendingReactionsRef = useRef<Set<string>>(new Set())
 
   const toggleReactionGuarded = async (
     id: string,
+    emoji: string,
     action: (id: string, emoji: string) => Promise<ProgressNote>
   ): Promise<void> => {
-    if (pendingReactionsRef.current.has(id)) return
-    pendingReactionsRef.current.add(id)
+    const key = `${id}:${emoji}`
+    if (pendingReactionsRef.current.has(key)) return
+    pendingReactionsRef.current.add(key)
     try {
-      const updated = await action(id, LIKE_EMOJI)
+      const updated = await action(id, emoji)
       setNotes((previous) => patchNote(previous, updated))
     } catch (error) {
-      onShowToast(error instanceof Error ? error.message : 'いいねを更新できませんでした', 'error')
+      onShowToast(error instanceof Error ? error.message : 'リアクションを更新できませんでした', 'error')
     } finally {
-      pendingReactionsRef.current.delete(id)
+      pendingReactionsRef.current.delete(key)
     }
   }
 
-  const handleToggleReaction = (noteId: string): Promise<void> =>
-    toggleReactionGuarded(noteId, (id, emoji) => window.api.progressNoteReactionToggle(id, emoji))
+  const handleToggleReaction = (noteId: string, emoji: string): Promise<void> =>
+    toggleReactionGuarded(noteId, emoji, (id, value) => window.api.progressNoteReactionToggle(id, value))
 
-  const handleToggleCommentReaction = (commentId: string): Promise<void> =>
-    toggleReactionGuarded(commentId, (id, emoji) => window.api.progressNoteCommentReactionToggle(id, emoji))
+  const handleToggleCommentReaction = (commentId: string, emoji: string): Promise<void> =>
+    toggleReactionGuarded(commentId, emoji, (id, value) => window.api.progressNoteCommentReactionToggle(id, value))
 
   const handleToggleDiscussion = async (noteId: string, value: boolean): Promise<void> => {
     const key = `discussion:${noteId}`
@@ -475,10 +508,49 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
     [notes, hiddenTodoIds, selectedAuthorId, sortMode, range]
   )
   const totalComments = visibleNotes.reduce((sum, note) => sum + countComments(note.comments ?? []), 0)
+
+  // 件数チップ（期間・投稿者で絞った中から、さらに絞る）
+  const myTaskIds = useMemo(() => new Set(
+    userId == null ? [] : todos
+      .filter((todo) => todo.assignee_id === userId || (todo.co_assignees ?? []).some((item) => item.user_id === userId))
+      .map((todo) => todo.id)
+  ), [todos, userId])
+  const matchesTimelineFilter = (note: ProgressNote, filter: TimelineFilter): boolean => {
+    switch (filter) {
+      case 'all': return true
+      case 'unseen': return userId != null && noteHasUnseen(note, userId, seenBefore)
+      case 'mine': return currentUser != null && isAddressedToUser(note, currentUser)
+      case 'myTasks': return myTaskIds.has(note.todo_id)
+      case 'discussion': return note.needs_discussion === 1
+      case 'noReaction': return userId != null && note.user_id !== userId && (note.comments ?? []).length === 0 && countReactions(note) === 0
+    }
+  }
+  const filterChips: Array<{ value: TimelineFilter; label: string; title: string; color: string }> = [
+    { value: 'all', label: 'すべて', title: '絞り込まずに表示', color: '#cbd5e1' },
+    ...(userId ? [
+      { value: 'unseen' as const, label: '新着', title: '前回このタブを見たあとに、ほかの人が書いた投稿・返信があるもの', color: '#93c5fd' },
+      { value: 'mine' as const, label: '自分宛て', title: '自分の投稿・返信への返信、または「@自分」でメンションされたもの', color: '#f9a8d4' },
+      { value: 'myTasks' as const, label: '自分の担当タスク', title: '自分が主担当・サブ担当のタスクへの投稿', color: '#86efac' }
+    ] : []),
+    { value: 'discussion', label: '要相談', title: '「要相談」が付いた投稿', color: '#d6b38a' },
+    ...(userId ? [{ value: 'noReaction' as const, label: 'まだ反応なし', title: 'ほかの人の投稿で、まだ返信もリアクションもないもの。ひとこと反応してみましょう', color: '#fde68a' }] : [])
+  ]
+  const effectiveFilter: TimelineFilter = filterChips.some((chip) => chip.value === timelineFilter) ? timelineFilter : 'all'
+  const shownNotes = visibleNotes.filter((note) => matchesTimelineFilter(note, effectiveFilter))
+  const unseenCount = userId ? visibleNotes.filter((note) => noteHasUnseen(note, userId, seenBefore)).length : 0
+  // 並び順に合わせた区切りの見出し（時間順なら日付、それ以外はタスク・カテゴリ・投稿者）
+  const groupHeadingOf = (note: ProgressNote): string => {
+    if (sortMode === 'newest' || sortMode === 'oldest') return dayHeading(getDateKeyFromIso(note.last_activity_at))
+    if (sortMode === 'todo') return note.todo_title
+    if (sortMode === 'category') return note.category_name ?? '未分類'
+    return getAuthorName(note.author_name)
+  }
   const today = getTodayKey()
   const weekRange = getWeekRange()
   const isTodayRange = range.from === today && range.to === today
   const isWeekRange = range.from === weekRange.from && range.to === weekRange.to
+  // 「@」の候補（自分を呼んでも通知は届かないので外す）
+  const mentionCandidates = useMemo(() => users.filter((user) => user.id !== userId), [userId, users])
   const currentAuthorName = currentUser?.display_name ?? '自分'
   const currentAuthorColor = currentUser?.color ?? '#6366f1'
 
@@ -493,9 +565,10 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       <div style={composerRowStyle(parentComment ? 1 : 0)}>
         <Avatar name={currentAuthorName} color={currentAuthorColor} size={30} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <textarea
+          <MentionTextarea
             value={value}
-            onChange={(event) => setCommentDrafts((previous) => ({ ...previous, [key]: event.target.value }))}
+            onValueChange={(next) => setCommentDrafts((previous) => ({ ...previous, [key]: next }))}
+            users={mentionCandidates}
             onKeyDown={(event) => {
               if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                 event.preventDefault()
@@ -548,6 +621,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
             <span style={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 800 }}>{authorName}</span>
             <span style={{ color: '#64748b', fontSize: '0.72rem' }}>{formatDateTime(comment.created_at)}</span>
             {comment.updated_at !== comment.created_at && <span style={editedStyle}>編集済み</span>}
+            {userId && isUnseen(comment, userId, seenBefore) && <span style={newBadgeStyle}>新着</span>}
           </div>
 
           {editingThisComment ? (
@@ -570,7 +644,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
 
           {!editingThisComment && (
             <div style={commentActionRowStyle}>
-              <LikeButton reaction={getLikeReaction(comment)} onClick={() => void handleToggleCommentReaction(comment.id)} />
+              <ReactionBar reactions={comment.reactions} onToggle={(emoji) => void handleToggleCommentReaction(comment.id, emoji)} />
               <button onClick={() => setReplyingToCommentId(comment.id)} style={inlineActionStyle}>返信</button>
               {replies.length > 0 && <span style={actionMetaStyle}>返信 {countComments(replies)}</span>}
               {canModifyComment(comment) && (
@@ -600,6 +674,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
           <div style={{ fontSize: '1rem', color: '#f8fafc', fontWeight: 800 }}>進捗タイムライン</div>
           <div style={{ marginTop: 3, color: '#64748b', fontSize: '0.78rem' }}>
             {range.from === range.to ? range.from : `${range.from} ～ ${range.to}`} ・ 投稿 {visibleNotes.length}件 / コメント {totalComments}件
+            {unseenCount > 0 && <span style={{ color: '#93c5fd', fontWeight: 700 }}> ・ 新着 {unseenCount}件</span>}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -647,6 +722,25 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
           )}
           <button onClick={() => void load()} style={secondaryButtonStyle}>更新</button>
         </div>
+        <div role="group" aria-label="件数で絞り込み" style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {filterChips.map((chip) => {
+            const count = chip.value === 'all' ? visibleNotes.length : visibleNotes.filter((note) => matchesTimelineFilter(note, chip.value)).length
+            const active = effectiveFilter === chip.value
+            const muted = chip.value !== 'all' && count === 0
+            return (
+              <button
+                key={chip.value}
+                onClick={() => setTimelineFilter(active && chip.value !== 'all' ? 'all' : chip.value)}
+                disabled={muted && !active}
+                aria-pressed={active}
+                title={muted ? `${chip.label}の投稿はありません` : `${chip.title}${active ? '（もう一度押すと解除）' : ''}`}
+                style={filterChipStyle(chip.color, active, muted)}
+              >
+                {chip.label} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{count}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -676,17 +770,18 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                   </>
                 )}
               </select>
-              <textarea
+              <MentionTextarea
                 value={noteDraft}
                 disabled={!selectedTodoId}
-                onChange={(event) => setNoteDraft(event.target.value)}
+                onValueChange={setNoteDraft}
+                users={mentionCandidates}
                 onKeyDown={(event) => {
                   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                     event.preventDefault()
                     void handleCreateNote()
                   }
                 }}
-                placeholder={selectedTodoId ? '今日の進捗を共有（Ctrl+Enterで投稿）' : '先に上でタスクを選んでください'}
+                placeholder={selectedTodoId ? `今日の進捗を共有（${users.length > 0 ? '@で名前を呼ぶと通知・' : ''}Ctrl+Enterで投稿）` : '先に上でタスクを選んでください'}
                 rows={3}
                 style={{ ...postInputStyle, minHeight: 88 }}
               />
@@ -701,16 +796,28 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
 
           {loading && <div style={emptyStyle}>読み込み中...</div>}
           {!loading && visibleNotes.length === 0 && <div style={emptyStyle}>選択した期間・投稿者の進捗ログはまだありません。</div>}
+          {!loading && visibleNotes.length > 0 && shownNotes.length === 0 && (
+            <div style={emptyStyle}>
+              条件に合う進捗ログはありません。
+              <button onClick={() => setTimelineFilter('all')} style={{ ...inlineActionStyle, marginLeft: 8 }}>すべて表示</button>
+            </div>
+          )}
 
-          {!loading && visibleNotes.map((note) => {
+          {!loading && shownNotes.map((note, index) => {
             const authorName = getAuthorName(note.author_name)
             const authorColor = note.author_color ?? '#64748b'
             const editingNote = editingNoteId === note.id
             const comments = note.comments ?? []
             const commentCount = countComments(comments)
+            const heading = groupHeadingOf(note)
+            const showHeading = index === 0 || groupHeadingOf(shownNotes[index - 1]) !== heading
+            const noteIsNew = userId != null && isUnseen(note, userId, seenBefore)
+            const hasNewReply = !noteIsNew && userId != null && noteHasUnseen(note, userId, seenBefore)
 
             return (
-              <article id={noteElementId(note.id)} key={note.id} style={postStyle}>
+              <React.Fragment key={note.id}>
+              {showHeading && <div style={groupHeadingStyle}>{heading}</div>}
+              <article id={noteElementId(note.id)} style={{ ...postStyle, boxShadow: noteIsNew || hasNewReply ? 'inset 3px 0 0 #3b82f6' : undefined }}>
                 <div style={{ position: 'relative', width: 52, display: 'flex', justifyContent: 'center' }}>
                   {comments.length > 0 && <div style={{ ...verticalLineStyle, top: 48 }} />}
                   <Avatar name={authorName} color={authorColor} size={42} />
@@ -726,6 +833,8 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                     {note.needs_discussion === 1 && (
                       <span style={discussionBadgeStyle}>要相談</span>
                     )}
+                    {noteIsNew && <span style={newBadgeStyle}>新着</span>}
+                    {hasNewReply && <span style={newBadgeStyle}>新しい返信</span>}
                     <button onClick={() => onSelectTodo(note.todo_id)} style={{ ...taskLinkStyle, color: note.category_color ?? '#93c5fd' }}>{note.todo_title}</button>
                   </div>
                   {note.category_name && (
@@ -748,7 +857,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
 
                   {!editingNote && (
                     <div style={postActionRowStyle}>
-                      <LikeButton reaction={getLikeReaction(note)} onClick={() => void handleToggleReaction(note.id)} />
+                      <ReactionBar reactions={note.reactions} onToggle={(emoji) => void handleToggleReaction(note.id, emoji)} />
                       <span style={actionMetaStyle}>コメント {commentCount}</span>
                       <button onClick={() => setCommentingOnNoteId(note.id)} style={inlineActionStyle}>返信</button>
                       {/* 報告タブと同じく、要相談・編集・削除は ⋯ にまとめる */}
@@ -775,6 +884,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                   </div>
                 </div>
               </article>
+              </React.Fragment>
             )
           })}
         </div>
@@ -805,6 +915,45 @@ function Avatar({ name, color, size }: { name: string; color: string; size: numb
       {getInitial(name)}
     </div>
   )
+}
+
+const newBadgeStyle: React.CSSProperties = {
+  fontSize: '0.66rem',
+  fontWeight: 800,
+  color: '#bfdbfe',
+  background: '#1e3a8a',
+  border: '1px solid #3b82f6',
+  borderRadius: 999,
+  padding: '0 7px',
+  whiteSpace: 'nowrap'
+}
+
+// 日付（またはタスク・カテゴリ・投稿者）の区切り。スクロールしても上に残す
+const groupHeadingStyle: React.CSSProperties = {
+  position: 'sticky',
+  top: 0,
+  zIndex: 2,
+  padding: '6px 16px',
+  background: '#0f172a',
+  borderBottom: '1px solid #1e293b',
+  color: '#94a3b8',
+  fontSize: '0.74rem',
+  fontWeight: 800,
+  letterSpacing: '0.02em'
+}
+
+function filterChipStyle(color: string, active: boolean, muted: boolean): React.CSSProperties {
+  return {
+    fontSize: '0.74rem',
+    color: muted ? '#475569' : active ? '#0f172a' : color,
+    background: active ? color : '#111827',
+    border: `1px solid ${active ? color : muted ? '#1f2937' : `${color}55`}`,
+    borderRadius: 999,
+    padding: '3px 10px',
+    fontWeight: 700,
+    cursor: muted && !active ? 'default' : 'pointer',
+    whiteSpace: 'nowrap'
+  }
 }
 
 const headerStyle: React.CSSProperties = {

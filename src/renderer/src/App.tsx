@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AddDailyPlanItemOptions, Category, CreateSubTaskInput, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateSubTaskInput, UpdateTodoInput, UserNotification } from './types'
 import { useTimer } from './hooks/useTimer'
+import { useProgressUnseenCount } from './hooks/useProgressUnseenCount'
 import { Toolbar } from './components/Toolbar'
 import { CategoryList } from './components/CategoryList'
 import { TodoList } from './components/TodoList'
@@ -505,6 +506,8 @@ export function App(): React.JSX.Element {
       : new Set<string>(),
     [privateCategoryIds, scopeLens, todos]
   )
+  // 上部の「進捗」タブに出す新着の件数（サーバー版のみ。進捗タブを開いている間は 0）
+  const progressUnseenCount = useProgressUnseenCount(users.length > 0 ? currentUser?.id ?? null : null, activeView === 'progress', hiddenPrivateTodoIds)
   // レンズ以外の検索・担当・カテゴリ絞り込みとは分離し、詳細や依存候補にも同じ集合を使う。
   const lensTodos = useMemo(
     () => hiddenPrivateTodoIds.size === 0 ? todos : todos.filter((todo) => !hiddenPrivateTodoIds.has(todo.id)),
@@ -1105,6 +1108,7 @@ export function App(): React.JSX.Element {
         showCategoryPane={showCategoryPane}
         showTaskPane={showTaskPane}
         showTeamButton={multiUser}
+        progressUnseenCount={progressUnseenCount}
         currentUser={currentUser}
         notificationUnreadCount={notificationUnreadCount}
         onOpenNotifications={multiUser ? openNotifications : undefined}
