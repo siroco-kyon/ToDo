@@ -283,6 +283,10 @@ const api = {
   },
   onNotificationsChanged: (_cb: (unreadCount: number) => void): (() => void) => {
     return () => {}
+  },
+  // Only the team desktop opens notifications from the OS; personal mode has no inbox.
+  onOpenNotification: (_cb: (notificationId: string | null) => void): (() => void) => {
+    return () => {}
   }
 }
 

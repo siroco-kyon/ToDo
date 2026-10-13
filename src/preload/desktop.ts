@@ -13,6 +13,8 @@ const bridge: DesktopBridge = {
   hideWindow: () => ipcRenderer.invoke('hakobi:hide'),
   resizeTimer: (compact) => ipcRenderer.invoke('hakobi:resize-timer', compact),
   publishState: (state) => ipcRenderer.invoke('hakobi:state', state),
+  notify: (notification) => ipcRenderer.invoke('hakobi:notify', notification),
+  showError: (message) => ipcRenderer.invoke('hakobi:error', message),
   onCommand: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, command: DesktopCommand): void => listener(command)
     ipcRenderer.on('hakobi:command', handler)

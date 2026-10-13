@@ -11,7 +11,7 @@ import { loadAppIcon } from './icon'
 import { isFirstLaunch } from './config'
 import { checkDueNotifications } from './notifications'
 import { DesktopController } from './desktop-controller'
-import { WINDOWS_APP_ID } from './windows-branding'
+import { parseLaunchAction, WINDOWS_APP_ID } from './windows-branding'
 
 let mainWindow: BrowserWindow | null = null
 let ganttWindow: BrowserWindow | null = null
@@ -305,10 +305,13 @@ function openTodoInMainWindow(todoId: string): void {
 if (!gotSingleInstanceLock) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
     debugLog('second-instance')
     if (desktopController) {
-      desktopController.reveal()
+      // Taskbar jump list entries start a second instance carrying their action.
+      const action = parseLaunchAction(argv)
+      if (action) desktopController.runLaunchAction(action)
+      else desktopController.reveal()
       return
     }
     if (!mainWindow) {
@@ -362,6 +365,8 @@ if (!gotSingleInstanceLock) {
       mainWindow?.focus()
     })
     desktopController.start()
+    const launchAction = parseLaunchAction(process.argv)
+    if (launchAction) desktopController.runLaunchAction(launchAction)
 
     app.on('activate', () => {
       if (desktopController) {

@@ -383,12 +383,13 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             {([
               ['showTimer', '起動時に右下タイマーを表示'],
               ['alwaysOnTop', 'タイマーを最前面に固定'],
-              ['hideTaskTitle', 'タイマーにタスク名を表示しない']
-            ] as const).map(([key, label]) => <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              ['hideTaskTitle', 'タイマーにタスク名を表示しない'],
+              ['showNotifications', '通知をデスクトップに表示']
+            ] as const).filter(([key]) => typeof desktopContext.preferences[key] === 'boolean').map(([key, label]) => <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" checked={desktopContext.preferences[key]} onChange={(event) => void saveDesktopPreference({ [key]: event.target.checked })} />{label}
             </label>)}
           </div>
-          <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 12 }}>接続先・タイマー・グローバルショートカットの設定は、このPCだけに保存されます。</p>
+          <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 12 }}>接続先・タイマー・通知・グローバルショートカットの設定は、このPCだけに保存されます。</p>
         </section>}
 
         {serverManaged && <section>

@@ -51,6 +51,8 @@ src/main/db.ts             SQLite アクセスと依存関係の連鎖処理
 src/main/ipc.ts            IPC ハンドラ
 src/main/config.ts         データ保存先
 src/main/shortcuts.ts      グローバルショートカット
+src/main/desktop-controller.ts チーム接続のウィンドウ・タイマー・トレイ・OS 通知・タスクバー
+src/main/desktop-glyphs.ts 未読バッジ・トレイの赤丸・タスクバーのボタン画像を生成（DB に依存しない icon-pixels.ts を使う）
 
 src/preload/index.ts       renderer に公開する API（Api 契約の定義元）
 
@@ -69,6 +71,8 @@ src/renderer/src/components/UserManagementModal.tsx 管理者用ユーザー管�
 web/main.tsx               window.api を HTTP/WS 実装で差し替える Web エントリ
 web/lib/client.ts          Api 契約の HTTP/WebSocket 実装
 web/auth/                  ログイン画面・認証ゲート・セッション
+web/desktop/DesktopCompanion.tsx 非表示のメイン画面で動き、トレイの状態・OS 通知・トレイからの計測操作を担当
+web/desktop/desktopFeed.ts OS 通知に出す新着の判定と、トレイ・タスクバーに出すタスクの選定
 
 server/src/index.ts        サーバー起動・静的配信・ルートのマウント
 server/src/config.ts       ポート・データ保存先・管理者・セッション設定
@@ -93,6 +97,8 @@ server/src/routes/         auth / data / users の REST ルート
 - 現在ユーザーの取得は `window.api.authGetCurrentUser()` を使う（デスクトップ版は `null` を返す）。`web/auth` の `useCurrentUser()` は Web 専用なので共通の `App.tsx` からは使わない
 - マルチユーザー判定は `users.length > 0`、管理者判定は `currentUser?.role === 'admin'`。どちらもデスクトップ版では false
 - 依存連鎖ロジックはサーバー版 `server/src/db/todos.ts` に同じものを移植している（両方を直す）
+- チーム接続のデスクトップ版の OS 通知・未読バッジ・トレイのタスク一覧は、非表示のメイン画面の `DesktopCompanion` が判定して `window.desktop` へ渡す。main 側はサーバー API を呼ばない。新着かどうかは端末の localStorage（`hakobi-desktop-notified:<userId>`）で判定し、初回は既存の通知を出さない
+- サーバーが配信する画面とインストール済みのデスクトップ版は別々に更新される。`DesktopBridge` に足したメソッドは任意（`notify?`）にして存在を確かめてから呼び、`DesktopState` に足した項目は古い画面が送らない前提で扱う
 - 報告タブの「期間中の変化」は変更履歴から計算する。タスクは `TodoChangeLogs`（`updateTodo` で記録）、サブタスクは `SubTaskChangeLogs`（`updateSubTask` で progress / due_date が変わったときだけ記録）。`todoChangeGetByRange` が両方を返し、`subtask_id` で区別する
 
 ## 注意点

@@ -50,11 +50,23 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const desiredVisibility = new Map()
 const dialogs = []
 const ownedIpcChannels = new Set()
+const trayImages = []
 class FixtureTray extends EventEmitter {
   setToolTip() {}
   setContextMenu() {}
+  setImage(image) { trayImages.push(image) }
   destroy() {}
 }
+// The real Notification class is used; only its availability is fixed so CI without a
+// notification daemon still exercises construction and show().
+const shownNotifications = []
+function FixtureNotification(options) {
+  const notification = new electron.Notification(options)
+  const show = notification.show.bind(notification)
+  notification.show = () => { shownNotifications.push(options); show() }
+  return notification
+}
+FixtureNotification.isSupported = () => true
 function HiddenWindow(options) {
   const window = new BrowserWindow({ ...options, show: false, webPreferences: {
     ...options.webPreferences, offscreen: true, backgroundThrottling: false
@@ -67,7 +79,7 @@ function HiddenWindow(options) {
   return window
 }
 globalThis.__hakobiNative = {
-  ...electron, BrowserWindow: HiddenWindow, Tray: FixtureTray,
+  ...electron, BrowserWindow: HiddenWindow, Tray: FixtureTray, Notification: FixtureNotification,
   ipcMain: { handle: (channel, handler) => { ownedIpcChannels.add(channel); electron.ipcMain.handle(channel, handler) } },
   globalShortcut: { register: () => true, unregisterAll: () => {} },
   dialog: { showMessageBox: async (...args) => { dialogs.push(args.at(-1)); return { response: 1 } } }
@@ -223,6 +235,24 @@ async function run() {
   await restartedTimer.webContents.executeJavaScript('window.desktop.resizeTimer(false)')
   assert.deepEqual(restartedTimer.getSize(), [430, 290], 'restart must preserve separate normal geometry')
   console.log('PASS real timer restart: persisted compact preference and both custom mode dimensions reloaded from isolated userData')
+
+  await restartedMain.webContents.executeJavaScript('window.desktop.publishState(' + JSON.stringify({ userId: 'native-fixture-user', taskId: null, taskTitle: '',
+    startTime: null, online: true, unreadCount: 12, recentTasks: [{ id: 'native-task', title: 'ネイティブ確認 & 計測' }] }) + ')')
+  assert.equal(trayImages.length, 1, 'unread notifications must replace the tray icon once')
+  assert.equal(trayImages[0].isEmpty(), false)
+  assert.deepEqual(trayImages[0].getSize(), { width: 64, height: 64 }, 'the generated badge icon must decode as a real native image')
+  await restartedMain.webContents.executeJavaScript('window.desktop.notify({ notificationId: "native-notification", title: "担当タスクが追加されました", body: "「ネイティブ確認」の担当に追加されました" })')
+  assert.equal(shownNotifications.length, 1)
+  assert.equal(shownNotifications[0].title, '担当タスクが追加されました')
+  await assert.rejects(() => restartedMain.webContents.executeJavaScript('window.desktop.notify({ title: "", body: "" })'), /不正/)
+  await restartedTimer.webContents.executeJavaScript('window.desktop.notify({ title: "別画面", body: "表示しない" })')
+  assert.equal(shownNotifications.length, 1, 'only the main window may publish OS notifications')
+  await restartedMain.webContents.executeJavaScript('window.desktop.showError("計測を開始できませんでした。ネイティブ確認")')
+  assert.equal(dialogs.at(-1).message, '計測を開始できませんでした。ネイティブ確認')
+  await restartedMain.webContents.executeJavaScript('window.desktop.publishState(' + JSON.stringify({ userId: 'native-fixture-user', taskId: null, taskTitle: '',
+    startTime: null, online: true, unreadCount: 0, recentTasks: [] }) + ')')
+  assert.equal(trayImages.length, 2)
+  console.log('PASS real native notifications: sandboxed bridge, generated tray badge, OS notification and error dialog')
   console.log('HAKOBI native Electron lifecycle checks passed')
   finish(0)
 }

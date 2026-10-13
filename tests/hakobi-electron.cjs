@@ -90,7 +90,7 @@ const commands = []
 let preferences = { showTimer: true, alwaysOnTop: true, hideTaskTitle: false,
   timerCompact: false,
   globalShortcutFocus: 'CommandOrControl+Alt+T', globalShortcutQuickAdd: 'CommandOrControl+Alt+N',
-  globalShortcutExport: 'CommandOrControl+Alt+E', globalShortcutProgress: 'CommandOrControl+Alt+P' }
+  globalShortcutExport: 'CommandOrControl+Alt+E', globalShortcutProgress: 'CommandOrControl+Alt+P', showNotifications: true }
 const context = () => ({ version: 1, serverVersion: 1, groupName: fixture.groupName, serverUrl: fixture.origin, preferences })
 ipcMain.handle('hakobi:context', context)
 ipcMain.handle('hakobi:preferences', (_event, patch) => {
@@ -99,6 +99,10 @@ ipcMain.handle('hakobi:preferences', (_event, patch) => {
   return preferences
 })
 ipcMain.handle('hakobi:state', (_event, state) => { states.push(state) })
+const osNotifications = []
+const nativeErrors = []
+ipcMain.handle('hakobi:notify', (_event, notification) => { osNotifications.push(notification) })
+ipcMain.handle('hakobi:error', (_event, message) => { nativeErrors.push(message) })
 for (const action of ['main', 'timer', 'progress', 'gantt', 'report', 'connection', 'hide']) {
   ipcMain.handle('hakobi:' + action, (_event, value) => { commands.push({ action, value }) })
 }
@@ -116,6 +120,14 @@ const launcherState = { mode: 'unset', profile: { id: 'smoke-group', name: fixtu
 ipcMain.handle('hakobi-launcher:state', () => launcherState)
 for (const action of ['connect', 'local', 'retry', 'cancel']) ipcMain.handle('hakobi-launcher:' + action, () => {})
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+async function waitFor(check, label) {
+  const deadline = Date.now() + 15000
+  while (Date.now() < deadline) {
+    if (check()) return
+    await delay(100)
+  }
+  throw new Error(label + ': ' + JSON.stringify(states.at(-1)))
+}
 async function until(window, expression, label) {
   const deadline = Date.now() + 15000
   while (Date.now() < deadline) {
@@ -276,11 +288,59 @@ async function run() {
   await delay(100)
   assert.ok(states.some((state) => state.userId === user.id && state.taskId === todo.id && state.online === true), 'Desktop main did not publish the tray state')
 
+  // The hidden main window feeds the tray and taskbar, and runs their timer commands on the server.
+  await waitFor(() => typeof states.at(-1).unreadCount === 'number' && Array.isArray(states.at(-1).recentTasks), 'Desktop main did not publish unread count and recent tasks')
+  const trayTodo = await main.webContents.executeJavaScript('window.api.todoCreate(' + JSON.stringify({ title: 'トレイから計測するタスク', assignee_id: user.id, status: 'active' }) + ')')
+  await waitFor(() => states.at(-1).recentTasks.some((task) => task.id === trayTodo.id), 'An assigned task in progress was not offered in the tray')
+  main.webContents.send('hakobi:command', { type: 'timer-start', todoId: trayTodo.id })
+  await waitFor(() => states.at(-1).taskId === trayTodo.id, 'Tray timer start did not reach the server')
+  assert.equal((await main.webContents.executeJavaScript('window.api.timerGetRunning()')).todo_id, trayTodo.id)
+  await until(timer, "document.querySelector('.task-title')?.textContent === " + JSON.stringify('トレイから計測するタスク'), 'Tray timer start did not reach the timer window')
+  assert.ok(!states.at(-1).recentTasks.some((task) => task.id === trayTodo.id), 'The running task must not be offered as a switch target')
+  main.webContents.send('hakobi:command', { type: 'timer-stop' })
+  await waitFor(() => states.at(-1).taskId === null, 'Tray timer stop did not reach the server')
+  assert.equal(await main.webContents.executeJavaScript('window.api.timerGetRunning()'), null)
+  await waitFor(() => states.at(-1).recentTasks[0]?.id === trayTodo.id, 'The task just timed did not become the first recent task')
+  const heldTodo = await main.webContents.executeJavaScript('window.api.todoCreate(' + JSON.stringify({ title: '保留中のタスク', assignee_id: user.id, status: 'on_hold' }) + ')')
+  main.webContents.send('hakobi:command', { type: 'timer-start', todoId: heldTodo.id })
+  await waitFor(() => nativeErrors.length > 0, 'A rejected tray timer start was not reported natively')
+  assert.match(nativeErrors[0], /^計測を開始できませんでした。.*保留/)
+  assert.equal(await main.webContents.executeJavaScript('window.api.timerGetRunning()'), null)
+
+  // A teammate's change becomes one OS notification; opening it behaves like the in-app list.
+  assert.equal(osNotifications.length, 0, 'Notifications that existed before the app started must not be replayed')
+  const member = { username: 'hakobi_smoke_member', password: 'hakobi-smoke-member-password', display_name: '動作確認メンバー' }
+  await main.webContents.executeJavaScript('window.api.userCreate(' + JSON.stringify(member) + ')')
+  const memberLogin = await fetch(fixture.origin + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: member.username, password: member.password }) })
+  assert.ok(memberLogin.ok, 'Member login failed')
+  const memberCookie = memberLogin.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ')
+  const unreadBefore = states.at(-1).unreadCount
+  const assigned = await fetch(fixture.origin + '/api/todos', { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: memberCookie },
+    body: JSON.stringify({ title: '通知から開くタスク', assignee_id: user.id, status: 'active' }) })
+  assert.ok(assigned.ok, 'Member could not assign a task')
+  await waitFor(() => osNotifications.length > 0, 'A new team notification did not reach the OS')
+  await delay(300)
+  assert.equal(osNotifications.length, 1)
+  assert.equal(osNotifications[0].title, '担当タスクが追加されました')
+  assert.match(osNotifications[0].body, /通知から開くタスク.*動作確認メンバー/)
+  assert.ok(osNotifications[0].notificationId)
+  await waitFor(() => states.at(-1).unreadCount === unreadBefore + 1, 'The badge count did not include the new notification')
+  main.webContents.send('hakobi:command', { type: 'open-notification', notificationId: osNotifications[0].notificationId })
+  await until(main, "Array.from(document.querySelectorAll('h2')).some((heading) => heading.textContent === " + JSON.stringify('通知から開くタスク') + ")", 'Opening the OS notification did not show its task')
+  await waitFor(() => states.at(-1).unreadCount === unreadBefore, 'Opening the OS notification did not mark it read')
+  main.webContents.send('hakobi:command', { type: 'open-notification' })
+  await until(main, "document.body.innerText.includes('すべて既読')", 'The tray could not open the notification list')
+  await main.webContents.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))")
+  await until(main, "!document.body.innerText.includes('すべて既読')", 'The notification list did not close')
+  assert.equal(osNotifications.length, 1, 'Reading a notification must not announce anything new')
+
   const legacyKey = 'progress-note-draft:' + todo.id
   const recoveredKey = 'progress-note-draft:' + user.id + ':' + todo.id
   await main.webContents.executeJavaScript('localStorage.setItem(' + JSON.stringify(legacyKey) + ', "以前のWeb版で書いた未投稿の文章")')
   await main.webContents.executeJavaScript("Array.from(document.querySelectorAll('button')).find((button) => button.textContent === '設定').click()")
   await until(main, "Boolean(document.querySelector('[role=dialog][aria-label=設定]'))", 'Settings did not open')
+  assert.ok(await main.webContents.executeJavaScript("document.body.innerText.includes('通知をデスクトップに表示')"), 'The desktop notification setting is missing')
   await main.webContents.executeJavaScript("Array.from(document.querySelectorAll('button')).find((button) => button.textContent === '旧版の下書きを確認・復元').click()")
   await until(main, "document.querySelector('[aria-label=旧版の下書きを復元]')?.innerText.includes('下書きの内容を確認する')", 'Legacy draft recovery did not load')
   assert.equal(await main.webContents.executeJavaScript('localStorage.getItem(' + JSON.stringify(recoveredKey) + ')'), null, 'Opening recovery silently claimed an old draft')

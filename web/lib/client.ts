@@ -110,6 +110,7 @@ const quickAddListeners = new Set<() => void>()
 const exportListeners = new Set<() => void>()
 const presenceListeners = new Set<(online: string[]) => void>()
 const notificationListeners = new Set<(unreadCount: number) => void>()
+const openNotificationListeners = new Set<(notificationId: string | null) => void>()
 const connectionListeners = new Set<(connected: boolean) => void>()
 let realtimeConnected = false
 
@@ -120,6 +121,8 @@ let realtimeWanted = false
 let pendingNavigation: string | null = null
 let pendingQuickAdd = false
 let pendingExport = false
+// undefined: nothing pending; null: open the list; string: open that notification.
+let pendingOpenNotification: string | null | undefined
 
 function emit<T>(listeners: Set<(arg: T) => void>, arg: T): void {
   for (const cb of [...listeners]) {
@@ -532,6 +535,15 @@ export const api: Api = {
   onNotificationsChanged: (cb) => {
     notificationListeners.add(cb)
     return () => notificationListeners.delete(cb)
+  },
+  onOpenNotification: (cb) => {
+    openNotificationListeners.add(cb)
+    if (pendingOpenNotification !== undefined) {
+      const notificationId = pendingOpenNotification
+      pendingOpenNotification = undefined
+      queueMicrotask(() => cb(notificationId))
+    }
+    return () => openNotificationListeners.delete(cb)
   }
 }
 
@@ -546,6 +558,10 @@ if (window.desktop) {
     } else if (command.type === 'navigate') {
       if (navigateTodoListeners.size) emit(navigateTodoListeners, command.todoId)
       else pendingNavigation = command.todoId
+    } else if (command.type === 'open-notification') {
+      const notificationId = command.notificationId ?? null
+      if (openNotificationListeners.size) emit(openNotificationListeners, notificationId)
+      else pendingOpenNotification = notificationId
     }
   })
 } else {

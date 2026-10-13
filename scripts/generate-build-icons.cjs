@@ -91,7 +91,7 @@ function drawRoundedRect(rgba, size, left, top, width, height, radius, color) {
 
 function generateIconRgba(size) {
   const rgba = Buffer.alloc(size * size * 4)
-  // Keep these shapes/colors in sync with src/main/icon.ts.
+  // Keep these shapes/colors in sync with src/main/icon-pixels.ts.
   drawRoundedRect(rgba, size, size * 0.07, size * 0.07, size * 0.86, size * 0.86, size * 0.18, [15, 23, 42])
   drawRoundedRect(rgba, size, size * 0.22, size * 0.27, size * 0.40, size * 0.12, size * 0.035, [45, 212, 191])
   drawRoundedRect(rgba, size, size * 0.33, size * 0.44, size * 0.44, size * 0.12, size * 0.035, [94, 234, 212])
