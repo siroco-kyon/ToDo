@@ -8,7 +8,7 @@ import { subscribeProgressDraftChanges } from '../lib/legacyProgressDrafts'
 import { buildEditPatch } from '../lib/editChanges'
 import { ProgressSlider } from './ProgressSlider'
 import { NoteMenu, ProgressNoteThread } from './ProgressNoteThread'
-import { LIKE_EMOJI } from './LikeButton'
+import { MentionTextarea } from './MentionTextarea'
 
 interface Props {
   todo: Todo | null
@@ -648,6 +648,9 @@ export function TodoDetail({
     }
   }
 
+  // 「@」の候補（自分を呼んでも通知は届かないので外す）
+  const mentionUsers = users.filter((user) => user.id !== currentUser?.id)
+
   const canModifyNote = (note: ProgressNote): boolean =>
     currentUser == null || currentUser.role === 'admin' || note.user_id === currentUser.id
 
@@ -1021,12 +1024,12 @@ export function TodoDetail({
           <div style={sectionTitleStyle}>進捗ログ {progressNotes.length > 0 && `(${progressNotes.length})`}</div>
           <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.5 }}>
-              日時・名前つきで積み上がる報告です。報告タブ・進捗タブに表示され、返信やいいねが付きます。Ctrl+Enter でも投稿できます。
+              日時・名前つきで積み上がる報告です。報告タブ・進捗タブに表示され、返信やリアクションが付きます。{users.length > 0 ? '「@名前」で呼ぶと相手に通知が届きます。' : ''}Ctrl+Enter でも投稿できます。
             </div>
-            <textarea
+            <MentionTextarea
               value={noteDraft}
-              onChange={(event) => {
-                const value = event.target.value
+              users={mentionUsers}
+              onValueChange={(value) => {
                 setNoteDraft(value)
                 if (todoId) {
                   if (value) window.localStorage.setItem(progressDraftKey, value)
@@ -1060,8 +1063,9 @@ export function TodoDetail({
                   <ProgressNoteThread
                     key={note.id}
                     note={note}
-                    onToggleLike={(noteId) => void runNoteAction(`like:${noteId}`, () => window.api.progressNoteReactionToggle(noteId, LIKE_EMOJI), 'いいねを更新できませんでした')}
-                    onToggleCommentLike={(commentId) => void runNoteAction(`like:${commentId}`, () => window.api.progressNoteCommentReactionToggle(commentId, LIKE_EMOJI), 'いいねを更新できませんでした')}
+                    onToggleReaction={(noteId, emoji) => void runNoteAction(`reaction:${noteId}:${emoji}`, () => window.api.progressNoteReactionToggle(noteId, emoji), 'リアクションを更新できませんでした')}
+                    onToggleCommentReaction={(commentId, emoji) => void runNoteAction(`reaction:${commentId}:${emoji}`, () => window.api.progressNoteCommentReactionToggle(commentId, emoji), 'リアクションを更新できませんでした')}
+                    mentionUsers={mentionUsers}
                     onReply={handleReplyProgressNote}
                     onToggleDiscussion={(noteId, value) => void runNoteAction(`discussion:${noteId}`, () => window.api.progressNoteSetNeedsDiscussion(noteId, value), '要相談を切り替えられませんでした', value ? '要相談にしました' : '要相談を外しました')}
                     canModify={canModifyNote(note)}

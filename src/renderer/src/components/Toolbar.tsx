@@ -17,6 +17,8 @@ interface Props {
   showCategoryPane: boolean
   showTaskPane: boolean
   showTeamButton?: boolean
+  /** 「進捗」タブに出す新着の件数（前回見たあとにほかの人が書いた投稿・返信） */
+  progressUnseenCount?: number
   /** サーバー版のログイン中ユーザー。デスクトップ版は null で何も表示しない */
   currentUser?: PublicUser | null
   notificationUnreadCount?: number
@@ -59,6 +61,7 @@ export function Toolbar({
   showCategoryPane,
   showTaskPane,
   showTeamButton = false,
+  progressUnseenCount = 0,
   currentUser = null,
   notificationUnreadCount = 0,
   onLogout,
@@ -132,10 +135,13 @@ export function Toolbar({
               role="tab"
               aria-selected={button.active}
               onClick={button.onClick}
-              title={button.description}
+              title={button.key === 'progress' && progressUnseenCount > 0 ? `${button.description}（新着 ${progressUnseenCount}件）` : button.description}
               style={viewButtonStyle(button.active)}
             >
               {button.label}
+              {button.key === 'progress' && progressUnseenCount > 0 && (
+                <span aria-label={`新着 ${progressUnseenCount}件`} style={tabBadgeStyle}>{progressUnseenCount > 99 ? '99+' : progressUnseenCount}</span>
+              )}
             </button>
           ))}
         </div>
@@ -250,6 +256,23 @@ const notificationBadgeStyle: React.CSSProperties = {
   fontSize: '0.68rem',
   lineHeight: 1,
   fontWeight: 800
+}
+
+const tabBadgeStyle: React.CSSProperties = {
+  marginLeft: 5,
+  minWidth: 16,
+  height: 16,
+  padding: '0 4px',
+  borderRadius: 99,
+  background: '#3b82f6',
+  color: '#fff',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '0.64rem',
+  lineHeight: 1,
+  fontWeight: 800,
+  verticalAlign: 'middle'
 }
 
 function viewButtonStyle(active: boolean): React.CSSProperties {

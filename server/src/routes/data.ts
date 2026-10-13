@@ -3,6 +3,7 @@ import os from 'os'
 import path from 'path'
 import crypto from 'crypto'
 import { Router, raw, type Response } from 'express'
+import { containsMention } from '../mention'
 import { requireAuth, requireAdmin } from '../auth'
 import { broadcastDataChanged, sendNotificationChanged, type DataScope } from '../realtime'
 import { generateDailyMarkdown } from '../markdown'
@@ -176,16 +177,6 @@ function notifyProgressReply(
   return changed
 }
 
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function containsMention(body: string, name: string): boolean {
-  const escaped = escapeRegex(name.trim())
-  if (!escaped) return false
-  return new RegExp(`(?:^|\\s)@${escaped}(?=$|[\\s.,!?、。！？:：;；()（）])`, 'iu').test(body)
-}
-
 function notifyMentions(actorUserId: string, body: string, note: ProgressNote, commentId?: string, excluded = new Set<string>()): Set<string> {
   const changed = new Set<string>()
   for (const user of listUsers()) {
@@ -227,7 +218,12 @@ function findCommentInTree(comments: ProgressNoteComment[], commentId: string): 
   return undefined
 }
 
-function notifyProgressReaction(actorUserId: string, note: ProgressNote | undefined): void {
+/** 通知の文言。👍 はこれまでどおり「いいね」、それ以外は絵文字をそのまま出す */
+function reactionWord(emoji: string): string {
+  return emoji === '👍' ? 'いいね' : `${emoji} のリアクション`
+}
+
+function notifyProgressReaction(actorUserId: string, note: ProgressNote | undefined, emoji: string): void {
   if (!note?.user_id || note.user_id === actorUserId) return
   try {
     const notification = createNotification({
@@ -236,8 +232,8 @@ function notifyProgressReaction(actorUserId: string, note: ProgressNote | undefi
       actorUserId,
       todoId: note.todo_id,
       progressNoteId: note.id,
-      title: '進捗にいいねがありました',
-      body: `「${note.todo_title}」の進捗にいいねがありました`
+      title: `進捗に${reactionWord(emoji)}がありました`,
+      body: `「${note.todo_title}」の進捗に${reactionWord(emoji)}がありました`
     })
     if (notification) notifyUnreadChanged([note.user_id])
   } catch (error) {
@@ -245,7 +241,7 @@ function notifyProgressReaction(actorUserId: string, note: ProgressNote | undefi
   }
 }
 
-function notifyCommentReaction(actorUserId: string, note: ProgressNote | undefined, comment: ProgressNoteComment | undefined): void {
+function notifyCommentReaction(actorUserId: string, note: ProgressNote | undefined, comment: ProgressNoteComment | undefined, emoji: string): void {
   if (!comment?.user_id || comment.user_id === actorUserId) return
   try {
     const notification = createNotification({
@@ -255,8 +251,8 @@ function notifyCommentReaction(actorUserId: string, note: ProgressNote | undefin
       todoId: note?.todo_id ?? null,
       progressNoteId: note?.id ?? null,
       progressCommentId: comment.id,
-      title: '返信にいいねがありました',
-      body: `「${note?.todo_title ?? ''}」の返信にいいねがありました`
+      title: `返信に${reactionWord(emoji)}がありました`,
+      body: `「${note?.todo_title ?? ''}」の返信に${reactionWord(emoji)}がありました`
     })
     if (notification) notifyUnreadChanged([comment.user_id])
   } catch (error) {
@@ -504,7 +500,7 @@ dataRouter.post('/progress-notes/:id/reactions', (req, res) =>
   run(res, () => {
     const updated = toggleProgressNoteReaction(req.params.id, req.user!.id, req.body.emoji)
     const liked = updated.reactions.find((reaction) => reaction.emoji === req.body.emoji)?.reacted_by_me
-    if (liked) notifyProgressReaction(req.user!.id, updated)
+    if (liked) notifyProgressReaction(req.user!.id, updated, String(req.body.emoji).trim())
     return updated
   }, 'progress'))
 dataRouter.post('/progress-note-comments/:id/reactions', (req, res) =>
@@ -512,7 +508,7 @@ dataRouter.post('/progress-note-comments/:id/reactions', (req, res) =>
     const updated = toggleProgressNoteCommentReaction(req.params.id, req.user!.id, req.body.emoji)
     const comment = findCommentInTree(updated.comments, req.params.id)
     const liked = comment?.reactions.find((reaction) => reaction.emoji === req.body.emoji)?.reacted_by_me
-    if (liked) notifyCommentReaction(req.user!.id, updated, comment)
+    if (liked) notifyCommentReaction(req.user!.id, updated, comment, String(req.body.emoji).trim())
     return updated
   }, 'progress'))
 

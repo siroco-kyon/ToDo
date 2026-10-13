@@ -112,6 +112,9 @@ server/scripts/publish-desktop.ts npm run publish:desktop の本体（dist/ を�
 - ガントの保留ボタンは、保留中のタスクだけ紫の「▶」を常に出す。保留していない行の「Ⅱ」は `.tarbo-gantt-hold-toggle`（行にマウスを乗せたときだけ表示）
 - 「集計から外す」カテゴリ（`is_private`）はアクセス制限ではない。画面では「プライベート」と書かず「集計外」と表記する。上部の「すべて表示／集計外を隠す」は集計外カテゴリがあるときだけ出す
 - 用語は「期限」（締切と書かない）、「進捗ログ」（進捗メモと書かない）に揃える。説明＝目的、メモ＝今の状況（上書き）、進捗ログ＝日付つきで積み上がる報告
+- 進捗タブの「新着」は、前回タブを見た時刻（`progressTimeline.lastSeenAt:<userId>`、`lib/progressActivity.ts`）より後にほかの人が書いた投稿・返信。タブを開いた時点と離れる時点で `serverNow()` を書き込む。上部タブの件数は `useProgressUnseenCount`（サーバー版のみ、`onDataChanged('progress')` で取り直す）
+- 「@名前」の判定はサーバーの `server/src/mention.ts` と画面の `lib/progressActivity.ts`（`mentionsUser`・`MENTION_BEFORE`）で同じ規則にする（片方だけ直さない）。入力欄の候補は `MentionTextarea`
+- 進捗ログ・返信のリアクションは `ReactionBar`（`LikeButton.tsx`）。👍 は常に出し、🎉 👀 🙏 は「☺＋」から。サーバー・デスクトップの DB は任意の絵文字を受け付ける
 
 ## 注意点
 
