@@ -3,12 +3,13 @@ import path from 'path'
 import fs from 'fs'
 import express from 'express'
 import cookieParser from 'cookie-parser'
-import { PORT, WEB_DIST_DIR } from './config'
+import { DESKTOP_DIST_DIR, PORT, WEB_DIST_DIR } from './config'
 import { initDb } from './db/connection'
 import { attachUser, cleanupExpiredSessions, seedAdminUser } from './auth'
 import { initRealtime } from './realtime'
 import { authRouter } from './routes/auth'
 import { dataRouter } from './routes/data'
+import { createDesktopReleaseRouter } from './routes/desktopRelease'
 import { usersRouter } from './routes/users'
 
 initDb()
@@ -24,6 +25,9 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString(), desktopProtocol: 1,
     webReady: fs.existsSync(path.join(WEB_DIST_DIR, 'index.html')) })
 })
+
+// デスクトップ版インストーラーの配布はログイン不要。認証が必要な dataRouter（/api 以下すべて）より前に置く。
+app.use('/api/desktop-release', createDesktopReleaseRouter(DESKTOP_DIST_DIR))
 
 app.use('/api/auth', authRouter)
 app.use('/api/users', usersRouter)
@@ -46,4 +50,6 @@ server.listen(PORT, () => {
   if (!fs.existsSync(WEB_DIST_DIR)) {
     console.log(`[server] web build not found at ${WEB_DIST_DIR} — run the web build to serve the UI`)
   }
+  const desktopDist = fs.existsSync(DESKTOP_DIST_DIR) ? 'あり' : 'なし。npm run publish:desktop で作成されます'
+  console.log(`[server] デスクトップ版の配布フォルダ: ${DESKTOP_DIST_DIR}（${desktopDist}）`)
 })

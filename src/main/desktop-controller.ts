@@ -666,7 +666,8 @@ export class DesktopController {
       ipcMain.handle(channel, (event, ...args) => { this.assertRemote(event); return handler(event, ...args) })
     }
     remote('hakobi:context', (): DesktopContext => ({ version: 1, serverVersion: this.serverVersion,
-      groupName: this.config.profile!.name, serverUrl: this.config.profile!.url, preferences: this.config.preferences }))
+      groupName: this.config.profile!.name, serverUrl: this.config.profile!.url, preferences: this.config.preferences,
+      appVersion: app.getVersion() }))
     remote('hakobi:preferences', (_event, patch) => this.updatePreferences(patch))
     remote('hakobi:main', (_event, todoId) => { if (todoId !== undefined && !this.validId(todoId)) throw new Error('タスクが不正です。'); this.openMain(todoId) })
     remote('hakobi:timer', () => { if (this.serverVersion >= 1 && this.state.userId) this.updatePreferences({ showTimer: true }) })

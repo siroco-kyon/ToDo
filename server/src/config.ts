@@ -54,6 +54,14 @@ export const WEB_DIST_DIR = process.env.TODO_WEB_DIST
   ? path.resolve(process.env.TODO_WEB_DIST)
   : path.resolve(__dirname, '..', '..', 'dist-web')
 
+/**
+ * 配布するデスクトップ版インストーラーの置き場所（全グループで共有できる）。
+ * `npm run publish:desktop` が latest.yml とインストーラーをここへ置く。
+ */
+export const DESKTOP_DIST_DIR = process.env.TODO_DESKTOP_DIST
+  ? path.resolve(process.env.TODO_DESKTOP_DIST)
+  : path.resolve(__dirname, '..', '..', 'dist-desktop')
+
 /** Bootstrap admin account, created on first launch when no users exist. */
 export const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin'
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''

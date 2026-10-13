@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
+import { fetchDesktopRelease, type DesktopReleaseInfo } from '@renderer/lib/desktopRelease'
 import { login, type CurrentUser } from './session'
 
 export function LoginScreen({ onSuccess }: { onSuccess: (user: CurrentUser) => void }): React.JSX.Element {
@@ -6,6 +7,17 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: CurrentUser) => v
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [desktopRelease, setDesktopRelease] = useState<DesktopReleaseInfo | null>(null)
+
+  useEffect(() => {
+    // Inside the desktop app the member already has it; the app itself announces newer versions.
+    if (window.desktop) return undefined
+    const controller = new AbortController()
+    void fetchDesktopRelease(controller.signal).then((status) => {
+      if (!controller.signal.aborted) setDesktopRelease(status?.release ?? null)
+    })
+    return () => controller.abort()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
@@ -72,6 +84,8 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: CurrentUser) => v
         <div style={styles.hint}>
           アカウントは管理者が発行します。ログインできない場合は管理者にお問い合わせください。
         </div>
+
+        {desktopRelease && <a href="/download" style={styles.link}>デスクトップ版（Windows）をダウンロード</a>}
       </form>
     </div>
   )
@@ -139,5 +153,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     cursor: 'pointer'
   },
-  hint: { fontSize: '0.74rem', color: '#64748b', lineHeight: 1.6, marginTop: 4 }
+  hint: { fontSize: '0.74rem', color: '#64748b', lineHeight: 1.6, marginTop: 4 },
+  link: { fontSize: '0.78rem', color: '#5eead4', alignSelf: 'flex-start' }
 }

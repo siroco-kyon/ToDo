@@ -5,8 +5,10 @@ import type { Api } from '@preload'
 import { api } from './lib/client'
 import { AuthGate } from './auth/AuthGate'
 import { DesktopCompanion } from './desktop/DesktopCompanion'
+import { DesktopUpdateNotice } from './desktop/DesktopUpdateNotice'
 import { TimerWindow } from './desktop/TimerWindow'
 import { ProgressWindow } from './desktop/ProgressWindow'
+import { DesktopDownloadPage } from './download/DesktopDownloadPage'
 import '@renderer/styles/gantt-neumorphic.css'
 
 declare global {
@@ -23,6 +25,8 @@ const desktopView = location.hash.split('?')[0]
 const isTimerWindow = Boolean(window.desktop) && desktopView === '#hakobi-timer'
 const isProgressWindow = Boolean(window.desktop) && desktopView === '#hakobi-progress'
 const isDesktopMain = Boolean(window.desktop) && !isTimerWindow && !isProgressWindow && !location.hash
+// Members open this page before they have the desktop app, so it needs no sign-in.
+const isDownloadPage = /^\/download\/?$/.test(location.pathname)
 
 class RootErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -123,12 +127,15 @@ function FailureScreen({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <RootErrorBoundary>
-      <AuthGate>
+      {isDownloadPage ? <DesktopDownloadPage /> : <AuthGate>
         {isTimerWindow ? <TimerWindow /> : isProgressWindow ? <ProgressWindow /> : <>
-          {isDesktopMain && <DesktopCompanion />}
+          {isDesktopMain && <>
+            <DesktopCompanion />
+            <DesktopUpdateNotice />
+          </>}
           <App />
         </>}
-      </AuthGate>
+      </AuthGate>}
     </RootErrorBoundary>
   </React.StrictMode>
 )

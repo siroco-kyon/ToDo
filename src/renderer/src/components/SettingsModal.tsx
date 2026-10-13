@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { toCsv, downloadCsv, dateStamp } from '../lib/csv'
 import type { Todo } from '../types'
 import type { DesktopContext, DesktopPreferences } from '../../../shared/desktop'
+import { desktopDownloadPageUrl, fetchDesktopRelease, isLoopbackOrigin, isNewerDesktopRelease, type DesktopReleaseStatus } from '../lib/desktopRelease'
 import { LegacyDraftRecoveryModal } from './LegacyDraftRecoveryModal'
 
 interface Props {
@@ -107,6 +108,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
   const [exporting, setExporting] = useState(false)
   const [showDraftRecovery, setShowDraftRecovery] = useState(false)
   const [desktopContext, setDesktopContext] = useState<DesktopContext | null>(null)
+  const [desktopRelease, setDesktopRelease] = useState<DesktopReleaseStatus | null>(null)
   const saveDesktopPreference = async (patch: Partial<DesktopPreferences>): Promise<void> => {
     try {
       const preferences = await window.desktop?.setPreferences(patch)
@@ -195,6 +197,16 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
     }
     return undefined
   }, [])
+
+  useEffect(() => {
+    // Only the team server offers the installer; the personal app has nothing to ask.
+    if (!serverManaged && !window.desktop) return undefined
+    const controller = new AbortController()
+    void fetchDesktopRelease(controller.signal).then((status) => {
+      if (!controller.signal.aborted) setDesktopRelease(status)
+    })
+    return () => controller.abort()
+  }, [serverManaged])
 
   useEffect(() => {
     window.api.iconGetDataUrl().then(setIconDataUrl)
@@ -332,6 +344,11 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
   }
 
   const editingIndex = shortcuts.findIndex((s) => s.editing)
+  const offeredRelease = desktopRelease?.release ?? null
+  const newerRelease = desktopContext && isNewerDesktopRelease(offeredRelease, desktopContext) ? offeredRelease : null
+  // Members in a browser are offered the app; administrators also see what to share or why nothing is offered.
+  const offerDesktopApp = serverManaged && !window.desktop && !!offeredRelease
+  const showReleaseAdmin = serverManaged && canManageUsers && desktopRelease !== null
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -373,6 +390,11 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           <h3 style={sectionHead}>HAKOBI デスクトップ</h3>
           <p style={{ fontSize: '0.8rem', color: '#cbd5e1', margin: '10px 0 4px' }}>{desktopContext.groupName}</p>
           <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: 12, overflowWrap: 'anywhere' }}>{desktopContext.serverUrl}</p>
+          <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: newerRelease ? 6 : 12 }}>このPCのバージョン: {desktopContext.appVersion ?? '1.0.4 以前'}</p>
+          {newerRelease && <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <span style={{ fontSize: '0.78rem', color: '#fbbf24' }}>新しいバージョン {newerRelease.version} を配布しています。</span>
+            <a href={desktopDownloadPageUrl()} target="_blank" rel="noopener noreferrer" style={linkBtn}>ダウンロードページを開く</a>
+          </div>}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={() => void window.desktop?.openConnectionSettings()} style={secondaryBtn}>接続先を変更</button>
             <button disabled={desktopContext.serverVersion < 1} onClick={() => void window.desktop?.openTimer()} style={secondaryBtn}>右下タイマーを表示</button>
@@ -390,6 +412,25 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             </label>)}
           </div>
           <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 12 }}>接続先・タイマー・通知・グローバルショートカットの設定は、このPCだけに保存されます。</p>
+        </section>}
+
+        {(offerDesktopApp || showReleaseAdmin) && <section>
+          <h3 style={sectionHead}>デスクトップ版（Windows）</h3>
+          {offerDesktopApp && offeredRelease && <>
+            <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '8px 0 12px', lineHeight: 1.6 }}>タイマーや通知が使えるデスクトップ版を配布しています（最新 {offeredRelease.version}）。</p>
+            <a href={desktopDownloadPageUrl()} target="_blank" rel="noopener noreferrer" style={linkBtn}>ダウンロードページを開く</a>
+          </>}
+          {showReleaseAdmin && (offeredRelease ? <>
+            <p style={{ fontSize: '0.75rem', color: '#64748b', margin: offerDesktopApp ? '14px 0 4px' : '8px 0 4px' }}>メンバーに案内するダウンロードページ（管理者のみ表示）</p>
+            <div style={pathBox}>{desktopDownloadPageUrl()}</div>
+            {isLoopbackOrigin(window.location.origin) && <p style={{ fontSize: '0.72rem', color: '#fbbf24', marginTop: 6, lineHeight: 1.6 }}>
+              このPC（サーバー）から開いているため、ほかのPCではこのURLを使えません。メンバーには {`http://<サーバーのIPアドレス>:${window.location.port || '80'}/download`} を案内してください。
+            </p>}
+          </> : <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 8, lineHeight: 1.6 }}>
+            <p>配布中のインストーラーはありません。</p>
+            {desktopRelease?.reason && <p style={{ fontSize: '0.75rem', color: '#fbbf24', overflowWrap: 'anywhere' }}>{desktopRelease.reason}</p>}
+            <p style={{ fontSize: '0.75rem', color: '#64748b' }}><code style={codeStyle}>npm run publish:desktop</code> で公開できます。</p>
+          </div>)}
         </section>}
 
         {serverManaged && <section>
@@ -788,6 +829,10 @@ const secondaryBtn: React.CSSProperties = {
   padding: '7px 14px', background: '#334155', border: 'none',
   borderRadius: 7, color: '#94a3b8', cursor: 'pointer', fontSize: '0.85rem',
   whiteSpace: 'nowrap'
+}
+
+const linkBtn: React.CSSProperties = {
+  ...secondaryBtn, display: 'inline-block', color: '#e2e8f0', textDecoration: 'none'
 }
 
 const kbdStyle: React.CSSProperties = {
