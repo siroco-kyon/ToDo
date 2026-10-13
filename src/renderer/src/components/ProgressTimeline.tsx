@@ -41,9 +41,14 @@ const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
 const SORT_STORAGE_KEY = 'progressTimeline.sortMode'
 const LAST_TODO_STORAGE_KEY = 'progressTimeline.lastTodoId'
 
-function loadLastTodoId(): string {
+// 共有PCで次にログインした人へ前の人の投稿先が引き継がれないよう、ユーザーごとに覚える（下書きと同じ）
+function lastTodoStorageKey(userId: string | null | undefined): string {
+  return userId ? `${LAST_TODO_STORAGE_KEY}:${userId}` : LAST_TODO_STORAGE_KEY
+}
+
+function loadLastTodoId(key: string): string {
   try {
-    return window.localStorage.getItem(LAST_TODO_STORAGE_KEY) ?? ''
+    return window.localStorage.getItem(key) ?? ''
   } catch {
     return ''
   }
@@ -192,7 +197,15 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   const [selectedAuthorId, setSelectedAuthorId] = useState('')
   const [loading, setLoading] = useState(false)
   // 一覧の先頭を勝手に選ぶと別のタスクに誤投稿しやすいので、前回投稿したタスク（なければ未選択）から始める
-  const [selectedTodoId, setSelectedTodoId] = useState(loadLastTodoId)
+  const lastTodoKey = lastTodoStorageKey(currentUser?.id)
+  const [selectedTodoId, setSelectedTodoId] = useState(() => loadLastTodoId(lastTodoKey))
+  const lastTodoKeyRef = useRef(lastTodoKey)
+  useEffect(() => {
+    // ログインしている人が変わったら、その人が前回投稿したタスクに選び直す
+    if (lastTodoKeyRef.current === lastTodoKey) return
+    lastTodoKeyRef.current = lastTodoKey
+    setSelectedTodoId(loadLastTodoId(lastTodoKey))
+  }, [lastTodoKey])
   const [focusedNoteId, setFocusedNoteId] = useState<string | null>(null)
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null)
   const draftSuffix = currentUser?.id ? `:${currentUser.id}` : ''
@@ -338,7 +351,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       setSavingNote(true)
       const created = await window.api.progressNoteCreate(selectedTodoId, body)
       setNoteDraft('')
-      try { window.localStorage.setItem(LAST_TODO_STORAGE_KEY, selectedTodoId) } catch { /* 記憶できなくても投稿は済んでいる */ }
+      try { window.localStorage.setItem(lastTodoKey, selectedTodoId) } catch { /* 記憶できなくても投稿は済んでいる */ }
       if (isInRange(getDateKeyFromIso(created.created_at), range)) {
         setNotes((previous) => [normalizeNote(created), ...previous])
       }
