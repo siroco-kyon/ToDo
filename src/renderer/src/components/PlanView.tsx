@@ -15,6 +15,8 @@ interface Props {
   onReorder: (orderedIds: string[]) => Promise<void>
   onDateChange?: (date: string) => void
   onCarryOver?: () => Promise<void>
+  /** タスク一覧の絞り込みの表示（候補のタスクに効く）。日付の操作の横に出す */
+  listFilters?: React.ReactNode
 }
 
 interface SuggestedGroup {
@@ -602,7 +604,8 @@ export function PlanView({
   onShiftFollowing,
   onReorder,
   onDateChange,
-  onCarryOver
+  onCarryOver,
+  listFilters
 }: Props): React.JSX.Element {
   const timelineRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -962,6 +965,7 @@ export function PlanView({
           <button onClick={() => onDateChange(shiftDateKey(date, 1))} style={miniActionBtn('#1e293b', '#cbd5e1')}>翌日 →</button>
           <button onClick={() => onDateChange(getTodayKey())} style={miniActionBtn('#172554', '#dbeafe')}>今日</button>
           {onCarryOver && <button onClick={() => void onCarryOver()} style={miniActionBtn('#14532d', '#dcfce7')}>前日の未完了を繰り越す</button>}
+          {listFilters && <span style={{ marginLeft: 'auto' }}>{listFilters}</span>}
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(320px, 0.9fr)', gap: 16, alignItems: 'start' }}>

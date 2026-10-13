@@ -21,6 +21,8 @@ interface Props {
   includePrivate: boolean
   runningTodoId: string | null
   elapsedSeconds: number
+  /** タスク一覧の絞り込みの表示（見出しの横に出す） */
+  listFilters?: React.ReactNode
   onSelectTodo: (id: string) => void
 }
 
@@ -565,6 +567,7 @@ export function OverviewDashboard({
   includePrivate,
   runningTodoId,
   elapsedSeconds,
+  listFilters,
   onSelectTodo
 }: Props): React.JSX.Element {
   const [data, setData] = useState<OverviewData | null>(null)
@@ -640,8 +643,11 @@ export function OverviewDashboard({
     <div style={{ height: '100%', overflowY: 'auto', padding: 20 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 18, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: '1.2rem', color: '#f8fafc', fontWeight: 700 }}>
-            ダッシュボード
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: '1.2rem', color: '#f8fafc', fontWeight: 700 }}>
+              ダッシュボード
+            </div>
+            {listFilters}
           </div>
           <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: 4 }}>
             {data?.categories.length ?? 0}カテゴリを1画面で俯瞰

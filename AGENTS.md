@@ -105,7 +105,7 @@ server/scripts/publish-desktop.ts npm run publish:desktop の本体（dist/ を�
 - `DesktopContext.appVersion`（`src/shared/desktop.ts`）は任意。1.0.4 以前のアプリは送らないので、無いときは 1.0.4 以前として扱う（`LAST_VERSION_WITHOUT_APP_VERSION`）
 - `/download` はログイン不要のページ。`web/main.tsx` で `AuthGate` より前に分岐して描画する
 - 更新のお知らせ（`DesktopUpdateNotice`）はデスクトップ版のメイン画面（`isDesktopMain`）だけで出し、`App.tsx` には入れない。「後で」で閉じた版は localStorage の `hakobi-desktop-update-dismissed` に保存する
-- タスク一覧の絞り込み（担当・カテゴリ・検索）はガント・カンバン・計画・概要・報告にも効く。効いているときは中央の上部に「タスク一覧の絞り込みを適用中」を出し、その場で解除できる（`App.tsx` の `activeFilterChips`）。報告タブには一覧の担当絞り込みをかけず（`reportTodos`）、報告タブ自身の担当絞り込みで決める。進捗タブの投稿先の選択肢も絞り込み前のタスクから選ぶ
+- タスク一覧の絞り込み（担当・カテゴリ・検索）はガント・カンバン・計画・概要・報告にも効く。効いているときは各画面の見出しの横に「絞り込み中」のチップ（`ListFilterChips`、`App.tsx` の `listFilters` を各画面に渡す）を出し、その場で解除できる。1行を取る帯にはしない。報告タブには一覧の担当絞り込みをかけず（`reportTodos`）、報告タブ自身の担当絞り込みで決める。進捗タブの投稿先の選択肢も絞り込み前のタスクから選ぶ
 - タスク追加（`QuickAddModal`）の初期値は、担当＝一覧の担当絞り込みの人（絞っていなければ自分）、カテゴリ＝左で選んでいるもの、開始日＝今日。追加したタスクが今の絞り込みで見えないときは、`handleAdded` が「絞り込みを解除して開く」付きで知らせる
 - 上部のタブは、表示中のタブをもう一度押しても画面を変えない（以前はタスク詳細へ戻るトグルだった）
 - 進捗率のバーは `ProgressSlider` に揃えている（タスク詳細・サブタスク・報告タブ）。ドラッグは要素の pointer イベントで受け、ウィンドウ全体にリスナーを付けない

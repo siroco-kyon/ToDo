@@ -36,6 +36,8 @@ interface Props {
   onUpdateSubTask: (id: string, data: UpdateSubTaskInput) => Promise<void>
   onCreateSubTask: (todoId: string, data: CreateSubTaskInput) => Promise<void>
   onShowToast: (message: string, type?: 'success' | 'error') => void
+  /** タスク一覧の絞り込み（カテゴリ・検索）の表示。見出しの横に出す */
+  listFilters?: React.ReactNode
 }
 
 interface DateRange {
@@ -577,7 +579,7 @@ function reportToCsv(groups: ReportGroup[]): string {
 
 // ─── 画面 ─────────────────────────────────────────────────────
 
-export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, onUpdateTodo, onUpdateSubTask, onCreateSubTask, onShowToast }: Props): React.JSX.Element {
+export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, onUpdateTodo, onUpdateSubTask, onCreateSubTask, onShowToast, listFilters }: Props): React.JSX.Element {
   const multiUser = users.length > 0
   const [preset, setPreset] = useState<PeriodPreset>(loadPreset)
   const [range, setRange] = useState<DateRange>(() => presetRange(loadPreset()))
@@ -925,6 +927,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
             <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 700 }}>
               {formatShortDate(range.from)}（{weekdayLabel(range.from)}）～ {formatShortDate(range.to)}（{weekdayLabel(range.to)}）
             </div>
+            {listFilters}
             <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
               定例用に、タスクごとの進捗と報告（進捗ログ・メモ）を1ページで見ます。状態・日程・進捗・メモはその場で変えられます
             </div>
@@ -1081,7 +1084,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
           <div style={emptyStyle}>
             {effectiveQuickFilter !== 'all'
               ? <>条件に合うタスクはありません。<button onClick={() => setQuickFilter('all')} style={{ ...inlineActionStyle, marginLeft: 8, fontSize: '0.82rem' }}>すべて表示</button></>
-              : '表示できるタスクがありません。画面上部の「タスク一覧の絞り込み」も確認してください。'}
+              : '表示できるタスクがありません。見出しの横の「絞り込み中」も確認してください。'}
           </div>
         )}
 

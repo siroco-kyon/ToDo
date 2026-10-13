@@ -24,6 +24,7 @@ import { TeamDashboard } from './components/TeamDashboard'
 import { NotificationPanel } from './components/NotificationPanel'
 import { OverviewDashboard } from './components/OverviewDashboard'
 import { ReportView } from './components/ReportView'
+import { ListFilterChips, type ListFilterChip } from './components/ListFilterChips'
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
 type CenterView = 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban'
@@ -1049,10 +1050,9 @@ export function App(): React.JSX.Element {
     return <TaskReportWindow />
   }
 
-  // タスク一覧の絞り込みはガントやカンバンにも効くので、一覧を見ていなくても分かるよう画面の上に出す。
+  // タスク一覧の絞り込みはガントやカンバンにも効くので、一覧を見ていなくても分かるよう各画面の見出しの横に出す。
   // 報告タブは自前の担当絞り込みを使うので、一覧の担当絞り込みは出さない（効いていない）。
   // 詳細・進捗・記録・チームの画面には一覧の絞り込みが効かないので出さない。
-  const filterAffectsView = activeView === 'gantt' || activeView === 'kanban' || activeView === 'plan' || activeView === 'overview' || activeView === 'report'
   const assigneeFilterLabel = selectedAssigneeId === null
     ? null
     : selectedAssigneeId === ''
@@ -1060,13 +1060,16 @@ export function App(): React.JSX.Element {
       : selectedAssigneeId === currentUser?.id
         ? '自分'
         : users.find((user) => user.id === selectedAssigneeId)?.display_name ?? '不明'
-  const activeFilterChips: Array<{ key: string; label: string; clear: () => void }> = filterAffectsView
-    ? [
-        ...(assigneeFilterLabel && activeView !== 'report' ? [{ key: 'assignee', label: `担当: ${assigneeFilterLabel}`, clear: () => setSelectedAssigneeId(null) }] : []),
-        ...(selectedCategoryId ? [{ key: 'category', label: `カテゴリ: ${categories.find((item) => item.id === selectedCategoryId)?.name ?? '不明'}`, clear: () => setSelectedCategoryId(null) }] : []),
-        ...(q ? [{ key: 'search', label: `検索: ${searchQuery.trim()}`, clear: () => setSearchQuery('') }] : [])
-      ]
-    : []
+  const categoryAndSearchChips: ListFilterChip[] = [
+    ...(selectedCategoryId ? [{ key: 'category', label: `カテゴリ: ${categories.find((item) => item.id === selectedCategoryId)?.name ?? '不明'}`, clear: () => setSelectedCategoryId(null) }] : []),
+    ...(q ? [{ key: 'search', label: `検索: ${searchQuery.trim()}`, clear: () => setSearchQuery('') }] : [])
+  ]
+  const listFilterChips: ListFilterChip[] = [
+    ...(assigneeFilterLabel ? [{ key: 'assignee', label: `担当: ${assigneeFilterLabel}`, clear: () => setSelectedAssigneeId(null) }] : []),
+    ...categoryAndSearchChips
+  ]
+  // 絞り込みがないときは null（見出しの横に何も出さない）
+  const listFilters = listFilterChips.length > 0 ? <ListFilterChips chips={listFilterChips} /> : null
 
   const isManualSort = sortField === 'sort_order'
   const showRightPlanRail = showPlanRail && activeView !== 'plan' && activeView !== 'team' && activeView !== 'progress' && activeView !== 'report'
@@ -1263,19 +1266,7 @@ export function App(): React.JSX.Element {
           style={{ ...resizeHandleStyle, display: showTaskPane ? 'block' : 'none' }}
         />
 
-        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: '#0f172a', display: 'flex', flexDirection: 'column' }}>
-          {!initialLoadError && activeFilterChips.length > 0 && (
-            <div aria-label="タスク一覧の絞り込み" style={activeFilterBarStyle}>
-              <span style={{ color: '#94a3b8', flexShrink: 0 }}>タスク一覧の絞り込みを適用中:</span>
-              {activeFilterChips.map((chip) => (
-                <button key={chip.key} onClick={chip.clear} title={`${chip.label} の絞り込みを解除`} style={filterChipStyle}>{chip.label} ×</button>
-              ))}
-              {activeFilterChips.length > 1 && (
-                <button onClick={() => activeFilterChips.forEach((chip) => chip.clear())} style={clearAllFiltersButtonStyle}>すべて解除</button>
-              )}
-            </div>
-          )}
-          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: '#0f172a' }}>
           {initialLoadError ? (
             <div role="alert" style={{ margin: 24, padding: 20, border: '1px solid #ef4444', borderRadius: 12, background: '#450a0a', color: '#fecaca' }}>
               <strong>データを読み込めませんでした</strong>
@@ -1291,6 +1282,7 @@ export function App(): React.JSX.Element {
               includePrivate={scopeLens === 'personal'}
               runningTodoId={runningTodoId}
               elapsedSeconds={elapsedSeconds}
+              listFilters={listFilters}
               onSelectTodo={openTodoDetail}
             />
           ) : activeView === 'gantt' ? (
@@ -1303,6 +1295,7 @@ export function App(): React.JSX.Element {
               onReorderTodos={handleReorder}
               onOpenSeparateWindow={handleOpenGanttWindow}
               onAddTodo={(defaults) => openQuickAdd(defaults)}
+              listFilters={listFilters}
               groupByCategory={selectedCategoryId === null}
             />
           ) : activeView === 'kanban' ? (
@@ -1310,6 +1303,7 @@ export function App(): React.JSX.Element {
               todos={filteredTodos}
               categories={categories}
               runningTodoId={runningTodoId}
+              listFilters={listFilters}
               onSelectTodo={openTodoDetail}
               onChangeStatus={handleKanbanMove}
               onCreateInColumn={handleKanbanCreate}
@@ -1337,6 +1331,7 @@ export function App(): React.JSX.Element {
               onReorder={handleSelectedPlanReorder}
               onDateChange={setPlanDate}
               onCarryOver={handleCarryOverPlan}
+              listFilters={listFilters}
             />
           ) : activeView === 'log' ? (
             <WorkLogSummary hiddenTodoIds={hiddenPrivateTodoIds} />
@@ -1354,6 +1349,7 @@ export function App(): React.JSX.Element {
           ) : activeView === 'report' ? (
             <ReportView
               todos={reportTodos}
+              listFilters={categoryAndSearchChips.length > 0 ? <ListFilterChips chips={categoryAndSearchChips} /> : null}
               subTasks={allSubTasks}
               users={users}
               currentUser={currentUser}
@@ -1384,7 +1380,6 @@ export function App(): React.JSX.Element {
               onDirtyChange={setDetailDirty}
             />
           )}
-          </div>
         </div>
 
         {showAuxiliaryPanel && (
@@ -1569,15 +1564,6 @@ const filterChipStyle: React.CSSProperties = {
   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
 }
 
-const activeFilterBarStyle: React.CSSProperties = {
-  flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
-  padding: '5px 12px', borderBottom: '1px solid #1e293b', background: '#0b1220', fontSize: '0.72rem'
-}
-
-const clearAllFiltersButtonStyle: React.CSSProperties = {
-  padding: '2px 8px', borderRadius: 999, border: '1px solid #334155', background: 'transparent',
-  color: '#94a3b8', cursor: 'pointer', fontSize: '0.68rem', whiteSpace: 'nowrap'
-}
 
 function sideTabButtonStyle(active: boolean): React.CSSProperties {
   return {
