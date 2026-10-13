@@ -14,7 +14,8 @@ export const DEFAULT_PREFERENCES: DesktopPreferences = {
   globalShortcutFocus: 'CommandOrControl+Alt+T',
   globalShortcutQuickAdd: 'CommandOrControl+Alt+N',
   globalShortcutExport: 'CommandOrControl+Alt+E',
-  globalShortcutProgress: 'CommandOrControl+Alt+P'
+  globalShortcutProgress: 'CommandOrControl+Alt+P',
+  showNotifications: true
 }
 
 export interface DesktopConfig {
@@ -45,7 +46,7 @@ export function makeProfile(name: string, input: string): ConnectionProfile {
 export function validatePreferences(patch: Partial<DesktopPreferences>): Partial<DesktopPreferences> {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('設定が不正です。')
   const result: Partial<DesktopPreferences> = {}
-  for (const key of ['showTimer', 'timerCompact', 'alwaysOnTop', 'hideTaskTitle'] as const) {
+  for (const key of ['showTimer', 'timerCompact', 'alwaysOnTop', 'hideTaskTitle', 'showNotifications'] as const) {
     if (key in patch) {
       if (typeof patch[key] !== 'boolean') throw new Error('設定が不正です。')
       result[key] = patch[key]

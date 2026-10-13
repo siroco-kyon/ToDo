@@ -654,6 +654,24 @@ export function App(): React.JSX.Element {
     }
   }, [loadNotifications, showToast])
 
+  // デスクトップ版の OS 通知をクリックしたときも、通知一覧で選んだときと同じ画面を開く
+  const notificationActionsRef = useRef({ openNotifications, handleSelectNotification })
+  notificationActionsRef.current = { openNotifications, handleSelectNotification }
+  useEffect(() => {
+    if (!currentUser) return undefined
+    return window.api.onOpenNotification((notificationId) => {
+      if (!notificationId) {
+        notificationActionsRef.current.openNotifications()
+        return
+      }
+      void window.api.notificationList().then((items) => {
+        const notification = items.find((item) => item.id === notificationId)
+        if (notification) void notificationActionsRef.current.handleSelectNotification(notification)
+        else notificationActionsRef.current.openNotifications()
+      }).catch(() => notificationActionsRef.current.openNotifications())
+    })
+  }, [currentUser])
+
   const beginResize = useCallback((key: PaneKey, startWidth: number, event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
     resizeRef.current = { key, startX: event.clientX, startWidth }

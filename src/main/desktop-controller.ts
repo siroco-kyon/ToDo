@@ -1,12 +1,15 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, screen, session, shell, Tray } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification, screen, session, shell, Tray } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { generateDefaultIconBuffer } from './icon'
 import { makeProfile, readDesktopConfig, validatePreferences, writeDesktopConfig } from './desktop-config'
-import { applyWindowsTaskbarBranding } from './windows-branding'
+import { applyWindowsJumpList, applyWindowsTaskbarBranding } from './windows-branding'
+import type { LaunchAction } from './windows-branding'
+import { thumbarImage, unreadBadgeImage, unreadTrayImage } from './desktop-glyphs'
 import { MAX_TIMER_SIZE, normalizeTimerSize, timerGeometry } from './timer-sizing'
-import type { DesktopCommand, DesktopContext, DesktopPreferences, DesktopState, LauncherState } from '../shared/desktop'
+import { DESKTOP_RECENT_TASK_LIMIT } from '../shared/desktop'
+import type { DesktopCommand, DesktopContext, DesktopNotification, DesktopPreferences, DesktopState, DesktopTaskShortcut, LauncherState } from '../shared/desktop'
 
 type WindowKind = 'main' | 'timer' | 'progress' | 'gantt' | 'report'
 type ShortcutAction = 'globalShortcutFocus' | 'globalShortcutQuickAdd' | 'globalShortcutExport' | 'globalShortcutProgress'
@@ -14,7 +17,13 @@ interface RemoteShortcut { action: ShortcutAction; key: string; label: string; c
 const REMOTE_LOAD_TIMEOUT_MS = 30000
 const WINDOW_LABELS: Record<WindowKind, string> = { main: 'メイン画面', timer: 'タイマー', progress: '進捗入力画面', gantt: 'ガントチャート', report: 'タスク別レポート' }
 const EMPTY_STATE: DesktopState = { userId: null, taskId: null, taskTitle: '', startTime: null, online: false }
+const NOTIFICATION_BURST = { limit: 5, windowMs: 10000 }
 const defaultIcon = (): Electron.NativeImage => nativeImage.createFromBuffer(generateDefaultIconBuffer())
+// Windows menus treat a single & as a keyboard mnemonic, which would hide it in task titles.
+const menuLabel = (value: string, max = 60): string => {
+  const label = value.length > max ? `${value.slice(0, max - 1)}…` : value
+  return process.platform === 'win32' ? label.replace(/&/g, '&&') : label
+}
 
 /** Owns the remote shell. It never calls the local SQLite API. */
 export class DesktopController {
@@ -35,6 +44,11 @@ export class DesktopController {
   private pendingProgressTargets = new WeakMap<BrowserWindow, string>()
   private activeShortcuts: RemoteShortcut[] = []
   private timerGeometrySaveTimeout: NodeJS.Timeout | null = null
+  // Electron drops click handlers of notifications that are garbage collected.
+  private shownNotifications = new Set<Notification>()
+  private notificationTimes: number[] = []
+  private appliedBadge = 0
+  private pendingLaunchAction: LaunchAction | null = null
 
   constructor(private readonly startLocal: () => void, private readonly revealLocal: () => void) {
     this.registerBridge()
@@ -43,6 +57,7 @@ export class DesktopController {
   start(): void {
     if (this.config.mode === 'local') {
       this.openedLocal = true
+      applyWindowsJumpList(false)
       this.startLocal()
     } else {
       this.showConnectionSettings()
@@ -54,6 +69,24 @@ export class DesktopController {
     if (this.openedLocal) this.revealLocal()
     else if (this.windows.has('main')) this.openMain()
     else this.showConnectionSettings()
+  }
+
+  /** Runs a taskbar jump list action, waiting for sign-in when the app was started by it. */
+  runLaunchAction(action: LaunchAction): void {
+    if (this.openedLocal) {
+      this.revealLocal()
+      return
+    }
+    if (!this.windows.has('main') || !this.state.userId) {
+      this.pendingLaunchAction = action
+      this.reveal()
+      return
+    }
+    this.pendingLaunchAction = null
+    if (action === 'quick-add') this.openMainWith({ type: 'quick-add' })
+    else if (this.serverVersion < 1) this.openMain()
+    else if (action === 'progress') this.createRemoteWindow('progress', this.state.taskId ?? undefined)
+    else this.updatePreferences({ showTimer: true })
   }
 
   showConnectionSettings(): void {
@@ -99,6 +132,7 @@ export class DesktopController {
     this.loadTimeouts.clear()
     this.tray?.destroy()
     this.tray = null
+    this.shownNotifications.clear()
     globalShortcut.unregisterAll()
   }
 
@@ -145,6 +179,7 @@ export class DesktopController {
       loadingRemote = true
       this.createRemoteWindow('main')
       this.createRemoteTray()
+      applyWindowsJumpList(true)
       try { this.registerRemoteShortcuts(this.config.preferences, true) } catch { /* The native dialog explains the unavailable shortcut. */ }
       this.message = '画面を読み込んでいます…'
     } catch (error) {
@@ -214,6 +249,15 @@ export class DesktopController {
     applyWindowsTaskbarBranding(window)
     // Keep the chosen group visible even when the server changes document.title.
     window.on('page-title-updated', (event) => event.preventDefault())
+    // Windows keeps overlays and thumbnail buttons per taskbar button, so apply them when it appears.
+    window.on('show', () => {
+      this.applyOverlay(window)
+      // The taskbar button appears shortly after the first show, and an overlay set before it is lost.
+      // (Electron re-applies thumbnail buttons itself, but not overlays.)
+      if (process.platform === 'win32') setTimeout(() => this.applyOverlay(window), 1000)
+      if (kind === 'main') this.updateThumbar()
+    })
+    if (kind === 'main') window.on('focus', () => window.flashFrame(false))
     this.windows.set(kind, window)
     this.windowStatus.set(window, 'loading')
     if (kind === 'timer') {
@@ -375,17 +419,90 @@ export class DesktopController {
   }
 
   private openMain(todoId?: string): void {
+    this.openMainWith(todoId ? { type: 'navigate', todoId } : null)
+  }
+
+  /** Opens the main window and delivers the command once its page can receive it. */
+  private openMainWith(command: DesktopCommand | null): void {
     const window = this.createRemoteWindow('main')
-    if (todoId) {
-      const navigate = (): void => this.sendCommand({ type: 'navigate', todoId })
-      if (window.webContents.isLoadingMainFrame()) window.webContents.once('did-finish-load', navigate)
-      else navigate()
+    if (command) {
+      const deliver = (): void => this.sendCommand(command)
+      if (window.webContents.isLoadingMainFrame()) window.webContents.once('did-finish-load', deliver)
+      else deliver()
     }
   }
 
   private sendCommand(command: DesktopCommand): void {
     const main = this.windows.get('main')
     if (main && !main.isDestroyed()) main.webContents.send('hakobi:command', command)
+  }
+
+  private unreadCount(): number {
+    return this.state.userId ? this.state.unreadCount ?? 0 : 0
+  }
+
+  /** Only Web UIs that publish their task list can handle the native timer commands. */
+  private timerControls(): boolean {
+    return !!this.state.userId && this.serverVersion >= 1 && Array.isArray(this.state.recentTasks)
+  }
+
+  private showNotification(notification: DesktopNotification): void {
+    const main = this.windows.get('main')
+    if (!this.config.preferences.showNotifications || !Notification.isSupported()) return
+    // The in-app bell already shows the change while the main window has focus.
+    if (main && !main.isDestroyed() && main.isVisible() && main.isFocused()) return
+    const now = Date.now()
+    this.notificationTimes = this.notificationTimes.filter((time) => now - time < NOTIFICATION_BURST.windowMs)
+    if (this.notificationTimes.length >= NOTIFICATION_BURST.limit) return
+    this.notificationTimes.push(now)
+    const generation = this.connectGeneration
+    const toast = new Notification({ title: notification.title.slice(0, 120), body: notification.body.slice(0, 300), icon: defaultIcon() })
+    const release = (): void => { this.shownNotifications.delete(toast) }
+    toast.on('click', () => {
+      release()
+      if (this.shuttingDown || !this.config.profile) return
+      // A notification from a previous group must not open an ID on the current server.
+      if (generation !== this.connectGeneration) this.openMain()
+      else this.openMainWith({ type: 'open-notification', notificationId: notification.notificationId })
+    })
+    toast.on('close', release)
+    toast.on('failed', release)
+    this.shownNotifications.add(toast)
+    if (this.shownNotifications.size > 20) this.shownNotifications.delete(this.shownNotifications.values().next().value!)
+    toast.show()
+    if (main && !main.isDestroyed() && main.isVisible() && !main.isFocused()) main.flashFrame(true)
+  }
+
+  private applyOverlay(window: BrowserWindow): void {
+    if (process.platform !== 'win32' || window.isDestroyed()) return
+    const count = this.appliedBadge
+    try { window.setOverlayIcon(count ? unreadBadgeImage(count) : null, count ? `未読の通知 ${count}件` : '') }
+    catch (error) { console.error('[HAKOBI] 未読数のバッジを表示できませんでした', error) }
+  }
+
+  private applyUnreadBadge(): void {
+    const count = this.unreadCount()
+    if (count === this.appliedBadge) return
+    this.appliedBadge = count
+    this.tray?.setImage(count ? unreadTrayImage() : defaultIcon())
+    if (process.platform === 'win32') for (const window of this.windows.values()) this.applyOverlay(window)
+    else if (process.platform === 'darwin' || process.platform === 'linux') app.setBadgeCount(count)
+  }
+
+  private updateThumbar(): void {
+    const main = this.windows.get('main')
+    if (process.platform !== 'win32' || !main || main.isDestroyed() || !main.isVisible()) return
+    const next = this.state.recentTasks?.[0]
+    const nextLabel = next && !this.config.preferences.hideTaskTitle ? `「${next.title.slice(0, 40)}」の計測を開始` : '直前のタスクで計測を開始'
+    const buttons: Electron.ThumbarButton[] = !this.timerControls() ? [] : [
+      this.state.taskId
+        ? { tooltip: '計測を停止', icon: thumbarImage('stop'), click: () => this.sendCommand({ type: 'timer-stop' }) }
+        : { tooltip: next ? nextLabel : '計測できるタスクがありません', icon: thumbarImage('start'), flags: next ? ['enabled'] : ['disabled'],
+          click: () => { if (next) this.sendCommand({ type: 'timer-start', todoId: next.id }) } },
+      { tooltip: '進捗をすぐ書く', icon: thumbarImage('progress'), click: () => this.createRemoteWindow('progress', this.state.taskId ?? undefined) },
+      { tooltip: 'タスクを追加', icon: thumbarImage('add'), click: () => this.openMainWith({ type: 'quick-add' }) }
+    ]
+    try { main.setThumbarButtons(buttons) } catch (error) { console.error('[HAKOBI] タスクバーのボタンを更新できませんでした', error) }
   }
 
   private updatePreferences(patch: Partial<DesktopPreferences>): DesktopPreferences {
@@ -479,24 +596,52 @@ export class DesktopController {
     if (!this.tray) return
     const elapsed = this.state.startTime ? Math.max(0, Math.floor((Date.now() + (this.state.clockOffsetMs ?? 0) - Date.parse(this.state.startTime)) / 1000)) : 0
     const clock = `${Math.floor(elapsed / 3600)}:${String(Math.floor(elapsed / 60) % 60).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`
-    this.tray.setToolTip(`HAKOBI | ${this.config.profile?.name}\n${this.taskLabel()}${this.state.taskId ? ` ${clock}` : ''}${this.state.online ? '' : '（接続確認中）'}`.slice(0, 120))
+    const unread = this.unreadCount()
+    // Windows truncates tray tooltips, so a long task title must not push out the clock or unread count.
+    this.tray.setToolTip([`HAKOBI | ${this.config.profile?.name}`,
+      `${this.taskLabel().slice(0, 40)}${this.state.taskId ? ` ${clock}` : ''}${this.state.online ? '' : '（接続確認中）'}`,
+      ...(unread ? [`未読の通知 ${unread}件`] : [])].join('\n').slice(0, 120))
+  }
+
+  private timerMenu(): Electron.MenuItemConstructorOptions[] {
+    if (!this.timerControls()) return []
+    const recent = this.state.recentTasks ?? []
+    return [
+      ...(this.state.taskId ? [{ label: '計測を停止', click: () => this.sendCommand({ type: 'timer-stop' }) }] : []),
+      ...(recent.length ? [
+        { type: 'separator' as const },
+        { label: this.state.taskId ? '別のタスクに切り替える' : '計測を開始する', enabled: false },
+        // Titles stay visible here even with hideTaskTitle: the menu opens only on request, to choose a task.
+        ...recent.map((task) => ({ label: `　${menuLabel(task.title)}`, click: () => this.sendCommand({ type: 'timer-start', todoId: task.id }) }))
+      ] : [])
+    ]
   }
 
   private updateTray(): void {
     if (!this.tray) return
     this.updateTrayTooltip()
+    this.applyUnreadBadge()
+    const ready = !!this.state.userId && this.serverVersion >= 1
+    // Older Web UIs publish no unread count and cannot open notifications on request.
+    const notifications = !!this.state.userId && this.state.unreadCount !== undefined
+    const unread = this.unreadCount()
     this.tray.setContextMenu(Menu.buildFromTemplate([
-      { label: `HAKOBI — ${this.config.profile?.name}`, enabled: false },
-      { label: this.taskLabel().slice(0, 60), enabled: false },
+      { label: menuLabel(`HAKOBI — ${this.config.profile?.name}`), enabled: false },
+      { label: menuLabel(this.taskLabel()), enabled: false },
+      ...this.timerMenu(),
       { type: 'separator' },
+      ...(notifications ? [{ label: unread ? `通知を見る（未読 ${unread}件）` : '通知を見る', click: () => this.openMainWith({ type: 'open-notification' }) }] : []),
       { label: 'メイン画面を開く', click: () => this.openMain() },
-      { label: '右下タイマーを表示', enabled: !!this.state.userId && this.serverVersion >= 1, click: () => this.updatePreferences({ showTimer: true }) },
-      { label: '進捗をすぐ書く', enabled: !!this.state.userId && this.serverVersion >= 1, click: () => this.createRemoteWindow('progress', this.state.taskId ?? undefined) },
+      { label: '右下タイマーを表示', enabled: ready, click: () => this.updatePreferences({ showTimer: true }) },
+      { label: '進捗をすぐ書く', enabled: ready, click: () => this.createRemoteWindow('progress', this.state.taskId ?? undefined) },
+      ...(notifications ? [{ label: 'デスクトップに通知を表示', type: 'checkbox' as const, checked: this.config.preferences.showNotifications,
+        click: () => this.updatePreferences({ showNotifications: !this.config.preferences.showNotifications }) }] : []),
       { label: '接続先を変更', click: () => this.showConnectionSettings() },
       ...(this.serverVersion < 1 ? [{ label: '追加機能にはサーバーの更新が必要です', enabled: false }] : []),
       { type: 'separator' },
       { label: 'HAKOBIを終了', click: () => app.quit() }
     ]))
+    this.updateThumbar()
   }
 
   private assertRemote(event: IpcMainInvokeEvent): WindowKind {
@@ -546,10 +691,17 @@ export class DesktopController {
       if (!state || typeof state.online !== 'boolean' || typeof state.taskTitle !== 'string' || state.taskTitle.length > 1000 ||
           (state.userId !== null && !this.validId(state.userId)) || (state.taskId !== null && !this.validId(state.taskId)) ||
           (state.clockOffsetMs !== undefined && (typeof state.clockOffsetMs !== 'number' || !Number.isFinite(state.clockOffsetMs) || !Number.isFinite(new Date(Date.now() + state.clockOffsetMs).getTime()))) ||
-          (state.startTime !== null && (typeof state.startTime !== 'string' || !Number.isFinite(Date.parse(state.startTime))))) throw new Error('状態が不正です。')
+          (state.startTime !== null && (typeof state.startTime !== 'string' || !Number.isFinite(Date.parse(state.startTime)))) ||
+          (state.recentTasks !== undefined && (!Array.isArray(state.recentTasks) || state.recentTasks.length > 20 ||
+            !state.recentTasks.every((task) => task && this.validId(task.id) && typeof task.title === 'string' && task.title.length <= 1000))) ||
+          (state.unreadCount !== undefined && (!Number.isSafeInteger(state.unreadCount) || state.unreadCount < 0))) throw new Error('状態が不正です。')
+      // The server-hosted UI may be newer than this app, so a longer list is trimmed rather than refused.
+      const recentTasks: DesktopTaskShortcut[] | undefined = state.recentTasks?.slice(0, DESKTOP_RECENT_TASK_LIMIT).map(({ id, title }) => ({ id, title }))
       const signedOut = this.state.userId && !state.userId
-      const menuChanged = this.state.userId !== state.userId || this.state.taskId !== state.taskId || this.state.taskTitle !== state.taskTitle || this.state.startTime !== state.startTime || this.state.online !== state.online
-      this.state = { ...state, clockOffsetMs: state.clockOffsetMs ?? 0 }
+      const menuChanged = this.state.userId !== state.userId || this.state.taskId !== state.taskId || this.state.taskTitle !== state.taskTitle || this.state.startTime !== state.startTime || this.state.online !== state.online ||
+        this.state.unreadCount !== state.unreadCount || JSON.stringify(this.state.recentTasks) !== JSON.stringify(recentTasks)
+      this.state = { userId: state.userId, taskId: state.taskId, taskTitle: state.taskTitle, startTime: state.startTime, online: state.online,
+        clockOffsetMs: state.clockOffsetMs ?? 0, recentTasks, unreadCount: state.unreadCount }
       if (signedOut) {
         this.flushTimerGeometry()
         for (const kind of ['timer', 'progress', 'gantt', 'report'] as const) this.windows.get(kind)?.destroy()
@@ -558,6 +710,26 @@ export class DesktopController {
       }
       if (menuChanged) this.updateTray()
       else this.updateTrayTooltip()
+      if (state.userId && this.pendingLaunchAction) {
+        try { this.runLaunchAction(this.pendingLaunchAction) }
+        catch (error) { console.error('[HAKOBI] タスクバーの操作を実行できませんでした', error) }
+      }
+    })
+    remote('hakobi:notify', (event, notification: DesktopNotification) => {
+      if (this.assertRemote(event) !== 'main' || !this.state.userId) return
+      if (!notification || typeof notification.title !== 'string' || !notification.title.trim() || notification.title.length > 200 ||
+          typeof notification.body !== 'string' || notification.body.length > 1000 ||
+          (notification.notificationId !== undefined && !this.validId(notification.notificationId))) throw new Error('通知が不正です。')
+      this.showNotification({ notificationId: notification.notificationId, title: notification.title, body: notification.body })
+    })
+    remote('hakobi:error', (event, message) => {
+      if (this.assertRemote(event) !== 'main') return
+      if (typeof message !== 'string' || !message.trim() || message.length > 500) throw new Error('メッセージが不正です。')
+      const options: Electron.MessageBoxOptions = { type: 'error', title: 'HAKOBI', message, buttons: ['閉じる'] }
+      const main = this.windows.get('main')
+      // A sheet on a hidden window would never appear, so only attach to a visible main window.
+      const result = main && !main.isDestroyed() && main.isVisible() ? dialog.showMessageBox(main, options) : dialog.showMessageBox(options)
+      void result.catch((error) => console.error('[HAKOBI] エラーを表示できませんでした', error))
     })
     const launcher = (channel: string, handler: (...args: any[]) => unknown): void => {
       ipcMain.handle(channel, (event, ...args) => { this.assertLauncher(event); return handler(...args) })
@@ -573,6 +745,7 @@ export class DesktopController {
       if (this.windows.size || this.openedLocal) this.restart()
       else {
         this.openedLocal = true
+        applyWindowsJumpList(false)
         this.startLocal()
         this.launcher?.destroy()
         this.launcher = null

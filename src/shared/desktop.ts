@@ -7,6 +7,8 @@ export interface DesktopPreferences {
   globalShortcutQuickAdd: string
   globalShortcutExport: string
   globalShortcutProgress: string
+  /** Show team notifications as OS notifications. */
+  showNotifications: boolean
 }
 
 export interface ConnectionProfile {
@@ -31,6 +33,24 @@ export interface DesktopState {
   online: boolean
   /** Server time minus this computer's time, supplied by the authenticated Web UI. */
   clockOffsetMs?: number
+  /** Tasks the tray and taskbar offer for starting or switching the timer. Older Web UIs omit it. */
+  recentTasks?: DesktopTaskShortcut[]
+  /** Unread team notifications for the tray and taskbar badge. Older Web UIs omit it. */
+  unreadCount?: number
+}
+
+export const DESKTOP_RECENT_TASK_LIMIT = 5
+
+export interface DesktopTaskShortcut {
+  id: string
+  title: string
+}
+
+export interface DesktopNotification {
+  /** Clicking opens this server notification as the in-app list does; without it the list itself opens. */
+  notificationId?: string
+  title: string
+  body: string
 }
 
 export type DesktopCommand =
@@ -39,6 +59,9 @@ export type DesktopCommand =
   | { type: 'navigate'; todoId: string }
   | { type: 'progress-target'; todoId: string }
   | { type: 'preferences'; preferences: DesktopPreferences }
+  | { type: 'open-notification'; notificationId?: string }
+  | { type: 'timer-start'; todoId: string }
+  | { type: 'timer-stop' }
 
 /** Only this narrow bridge is exposed to the server-hosted UI. */
 export interface DesktopBridge {
@@ -54,6 +77,9 @@ export interface DesktopBridge {
   resizeTimer(compact: boolean): Promise<void>
   publishState(state: DesktopState): Promise<void>
   onCommand(listener: (command: DesktopCommand) => void): () => void
+  // The Web UI is served by the team server, so it may run inside an older app without these.
+  notify?(notification: DesktopNotification): Promise<void>
+  showError?(message: string): Promise<void>
 }
 
 export interface LauncherState {
