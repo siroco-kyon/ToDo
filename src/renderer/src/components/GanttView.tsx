@@ -12,6 +12,8 @@ interface Props {
   onOpenSeparateWindow?: () => void
   /** タスク追加画面を開く。見出しの「＋」から開くときは、そのカテゴリ・担当を初期値にする */
   onAddTodo?: (defaults?: { categoryId?: string | null; assigneeId?: string | null }) => void
+  /** タスク一覧の絞り込みの表示（見出しの横に出す） */
+  listFilters?: React.ReactNode
   standalone?: boolean
   groupByCategory?: boolean
 }
@@ -954,6 +956,7 @@ export function GanttView({
   onReorderTodos,
   onOpenSeparateWindow,
   onAddTodo,
+  listFilters,
   standalone = false,
   groupByCategory = false
 }: Props): React.JSX.Element {
@@ -2964,7 +2967,10 @@ export function GanttView({
     <div className="tarbo-gantt" style={{ height: '100%', overflow: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 8, position: 'relative', background: GANTT_SURFACE, color: GANTT_TEXT }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: '0.95rem', color: '#f8fafc', fontWeight: 700 }}>ガントチャート</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: '0.95rem', color: '#f8fafc', fontWeight: 700 }}>ガントチャート</div>
+            {listFilters}
+          </div>
           {isReorderMode && <div style={{ marginTop: 2, fontSize: '0.72rem', color: '#93c5fd' }}>並び替えモード中</div>}
           {reorderFeedback && <div role="alert" style={{ marginTop: 2, fontSize: '0.72rem', color: '#fca5a5' }}>{reorderFeedback}</div>}
         </div>

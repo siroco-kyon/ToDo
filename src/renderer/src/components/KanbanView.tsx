@@ -5,6 +5,8 @@ interface Props {
   todos: Todo[]
   categories: Category[]
   runningTodoId: string | null
+  /** タスク一覧の絞り込みの表示。絞り込み中だけ上に出す */
+  listFilters?: React.ReactNode
   onSelectTodo: (id: string) => void
   onChangeStatus: (todo: Todo, status: TodoStatus) => void | Promise<void>
   onCreateInColumn: (title: string, status: TodoStatus) => void | Promise<void>
@@ -157,7 +159,7 @@ function KanbanCard({
 }
 
 export function KanbanView({
-  todos, categories, runningTodoId, onSelectTodo, onChangeStatus, onCreateInColumn
+  todos, categories, runningTodoId, listFilters, onSelectTodo, onChangeStatus, onCreateInColumn
 }: Props): React.JSX.Element {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<TodoStatus | null>(null)
@@ -194,7 +196,9 @@ export function KanbanView({
   }
 
   return (
-    <div style={{ height: '100%', display: 'flex', gap: 10, padding: 12, overflowX: 'auto', boxSizing: 'border-box' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+      {listFilters && <div style={{ flexShrink: 0, padding: '8px 12px 0' }}>{listFilters}</div>}
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 10, padding: 12, overflowX: 'auto', boxSizing: 'border-box' }}>
       {COLUMNS.map((col) => {
         const items = byStatus[col.status]
         const isOver = dragOverStatus === col.status
@@ -265,6 +269,7 @@ export function KanbanView({
           </div>
         )
       })}
+    </div>
     </div>
   )
 }
