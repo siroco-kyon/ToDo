@@ -7,6 +7,7 @@
     "test:auth-import": "tsx --test tests/auth-import-regressions.test.ts",
     "test:desktop": "tsx --test tests/desktop.test.ts",
     "test:progress-timeline": "tsx --test tests/progress-timeline.test.ts",
+    "test:progress-digest": "tsx --test tests/progress-digest.test.ts",
     "test:members": "tsx --test tests/member-delete.test.ts",
     "test:on-hold": "tsx --test tests/on-hold.test.ts",
     "dev": "tsx watch src/index.ts",

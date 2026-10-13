@@ -377,8 +377,10 @@ export function toggleProgressNoteCommentReaction(commentId: string, userId: str
 
 /**
  * Admin progress report: for each target member, what they added (tasks +
- * subtasks, with legacy task creation falling back to the assignee), the progress notes they authored, and the
+ * subtasks), what they completed, the progress notes they authored, and the
  * time they logged, all within the inclusive [from, to] local-date range.
+ * Everything is attributed to the member who did it; only legacy rows without
+ * a recorded creator / completer fall back to the (parent) task's assignee.
  */
 export function getProgressDigest(from: string, to: string, userIds?: string[], includePrivate = true): ProgressDigest {
   const db = getDb()
@@ -409,22 +411,38 @@ export function getProgressDigest(from: string, to: string, userIds?: string[], 
      ORDER BY t.created_at ASC`
   )
 
+  // 完了にした人で数える。完了操作は completed_at と status → done の履歴を同じ時刻で書くので、
+  // まず完了日時と一致する履歴の操作者を使う（アーカイブからの復元は完了日時を変えないので、
+  // 元の完了操作の履歴が選ばれる）。一致しない古いデータは、アーカイブからの復元を除いた
+  // 最後の done 履歴、それもなければ主担当で数える。
   const completedTodosStmt = db.prepare(
     `SELECT t.id, t.title, t.status, t.progress, t.memo,
             c.name AS category_name, c.color AS category_color, t.completed_at
      FROM Todos t
      LEFT JOIN Categories c ON t.category_id = c.id
-     WHERE t.assignee_id = ? AND t.status = 'done' AND t.completed_at IS NOT NULL
+     WHERE COALESCE(
+             (SELECT tcl.user_id FROM TodoChangeLogs tcl
+              WHERE tcl.todo_id = t.id AND tcl.field = 'status' AND tcl.new_value = 'done'
+                AND tcl.created_at = t.completed_at
+              ORDER BY tcl.rowid DESC LIMIT 1),
+             (SELECT tcl.user_id FROM TodoChangeLogs tcl
+              WHERE tcl.todo_id = t.id AND tcl.field = 'status' AND tcl.new_value = 'done'
+                AND COALESCE(tcl.old_value, '') != 'archived'
+              ORDER BY tcl.created_at DESC, tcl.rowid DESC LIMIT 1),
+             t.assignee_id
+           ) = ?
+       AND t.status = 'done' AND t.completed_at IS NOT NULL
        AND date(t.completed_at, 'localtime') BETWEEN ? AND ? ${catClause}
      ORDER BY t.completed_at ASC`
   )
 
+  // 追加した人で数える。追加者を記録する前のサブタスクは親タスクの主担当で数える。
   const addedSubTasksStmt = db.prepare(
     `SELECT st.id, st.title, st.todo_id, t.title AS todo_title, st.done, st.created_at
      FROM SubTasks st
      JOIN Todos t ON st.todo_id = t.id
      ${catJoin}
-     WHERE t.assignee_id = ? AND date(st.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
+     WHERE COALESCE(st.created_by, t.assignee_id) = ? AND date(st.created_at, 'localtime') BETWEEN ? AND ? ${catClause}
      ORDER BY st.created_at ASC`
   )
 
