@@ -113,3 +113,15 @@ body.theme-light .tarbo-gantt {
   pointer-events: none;
   z-index: 5;
 }
+
+/* 「保留する」ボタンは保留中でない行では隠し、行にマウスを乗せたとき・キーボードで選んだときだけ出す。
+   場所は空けたままにして、タスク名の幅が動かないようにする */
+.tarbo-gantt .tarbo-gantt-hold-toggle {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.tarbo-gantt .tarbo-gantt-row:hover .tarbo-gantt-hold-toggle,
+.tarbo-gantt .tarbo-gantt-hold-toggle:focus-visible {
+  opacity: 1;
+}

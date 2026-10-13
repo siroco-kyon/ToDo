@@ -122,6 +122,8 @@ export function App(): React.JSX.Element {
     } catch { return [] }
   })
   const [showQuickAdd, setShowQuickAdd] = useState(false)
+  // 追加画面の初期値（ガントの見出しの「＋」から開いたときなど）。null は左の選択状態から決める
+  const [quickAddDefaults, setQuickAddDefaults] = useState<{ categoryId?: string | null; assigneeId?: string | null } | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const saved = window.localStorage.getItem('app-theme-mode')
@@ -481,7 +483,7 @@ export function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    const unsubQuickAdd = window.api.onShortcutQuickAdd(() => setShowQuickAdd(true))
+    const unsubQuickAdd = window.api.onShortcutQuickAdd(() => { setQuickAddDefaults(null); setShowQuickAdd(true) })
     const unsubExport = window.api.onShortcutExport(() => handleExportClipboard())
     return () => {
       unsubQuickAdd()
@@ -520,65 +522,69 @@ export function App(): React.JSX.Element {
     [privateCategoryIds, scopeLens, selectedPlanItems]
   )
 
-  const filteredTodos = lensTodos
-    .filter((todo) => {
-      if (!showArchived && todo.status === 'archived') return false
-      if (selectedCategoryId && todo.category_id !== selectedCategoryId) return false
-      if (selectedAssigneeId !== null) {
-        if (selectedAssigneeId === '' && (todo.assignee_id !== null || (todo.co_assignees ?? []).length > 0)) return false
-        // 主担当またはサブ担当のどちらかに入っていれば表示する
-        if (
-          selectedAssigneeId !== '' &&
-          todo.assignee_id !== selectedAssigneeId &&
-          !(todo.co_assignees ?? []).some((coAssignee) => coAssignee.user_id === selectedAssigneeId)
-        ) return false
-      }
+  // タスク一覧の絞り込み（アーカイブ・カテゴリ・担当・検索）。
+  // 報告タブは独自の担当絞り込みを持つので、ignoreAssignee で一覧の担当絞り込みを外して使う。
+  const matchesListFilters = (todo: Todo, ignoreAssignee = false): boolean => {
+    if (!showArchived && todo.status === 'archived') return false
+    if (selectedCategoryId && todo.category_id !== selectedCategoryId) return false
+    if (!ignoreAssignee && selectedAssigneeId !== null) {
+      if (selectedAssigneeId === '' && (todo.assignee_id !== null || (todo.co_assignees ?? []).length > 0)) return false
+      // 主担当またはサブ担当のどちらかに入っていれば表示する
+      if (
+        selectedAssigneeId !== '' &&
+        todo.assignee_id !== selectedAssigneeId &&
+        !(todo.co_assignees ?? []).some((coAssignee) => coAssignee.user_id === selectedAssigneeId)
+      ) return false
+    }
 
-      if (q) {
-        const hit = todo.title.toLowerCase().includes(q)
-          || todo.description.toLowerCase().includes(q)
-          || todo.memo.toLowerCase().includes(q)
-          || (todo.category_name?.toLowerCase().includes(q) ?? false)
-          || (todo.assignee_name?.toLowerCase().includes(q) ?? false)
-          || (todo.co_assignees ?? []).some((assignee) => assignee.display_name.toLowerCase().includes(q))
-          || allSubTasks.some((subTask) => subTask.todo_id === todo.id && (
-            subTask.title.toLowerCase().includes(q)
-            || subTask.description.toLowerCase().includes(q)
-            || (subTask.assignee_name?.toLowerCase().includes(q) ?? false)
-          ))
+    if (q) {
+      const hit = todo.title.toLowerCase().includes(q)
+        || todo.description.toLowerCase().includes(q)
+        || todo.memo.toLowerCase().includes(q)
+        || (todo.category_name?.toLowerCase().includes(q) ?? false)
+        || (todo.assignee_name?.toLowerCase().includes(q) ?? false)
+        || (todo.co_assignees ?? []).some((assignee) => assignee.display_name.toLowerCase().includes(q))
+        || allSubTasks.some((subTask) => subTask.todo_id === todo.id && (
+          subTask.title.toLowerCase().includes(q)
+          || subTask.description.toLowerCase().includes(q)
+          || (subTask.assignee_name?.toLowerCase().includes(q) ?? false)
+        ))
 
-        if (!hit) return false
-      }
+      if (!hit) return false
+    }
 
-      return true
-    })
+    return true
+  }
 
-    .sort((a, b) => {
-      if (a.status === 'archived' && b.status !== 'archived') return 1
-      if (a.status !== 'archived' && b.status === 'archived') return -1
+  const compareTodos = (a: Todo, b: Todo): number => {
+    if (a.status === 'archived' && b.status !== 'archived') return 1
+    if (a.status !== 'archived' && b.status === 'archived') return -1
 
-      if (sortField === 'sort_order') {
-        return (a.sort_order ?? 0) - (b.sort_order ?? 0)
-      }
+    if (sortField === 'sort_order') {
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    }
 
-      let aVal: string | number
-      let bVal: string | number
+    let aVal: string | number
+    let bVal: string | number
 
-      if (sortField === 'title') {
-        aVal = a.title.toLowerCase()
-        bVal = b.title.toLowerCase()
-      } else if (sortField === 'due_date') {
-        aVal = a.due_date ?? (sortDir === 'asc' ? '\uffff' : '')
-        bVal = b.due_date ?? (sortDir === 'asc' ? '\uffff' : '')
-      } else {
-        aVal = (a[sortField] as number) ?? 0
-        bVal = (b[sortField] as number) ?? 0
-      }
+    if (sortField === 'title') {
+      aVal = a.title.toLowerCase()
+      bVal = b.title.toLowerCase()
+    } else if (sortField === 'due_date') {
+      aVal = a.due_date ?? (sortDir === 'asc' ? '\uffff' : '')
+      bVal = b.due_date ?? (sortDir === 'asc' ? '\uffff' : '')
+    } else {
+      aVal = (a[sortField] as number) ?? 0
+      bVal = (b[sortField] as number) ?? 0
+    }
 
-      if (aVal < bVal) return sortDir === 'asc' ? -1 : 1
-      if (aVal > bVal) return sortDir === 'asc' ? 1 : -1
-      return 0
-    })
+    if (aVal < bVal) return sortDir === 'asc' ? -1 : 1
+    if (aVal > bVal) return sortDir === 'asc' ? 1 : -1
+    return 0
+  }
+
+  const filteredTodos = lensTodos.filter((todo) => matchesListFilters(todo)).sort(compareTodos)
+  const reportTodos = lensTodos.filter((todo) => matchesListFilters(todo, true)).sort(compareTodos)
 
   // タイマーの秒更新では変化せず、概要の集計元が実際に変わったときだけ更新されるキー。
   const overviewDataRevision = useMemo(() => JSON.stringify({
@@ -596,11 +602,13 @@ export function App(): React.JSX.Element {
 
   const selectedTodo = lensTodos.find((todo) => todo.id === selectedTodoId) ?? null
 
+  // 上部のタブで画面を切り替える。表示中のタブをもう一度押しても、ほかの画面には移らない
   const toggleCenterView = useCallback((view: CenterView) => {
+    if (view === activeView) return
     if (detailDirty && !window.confirm('未保存の変更があります。別の画面へ移動しますか？')) return
-    setActiveView((prev) => prev === view ? 'detail' : view)
+    setActiveView(view)
     if (view === 'gantt') setGanttSidePanelMode('today')
-  }, [detailDirty])
+  }, [activeView, detailDirty])
 
   const openTodoDetail = useCallback((id: string) => {
     if (id !== selectedTodoId && detailDirty && !window.confirm('未保存の変更があります。別のタスクへ移動しますか？')) return
@@ -690,6 +698,46 @@ export function App(): React.JSX.Element {
     await loadTodos()
     return created
   }, [loadTodos])
+
+  // 追加したタスクが今の絞り込みで一覧に出ないと「消えた」と思われるので、そのときは理由と解除ボタンを出す
+  const openTodoDetailRef = useRef(openTodoDetail)
+  openTodoDetailRef.current = openTodoDetail
+  const handleAdded = (created: Todo[]): void => {
+    if (created.length === 0) return
+    const first = created[0]
+    const hiddenByLens = scopeLens === 'team' && first.category_id != null && privateCategoryIds.has(first.category_id)
+    const hidden = hiddenByLens || !matchesListFilters(first)
+    const label = created.length === 1 ? `「${first.title}」を追加しました` : `${created.length}件のタスクを追加しました`
+    if (!hidden) {
+      showToast(label, 'success', { label: '開く', run: () => openTodoDetailRef.current(first.id) })
+      return
+    }
+    showToast(`${label}。今の絞り込みでは一覧に表示されません`, 'success', {
+      label: '絞り込みを解除して開く',
+      run: () => {
+        setSearchQuery('')
+        setShowArchived(false)
+        setSelectedCategoryId((previous) => previous && previous !== first.category_id ? null : previous)
+        setSelectedAssigneeId(null)
+        if (hiddenByLens) setScopeLens('personal')
+        openTodoDetailRef.current(first.id)
+      }
+    })
+  }
+
+  // 新しいタスクの担当の初期値: 一覧を特定の人で絞っていればその人、未割り当てで絞っていれば未割り当て、それ以外は自分。
+  // 追加した直後に一覧から消えたように見えないようにする
+  const defaultNewTaskAssigneeId = selectedAssigneeId === null ? currentUser?.id ?? null : selectedAssigneeId === '' ? null : selectedAssigneeId
+  const openQuickAdd = (defaults?: { categoryId?: string | null; assigneeId?: string | null }): void => {
+    setQuickAddDefaults(defaults ?? null)
+    setShowQuickAdd(true)
+  }
+
+  const clearListFilters = useCallback((): void => {
+    setSearchQuery('')
+    setSelectedCategoryId(null)
+    setSelectedAssigneeId(null)
+  }, [])
 
   const handleUpdate = useCallback(async (id: string, data: UpdateTodoInput) => {
     await window.api.todoUpdate(id, data)
@@ -1001,6 +1049,25 @@ export function App(): React.JSX.Element {
     return <TaskReportWindow />
   }
 
+  // タスク一覧の絞り込みはガントやカンバンにも効くので、一覧を見ていなくても分かるよう画面の上に出す。
+  // 報告タブは自前の担当絞り込みを使うので、一覧の担当絞り込みは出さない（効いていない）。
+  // 詳細・進捗・記録・チームの画面には一覧の絞り込みが効かないので出さない。
+  const filterAffectsView = activeView === 'gantt' || activeView === 'kanban' || activeView === 'plan' || activeView === 'overview' || activeView === 'report'
+  const assigneeFilterLabel = selectedAssigneeId === null
+    ? null
+    : selectedAssigneeId === ''
+      ? '未割り当て'
+      : selectedAssigneeId === currentUser?.id
+        ? '自分'
+        : users.find((user) => user.id === selectedAssigneeId)?.display_name ?? '不明'
+  const activeFilterChips: Array<{ key: string; label: string; clear: () => void }> = filterAffectsView
+    ? [
+        ...(assigneeFilterLabel && activeView !== 'report' ? [{ key: 'assignee', label: `担当: ${assigneeFilterLabel}`, clear: () => setSelectedAssigneeId(null) }] : []),
+        ...(selectedCategoryId ? [{ key: 'category', label: `カテゴリ: ${categories.find((item) => item.id === selectedCategoryId)?.name ?? '不明'}`, clear: () => setSelectedCategoryId(null) }] : []),
+        ...(q ? [{ key: 'search', label: `検索: ${searchQuery.trim()}`, clear: () => setSearchQuery('') }] : [])
+      ]
+    : []
+
   const isManualSort = sortField === 'sort_order'
   const showRightPlanRail = showPlanRail && activeView !== 'plan' && activeView !== 'team' && activeView !== 'progress' && activeView !== 'report'
   const showGanttSidePanel = activeView === 'gantt' && (ganttSidePanelMode === 'detail' || showPlanRail)
@@ -1019,7 +1086,7 @@ export function App(): React.JSX.Element {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <Toolbar
         isTimerRunning={isRunning}
-        onOpenQuickAdd={() => setShowQuickAdd(true)}
+        onOpenQuickAdd={() => openQuickAdd()}
         onOpenProgressReport={() => {
           if (isAdmin && multiUser) setShowProgressReport(true)
           else setShowMySummary(true)
@@ -1030,6 +1097,7 @@ export function App(): React.JSX.Element {
         activeView={activeView}
         scopeLens={scopeLens}
         onSetScopeLens={setScopeLens}
+        showScopeLens={privateCategoryIds.size > 0}
         showPlanRail={showPlanRail}
         showCategoryPane={showCategoryPane}
         showTaskPane={showTaskPane}
@@ -1107,9 +1175,10 @@ export function App(): React.JSX.Element {
                   boxSizing: 'border-box'
                 }}
               >
-                <option value="__all__">担当者: 全員</option>
-                <option value="__none__">担当者: 未割り当て</option>
-                {users.map((user) => (
+                <option value="__all__">担当: 全員</option>
+                {currentUser && <option value={currentUser.id}>担当: 自分（{currentUser.display_name}）</option>}
+                <option value="__none__">担当: 未割り当て</option>
+                {users.filter((user) => user.id !== currentUser?.id).map((user) => (
                   <option key={user.id} value={user.id}>
                     担当: {user.display_name}{user.is_active ? '' : '（無効）'}
                   </option>
@@ -1173,8 +1242,10 @@ export function App(): React.JSX.Element {
               elapsedSeconds={elapsedSeconds}
               isManualSort={isManualSort}
               searchQuery={q}
+              hasOtherFilters={selectedAssigneeId !== null || selectedCategoryId !== null}
               onClearSearch={() => setSearchQuery('')}
-              onAddTodo={() => setShowQuickAdd(true)}
+              onClearFilters={clearListFilters}
+              onAddTodo={() => openQuickAdd()}
               onSelect={openTodoDetail}
               onToggleDone={handleToggleDone}
               onArchive={handleArchive}
@@ -1192,7 +1263,19 @@ export function App(): React.JSX.Element {
           style={{ ...resizeHandleStyle, display: showTaskPane ? 'block' : 'none' }}
         />
 
-        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: '#0f172a' }}>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: '#0f172a', display: 'flex', flexDirection: 'column' }}>
+          {!initialLoadError && activeFilterChips.length > 0 && (
+            <div aria-label="タスク一覧の絞り込み" style={activeFilterBarStyle}>
+              <span style={{ color: '#94a3b8', flexShrink: 0 }}>タスク一覧の絞り込みを適用中:</span>
+              {activeFilterChips.map((chip) => (
+                <button key={chip.key} onClick={chip.clear} title={`${chip.label} の絞り込みを解除`} style={filterChipStyle}>{chip.label} ×</button>
+              ))}
+              {activeFilterChips.length > 1 && (
+                <button onClick={() => activeFilterChips.forEach((chip) => chip.clear())} style={clearAllFiltersButtonStyle}>すべて解除</button>
+              )}
+            </div>
+          )}
+          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           {initialLoadError ? (
             <div role="alert" style={{ margin: 24, padding: 20, border: '1px solid #ef4444', borderRadius: 12, background: '#450a0a', color: '#fecaca' }}>
               <strong>データを読み込めませんでした</strong>
@@ -1219,6 +1302,7 @@ export function App(): React.JSX.Element {
               onUpdateTodo={handleUpdate}
               onReorderTodos={handleReorder}
               onOpenSeparateWindow={handleOpenGanttWindow}
+              onAddTodo={(defaults) => openQuickAdd(defaults)}
               groupByCategory={selectedCategoryId === null}
             />
           ) : activeView === 'kanban' ? (
@@ -1258,7 +1342,8 @@ export function App(): React.JSX.Element {
             <WorkLogSummary hiddenTodoIds={hiddenPrivateTodoIds} />
           ) : activeView === 'progress' ? (
             <ProgressTimeline
-              todos={filteredTodos}
+              // 投稿先の選択肢。タイムライン自体はタスク一覧の絞り込みと関係ないので、絞り込み前のタスクから選べるようにする
+              todos={lensTodos.slice().sort(compareTodos)}
               users={users}
               currentUser={currentUser}
               focusTarget={progressTimelineFocus}
@@ -1268,7 +1353,7 @@ export function App(): React.JSX.Element {
             />
           ) : activeView === 'report' ? (
             <ReportView
-              todos={filteredTodos}
+              todos={reportTodos}
               subTasks={allSubTasks}
               users={users}
               currentUser={currentUser}
@@ -1299,6 +1384,7 @@ export function App(): React.JSX.Element {
               onDirtyChange={setDetailDirty}
             />
           )}
+          </div>
         </div>
 
         {showAuxiliaryPanel && (
@@ -1384,7 +1470,10 @@ export function App(): React.JSX.Element {
         <QuickAddModal
           categories={categories}
           users={users}
+          defaultCategoryId={quickAddDefaults?.categoryId !== undefined ? quickAddDefaults.categoryId : selectedCategoryId}
+          defaultAssigneeId={quickAddDefaults?.assigneeId !== undefined ? quickAddDefaults.assigneeId : defaultNewTaskAssigneeId}
           onAdd={handleAdd}
+          onAdded={handleAdded}
           onClose={() => setShowQuickAdd(false)}
           onShowToast={showToast}
         />
@@ -1478,6 +1567,16 @@ const filterChipStyle: React.CSSProperties = {
   maxWidth: '100%', padding: '2px 6px', borderRadius: 999, border: '1px solid #4f46e5',
   background: '#1e1b4b', color: '#c7d2fe', cursor: 'pointer', fontSize: '0.68rem',
   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+}
+
+const activeFilterBarStyle: React.CSSProperties = {
+  flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+  padding: '5px 12px', borderBottom: '1px solid #1e293b', background: '#0b1220', fontSize: '0.72rem'
+}
+
+const clearAllFiltersButtonStyle: React.CSSProperties = {
+  padding: '2px 8px', borderRadius: 999, border: '1px solid #334155', background: 'transparent',
+  color: '#94a3b8', cursor: 'pointer', fontSize: '0.68rem', whiteSpace: 'nowrap'
 }
 
 function sideTabButtonStyle(active: boolean): React.CSSProperties {

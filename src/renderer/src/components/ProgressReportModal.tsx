@@ -55,7 +55,7 @@ const CHANGE_FIELD_LABEL: Record<string, string> = {
   priority: '優先度',
   progress: '進捗',
   start_date: '開始日',
-  due_date: '締切日',
+  due_date: '期限',
   recurrence: '繰り返し',
   recurrence_copy_subtasks: 'サブタスク引継ぎ'
 }

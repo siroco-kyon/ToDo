@@ -39,6 +39,20 @@ const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
   { value: 'author', label: '投稿者別' }
 ]
 const SORT_STORAGE_KEY = 'progressTimeline.sortMode'
+const LAST_TODO_STORAGE_KEY = 'progressTimeline.lastTodoId'
+
+// 共有PCで次にログインした人へ前の人の投稿先が引き継がれないよう、ユーザーごとに覚える（下書きと同じ）
+function lastTodoStorageKey(userId: string | null | undefined): string {
+  return userId ? `${LAST_TODO_STORAGE_KEY}:${userId}` : LAST_TODO_STORAGE_KEY
+}
+
+function loadLastTodoId(key: string): string {
+  try {
+    return window.localStorage.getItem(key) ?? ''
+  } catch {
+    return ''
+  }
+}
 
 function loadSortMode(): SortMode {
   try {
@@ -182,7 +196,16 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   const [sortMode, setSortMode] = useState<SortMode>(loadSortMode)
   const [selectedAuthorId, setSelectedAuthorId] = useState('')
   const [loading, setLoading] = useState(false)
-  const [selectedTodoId, setSelectedTodoId] = useState('')
+  // 一覧の先頭を勝手に選ぶと別のタスクに誤投稿しやすいので、前回投稿したタスク（なければ未選択）から始める
+  const lastTodoKey = lastTodoStorageKey(currentUser?.id)
+  const [selectedTodoId, setSelectedTodoId] = useState(() => loadLastTodoId(lastTodoKey))
+  const lastTodoKeyRef = useRef(lastTodoKey)
+  useEffect(() => {
+    // ログインしている人が変わったら、その人が前回投稿したタスクに選び直す
+    if (lastTodoKeyRef.current === lastTodoKey) return
+    lastTodoKeyRef.current = lastTodoKey
+    setSelectedTodoId(loadLastTodoId(lastTodoKey))
+  }, [lastTodoKey])
   const [focusedNoteId, setFocusedNoteId] = useState<string | null>(null)
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null)
   const draftSuffix = currentUser?.id ? `:${currentUser.id}` : ''
@@ -211,9 +234,22 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       .filter((todo) => todo.status !== 'archived' && !hiddenTodoIds.has(todo.id))
   ), [hiddenTodoIds, todos])
 
+  // 投稿先の選択肢は「自分の担当（未完了）」「ほかの未完了」「完了」に分けて、自分のタスクを探しやすくする
+  const taskOptionGroups = useMemo(() => {
+    const isMine = (todo: Todo): boolean => currentUser != null && (
+      todo.assignee_id === currentUser.id || (todo.co_assignees ?? []).some((item) => item.user_id === currentUser.id)
+    )
+    const open = taskOptions.filter((todo) => todo.status !== 'done')
+    return [
+      { label: '自分の担当', todos: currentUser ? open.filter(isMine) : [] },
+      { label: currentUser ? 'ほかのタスク' : '未完了のタスク', todos: currentUser ? open.filter((todo) => !isMine(todo)) : open },
+      { label: '完了したタスク', todos: taskOptions.filter((todo) => todo.status === 'done') }
+    ].filter((group) => group.todos.length > 0)
+  }, [currentUser, taskOptions])
+
   useEffect(() => {
-    if (selectedTodoId && taskOptions.some((todo) => todo.id === selectedTodoId)) return
-    setSelectedTodoId(taskOptions[0]?.id ?? '')
+    if (!selectedTodoId || taskOptions.some((todo) => todo.id === selectedTodoId)) return
+    setSelectedTodoId('')
   }, [selectedTodoId, taskOptions])
 
   useEffect(() => {
@@ -315,6 +351,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       setSavingNote(true)
       const created = await window.api.progressNoteCreate(selectedTodoId, body)
       setNoteDraft('')
+      try { window.localStorage.setItem(lastTodoKey, selectedTodoId) } catch { /* 記憶できなくても投稿は済んでいる */ }
       if (isInRange(getDateKeyFromIso(created.created_at), range)) {
         setNotes((previous) => [normalizeNote(created), ...previous])
       }
@@ -617,15 +654,31 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
           <div style={newPostStyle}>
             <Avatar name={currentAuthorName} color={currentAuthorColor} size={42} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <select value={selectedTodoId} onChange={(event) => setSelectedTodoId(event.target.value)} disabled={taskOptions.length === 0} style={{ ...inputStyle, width: '100%', marginBottom: 8 }}>
+              <select
+                value={selectedTodoId}
+                onChange={(event) => setSelectedTodoId(event.target.value)}
+                disabled={taskOptions.length === 0}
+                aria-label="進捗を書くタスク"
+                style={{ ...inputStyle, width: '100%', marginBottom: 8, color: selectedTodoId ? '#e2e8f0' : '#94a3b8' }}
+              >
                 {taskOptions.length === 0 ? (
                   <option value="">タスクがありません</option>
-                ) : taskOptions.map((todo) => (
-                  <option key={todo.id} value={todo.id}>{todo.title}</option>
-                ))}
+                ) : (
+                  <>
+                    <option value="">どのタスクの進捗を書きますか？（選んでください）</option>
+                    {taskOptionGroups.map((group) => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.todos.map((todo) => (
+                          <option key={todo.id} value={todo.id}>{todo.title}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </>
+                )}
               </select>
               <textarea
                 value={noteDraft}
+                disabled={!selectedTodoId}
                 onChange={(event) => setNoteDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
@@ -633,7 +686,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                     void handleCreateNote()
                   }
                 }}
-                placeholder="今日の進捗を共有"
+                placeholder={selectedTodoId ? '今日の進捗を共有（Ctrl+Enterで投稿）' : '先に上でタスクを選んでください'}
                 rows={3}
                 style={{ ...postInputStyle, minHeight: 88 }}
               />
