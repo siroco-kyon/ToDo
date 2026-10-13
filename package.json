@@ -1,6 +1,6 @@
 {
   "name": "todo-app",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "HAKOBI team workspace with Gantt charts and time tracking",
   "main": "./out/main/index.js",
   "author": "",
@@ -9,7 +9,7 @@
     "test:installer": "node tests/hakobi-installer.cjs",
     "test:gantt-scroll": "node tests/gantt-scroll-regressions.cjs",
     "test:quality": "node tests/local-data-regressions.cjs && node tests/task-data-regressions.cjs && node tests/timer-sync-regressions.cjs && npm --prefix server run test:auth-import && node tests/server-deployment.cjs && node tests/hakobi-detail-electron.cjs",
-    "test:hakobi": "node tests/windows-branding.cjs && node tests/hakobi-desktop.cjs && node tests/desktop-feed.cjs && node tests/service-config.cjs && node tests/server-clock.cjs && node tests/hakobi-progress-drafts.cjs && node tests/legacy-draft-recovery.cjs && node tests/web-client-regressions.cjs && node tests/auth-session.cjs && npm --prefix server run test:desktop && node tests/hakobi-native-electron.cjs && node tests/hakobi-electron.cjs",
+    "test:hakobi": "node tests/windows-branding.cjs && node tests/hakobi-desktop.cjs && node tests/desktop-feed.cjs && node tests/desktop-release.cjs && npm --prefix server run test:desktop-release && node tests/desktop-download-server.cjs && node tests/service-config.cjs && node tests/server-clock.cjs && node tests/hakobi-progress-drafts.cjs && node tests/legacy-draft-recovery.cjs && node tests/web-client-regressions.cjs && node tests/auth-session.cjs && npm --prefix server run test:desktop && node tests/hakobi-native-electron.cjs && node tests/hakobi-electron.cjs",
     "test:progress-timeline": "node tests/progress-timeline-desktop.cjs && node tests/progress-timeline-display.cjs && npm --prefix server run test:progress-timeline",
     "test:progress-report": "node tests/progress-report-authors.cjs && npm --prefix server run test:progress-digest",
     "test:links-members": "node tests/links.cjs && npm --prefix server run test:members",
@@ -27,6 +27,7 @@
     "service:uninstall": "npm --prefix server run service:uninstall",
     "generate:icons": "node scripts/generate-build-icons.cjs",
     "dist": "npm run generate:icons && npm run build && electron-builder",
+    "publish:desktop": "npm --prefix server run publish:desktop --",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {

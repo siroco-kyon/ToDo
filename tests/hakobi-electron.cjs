@@ -6,6 +6,7 @@ const path = require('node:path')
 const net = require('node:net')
 const { pathToFileURL } = require('node:url')
 const { spawn } = require('node:child_process')
+const crypto = require('node:crypto')
 
 const root = path.resolve(__dirname, '..')
 const webDist = path.resolve(process.env.HAKOBI_TEST_WEB_DIST || process.argv[2] || path.join(root, 'dist-web'))
@@ -41,10 +42,22 @@ async function main() {
   fs.writeFileSync(envFile, '')
   const port = await freePort()
   const origin = `http://127.0.0.1:${port}`
+  // A published installer, laid out exactly as npm run publish:desktop writes it.
+  const desktopDist = path.join(temporaryDir, 'dist-desktop')
+  fs.mkdirSync(desktopDist)
+  const installer = crypto.randomBytes(256 * 1024)
+  const installerName = 'HAKOBI-9.9.9-setup.exe'
+  const installerSha512 = crypto.createHash('sha512').update(installer).digest('base64')
+  fs.writeFileSync(path.join(desktopDist, installerName), installer)
+  fs.writeFileSync(path.join(desktopDist, 'latest.yml'), [
+    'version: 9.9.9', 'files:', `  - url: ${installerName}`, `    sha512: ${installerSha512}`, `    size: ${installer.length}`,
+    `path: ${installerName}`, `sha512: ${installerSha512}`, "releaseDate: '2026-10-13T00:00:00.000Z'", ''
+  ].join('\n'))
   const fixture = {
     root, temporaryDir, imageDir, origin,
     username: 'hakobi_smoke_admin', password: 'hakobi-smoke-only-test-password',
-    taskTitle: 'HAKOBI動作確認のタスク', groupName: '動作確認チーム'
+    taskTitle: 'HAKOBI動作確認のタスク', groupName: '動作確認チーム',
+    release: { version: '9.9.9', size: installer.length, sha256: crypto.createHash('sha256').update(installer).digest('hex') }
   }
   const fixturePath = path.join(temporaryDir, 'fixture.json')
   fs.writeFileSync(fixturePath, JSON.stringify(fixture))
@@ -55,7 +68,7 @@ async function main() {
   ], {
     cwd: path.join(root, 'server'), windowsHide: true,
     env: { ...process.env, TODO_ENV_FILE: envFile, PORT: String(port),
-      TODO_DATA_DIR: path.join(temporaryDir, 'server-data'), TODO_WEB_DIST: webDist,
+      TODO_DATA_DIR: path.join(temporaryDir, 'server-data'), TODO_WEB_DIST: webDist, TODO_DESKTOP_DIST: desktopDist,
       ADMIN_USERNAME: fixture.username, ADMIN_PASSWORD: fixture.password, SESSION_COOKIE: 'hakobi_smoke_session' }
   })
   server.stdout.on('data', (chunk) => { serverOutput += chunk })
@@ -86,6 +99,8 @@ const windows = []
 const rendererErrors = []
 const paintedFrames = new Map()
 const states = []
+// URLs the server UI asked to open in a new window; the real app sends these to the system browser.
+const openedUrls = []
 const commands = []
 let preferences = { showTimer: true, alwaysOnTop: true, hideTaskTitle: false,
   timerCompact: false,
@@ -159,7 +174,7 @@ function createWindow(preload, partition, width, height) {
   window.webContents.on('console-message', (_event, level, message) => {
     if (level >= 3 && !message.includes('Electron Security Warning') && !message.includes('status of 401')) rendererErrors.push(message)
   })
-  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  window.webContents.setWindowOpenHandler((details) => { openedUrls.push(details.url); return { action: 'deny' } })
   windows.push(window)
   return window
 }
@@ -341,6 +356,7 @@ async function run() {
   await main.webContents.executeJavaScript("Array.from(document.querySelectorAll('button')).find((button) => button.textContent === '設定').click()")
   await until(main, "Boolean(document.querySelector('[role=dialog][aria-label=設定]'))", 'Settings did not open')
   assert.ok(await main.webContents.executeJavaScript("document.body.innerText.includes('通知をデスクトップに表示')"), 'The desktop notification setting is missing')
+  await until(main, "document.body.innerText.includes('このPCのバージョン: 1.0.4 以前') && document.body.innerText.includes('新しいバージョン 9.9.9 を配布しています')", 'Settings did not compare the installed app with the published installer')
   await main.webContents.executeJavaScript("Array.from(document.querySelectorAll('button')).find((button) => button.textContent === '旧版の下書きを確認・復元').click()")
   await until(main, "document.querySelector('[aria-label=旧版の下書きを復元]')?.innerText.includes('下書きの内容を確認する')", 'Legacy draft recovery did not load')
   assert.equal(await main.webContents.executeJavaScript('localStorage.getItem(' + JSON.stringify(recoveredKey) + ')'), null, 'Opening recovery silently claimed an old draft')
@@ -403,9 +419,41 @@ async function run() {
   await until(progress, "document.body.innerText.includes('進捗を投稿しました')", 'Frozen request could not be safely retried')
   assert.equal((await main.webContents.executeJavaScript('window.api.progressNoteGetByTodo(' + JSON.stringify(todo.id) + ')')).filter((note) => note.body === '通信失敗しても残す文章').length, 1)
 
+  // The mocked context has no appVersion, like every app installed before 1.0.5.
+  const notice = 'HAKOBI の新しいバージョン 9.9.9 があります'
+  await until(main, 'document.body.innerText.includes(' + JSON.stringify(notice) + ')', 'The update notice did not appear in the desktop main window')
+  assert.equal(await timer.webContents.executeJavaScript('document.body.innerText.includes(' + JSON.stringify(notice) + ')'), false, 'The timer window must not show the update notice')
+  const openedBefore = openedUrls.length
+  await main.webContents.executeJavaScript("Array.from(document.querySelectorAll('a')).find((link) => link.textContent.trim() === 'ダウンロードページを開く').click()")
+  await waitFor(() => openedUrls.length > openedBefore, 'The update notice did not open the download page')
+  assert.equal(openedUrls.at(-1), fixture.origin + '/download')
+  await main.webContents.executeJavaScript("Array.from(document.querySelectorAll('button')).find((button) => button.textContent.trim() === '後で').click()")
+  await until(main, '!document.body.innerText.includes(' + JSON.stringify(notice) + ')', 'Dismissing the update notice did not hide it')
+  await new Promise((resolve) => { main.webContents.once('did-finish-load', resolve); main.reload() })
+  await until(main, "document.body.innerText.includes('ガント') && !document.querySelector('input[autocomplete=username]')", 'Main did not reload')
+  await delay(1500)
+  assert.equal(await main.webContents.executeJavaScript('document.body.innerText.includes(' + JSON.stringify(notice) + ')'), false, 'A dismissed version must stay hidden after reload')
+
+  // A plain browser (no desktop bridge) gets the public download page and the login link.
+  const browser = new BrowserWindow({ show: false, width: 1000, height: 800, webPreferences: { partition: 'persist:hakobi-smoke-browser', sandbox: true, contextIsolation: true, nodeIntegration: false } })
+  windows.push(browser)
+  await browser.loadURL(fixture.origin + '/download')
+  await until(browser, "document.body.innerText.includes('ダウンロード（9.9.9）')", 'The public download page did not render')
+  assert.ok(await browser.webContents.executeJavaScript('document.body.innerText.includes(' + JSON.stringify(fixture.release.sha256) + ')'), 'The download page must show the SHA-256')
+  assert.ok(await browser.webContents.executeJavaScript("document.body.innerText.includes('安全でないダウンロードがブロックされました') && document.body.innerText.includes('Windows によって PC が保護されました')"), 'The download page must explain the browser and SmartScreen prompts')
+  const downloaded = await browser.webContents.executeJavaScript("(async () => { const link = Array.from(document.querySelectorAll('a')).find((item) => item.textContent.includes('ダウンロード（9.9.9）')); const response = await fetch(link.href); const bytes = await response.arrayBuffer(); const digest = await crypto.subtle.digest('SHA-256', bytes); return { status: response.status, disposition: response.headers.get('content-disposition'), size: bytes.byteLength, sha256: Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('') } })()")
+  assert.equal(downloaded.status, 200)
+  assert.match(downloaded.disposition, /attachment; filename="HAKOBI-9\\.9\\.9-setup\\.exe"/)
+  assert.equal(downloaded.size, fixture.release.size)
+  assert.equal(downloaded.sha256, fixture.release.sha256, 'The downloaded installer must be the published file')
+  await browser.loadURL(fixture.origin + '/')
+  await until(browser, "document.body.innerText.includes('デスクトップ版（Windows）をダウンロード')", 'The browser login screen did not offer the desktop download')
+
   const groupB = createWindow('desktop.js', 'persist:hakobi-smoke-group-b', 520, 580)
   await groupB.loadURL(fixture.origin)
   await until(groupB, "Boolean(document.querySelector('input[autocomplete=username]'))", 'Group B unexpectedly inherited the login')
+  await delay(1000)
+  assert.equal(await groupB.webContents.executeJavaScript("document.body.innerText.includes('デスクトップ版（Windows）をダウンロード')"), false, 'The desktop app must not offer itself for download on its login screen')
   assert.equal((await session.fromPartition('persist:hakobi-smoke-group-b').cookies.get({ url: fixture.origin })).length, 0)
   assert.equal(await groupB.webContents.executeJavaScript("fetch('/api/auth/me', { credentials: 'same-origin' }).then((response) => response.status)"), 401)
   assert.ok((await session.fromPartition('persist:hakobi-smoke-group-a').cookies.get({ url: fixture.origin })).some((cookie) => cookie.name === 'hakobi_smoke_session'))
