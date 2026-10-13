@@ -30,6 +30,8 @@ try {
     TODO_SERVICE_NAME: 'HakobiGroupB',
     PORT: '4578',
     TODO_DATA_DIR: path.join(tempDir, 'group-b-data'),
+    TODO_WEB_DIST: path.join(tempDir, 'dist-web'),
+    TODO_DESKTOP_DIST: path.join(tempDir, 'dist-desktop'),
     SESSION_COOKIE: 'hakobi_group_b'
   })
   assert.equal(groupA.description, 'HAKOBI Aグループ')
@@ -39,6 +41,10 @@ try {
   assert.notEqual(groupA.logpath, groupB.logpath)
   assert.equal(groupA.env.find((entry) => entry.name === 'TODO_ENV_FILE').value, groupFile)
   assert.equal(groupB.env.find((entry) => entry.name === 'SESSION_COOKIE').value, 'hakobi_group_b')
+  // Web ビルドとデスクトップ版インストーラーの置き場所は、サービスにもそのまま渡す（全グループで共有できる）。
+  assert.equal(groupB.env.find((entry) => entry.name === 'TODO_WEB_DIST').value, path.join(tempDir, 'dist-web'))
+  assert.equal(groupB.env.find((entry) => entry.name === 'TODO_DESKTOP_DIST').value, path.join(tempDir, 'dist-desktop'))
+  assert.equal(groupA.env.some((entry) => entry.name === 'TODO_DESKTOP_DIST'), false)
   for (const config of [groupA, groupB]) {
     const service = new Service(config)
     service.directory(config.directory)

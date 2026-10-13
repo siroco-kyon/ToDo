@@ -156,7 +156,7 @@ function makeHarness(code, options = {}) {
   }
   harness.electron = {
     app: {
-      getPath: () => userData, isQuitting: false, isPackaged: true, getAppPath: () => root,
+      getPath: () => userData, isQuitting: false, isPackaged: true, getAppPath: () => root, getVersion: () => '1.0.5',
       quit: () => harness.quits++, relaunch: () => harness.relaunches++,
       setBadgeCount: (count) => { harness.badgeCounts.push(count); return true },
       setUserTasks: (tasks) => { harness.userTasks.push(tasks); return true }
@@ -557,6 +557,7 @@ async function main() {
   const event = saved.event(mainWindow)
   const contextHandler = saved.handlers.get('hakobi:context')
   assert.equal(contextHandler(event).serverVersion, 1)
+  assert.equal(contextHandler(event).appVersion, '1.0.5', 'the server-hosted UI compares this with the installer the server offers')
   assert.throws(() => contextHandler({ ...event, senderFrame: { url: event.senderFrame.url } }), /許可/)
   assert.throws(() => contextHandler({ sender: {}, senderFrame: {} }), /許可/)
   const goodUrl = event.senderFrame.url

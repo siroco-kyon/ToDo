@@ -12,6 +12,10 @@ win:
   executableName: HAKOBI
   icon: build/icon.ico
 nsis:
+  # Per-user install: members install and update without administrator rights or a UAC prompt,
+  # and running a newer installer upgrades in place (electron-builder's defaults, written out on purpose).
+  oneClick: true
+  perMachine: false
   # Keep the original ToDo installer identity for upgrades and uninstall registration.
   guid: 6d3bbc18-ec0d-50ad-9775-a5b726355fc6
   include: build/hakobi-installer.nsh
@@ -43,6 +47,9 @@ linux:
 appImage:
   artifactName: '${name}-${version}.${ext}'
 npmRebuild: false
+# Keep this: it makes electron-builder write dist/latest.yml (version, file name, size, sha512),
+# which `npm run publish:desktop` and the team server rely on. The app has no auto-updater,
+# so this URL is never contacted; members download installers from their team server.
 publish:
   provider: generic
   url: https://example.com/auto-update

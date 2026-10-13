@@ -17,6 +17,7 @@ npm run dev:server            # サーバー（ポート 4577）
 npm run dev:web               # Web フロント（ポート 5273、/api と /ws を 4577 へプロキシ）
 npm run build:web             # Web ビルド → dist-web/
 npm run start:server          # dist-web/ を配信しつつサーバー起動
+npm run publish:desktop       # npm run dist の後、dist/ のインストーラーをサーバーの配布フォルダへ公開
 ```
 
 Web 版の型チェックは `npx tsc --noEmit -p web/tsconfig.json`。ルートに `typecheck` スクリプトは無い。
@@ -63,12 +64,15 @@ src/renderer/src/components/TodoDetail.tsx    タスク詳細
 src/renderer/src/components/PlanView.tsx      今日の計画
 src/renderer/src/components/WorkLogSummary.tsx 作業ログ
 src/renderer/src/components/UserManagementModal.tsx 管理者用ユーザー管理（サーバー版）
+src/renderer/src/lib/desktopRelease.ts        配布中のデスクトップ版の取得・検証とバージョン比較（React 非依存）
 
 web/main.tsx               window.api を HTTP/WS 実装で差し替える Web エントリ
 web/lib/client.ts          Api 契約の HTTP/WebSocket 実装
 web/auth/                  ログイン画面・認証ゲート・セッション
 web/desktop/               デスクトップ版のタイマー・進捗入力画面
 web/desktop/desktopFeed.ts OS 通知に出す新着の判定と、トレイ・タスクバーに出すタスクの選定
+web/desktop/DesktopUpdateNotice.tsx 新しい版のお知らせ（デスクトップ版のメイン画面だけ。左下のカード）
+web/download/DesktopDownloadPage.tsx ログイン不要のダウンロードページ（/download）
 src/main/desktop-glyphs.ts 未読バッジ・トレイの赤丸・タスクバーのボタン画像を生成（DB に依存しない icon-pixels.ts を使う）
 
 server/src/index.ts        サーバー起動・静的配信・ルートのマウント
@@ -77,6 +81,9 @@ server/src/auth.ts         bcrypt 認証・セッション・管理者シード
 server/src/realtime.ts     WebSocket リアルタイム同期
 server/src/db/             マルチユーザー対応の SQLite アクセス層
 server/src/routes/         auth / data / users の REST ルート
+server/src/desktopRelease.ts latest.yml の解析とインストーラーの検証（サイズ・sha512）、結果のキャッシュ
+server/src/routes/desktopRelease.ts /api/desktop-release（ログイン不要。配布中の版の情報とダウンロード）
+server/scripts/publish-desktop.ts npm run publish:desktop の本体（dist/ を検証して配布フォルダへ公開）
 ```
 
 ## 実装メモ
@@ -92,6 +99,12 @@ server/src/routes/         auth / data / users の REST ルート
 - 依存連鎖ロジックはサーバー版 `server/src/db/todos.ts` に同じものを移植している（両方を直す）
 - チーム接続のデスクトップ版の OS 通知・未読バッジ・トレイのタスク一覧は、非表示のメイン画面の `DesktopCompanion` が判定して `window.desktop` へ渡す。main 側はサーバー API を呼ばない。新着かどうかは端末の localStorage（`hakobi-desktop-notified:<userId>`）で判定し、初回は既存の通知を出さない
 - サーバーが配信する画面とインストール済みのデスクトップ版は別々に更新される。`DesktopBridge` に足したメソッドは任意（`notify?`）にして存在を確かめてから呼び、`DesktopState` に足した項目は古い画面が送らない前提で扱う
+- デスクトップ版の配布（`/api/desktop-release`）はログイン不要。`server/src/index.ts` で `/api/health` の直後、`/api/auth`・`/api/users`・`dataRouter`（`/api` 以下はすべて認証必須）と SPA のフォールバックより前にマウントする。配布できない理由（配布フォルダのパスを含む）は管理者にだけ返す
+- 配信するのは、検証済みの `latest.yml` に書かれた exe 1つだけ（ファイル名のパターン・サイズ・sha512 を確認）。リクエストのパスからファイル名を作らない。`latest.yml` やインストーラーが差し替わると、サーバーを再起動せずに読み直す
+- 公開は `npm run publish:desktop`（`server/scripts/publish-desktop.ts`）だけで行う。インストーラーを先に置き、`latest.yml` を最後に差し替える。古いインストーラーは消さない。`electron-builder.yml` の `publish:` は `dist/latest.yml` を出力させるために残す（自動更新はしない）
+- `DesktopContext.appVersion`（`src/shared/desktop.ts`）は任意。1.0.4 以前のアプリは送らないので、無いときは 1.0.4 以前として扱う（`LAST_VERSION_WITHOUT_APP_VERSION`）
+- `/download` はログイン不要のページ。`web/main.tsx` で `AuthGate` より前に分岐して描画する
+- 更新のお知らせ（`DesktopUpdateNotice`）はデスクトップ版のメイン画面（`isDesktopMain`）だけで出し、`App.tsx` には入れない。「後で」で閉じた版は localStorage の `hakobi-desktop-update-dismissed` に保存する
 
 ## 注意点
 

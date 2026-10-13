@@ -5,7 +5,7 @@
 デスクトップ版は、チーム接続と個人用を選べます。
 
 - チーム接続のデスクトップ版（Electron）
-  初回に自分のグループのサーバー URL を登録し、次回から自動接続します。サーバーが配信する画面を表示するので、ブラウザ版と同じ担当者・チーム管理・リアルタイム同期を使えます。右下のタイマー、進捗のクイック投稿、トレイ操作、OS の通知と未読バッジ、トレイ・タスクバーからの計測の開始/切り替え/停止を追加しています。
+  初回に自分のグループのサーバー URL を登録し、次回から自動接続します。サーバーが配信する画面を表示するので、ブラウザ版と同じ担当者・チーム管理・リアルタイム同期を使えます。右下のタイマー、進捗のクイック投稿、トレイ操作、OS の通知と未読バッジ、トレイ・タスクバーからの計測の開始/切り替え/停止を追加しています。インストーラーはサーバーのダウンロードページ（`/download`、ログイン不要）から入手でき、新しい版を公開するとアプリにお知らせが出ます（インストールは手動）。
 - 個人用のデスクトップ版（Electron）
   1 人で使うローカルアプリです。従来どおりデータを端末内の SQLite に保存します。
 - チーム向けサーバー版（マルチユーザー Web）
@@ -160,8 +160,18 @@ npm run dist
 
 主な出力先:
 
-- `dist/HAKOBI-1.0.4-setup.exe`
+- `dist/HAKOBI-1.0.5-setup.exe`
+- `dist/HAKOBI-1.0.5-setup.exe.blockmap`
+- `dist/latest.yml`（バージョン・ファイル名・サイズ・sha512。`electron-builder.yml` の `publish:` 設定で出力されます）
 - `dist/win-unpacked/HAKOBI.exe`
+
+チーム接続のメンバーには、インストーラーをサーバーから配ります。
+
+```bash
+npm run publish:desktop
+```
+
+`dist/` のインストーラーが `latest.yml` と `package.json` のバージョンに一致するかを確かめてから、サーバーの配布フォルダ（`TODO_DESKTOP_DIST`、既定 `dist-desktop/`）へコピーします。`latest.yml` は最後に置き換えます。メンバーは `http://<サーバーのIP>:4577/download` からダウンロードします。手順は [HAKOBI 運用ガイド](docs/HAKOBI.md#デスクトップ版の配布と更新のお知らせ) を参照してください。
 
 ## 個人用のデータ保存先
 
@@ -227,7 +237,11 @@ npm run dev:web
    npm run start:server
    ```
 
-3. 各メンバーは `http://<サーバーのIP>:4577` にブラウザでアクセスします。
+3. デスクトップ版も配る場合は、`npm run dist` の後に `npm run publish:desktop` を実行します。インストーラーは `dist-desktop/`（`TODO_DESKTOP_DIST`）に置かれ、サーバーが `/download` で配布します。公開後のサーバーの再起動は不要です。
+
+4. 各メンバーは `http://<サーバーのIP>:4577` にブラウザでアクセスします。デスクトップ版は `http://<サーバーのIP>:4577/download` からダウンロードします。
+
+サーバーが使うフォルダは `server/`、`dist-web/`、`dist-desktop/` の3か所です。`dist-web/` を置き換えるときも、`dist-desktop/` は残します。
 
 ### 環境変数
 
@@ -236,6 +250,7 @@ npm run dev:web
 | `PORT` | `4577` | サーバーの待ち受けポート |
 | `TODO_DATA_DIR` | `server/data` | SQLite データベースの保存先ディレクトリ |
 | `TODO_WEB_DIST` | `dist-web`（リポジトリ直下） | 配信する Web ビルドの場所 |
+| `TODO_DESKTOP_DIST` | `dist-desktop`（リポジトリ直下） | 配布するデスクトップ版インストーラーの置き場所。`npm run publish:desktop` の公開先にもなります。全グループで共有できます |
 | `ADMIN_USERNAME` | `admin` | 初回起動時に作る管理者のユーザー名 |
 | `ADMIN_PASSWORD` | （空） | 管理者の初期パスワード。未設定ならランダム生成し、起動ログに 1 回だけ表示します |
 | `SESSION_TTL_DAYS` | `30` | セッションの有効日数 |
@@ -286,19 +301,28 @@ src/
         SettingsModal.tsx
         SetupWizardModal.tsx
         UserManagementModal.tsx   # 管理者用ユーザー管理（サーバー版）
+      lib/
+        desktopRelease.ts         # 配布中のデスクトップ版の取得とバージョン比較
 web/                  # Web 版のエントリと HTTP/WS クライアント
   index.html
   main.tsx            # window.api を HTTP/WS 実装で差し替え
   lib/client.ts       # Api 契約の HTTP/WebSocket 実装
   auth/               # ログイン画面・認証ゲート・セッション
+  download/
+    DesktopDownloadPage.tsx  # デスクトップ版のダウンロードページ（/download、ログイン不要）
+  desktop/
+    DesktopUpdateNotice.tsx  # 新しい版のお知らせ（デスクトップ版のメイン画面）
 server/               # 中央サーバー（独立 Node パッケージ）
   src/
     index.ts          # 起動・静的配信・ルートのマウント
     config.ts         # ポート・データ保存先・管理者・セッション設定
     auth.ts           # bcrypt 認証・セッション・管理者シード
     realtime.ts       # WebSocket リアルタイム同期
+    desktopRelease.ts # 配布するインストーラーの確認（latest.yml・サイズ・sha512）
     db/               # マルチユーザー対応の SQLite アクセス層
-    routes/           # auth / data / users の REST ルート
+    routes/           # auth / data / users / desktopRelease の REST ルート
+  scripts/
+    publish-desktop.ts  # npm run publish:desktop（dist/ のインストーラーを配布フォルダへ公開）
 scripts/
   generate-build-icons.cjs
 ```

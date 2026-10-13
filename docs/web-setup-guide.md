@@ -90,6 +90,7 @@ npm run dev:server
 
 開発モードで `dist-web\` がまだ無い場合は、続けて `web build not found ...` と出ることがあります。
 これは「本番用のビルド済み画面が無い」という案内なので、次の `npm run dev:web` で確認する開発モードでは問題ありません。
+同じように `[server] デスクトップ版の配布フォルダ: ...（なし。npm run publish:desktop で作成されます）` と出ることもあります。デスクトップ版を配らない場合は気にしなくて大丈夫です。
 
 このターミナルは**開いたままにします**（閉じるとサーバーが止まります）。
 
@@ -175,11 +176,15 @@ http://192.168.1.50:4577
 | --- | --- |
 | `server\` フォルダ一式 | ただし `server\node_modules\` と `server\data\` は**コピーしない**（node_modules はサーバー PC で作り直す。data は新規ならそもそも無い） |
 | `dist-web\` フォルダ | **開発 PC で** `npm run build:web` してできたもの。サーバー PC でビルドし直す必要はありません |
+| `dist-desktop\` フォルダ | デスクトップ版（HAKOBI）を配る場合だけ。`npm run publish:desktop` で作られるインストーラーの配布フォルダです。サーバー PC で公開するなら、コピーは不要です（下の 📌 を参照） |
 | ルートの `package.json` | `npm run service:install` などの呼び出しに使います |
 | `docs\` フォルダ | このガイド。なくても動きますが、あると便利 |
 
 > 📌 リポジトリごと（`node_modules\` と `data\` を除いて）コピーするのが一番簡単です。
 > Git が使えるなら `git clone` でも OK（`dist-web\` だけは別途コピーするか、後述の注意を読んでください）。
+
+> 📌 デスクトップ版を配る場合は、開発 PC で `npm run dist` を実行し、`dist\` にできた `HAKOBI-<バージョン>-setup.exe`、`HAKOBI-<バージョン>-setup.exe.blockmap`、`latest.yml` をサーバー PC の `dist\` にコピーします。サーバー PC で `npm run publish:desktop` を実行すると、`dist-desktop\`（`TODO_DESKTOP_DIST` 設定時はその場所）に公開されます。ルートの `package.json` のバージョンと一致しないと公開は止まるので、`package.json` も同じ版のものにします。
+> メンバーは `http://<サーバーのIP>:4577/download` からダウンロードします。詳しくは [HAKOBI 運用ガイド](./HAKOBI.md#デスクトップ版の配布と更新のお知らせ) を参照してください。
 
 ### サーバー PC での手順
 
@@ -270,6 +275,7 @@ http://192.168.1.50:4577
 - `server\.env`（ポート、データ保存先、初期管理者設定など）
 - `server\node_modules\`（サーバーPCでインストールした依存）
 - `server\service\daemon\`（サービスラッパーが生成した実行物）
+- `dist-desktop\`（`npm run publish:desktop` で公開したデスクトップ版インストーラー。`TODO_DESKTOP_DIST` 設定時はその場所）。`dist-web\` を置き換えるときも、このフォルダは残します
 
 今回の更新では通知設定とタスク購読用のテーブルを追加します。サービス起動時に `CREATE TABLE IF NOT EXISTS` で自動追加されるため、手動のマイグレーションコマンドは不要です。依存パッケージは変更していないため、サービスの再登録や `npm install` も不要です。
 
@@ -323,6 +329,8 @@ npm ci
 7. 実際の `PORT` に対する `/api/health` と、ブラウザの `Ctrl + F5` で確認する。
 
 `dist-web\assets\` 内はファイル名がビルドごとに変わります。古いファイルを残した部分コピーではなく、必ず `dist-web\` 全体を置き換えてください。
+
+`dist-desktop\` は `dist-web\` とは別のフォルダです。置き換えずにそのまま残します。新しいデスクトップ版を配るときは、ファイルを手でコピーせず `npm run publish:desktop` で公開します（サービスの再起動は不要）。サーバー PC で公開する場合は、`server\scripts\`、`server\package.json`、ルートの `package.json` も新しいものにしておきます。
 
 ### 問題が起きた場合の戻し方
 
@@ -431,6 +439,7 @@ notepad server\.env
 | `PORT` | `4577` | サーバーの待ち受けポート |
 | `TODO_DATA_DIR` | `server\data` | データベースの保存先フォルダ |
 | `TODO_WEB_DIST` | `dist-web` | 配信する Web ビルドの場所 |
+| `TODO_DESKTOP_DIST` | `dist-desktop` | 配布するデスクトップ版インストーラーの置き場所（`npm run publish:desktop` の公開先）。全グループで共有できます |
 | `ADMIN_USERNAME` | `admin` | 初回に作る管理者のユーザー名 |
 | `ADMIN_PASSWORD` | （空） | 管理者の初期パスワード。未設定ならランダム生成 |
 | `SESSION_TTL_DAYS` | `30` | ログインの有効日数 |
@@ -460,11 +469,13 @@ npm run start:server
 | 本番：サービス登録（管理者 PowerShell） | `npm run service:install` | `D:\Github\ToDo` |
 | 本番：サービス解除（管理者 PowerShell） | `npm run service:uninstall` | `D:\Github\ToDo` |
 | 管理者：デスクトップDB取り込み | `npm run import:db -- --db "<todo.dbのパス>" --user <Webのユーザー名>` | `D:\Github\ToDo` |
+| 管理者：デスクトップ版の公開（`npm run dist` の後） | `npm run publish:desktop` | `D:\Github\ToDo` |
 
 | モード | アクセス先 |
 | --- | --- |
 | 開発（自分の PC で確認） | `http://localhost:5273` |
 | 本番（チームで利用） | `http://<サーバーのIP>:4577` |
+| デスクトップ版のダウンロード（ログイン不要） | `http://<サーバーのIP>:4577/download` |
 
 ---
 

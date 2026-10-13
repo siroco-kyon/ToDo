@@ -23,6 +23,8 @@ export interface DesktopContext {
   groupName: string
   serverUrl: string
   preferences: DesktopPreferences
+  /** Installed app version (app.getVersion()). Apps before 1.0.5 omit it, which the server-hosted UI treats as 1.0.4 or older. */
+  appVersion?: string
 }
 
 export interface DesktopState {

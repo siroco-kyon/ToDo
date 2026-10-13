@@ -423,6 +423,7 @@ async function run() {
   const notice = 'HAKOBI の新しいバージョン 9.9.9 があります'
   await until(main, 'document.body.innerText.includes(' + JSON.stringify(notice) + ')', 'The update notice did not appear in the desktop main window')
   assert.equal(await timer.webContents.executeJavaScript('document.body.innerText.includes(' + JSON.stringify(notice) + ')'), false, 'The timer window must not show the update notice')
+  await capture(main, 'update-notice')
   const openedBefore = openedUrls.length
   await main.webContents.executeJavaScript("Array.from(document.querySelectorAll('a')).find((link) => link.textContent.trim() === 'ダウンロードページを開く').click()")
   await waitFor(() => openedUrls.length > openedBefore, 'The update notice did not open the download page')
@@ -441,6 +442,7 @@ async function run() {
   await until(browser, "document.body.innerText.includes('ダウンロード（9.9.9）')", 'The public download page did not render')
   assert.ok(await browser.webContents.executeJavaScript('document.body.innerText.includes(' + JSON.stringify(fixture.release.sha256) + ')'), 'The download page must show the SHA-256')
   assert.ok(await browser.webContents.executeJavaScript("document.body.innerText.includes('安全でないダウンロードがブロックされました') && document.body.innerText.includes('Windows によって PC が保護されました')"), 'The download page must explain the browser and SmartScreen prompts')
+  fs.writeFileSync(path.join(fixture.imageDir, 'download-page.png'), (await browser.webContents.capturePage()).toPNG())
   const downloaded = await browser.webContents.executeJavaScript("(async () => { const link = Array.from(document.querySelectorAll('a')).find((item) => item.textContent.includes('ダウンロード（9.9.9）')); const response = await fetch(link.href); const bytes = await response.arrayBuffer(); const digest = await crypto.subtle.digest('SHA-256', bytes); return { status: response.status, disposition: response.headers.get('content-disposition'), size: bytes.byteLength, sha256: Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('') } })()")
   assert.equal(downloaded.status, 200)
   assert.match(downloaded.disposition, /attachment; filename="HAKOBI-9\\.9\\.9-setup\\.exe"/)
@@ -482,7 +484,7 @@ run().catch((error) => { console.error(error.stack || error.message); windows.fo
   process.stdout.write(cleanOutput)
   assert.equal(result.code, 0, `Electron smoke exited ${result.code ?? result.signal}`)
   assert.ok(cleanOutput.includes('HAKOBI Electron smoke passed:'), 'Electron exited before completing the smoke checks')
-  console.log('Screenshots: node_modules/.hakobi-qa/{launcher,timer,timer-compact,progress,draft-recovery}.png')
+  console.log('Screenshots: node_modules/.hakobi-qa/{launcher,timer,timer-compact,progress,draft-recovery,update-notice,download-page}.png')
 }
 
 main().catch((error) => { console.error(error.message); process.exitCode = 1 }).finally(async () => {
