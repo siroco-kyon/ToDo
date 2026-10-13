@@ -43,7 +43,9 @@ interface DateRange {
   to: string
 }
 
-type PeriodPreset = '7' | '14' | '30' | 'custom'
+type PeriodPreset = 'thisWeek' | 'lastWeek' | '7' | '14' | '30' | 'custom'
+/** 件数チップを押して絞り込む条件。myNeedsReport は「自分の未報告」の案内から使う */
+type QuickFilter = 'all' | 'needsReport' | 'discussion' | 'onHold' | 'overdue' | 'postponed' | 'myNeedsReport'
 type GroupMode = 'assignee' | 'category'
 type AssigneeFilter = 'all' | 'mine' | 'mineWithSubTasks' | `user:${string}`
 type Freshness = 'onHold' | 'fresh' | 'quiet' | 'stale' | 'none' | 'done' | 'notStarted'
@@ -88,10 +90,12 @@ interface ReportGroup {
 /** この日数以上報告がなければ「止まっている」扱い（赤） */
 const STALE_DAYS = 14
 
-const PRESETS: Array<{ value: Exclude<PeriodPreset, 'custom'>; label: string; days: number }> = [
-  { value: '7', label: '直近7日', days: 7 },
-  { value: '14', label: '直近14日', days: 14 },
-  { value: '30', label: '直近30日', days: 30 }
+const PRESETS: Array<{ value: Exclude<PeriodPreset, 'custom'>; label: string; title: string }> = [
+  { value: 'thisWeek', label: '今週', title: '今週の月曜日から今日まで' },
+  { value: 'lastWeek', label: '先週', title: '先週の月曜日から日曜日まで' },
+  { value: '7', label: '直近7日', title: '今日を含む直近7日間' },
+  { value: '14', label: '直近14日', title: '今日を含む直近14日間' },
+  { value: '30', label: '直近30日', title: '今日を含む直近30日間' }
 ]
 
 const STORAGE_KEYS = {
@@ -148,17 +152,48 @@ function loadAssigneeFilter(): AssigneeFilter {
   return readStorage(STORAGE_KEYS.onlyMine) === '1' ? 'mineWithSubTasks' : 'all'
 }
 
-function presetRange(days: number): DateRange {
-  const to = new Date()
-  const from = new Date()
-  from.setDate(from.getDate() - (days - 1))
-  return { from: toDateKey(from), to: toDateKey(to) }
+function presetRange(preset: Exclude<PeriodPreset, 'custom'>): DateRange {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (preset === 'thisWeek' || preset === 'lastWeek') {
+    // 週は月曜始まり（ガントの週表示と同じ）
+    const monday = new Date(today)
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+    if (preset === 'thisWeek') return { from: toDateKey(monday), to: toDateKey(today) }
+    const lastMonday = new Date(monday)
+    lastMonday.setDate(lastMonday.getDate() - 7)
+    const lastSunday = new Date(monday)
+    lastSunday.setDate(lastSunday.getDate() - 1)
+    return { from: toDateKey(lastMonday), to: toDateKey(lastSunday) }
+  }
+  const from = new Date(today)
+  from.setDate(from.getDate() - (Number(preset) - 1))
+  return { from: toDateKey(from), to: toDateKey(today) }
+}
+
+function matchesQuickFilter(row: ReportRow, filter: QuickFilter, currentUserId: string | null): boolean {
+  switch (filter) {
+    case 'all': return true
+    case 'needsReport': return needsReport(row.freshness)
+    case 'discussion': return row.discussions.length > 0
+    case 'onHold': return row.todo.status === 'on_hold'
+    case 'overdue': return isOverdue(row.todo)
+    case 'postponed': return row.postponedCount > 0
+    case 'myNeedsReport': return currentUserId != null && needsReport(row.freshness) && isMyTask(row.todo, [], currentUserId)
+  }
 }
 
 function formatShortDate(dateKey: string | null): string {
   if (!dateKey) return '未設定'
   const [, m, d] = dateKey.slice(0, 10).split('-')
   return `${Number(m)}/${Number(d)}`
+}
+
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
+
+function weekdayLabel(dateKey: string): string {
+  const [y, m, d] = dateKey.slice(0, 10).split('-').map(Number)
+  return WEEKDAYS[new Date(y, m - 1, d).getDay()]
 }
 
 function formatDateTime(iso: string): string {
@@ -243,7 +278,12 @@ function buildRow(
     freshness = 'onHold'
   } else if (notes.length > 0 || memoUpdatedInPeriod) {
     freshness = 'fresh'
-  } else if (todo.status === 'not_started' && (!todo.start_date || todo.start_date.slice(0, 10) > range.to)) {
+  } else if (todo.status === 'not_started' && (
+    !todo.start_date
+    || todo.start_date.slice(0, 10) > range.to
+    // 今日から始めるタスクは、まだ報告がなくて当然なので「報告なし」にしない
+    || diffDaysFromToday(todo.start_date) >= 0
+  )) {
     freshness = 'notStarted'
   } else if (!lastReportAt) {
     freshness = 'none'
@@ -540,14 +580,14 @@ function reportToCsv(groups: ReportGroup[]): string {
 export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, onUpdateTodo, onUpdateSubTask, onCreateSubTask, onShowToast }: Props): React.JSX.Element {
   const multiUser = users.length > 0
   const [preset, setPreset] = useState<PeriodPreset>(loadPreset)
-  const [range, setRange] = useState<DateRange>(() => presetRange(PRESETS.find((item) => item.value === loadPreset())?.days ?? 7))
+  const [range, setRange] = useState<DateRange>(() => presetRange(loadPreset()))
   const [groupMode, setGroupMode] = useState<GroupMode>(() => readStorage(STORAGE_KEYS.groupMode) === 'category' ? 'category' : 'assignee')
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>(loadAssigneeFilter)
   const [excludeCoAssigned, setExcludeCoAssigned] = useState(() => readStorage(STORAGE_KEYS.excludeCoAssigned) === '1')
-  const [onlyNeedsReport, setOnlyNeedsReport] = useState(false)
-  const [onlyOnHold, setOnlyOnHold] = useState(false)
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all')
   const [includeOldDone, setIncludeOldDone] = useState(false)
-  const [onlyDiscussion, setOnlyDiscussion] = useState(false)
+  // 折りたたんだ担当者（カテゴリ）の見出しキー。定例で話し終えた人を畳んでおける
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
   const [notes, setNotes] = useState<ProgressNote[]>([])
   const [activity, setActivity] = useState<Map<string, TodoReportActivity>>(() => new Map())
   const [changes, setChanges] = useState<TodoChangeEntry[]>([])
@@ -604,9 +644,8 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
   }, [load])
 
   const applyPreset = (value: Exclude<PeriodPreset, 'custom'>): void => {
-    const days = PRESETS.find((item) => item.value === value)?.days ?? 7
     setPreset(value)
-    setRange(presetRange(days))
+    setRange(presetRange(value))
     writeStorage(STORAGE_KEYS.preset, value)
   }
 
@@ -645,7 +684,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
   const changesByTodo = useMemo(() => groupByTodo(changes), [changes])
   const discussionsByTodo = useMemo(() => groupByTodo(discussions), [discussions])
 
-  const rows = useMemo(() => todos
+  const baseRows = useMemo(() => todos
     .filter((todo) => todo.status !== 'archived')
     // 期間より前に完了したタスクは既定で隠す（期間中・期間後に完了したものは報告対象）
     .filter((todo) => includeOldDone || todo.status !== 'done' || (todo.completed_at != null && isoToDateKey(todo.completed_at) >= range.from))
@@ -660,25 +699,54 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
       range,
       changesByTodo.get(todo.id) ?? [],
       discussionsByTodo.get(todo.id) ?? []
-    ))
-    .filter((row) => !onlyOnHold || row.todo.status === 'on_hold')
-    .sort((a, b) => onlyOnHold ? (a.todo.on_hold_since ?? '9999').localeCompare(b.todo.on_hold_since ?? '9999') : 0)
-    .filter((row) => !onlyNeedsReport || needsReport(row.freshness))
-    .filter((row) => !onlyDiscussion || row.discussions.length > 0),
-  [activity, changesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, includeOldDone, notesByTodo, onlyDiscussion, onlyNeedsReport, onlyOnHold, range, selectedUserId, subTasksByTodo, todos])
+    )),
+  [activity, changesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, includeOldDone, notesByTodo, range, selectedUserId, subTasksByTodo, todos])
+
+  const currentUserId = currentUser?.id ?? null
+  // 自分の未報告の案内はサーバー版でログインしているときだけ
+  const effectiveQuickFilter: QuickFilter = quickFilter === 'myNeedsReport' && !(multiUser && currentUserId) ? 'all' : quickFilter
+  const rows = useMemo(() => baseRows
+    .filter((row) => matchesQuickFilter(row, effectiveQuickFilter, currentUserId))
+    // 保留中だけを見るときは、保留が長いものから並べる
+    .sort((a, b) => effectiveQuickFilter === 'onHold' ? (a.todo.on_hold_since ?? '9999').localeCompare(b.todo.on_hold_since ?? '9999') : 0),
+  [baseRows, currentUserId, effectiveQuickFilter])
 
   const groups = useMemo(
     () => groupRows(rows, effectiveGroupMode, users, currentUser?.id ?? null, selectedUserId),
     [currentUser, effectiveGroupMode, rows, selectedUserId, users]
   )
 
-  const onHoldCount = rows.filter((row) => row.todo.status === 'on_hold').length
-  const reportedCount = rows.filter((row) => row.reportedInPeriod).length
-  const needsReportCount = rows.filter((row) => needsReport(row.freshness)).length
-  const overdueCount = rows.filter((row) => isOverdue(row.todo)).length
-  const noteCount = rows.reduce((sum, row) => sum + row.notes.length, 0)
-  const discussionCount = rows.reduce((sum, row) => sum + row.discussions.length, 0)
-  const postponedTaskCount = rows.filter((row) => row.postponedCount > 0).length
+  // 件数は絞り込みチップを押す前の対象から数える（押しても他のチップの件数が変わらないように）
+  const countOf = (filter: QuickFilter): number => baseRows.filter((row) => matchesQuickFilter(row, filter, currentUserId)).length
+  const reportedCount = baseRows.filter((row) => row.reportedInPeriod).length
+  const noteCount = baseRows.reduce((sum, row) => sum + row.notes.length, 0)
+  const myNeedsReportCount = multiUser && currentUserId ? countOf('myNeedsReport') : 0
+  const quickFilterChips: Array<{ value: QuickFilter; label: string; count: number; color: string; title: string }> = [
+    { value: 'all', label: 'すべて', count: baseRows.length, color: '#cbd5e1', title: '絞り込まずに表示' },
+    { value: 'needsReport', label: '報告なし', count: countOf('needsReport'), color: '#fde68a', title: '進行中なのに、この期間の進捗ログ・メモ更新がないタスク' },
+    { value: 'discussion', label: '要相談', count: countOf('discussion'), color: '#d6b38a', title: '「要相談」が付いた進捗ログがあるタスク（期間に関係なく）' },
+    { value: 'onHold', label: '保留中', count: countOf('onHold'), color: '#d8b4fe', title: '保留中のタスク（保留が長い順）' },
+    { value: 'overdue', label: '期限超過', count: countOf('overdue'), color: '#fca5a5', title: '期限を過ぎて完了していないタスク' },
+    { value: 'postponed', label: '期間中に延期', count: countOf('postponed'), color: '#fde68a', title: 'この期間に期限を後ろへずらしたタスク' }
+  ]
+  const toggleGroupCollapsed = (key: string): void => {
+    setCollapsedGroups((previous) => {
+      const next = new Set(previous)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+  const groupDomId = (key: string): string => `report-group-${effectiveGroupMode}-${key || 'none'}`
+  const jumpToGroup = (key: string): void => {
+    setCollapsedGroups((previous) => {
+      if (!previous.has(key)) return previous
+      const next = new Set(previous)
+      next.delete(key)
+      return next
+    })
+    window.requestAnimationFrame(() => document.getElementById(groupDomId(key))?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
 
   const canModifyNote = useCallback(
     (note: ProgressNote): boolean => currentUser == null || currentUser.role === 'admin' || note.user_id === currentUser.id,
@@ -854,15 +922,18 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ fontSize: '1.15rem', color: '#f8fafc', fontWeight: 800 }}>報告</div>
-            <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-              {range.from} ～ {range.to} の進捗ログを全文で表示します。ステータス・日程・進捗・メモ・進捗ログはその場で編集できます
+            <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 700 }}>
+              {formatShortDate(range.from)}（{weekdayLabel(range.from)}）～ {formatShortDate(range.to)}（{weekdayLabel(range.to)}）
+            </div>
+            <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
+              定例用に、タスクごとの進捗と報告（進捗ログ・メモ）を1ページで見ます。状態・日程・進捗・メモはその場で変えられます
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <div style={groupStyle}>
+            <div style={groupStyle} role="group" aria-label="報告期間">
               {PRESETS.map((item) => (
-                <button key={item.value} onClick={() => applyPreset(item.value)} style={chipStyle(preset === item.value)}>
+                <button key={item.value} onClick={() => applyPreset(item.value)} title={item.title} aria-pressed={preset === item.value} style={chipStyle(preset === item.value)}>
                   {item.label}
                 </button>
               ))}
@@ -893,26 +964,25 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
               style={inputStyle}
             />
 
-            {multiUser && (
-              <div style={groupStyle}>
-                <button onClick={() => changeGroupMode('assignee')} style={chipStyle(groupMode === 'assignee')}>担当者別</button>
-                <button onClick={() => changeGroupMode('category')} style={chipStyle(groupMode === 'category')}>カテゴリ別</button>
-              </div>
-            )}
-
             <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
               <button onClick={() => void load()} disabled={loading} style={secondaryButtonStyle}>{loading ? '更新中…' : '更新'}</button>
-              <button onClick={() => void handleCopyMarkdown()} style={secondaryButtonStyle}>Markdownをコピー</button>
-              <button onClick={handleDownloadCsv} style={secondaryButtonStyle}>CSV</button>
+              <button onClick={() => void handleCopyMarkdown()} title="表示中の内容をMarkdownでコピーします（議事録などに貼れます）" style={secondaryButtonStyle}>Markdownをコピー</button>
+              <button onClick={handleDownloadCsv} title="表示中の内容をCSVで保存します（Excelで開けます）" style={secondaryButtonStyle}>CSV</button>
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            {multiUser && (
+              <div style={groupStyle} role="group" aria-label="まとめ方">
+                <button onClick={() => changeGroupMode('assignee')} aria-pressed={groupMode === 'assignee'} style={chipStyle(groupMode === 'assignee')}>担当者別</button>
+                <button onClick={() => changeGroupMode('category')} aria-pressed={groupMode === 'category'} style={chipStyle(groupMode === 'category')}>カテゴリ別</button>
+              </div>
+            )}
             {multiUser && currentUser && (
               <label style={checkboxLabelStyle}>
                 担当
                 <select value={assigneeFilter} onChange={(event) => changeAssigneeFilter(event.target.value as AssigneeFilter)} style={inputStyle}>
-                  <option value="all">すべて</option>
+                  <option value="all">全員</option>
                   <option value="mine">自分の担当のみ</option>
                   <option value="mineWithSubTasks">自分の担当＋サブタスク担当</option>
                   <optgroup label="担当者を選ぶ">
@@ -923,12 +993,11 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
                 </select>
               </label>
             )}
-            {multiUser && currentUser && (
-              <label style={{ ...checkboxLabelStyle, opacity: selectedUserId == null ? 0.5 : 1 }}>
+            {multiUser && currentUser && selectedUserId != null && (
+              <label style={checkboxLabelStyle}>
                 <input
                   type="checkbox"
                   checked={excludeCoAssigned}
-                  disabled={selectedUserId == null}
                   onChange={(event) => {
                     setExcludeCoAssigned(event.target.checked)
                     writeStorage(STORAGE_KEYS.excludeCoAssigned, event.target.checked ? '1' : '0')
@@ -938,38 +1007,66 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
                 副担当のタスクを除く（主担当のみ）
               </label>
             )}
-            <label style={checkboxLabelStyle}>
-              <input type="checkbox" checked={onlyOnHold} onChange={(event) => {
-                setOnlyOnHold(event.target.checked)
-                if (event.target.checked) { setOnlyNeedsReport(false); setOnlyDiscussion(false) }
-              }} style={{ accentColor: '#a855f7' }} />
-              保留中のみ
-            </label>
-            <label style={checkboxLabelStyle}>
-              <input type="checkbox" checked={onlyNeedsReport} onChange={(event) => setOnlyNeedsReport(event.target.checked)} style={{ accentColor: '#6366f1' }} />
-              期間内の報告がないタスクのみ
-            </label>
-            <label style={checkboxLabelStyle}>
+            <label style={checkboxLabelStyle} title="期間が始まる前に完了したタスクは、ふだんは隠しています">
               <input type="checkbox" checked={includeOldDone} onChange={(event) => setIncludeOldDone(event.target.checked)} style={{ accentColor: '#6366f1' }} />
               期間前に完了したタスクも表示
             </label>
-            <label style={checkboxLabelStyle}>
-              <input type="checkbox" checked={onlyDiscussion} onChange={(event) => setOnlyDiscussion(event.target.checked)} style={{ accentColor: '#6366f1' }} />
-              要相談があるタスクのみ
-            </label>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <span style={summaryChipStyle('#cbd5e1')}>対象 {rows.length}件</span>
-            <span style={summaryChipStyle(onHoldCount > 0 ? '#d8b4fe' : '#64748b')}>保留中 {onHoldCount}件</span>
-            {onlyOnHold && <span style={{ fontSize: '0.74rem', color: '#d8b4fe', alignSelf: 'center' }}>担当者・カテゴリごとに保留開始が古い順</span>}
-            <span style={summaryChipStyle('#86efac')}>期間内に報告あり {reportedCount}件</span>
-            <span style={summaryChipStyle(needsReportCount > 0 ? '#fde68a' : '#64748b')}>報告なし {needsReportCount}件</span>
-            <span style={summaryChipStyle(overdueCount > 0 ? '#fca5a5' : '#64748b')}>期限超過 {overdueCount}件</span>
-            <span style={summaryChipStyle('#93c5fd')}>進捗ログ {noteCount}件</span>
-            <span style={summaryChipStyle(discussionCount > 0 ? '#d6b38a' : '#64748b')}>要相談 {discussionCount}件</span>
-            <span style={summaryChipStyle(postponedTaskCount > 0 ? '#fde68a' : '#64748b')}>期間中に延期 {postponedTaskCount}件</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }} role="group" aria-label="件数で絞り込み">
+            {quickFilterChips.map((chip) => {
+              const active = effectiveQuickFilter === chip.value
+              const muted = chip.value !== 'all' && chip.count === 0
+              return (
+                <button
+                  key={chip.value}
+                  onClick={() => setQuickFilter(active && chip.value !== 'all' ? 'all' : chip.value)}
+                  disabled={muted && !active}
+                  aria-pressed={active}
+                  title={muted ? `${chip.label}のタスクはありません` : `${chip.title}${active ? '（もう一度押すと解除）' : '（押すと絞り込み）'}`}
+                  style={quickFilterChipStyle(chip.color, active, muted)}
+                >
+                  {chip.label} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{chip.count}</span>
+                </button>
+              )
+            })}
+            <span style={{ fontSize: '0.72rem', color: '#64748b', marginLeft: 4 }}>
+              期間内に報告あり {reportedCount}件 ・ 進捗ログ {noteCount}件
+            </span>
           </div>
+
+          {myNeedsReportCount > 0 && effectiveQuickFilter !== 'myNeedsReport' && (
+            <div role="status" style={myReminderStyle}>
+              <span>あなたの担当で、この期間まだ報告がないタスクが <strong>{myNeedsReportCount}件</strong> あります。進捗ログかメモで一言残しておきましょう。</span>
+              <button onClick={() => setQuickFilter('myNeedsReport')} style={{ ...secondaryButtonStyle, marginLeft: 'auto' }}>自分の未報告だけ表示</button>
+            </div>
+          )}
+          {effectiveQuickFilter === 'myNeedsReport' && (
+            <div role="status" style={myReminderStyle}>
+              <span>自分の担当で、この期間まだ報告がないタスクだけを表示しています。</span>
+              <button onClick={() => setQuickFilter('all')} style={{ ...secondaryButtonStyle, marginLeft: 'auto' }}>すべて表示に戻す</button>
+            </div>
+          )}
+
+          {loaded && groups.length > 1 && (
+            <nav aria-label={effectiveGroupMode === 'assignee' ? '担当者へ移動' : 'カテゴリへ移動'} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', paddingTop: 2 }}>
+              <span style={{ fontSize: '0.72rem', color: '#64748b' }}>{effectiveGroupMode === 'assignee' ? '担当者へ移動:' : 'カテゴリへ移動:'}</span>
+              {groups.map((group) => {
+                const needs = group.rows.filter((row) => needsReport(row.freshness)).length
+                return (
+                  <button key={group.key} onClick={() => jumpToGroup(group.key)} title={`${group.label}の欄へ移動`} style={jumpChipStyle}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.color ?? '#475569', flexShrink: 0 }} />
+                    {group.label}
+                    <span style={{ color: '#64748b', fontWeight: 600 }}>{group.rows.length}</span>
+                    {needs > 0 && <span style={{ color: '#fde68a', fontWeight: 700 }}>報告なし{needs}</span>}
+                  </button>
+                )
+              })}
+              <button onClick={() => setCollapsedGroups(collapsedGroups.size > 0 ? new Set() : new Set(groups.map((group) => group.key)))} style={{ ...inlineActionStyle, marginLeft: 4 }}>
+                {collapsedGroups.size > 0 ? 'すべて開く' : 'すべて折りたたむ'}
+              </button>
+            </nav>
+          )}
         </div>
 
         {loadError && (
@@ -982,7 +1079,9 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
 
         {loaded && groups.length === 0 && (
           <div style={emptyStyle}>
-            {onlyOnHold || onlyNeedsReport || onlyDiscussion ? '条件に合うタスクはありません。' : '表示できるタスクがありません。左のタスク一覧の絞り込みも確認してください。'}
+            {effectiveQuickFilter !== 'all'
+              ? <>条件に合うタスクはありません。<button onClick={() => setQuickFilter('all')} style={{ ...inlineActionStyle, marginLeft: 8, fontSize: '0.82rem' }}>すべて表示</button></>
+              : '表示できるタスクがありません。画面上部の「タスク一覧の絞り込み」も確認してください。'}
           </div>
         )}
 
@@ -992,9 +1091,19 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
           const groupDiscussions = group.rows
             .flatMap((row) => row.discussions)
             .sort((a, b) => b.created_at.localeCompare(a.created_at))
+          const collapsed = collapsedGroups.has(group.key)
           return (
-            <section key={`${effectiveGroupMode}:${group.key}`} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <section key={`${effectiveGroupMode}:${group.key}`} id={groupDomId(group.key)} style={{ display: 'flex', flexDirection: 'column', gap: 10, scrollMarginTop: 4 }}>
               <div style={groupHeaderStyle}>
+                <button
+                  onClick={() => toggleGroupCollapsed(group.key)}
+                  aria-expanded={!collapsed}
+                  aria-label={collapsed ? `${group.label}を開く` : `${group.label}を折りたたむ`}
+                  title={collapsed ? '開く' : '折りたたむ'}
+                  style={collapseButtonStyle(collapsed)}
+                >
+                  ▾
+                </button>
                 <span style={{ width: 11, height: 11, borderRadius: '50%', background: group.color ?? '#475569', flexShrink: 0 }} />
                 <span style={{ fontSize: '0.98rem', color: '#f1f5f9', fontWeight: 800 }}>{group.label}</span>
                 {group.isMe && <span style={{ fontSize: '0.68rem', color: '#c7d2fe', background: '#312e81', borderRadius: 999, padding: '1px 7px' }}>自分</span>}
@@ -1007,7 +1116,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
                   <span style={{ fontSize: '0.76rem', color: '#d6b38a' }}>要相談 {groupDiscussions.length}</span>
                 )}
               </div>
-              {groupDiscussions.length > 0 && (
+              {!collapsed && groupDiscussions.length > 0 && (
                 <div style={discussionBoxStyle}>
                   <div style={{ fontSize: '0.76rem', color: '#cbd5e1', fontWeight: 700 }}>
                     要相談（{groupDiscussions.length}件）
@@ -1018,7 +1127,7 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
                   ))}
                 </div>
               )}
-              {group.rows.map((row) => (
+              {!collapsed && group.rows.map((row) => (
                 <ReportTaskCard
                   key={row.todo.id}
                   row={row}
@@ -1738,15 +1847,63 @@ function reportButtonStyle(emphasized: boolean): React.CSSProperties {
   }
 }
 
-function summaryChipStyle(color: string): React.CSSProperties {
+function quickFilterChipStyle(color: string, active: boolean, muted: boolean): React.CSSProperties {
   return {
     fontSize: '0.76rem',
-    color,
-    background: '#111827',
-    border: '1px solid #1f2937',
+    color: muted ? '#475569' : active ? '#0f172a' : color,
+    background: active ? color : '#111827',
+    border: `1px solid ${active ? color : muted ? '#1f2937' : `${color}55`}`,
     borderRadius: 999,
-    padding: '3px 10px',
-    fontWeight: 700
+    padding: '3px 11px',
+    fontWeight: 700,
+    cursor: muted && !active ? 'default' : 'pointer',
+    whiteSpace: 'nowrap'
+  }
+}
+
+const myReminderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  flexWrap: 'wrap',
+  padding: '8px 12px',
+  borderRadius: 10,
+  border: '1px solid #a16207',
+  background: '#1c1408',
+  color: '#fde68a',
+  fontSize: '0.8rem'
+}
+
+const jumpChipStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 5,
+  padding: '3px 9px',
+  borderRadius: 999,
+  border: '1px solid #334155',
+  background: '#0b1220',
+  color: '#e2e8f0',
+  cursor: 'pointer',
+  fontSize: '0.74rem',
+  fontWeight: 700,
+  whiteSpace: 'nowrap'
+}
+
+function collapseButtonStyle(collapsed: boolean): React.CSSProperties {
+  return {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    border: '1px solid #334155',
+    background: '#111827',
+    color: '#94a3b8',
+    cursor: 'pointer',
+    padding: 0,
+    fontSize: '0.8rem',
+    lineHeight: 1,
+    transform: collapsed ? 'rotate(-90deg)' : 'none',
+    transition: 'transform 0.15s ease',
+    flexShrink: 0
   }
 }
 

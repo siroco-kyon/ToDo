@@ -29,9 +29,10 @@ export function Toast({ toasts, onRemove }: Props): React.JSX.Element {
 
 function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: number) => void }): React.JSX.Element {
   useEffect(() => {
-    const timer = setTimeout(() => onRemove(toast.id), toast.type === 'error' ? 10000 : 4500)
+    // 操作ボタン付きは押す時間が要るので長めに出す
+    const timer = setTimeout(() => onRemove(toast.id), toast.type === 'error' ? 10000 : toast.actionLabel ? 8000 : 4500)
     return () => clearTimeout(timer)
-  }, [toast.id, onRemove])
+  }, [toast.id, toast.actionLabel, toast.type, onRemove])
 
   return (
     <div role={toast.type === 'error' ? 'alert' : 'status'} style={{

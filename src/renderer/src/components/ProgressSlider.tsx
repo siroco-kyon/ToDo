@@ -74,7 +74,8 @@ export function ProgressSlider({
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     if (disabled || event.button !== 0) return
     event.preventDefault()
-    event.currentTarget.setPointerCapture(event.pointerId)
+    // バーの外へ出ても追えるようにつかむ。つかめない環境（合成イベントなど）でもドラッグ自体は続ける
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* noop */ }
     event.currentTarget.focus()
     commitIdRef.current += 1
     setDragging(true)

@@ -11,6 +11,8 @@ interface Props {
   activeView: 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban'
   scopeLens: 'personal' | 'team'
   onSetScopeLens: (lens: 'personal' | 'team') => void
+  /** 「集計から外す」カテゴリがあるときだけ、隠す／表示の切り替えを出す */
+  showScopeLens?: boolean
   showPlanRail: boolean
   showCategoryPane: boolean
   showTaskPane: boolean
@@ -36,6 +38,8 @@ interface Props {
 interface ViewButton {
   key: 'overview' | 'plan' | 'gantt' | 'kanban' | 'log' | 'progress' | 'report' | 'team'
   label: string
+  /** 何をする画面かをホバーで出す */
+  description: string
   active: boolean
   onClick: () => void
 }
@@ -50,6 +54,7 @@ export function Toolbar({
   activeView,
   scopeLens,
   onSetScopeLens,
+  showScopeLens = false,
   showPlanRail,
   showCategoryPane,
   showTaskPane,
@@ -71,14 +76,14 @@ export function Toolbar({
   onToggleTaskPane
 }: Props): React.JSX.Element {
   const viewButtons: ViewButton[] = [
-    { key: 'overview', label: '概要', active: activeView === 'overview', onClick: onToggleOverviewView },
-    { key: 'gantt', label: 'ガント', active: activeView === 'gantt', onClick: onToggleGanttView },
-    { key: 'kanban', label: 'カンバン', active: activeView === 'kanban', onClick: onToggleKanbanView },
-    ...(showTeamButton ? [{ key: 'team' as const, label: 'チーム', active: activeView === 'team', onClick: onToggleTeamView }] : []),
-    { key: 'progress', label: '進捗', active: activeView === 'progress', onClick: onToggleProgressView },
-    { key: 'report', label: '報告', active: activeView === 'report', onClick: onToggleReportView },
-    { key: 'plan', label: '計画', active: activeView === 'plan', onClick: onTogglePlanView },
-    { key: 'log', label: '記録', active: activeView === 'log', onClick: onToggleLogView }
+    { key: 'overview', label: '概要', description: '期限が近いタスクや最近の動きをまとめて見ます', active: activeView === 'overview', onClick: onToggleOverviewView },
+    { key: 'gantt', label: 'ガント', description: '開始日〜期限を横棒で見ます。バーをドラッグして日程を変えられます', active: activeView === 'gantt', onClick: onToggleGanttView },
+    { key: 'kanban', label: 'カンバン', description: '未着手・進行中・保留中・完了の列で、カードを動かして状態を変えます', active: activeView === 'kanban', onClick: onToggleKanbanView },
+    ...(showTeamButton ? [{ key: 'team' as const, label: 'チーム', description: '誰が何を計測中か、期限超過・期限が近いタスク、メンバーごとの件数を見ます', active: activeView === 'team', onClick: onToggleTeamView }] : []),
+    { key: 'progress', label: '進捗', description: '進捗ログのタイムライン。投稿・返信・いいねができます', active: activeView === 'progress', onClick: onToggleProgressView },
+    { key: 'report', label: '報告', description: '定例ミーティング用。担当者ごとに進捗と報告の有無を一覧します', active: activeView === 'report', onClick: onToggleReportView },
+    { key: 'plan', label: '計画', description: '1日の予定を時間割で組みます', active: activeView === 'plan', onClick: onTogglePlanView },
+    { key: 'log', label: '記録', description: 'タイマーで計測した作業時間の記録を見ます', active: activeView === 'log', onClick: onToggleLogView }
   ]
 
   return (
@@ -94,7 +99,7 @@ export function Toolbar({
       }}
     >
       <button onClick={onOpenQuickAdd} style={primaryButtonStyle}>
-        + 追加
+        ＋ タスクを追加
       </button>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', flexWrap: 'wrap' }}>
@@ -113,16 +118,21 @@ export function Toolbar({
           </span>
         )}
 
-        <div style={groupStyle} title="集計対象外を含む／共有集計だけを切り替えます（切替は自分の画面だけ）">
-          <button onClick={() => onSetScopeLens('personal')} style={viewButtonStyle(scopeLens === 'personal')}>すべて表示</button>
-          <button onClick={() => onSetScopeLens('team')} style={viewButtonStyle(scopeLens === 'team')}>共有集計</button>
-        </div>
+        {showScopeLens && (
+          <div style={groupStyle} title="「集計から外す」にしたカテゴリのタスクを、この画面だけで隠せます（ほかの人の画面には影響しません）">
+            <button onClick={() => onSetScopeLens('personal')} aria-pressed={scopeLens === 'personal'} style={viewButtonStyle(scopeLens === 'personal')}>すべて表示</button>
+            <button onClick={() => onSetScopeLens('team')} aria-pressed={scopeLens === 'team'} style={viewButtonStyle(scopeLens === 'team')}>集計外を隠す</button>
+          </div>
+        )}
 
-        <div style={groupStyle}>
+        <div style={groupStyle} role="tablist" aria-label="画面の切り替え">
           {viewButtons.map((button) => (
             <button
               key={button.key}
+              role="tab"
+              aria-selected={button.active}
               onClick={button.onClick}
+              title={button.description}
               style={viewButtonStyle(button.active)}
             >
               {button.label}
@@ -131,19 +141,19 @@ export function Toolbar({
         </div>
 
         <div style={groupStyle}>
-          <button onClick={onToggleCategoryPane} style={utilityButtonStyle(showCategoryPane)}>
+          <button onClick={onToggleCategoryPane} aria-pressed={showCategoryPane} title="左のカテゴリ一覧を表示／非表示" style={utilityButtonStyle(showCategoryPane)}>
             カテゴリ
           </button>
-          <button onClick={onToggleTaskPane} style={utilityButtonStyle(showTaskPane)}>
+          <button onClick={onToggleTaskPane} aria-pressed={showTaskPane} title="左のタスク一覧を表示／非表示" style={utilityButtonStyle(showTaskPane)}>
             タスク一覧
           </button>
-          <button onClick={onTogglePlanRail} style={utilityButtonStyle(showPlanRail)}>
-            今日のレール
+          <button onClick={onTogglePlanRail} aria-pressed={showPlanRail} title="右側の「今日の予定」を表示／非表示" style={utilityButtonStyle(showPlanRail)}>
+            今日の予定
           </button>
-          <button onClick={onToggleArchived} style={utilityButtonStyle(showArchived)}>
+          <button onClick={onToggleArchived} aria-pressed={showArchived} title="アーカイブしたタスクも一覧に表示します" style={utilityButtonStyle(showArchived)}>
             {showArchived ? 'アーカイブ表示中' : 'アーカイブ'}
           </button>
-          <button onClick={onOpenProgressReport} style={utilityButtonStyle(false)}>進捗レポート</button>
+          <button onClick={onOpenProgressReport} title="期間を指定して、進捗ログや作業時間をまとめます" style={utilityButtonStyle(false)}>進捗レポート</button>
           <button onClick={onOpenSettings} style={utilityButtonStyle(false)}>設定</button>
         </div>
 

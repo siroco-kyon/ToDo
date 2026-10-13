@@ -762,7 +762,7 @@ export function OverviewDashboard({
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
                 <TaskList
                   title="期限が今日"
-                  subtitle="締切が今日のタスク"
+                  subtitle="期限が今日のタスク"
                   items={data.dueToday}
                   emptyLabel="期限が今日のタスクはありません。"
                   onSelectTodo={onSelectTodo}

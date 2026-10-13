@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
 import type { Todo } from '../types'
 import { TimerDisplay } from './TimerDisplay'
+import { diffDaysFromToday, getDueDateColor } from '../lib/dueDate'
 
 interface Props {
   todos: Todo[]
@@ -9,7 +10,10 @@ interface Props {
   elapsedSeconds: number
   isManualSort: boolean
   searchQuery: string
+  /** 検索以外（担当・カテゴリ）の絞り込みがかかっている */
+  hasOtherFilters?: boolean
   onClearSearch?: () => void
+  onClearFilters?: () => void
   onAddTodo?: () => void
   onSelect: (id: string) => void
   onToggleDone: (todo: Todo) => void
@@ -21,21 +25,17 @@ interface Props {
   onStopTimer: (note?: string) => Promise<void>
 }
 
-/** 日付のみの文字列（YYYY-MM-DD）をローカル日付の0時としてパースする */
-function parseDateOnly(dateKey: string): Date {
-  const [y, m, d] = dateKey.slice(0, 10).split('-').map(Number)
-  return new Date(y, m - 1, d)
-}
-
-function getDueDateColor(dueDate: string | null): string {
-  if (!dueDate) return ''
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const diffDays = (parseDateOnly(dueDate).getTime() - today.getTime()) / 86400000
-  if (diffDays < 0) return '#ef4444'
-  if (diffDays < 1) return '#f97316'
-  if (diffDays <= 3) return '#f59e0b'
-  return ''
+/** 期限の表示。近いものは「今日まで」「3日遅れ」のように残り日数で出す（完了済みは日付だけ） */
+function formatDueLabel(dueDate: string, done: boolean): string {
+  const [, m, d] = dueDate.slice(0, 10).split('-')
+  const date = `${Number(m)}/${Number(d)}`
+  if (done) return date
+  const diff = diffDaysFromToday(dueDate)
+  if (diff < 0) return `${date}・${Math.abs(diff)}日遅れ`
+  if (diff === 0) return '今日まで'
+  if (diff === 1) return '明日まで'
+  if (diff <= 7) return `${date}・あと${diff}日`
+  return `${date}まで`
 }
 
 function progressColor(p: number): string {
@@ -75,7 +75,7 @@ function TodoItem({
   isDragOver: boolean
 }): React.JSX.Element {
   const [hovered, setHovered] = useState(false)
-  const dueColor = getDueDateColor(todo.due_date)
+  const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
   const isArchived = todo.status === 'archived'
   const prog = todo.progress ?? 0
 
@@ -108,6 +108,8 @@ function TodoItem({
           {!isArchived ? (
             <button
               onClick={(e) => { e.stopPropagation(); onToggleDone() }}
+              title={todo.status === 'done' ? '完了を取り消す' : '完了にする'}
+              aria-label={todo.status === 'done' ? '完了を取り消す' : '完了にする'}
               style={{
                 width: 17, height: 17, borderRadius: '50%', flexShrink: 0, marginTop: 2,
                 border: `2px solid ${todo.status === 'done' ? '#4ade80' : '#475569'}`,
@@ -160,8 +162,8 @@ function TodoItem({
                 </span>
               )}
               {todo.due_date && !isArchived && (
-                <span style={{ fontSize: '0.68rem', color: dueColor || '#64748b' }}>
-                  {todo.due_date.slice(0, 10)}
+                <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: '0.68rem', color: dueColor || '#64748b', fontWeight: dueColor ? 700 : 400, whiteSpace: 'nowrap' }}>
+                  {formatDueLabel(todo.due_date, todo.status === 'done')}
                 </span>
               )}
               {!isArchived && (todo.assignee_name || (todo.co_assignees?.length ?? 0) > 0) && (
@@ -200,20 +202,20 @@ function TodoItem({
             <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
               {isArchived ? (
                 <>
-                  <button onClick={onUnarchive} title="復元" style={actionBtn('#10b981')}>↩</button>
+                  <button onClick={onUnarchive} title="アーカイブから戻す" aria-label="アーカイブから戻す" style={actionBtn('#10b981')}>↩</button>
                   <button
                     onClick={() => { if (window.confirm(`「${todo.title}」を完全に削除しますか？`)) onDelete() }}
-                    title="完全削除" style={actionBtn('#ef4444')}
+                    title="完全に削除（元に戻せません）" aria-label="完全に削除" style={actionBtn('#ef4444')}
                   >🗑</button>
                 </>
               ) : (
                 <>
                   {todo.status !== 'done' && (
                     isRunning
-                      ? <button onClick={onStopTimer} title="計測停止" style={actionBtn('#ef4444')}>■</button>
-                      : <button onClick={onStartTimer} title="計測開始" style={actionBtn('#4ade80')}>▶</button>
+                      ? <button onClick={onStopTimer} title="計測を停止" aria-label="計測を停止" style={actionBtn('#ef4444')}>■</button>
+                      : <button onClick={onStartTimer} title="作業時間の計測を開始" aria-label="計測を開始" style={actionBtn('#4ade80')}>▶</button>
                   )}
-                  <button onClick={onArchive} title="アーカイブ" style={actionBtn('#64748b')}>📦</button>
+                  <button onClick={onArchive} title="アーカイブ（一覧から片付ける。あとで戻せます）" aria-label="アーカイブ" style={actionBtn('#64748b')}>📦</button>
                 </>
               )}
             </div>
@@ -233,7 +235,7 @@ function TodoItem({
 
 export function TodoList({
   todos, selectedId, runningTodoId, elapsedSeconds, isManualSort, searchQuery,
-  onClearSearch, onAddTodo,
+  hasOtherFilters = false, onClearSearch, onClearFilters, onAddTodo,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete, onReorder,
   onStartTimer, onStopTimer
 }: Props): React.JSX.Element {
@@ -257,10 +259,17 @@ export function TodoList({
   }
 
   if (todos.length === 0) {
+    // 絞り込みで隠れているだけなのに「タスクがありません」と出すと、消えたと思われる
+    const filtered = Boolean(searchQuery) || hasOtherFilters
+    const emptyButtonStyle: React.CSSProperties = { padding: '6px 10px', borderRadius: 7, border: '1px solid #334155', background: '#172554', color: '#dbeafe', cursor: 'pointer', fontSize: '0.8rem' }
     return (
       <div style={{ padding: 24, color: '#64748b', textAlign: 'center', fontSize: '0.9rem' }}>
-        <div>{searchQuery ? '検索結果がありません' : 'タスクがありません'}</div>
-        <button onClick={searchQuery ? onClearSearch : onAddTodo} style={{ marginTop: 10, padding: '6px 10px', borderRadius: 7, border: '1px solid #334155', background: '#172554', color: '#dbeafe', cursor: 'pointer' }}>{searchQuery ? '検索をクリア' : '最初のタスクを追加'}</button>
+        <div>{searchQuery ? '検索に合うタスクはありません' : filtered ? '絞り込み条件に合うタスクはありません' : 'タスクがありません'}</div>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+          {searchQuery && <button onClick={onClearSearch} style={emptyButtonStyle}>検索をクリア</button>}
+          {!searchQuery && hasOtherFilters && onClearFilters && <button onClick={onClearFilters} style={emptyButtonStyle}>絞り込みを解除</button>}
+          {onAddTodo && <button onClick={onAddTodo} style={{ ...emptyButtonStyle, background: '#1d4ed8', borderColor: '#2563eb' }}>＋ タスクを追加</button>}
+        </div>
       </div>
     )
   }

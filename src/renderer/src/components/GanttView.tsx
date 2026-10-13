@@ -10,6 +10,8 @@ interface Props {
   onUpdateTodo: (id: string, data: UpdateTodoInput) => Promise<void>
   onReorderTodos?: (orderedIds: string[]) => Promise<void>
   onOpenSeparateWindow?: () => void
+  /** タスク追加画面を開く。見出しの「＋」から開くときは、そのカテゴリ・担当を初期値にする */
+  onAddTodo?: (defaults?: { categoryId?: string | null; assigneeId?: string | null }) => void
   standalone?: boolean
   groupByCategory?: boolean
 }
@@ -951,9 +953,11 @@ export function GanttView({
   onUpdateTodo,
   onReorderTodos,
   onOpenSeparateWindow,
+  onAddTodo,
   standalone = false,
   groupByCategory = false
 }: Props): React.JSX.Element {
+  const unscheduledSectionRef = useRef<HTMLDivElement>(null)
   const initialSettings = useMemo(() => loadGanttViewSettings(), [])
   const initialScrollState = useMemo(() => loadGanttScrollState(), [])
   const [zoom, setZoom] = useState<ZoomMode>(initialSettings.zoom)
@@ -3039,6 +3043,19 @@ export function GanttView({
         {lastUndoEntry && (
           <span style={collapsedSummaryChipStyle}>戻す: {lastUndoEntry.label}</span>
         )}
+        {unscheduledGroups.length > 0 && (
+          // 日付のないタスクはチャートの下に出るので、件数を見せて押すとそこへ移動する
+          <button
+            onClick={() => {
+              setShowUnscheduled(true)
+              window.requestAnimationFrame(() => unscheduledSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+            }}
+            title="開始日・期限のないタスク。押すとチャートの下の一覧へ移動します"
+            style={{ ...healthSummaryChipStyle('#422006', '#f59e0b', '#fde68a'), cursor: 'pointer' }}
+          >
+            日付なし {unscheduledGroups.length}件 ↓
+          </button>
+        )}
         {users.length > 0 && (
           <span style={{ display: 'inline-flex', gap: 2, padding: 2, borderRadius: 8, background: '#0b1220', border: '1px solid #1f2937' }} title="タスクの並べ方">
             <button onClick={() => setGroupMode('category')} style={miniToggleStyle(groupMode === 'category')}>カテゴリ別</button>
@@ -3364,7 +3381,18 @@ export function GanttView({
         {loading ? (
           <div style={centerEmptyStyle}>タスクを読み込み中...</div>
         ) : rangeChartGroups.length === 0 ? (
-          <div style={centerEmptyStyle}><div>この条件で表示できる予定タスクはありません。</div><div style={{ display: 'flex', gap: 8, marginTop: 12 }}><button onClick={() => { setTaskQuery(''); setStatusFilter('all'); setShowOutOfRange(true); setShowUnscheduled(true) }} style={headerActionButtonStyle}>絞り込みを解除</button><button onClick={() => setRangeMode('auto')} style={headerActionButtonStyle}>期間を自動に戻す</button></div></div>
+          <div style={{ ...centerEmptyStyle, flexDirection: 'column' }}>
+            <div>この条件で表示できる予定タスクはありません。</div>
+            <div style={{ marginTop: 6, fontSize: '0.74rem', color: '#64748b' }}>
+              {unscheduledGroups.length > 0 ? `日付のないタスクが${unscheduledGroups.length}件あります（下の「未配置タスク」）。` : ''}
+              画面上部に「タスク一覧の絞り込み」が出ているときは、そこでも解除できます。
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+              {onAddTodo && <button onClick={() => onAddTodo()} style={{ ...headerActionButtonStyle, background: '#1d4ed8', borderColor: '#2563eb', color: '#eff6ff' }}>＋ タスクを追加</button>}
+              <button onClick={() => { setTaskQuery(''); setStatusFilter('all'); setShowOutOfRange(true); setShowUnscheduled(true) }} style={headerActionButtonStyle}>ガントの絞り込みを解除</button>
+              <button onClick={() => setRangeMode('auto')} style={headerActionButtonStyle}>期間を自動に戻す</button>
+            </div>
+          </div>
         ) : (
           <div ref={scrollRef} style={{ height: '100%', overflow: 'auto' }}>
             <div style={{ minWidth: leftTableWidth + timelineWidth }}>
@@ -3517,6 +3545,23 @@ export function GanttView({
                           <span style={{ color: GANTT_TEXT, fontSize: '0.86rem', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{section.label}</span>
                           <span className="nm-pressed-xs" style={categoryCountBadgeStyle}>{section.totalCount}</span>
                           {section.allDone && <span style={{ ...statusDotStyle, width: 8, height: 8, background: STATUS_TONE.done.fill }} title="すべて完了" />}
+                          {onAddTodo && !isReorderMode && (
+                            <button
+                              onClick={() => {
+                                if (String(section.key).startsWith(ASSIGNEE_SECTION_PREFIX)) {
+                                  onAddTodo({ assigneeId: String(section.key).slice(ASSIGNEE_SECTION_PREFIX.length) || null })
+                                } else {
+                                  const categoryId = String(section.key)
+                                  onAddTodo({ categoryId: categoryOptions.some((option) => option.key === section.key) && categoryId !== NO_CATEGORY_KEY ? categoryId : null })
+                                }
+                              }}
+                              title={`「${section.label}」にタスクを追加`}
+                              aria-label={`${section.label}にタスクを追加`}
+                              style={{ ...subTaskAddButtonStyle(false), marginLeft: 'auto', width: 'auto', padding: '0 8px', fontSize: '0.72rem' }}
+                            >
+                              ＋ 追加
+                            </button>
+                          )}
                         </div>
                         <div
                           onPointerDown={beginPan}
@@ -3676,11 +3721,14 @@ export function GanttView({
                               {group.todo.title}
                             </button>
                             {group.todo.status !== 'done' && group.todo.status !== 'archived' && (
+                              // 保留中のタスクだけ紫の「再開」ボタンを常に出す。
+                              // 保留していないタスクの「保留する」ボタンは、行にマウスを乗せたときだけ控えめに出す
                               <button
+                                className={group.todo.status === 'on_hold' ? undefined : 'tarbo-gantt-hold-toggle'}
                                 onClick={() => void onUpdateTodo(group.todo.id, { status: group.todo.status === 'on_hold' ? 'active' : 'on_hold' }).catch(() => window.alert('状態を変更できませんでした'))}
-                                title={group.todo.status === 'on_hold' ? '進行中に戻す' : 'タスクを保留する'}
+                                title={group.todo.status === 'on_hold' ? '保留中です。押すと進行中に戻します' : 'タスクを保留する'}
                                 aria-label={group.todo.status === 'on_hold' ? '進行中に戻す' : 'タスクを保留する'}
-                                style={{ ...subTaskAddButtonStyle(false), color: '#d8b4fe' }}
+                                style={{ ...subTaskAddButtonStyle(false), color: group.todo.status === 'on_hold' ? '#d8b4fe' : '#94a3b8' }}
                               >{group.todo.status === 'on_hold' ? '▶' : 'Ⅱ'}</button>
                             )}
                             <button
@@ -4290,10 +4338,10 @@ export function GanttView({
       </div>
 
       {showUnscheduled && (
-        <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 16, padding: 16 }}>
+        <div ref={unscheduledSectionRef} style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 16, padding: 16, scrollMarginTop: 8 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: '0.92rem', color: '#f8fafc', fontWeight: 700 }}>未配置タスク</div>
-            <div style={{ fontSize: '0.76rem', color: '#64748b' }}>日付のないタスクは、タイムラインに配置するまでここに表示されます。</div>
+            <div style={{ fontSize: '0.92rem', color: '#f8fafc', fontWeight: 700 }}>未配置タスク（日付なし）{unscheduledGroups.length > 0 ? ` ${unscheduledGroups.length}件` : ''}</div>
+            <div style={{ fontSize: '0.76rem', color: '#64748b' }}>開始日も期限もないタスクです。「今日に配置」を押すか、詳細で日程を入れるとチャートに出ます。</div>
           </div>
 
           {unscheduledGroups.length === 0 ? (
@@ -4304,8 +4352,11 @@ export function GanttView({
                 <div key={group.todo.id} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '12px 13px' }}>
                   <button onClick={() => onSelectTodo(group.todo.id)} style={{ background: 'transparent', border: 'none', padding: 0, color: '#e2e8f0', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700, textAlign: 'left' }}>{group.todo.title}</button>
                   <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.72rem', color: '#94a3b8' }}>
-                    <span>P{group.todo.priority}</span>
-                    <span>{group.todo.progress}%</span>
+                    {group.todo.priority >= 4 && (
+                      <span style={{ color: group.todo.priority === 5 ? '#ef4444' : '#f59e0b', fontWeight: 700 }}>優先度 {group.todo.priority === 5 ? '最高' : '高'}</span>
+                    )}
+                    {group.todo.status === 'on_hold' && <span style={{ color: '#d8b4fe' }}>保留中</span>}
+                    <span>進捗 {group.todo.progress}%</span>
                     {group.subTaskCount > 0 && <span>サブタスク {group.subTaskCount}件</span>}
                     {group.todo.category_name && <span style={{ color: group.todo.category_color ?? '#a5b4fc' }}>{group.todo.category_name}</span>}
                     {group.todo.assignee_name && (

@@ -133,7 +133,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                 />
                 <label style={privateLabelStyle}>
                   <input type="checkbox" checked={editPrivate} onChange={(e) => setEditPrivate(e.target.checked)} style={{ accentColor: '#6366f1' }} />
-                  プライベート（全体の集計から除外）
+                  集計から外す（個人用。ほかの人にも見えます）
                 </label>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button type="submit" style={btnStyle('#6366f1')}>保存</button>
@@ -163,7 +163,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                     {cat.name}
                   </span>
                   {cat.is_private ? (
-                    <span title="共有集計の対象外（他の利用者からも閲覧できます）" style={{ marginLeft: 4, fontSize: '0.66rem', flexShrink: 0 }}>集計外</span>
+                    <span title="チームの集計・レポートに含めないカテゴリです（ほかの人にも見えます）" style={{ marginLeft: 4, fontSize: '0.62rem', flexShrink: 0, color: '#94a3b8', border: '1px solid #334155', borderRadius: 99, padding: '0 5px' }}>集計外</span>
                   ) : null}
                 </button>
                 {cat.description && hoveredId !== cat.id && (
@@ -179,14 +179,16 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                   <div style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 2 }}>
                     <button
                       onClick={(e) => startEdit(cat, e)}
-                      title="編集"
+                      title="名前・色・説明を編集"
+                      aria-label={`${cat.name}を編集`}
                       style={iconBtn('#334155', '#94a3b8')}
                     >
                       ✏
                     </button>
                     <button
                       onClick={(e) => handleDelete(cat, e)}
-                      title="削除"
+                      title="カテゴリを削除（タスクは消えず「未分類」になります）"
+                      aria-label={`${cat.name}を削除`}
                       style={iconBtn('#7f1d1d', '#ef4444')}
                     >
                       🗑
@@ -224,7 +226,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
           </div>
           <label style={privateLabelStyle}>
             <input type="checkbox" checked={newPrivate} onChange={(e) => setNewPrivate(e.target.checked)} style={{ accentColor: '#6366f1' }} />
-            プライベート（全体の集計から除外）
+            集計から外す（個人用。ほかの人にも見えます）
           </label>
           <div style={{ display: 'flex', gap: 4 }}>
             <button type="submit" style={btnStyle('#6366f1')}>追加</button>

@@ -103,7 +103,7 @@ function KanbanCard({
           <span title="繰り返し" style={{ fontSize: '0.62rem', color: '#818cf8' }}>🔁</span>
         )}
         {isPrivate && (
-          <span title="プライベート（全体の集計から除外）" style={{ fontSize: '0.62rem' }}>🔒</span>
+          <span title="集計から外すカテゴリ（チームの集計・レポートに含めません。ほかの人にも見えます）" style={{ fontSize: '0.6rem', color: '#94a3b8', border: '1px solid #334155', borderRadius: 99, padding: '0 5px' }}>集計外</span>
         )}
         {isRunning && (
           <span style={{ fontSize: '0.6rem', background: '#4ade8020', color: '#4ade80', padding: '1px 5px', borderRadius: 99 }}>計測中</span>
@@ -127,8 +127,8 @@ function KanbanCard({
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
         {todo.due_date && (
-          <span style={{ fontSize: '0.66rem', color: getDueColor(todo.due_date) }}>
-            {todo.due_date.slice(5, 10)}
+          <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: '0.66rem', color: isDone ? '#64748b' : getDueColor(todo.due_date) }}>
+            期限 {Number(todo.due_date.slice(5, 7))}/{Number(todo.due_date.slice(8, 10))}
           </span>
         )}
         {prog > 0 && (
@@ -219,7 +219,8 @@ export function KanbanView({
               </span>
               <button
                 onClick={() => { setAddingStatus(col.status); setAddTitle('') }}
-                title="このステータスでタスクを追加"
+                title={`「${col.label}」の列にタスクを追加`}
+                aria-label={`${col.label}にタスクを追加`}
                 style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', fontSize: '0.8rem', lineHeight: 1, padding: '3px 7px' }}
               >
                 ＋
@@ -233,7 +234,8 @@ export function KanbanView({
                   value={addTitle}
                   onChange={(e) => setAddTitle(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') submitAdd(col.status)
+                    // 日本語変換の確定の Enter では追加しない
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) submitAdd(col.status)
                     if (e.key === 'Escape') { setAddingStatus(null); setAddTitle('') }
                   }}
                   onBlur={() => submitAdd(col.status)}
@@ -256,7 +258,7 @@ export function KanbanView({
 
               {items.length === 0 && addingStatus !== col.status && (
                 <div style={{ padding: '16px 8px', textAlign: 'center', color: '#475569', fontSize: '0.76rem' }}>
-                  ここにドロップ
+                  カードをここにドラッグ
                 </div>
               )}
             </div>
