@@ -9,7 +9,8 @@ import Database from 'better-sqlite3'
  *  - Categories are de-duplicated by name (web has a UNIQUE(name) constraint);
  *    a same-named category is reused, otherwise a fresh one is created.
  *  - Todos keep their original UUIDs and gain assignee_id / created_by = target.
- *  - SubTasks / TodoDependencies copy as-is (their UUIDs do not collide).
+ *  - SubTasks gain assignee_id / created_by = target; TodoDependencies copy
+ *    as-is (their UUIDs do not collide).
  *  - WorkLogs / DailyPlanItems gain the missing user_id = target.
  *  - Progress notes, replies, reactions and change history keep their UUIDs;
  *    all desktop authors / reaction actors become the target web user.
@@ -125,8 +126,8 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
     )
     const insertSubTask = webDb.prepare(
       `INSERT OR IGNORE INTO SubTasks
-        (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     const insertDependency = webDb.prepare(
       `INSERT OR IGNORE INTO TodoDependencies
@@ -254,7 +255,8 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
         asInt(sub.done, 0),
         asNullableText(sub.completed_at),
         asInt(sub.sort_order, 0),
-        asText(sub.created_at, now)
+        asText(sub.created_at, now),
+        targetUserId
       ).changes
       const stored = findSubTask.get(asText(sub.id)) as { todo_id: string } | undefined
       if (stored?.todo_id === todoId) validSubTaskIds.add(asText(sub.id))

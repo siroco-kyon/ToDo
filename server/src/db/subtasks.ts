@@ -66,7 +66,7 @@ export function reorderSubTasks(todoId: string, orderedIds: string[]): void {
   })()
 }
 
-export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask {
+export function createSubTask(todoId: string, data: CreateSubTaskInput, createdByUserId: string | null = null): SubTask {
   assertAssignableUser(data.assignee_id)
   const db = getDb()
   return db.transaction(() => {
@@ -78,8 +78,8 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
     const progress = clampProgress(data.progress)
     const done = progress >= 100 ? 1 : 0
     db.prepare(
-      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now)
+      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now, createdByUserId)
     const created = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
     const extendedTo = syncTodoDueDateWithSubTasks(todoId)
     return { ...created, parent_due_date_extended_to: extendedTo }

@@ -361,12 +361,13 @@ function spawnNextRecurrence(source: Todo): void {
   if (source.recurrence_copy_subtasks) {
     const db = getDb()
     const now = new Date().toISOString()
+    // 追加した人はタスク本体（created_by）と同じく元のサブタスクから引き継ぐ
     const insert = db.prepare(
-      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?)'
+      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?, ?)'
     )
     const subTasks = db
       .prepare('SELECT * FROM SubTasks WHERE todo_id = ? ORDER BY sort_order ASC, created_at ASC')
-      .all(source.id) as Array<{ title: string; description: string | null; assignee_id: string | null; start_date: string | null; due_date: string | null; sort_order: number }>
+      .all(source.id) as Array<{ title: string; description: string | null; assignee_id: string | null; start_date: string | null; due_date: string | null; sort_order: number; created_by: string | null }>
     for (const sub of subTasks) {
       insert.run(
         crypto.randomUUID(),
@@ -377,7 +378,8 @@ function spawnNextRecurrence(source: Todo): void {
         shiftAndSkip(sub.start_date),
         shiftAndSkip(sub.due_date),
         sub.sort_order,
-        now
+        now,
+        sub.created_by ?? null
       )
     }
   }

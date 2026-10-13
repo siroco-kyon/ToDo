@@ -84,8 +84,10 @@ export function createSchema(db: Database.Database): void {
       completed_at TEXT,
       sort_order INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
+      created_by TEXT,
       FOREIGN KEY (todo_id) REFERENCES Todos(id),
-      FOREIGN KEY (assignee_id) REFERENCES Users(id)
+      FOREIGN KEY (assignee_id) REFERENCES Users(id),
+      FOREIGN KEY (created_by) REFERENCES Users(id)
     );
 
     CREATE TABLE IF NOT EXISTS TodoDependencies (
@@ -342,6 +344,10 @@ export function runMigrations(db: Database.Database): void {
   if (!subTaskColumns.some((c) => c.name === 'progress')) {
     db.prepare('ALTER TABLE SubTasks ADD COLUMN progress INTEGER DEFAULT 0').run()
     db.prepare('UPDATE SubTasks SET progress = CASE WHEN done = 1 THEN 100 ELSE 0 END WHERE progress IS NULL OR progress = 0').run()
+  }
+  // 追加した人。既存のサブタスクは不明なので NULL のまま（進捗レポートでは親タスクの主担当として数える）
+  if (!subTaskColumns.some((c) => c.name === 'created_by')) {
+    db.prepare('ALTER TABLE SubTasks ADD COLUMN created_by TEXT').run()
   }
   db.prepare('CREATE INDEX IF NOT EXISTS idx_subtasks_assignee ON SubTasks(assignee_id)').run()
 

@@ -184,6 +184,7 @@ export interface SubTask {
   completed_at: string | null
   sort_order: number
   created_at: string
+  created_by: string | null
   parent_due_date_extended_to?: string | null
 }
 

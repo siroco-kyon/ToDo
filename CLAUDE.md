@@ -99,6 +99,7 @@ server/src/routes/         auth / data / users の REST ルート
 - 依存連鎖ロジックはサーバー版 `server/src/db/todos.ts` に同じものを移植している（両方を直す）
 - チーム接続のデスクトップ版の OS 通知・未読バッジ・トレイのタスク一覧は、非表示のメイン画面の `DesktopCompanion` が判定して `window.desktop` へ渡す。main 側はサーバー API を呼ばない。新着かどうかは端末の localStorage（`hakobi-desktop-notified:<userId>`）で判定し、初回は既存の通知を出さない
 - サーバーが配信する画面とインストール済みのデスクトップ版は別々に更新される。`DesktopBridge` に足したメソッドは任意（`notify?`）にして存在を確かめてから呼び、`DesktopState` に足した項目は古い画面が送らない前提で扱う
+- 進捗レポート（`ProgressReportModal`）は「やった人」で数える。タスク別レポートには集計したメンバー（`digest.users`）が書いた進捗ログ・返信だけを載せる（副担当など他の人のログを自分の報告に混ぜない。デスクトップ版は絞らない）。サーバー版の完了タスクは最後に完了にした人（`TodoChangeLogs` の status → done。アーカイブからの復元は除く）、追加サブタスクは `SubTasks.created_by` で数え、記録がない古いデータだけ主担当で数える
 - 報告タブの「期間中の変化」は変更履歴から計算する。タスクは `TodoChangeLogs`（`updateTodo` で記録）、サブタスクは `SubTaskChangeLogs`（`updateSubTask` で progress / due_date が変わったときだけ記録）。`todoChangeGetByRange` が両方を返し、`subtask_id` で区別する
 
 ## 注意点

@@ -316,7 +316,7 @@ dataRouter.post('/todos/:todoId/subscription', (req, res) => run(res, () => {
 dataRouter.post('/todos/:todoId/subtasks/reorder', (req, res) =>
   run(res, () => reorderSubTasks(req.params.todoId, req.body.orderedIds), 'subtask'))
 dataRouter.post('/todos/:todoId/subtasks', (req, res) =>
-  run(res, () => createSubTask(req.params.todoId, req.body), ['subtask', 'todo']))
+  run(res, () => createSubTask(req.params.todoId, req.body, req.user!.id), ['subtask', 'todo']))
 dataRouter.put('/subtasks/:id', (req, res) => run(res, () => updateSubTask(req.params.id, req.body, req.user!.id), ['subtask', 'todo']))
 dataRouter.delete('/subtasks/:id', (req, res) => run(res, () => deleteSubTask(req.params.id), 'subtask'))
 

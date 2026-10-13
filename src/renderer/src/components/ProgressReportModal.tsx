@@ -1,5 +1,5 @@
 import { LinkedText } from './LinkedText'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { writeTaskReportSnapshot } from '../lib/taskReportSnapshot'
 import type {
@@ -202,6 +202,24 @@ export interface TaskReportRow {
   subTasks: SubTask[]
 }
 
+function filterCommentsByAuthors(comments: ProgressNoteComment[], authorIds: Set<string>): ProgressNoteComment[] {
+  // 対象外の人の返信は、その下に付いた返信ごと外す（相手の発言が消えた返信だけが残らないように）
+  return comments
+    .filter((comment) => comment.user_id != null && authorIds.has(comment.user_id))
+    .map((comment) => ({ ...comment, replies: filterCommentsByAuthors(comment.replies, authorIds) }))
+}
+
+/**
+ * 集計対象のメンバーが書いた進捗ログ・返信だけを残す。副担当など他の人のログが
+ * 自分の報告に混ざらないようにするため。authorIds が空（デスクトップ版）なら絞らない。
+ */
+function filterNotesByAuthors(notes: ProgressNote[], authorIds: Set<string>): ProgressNote[] {
+  if (authorIds.size === 0) return notes
+  return notes
+    .filter((note) => note.user_id != null && authorIds.has(note.user_id))
+    .map((note) => ({ ...note, comments: filterCommentsByAuthors(note.comments, authorIds) }))
+}
+
 /** タスク一覧の表示順そのままに、各タスクの進捗ノート（コメント込み）とサブタスクを紐付ける */
 function buildPerTaskReport(todos: Todo[], notes: ProgressNote[], subTasks: SubTask[]): TaskReportRow[] {
   return todos
@@ -382,7 +400,8 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
   const [taskNotes, setTaskNotes] = useState<ProgressNote[] | null>(null)
   const [taskSubTasks, setTaskSubTasks] = useState<SubTask[] | null>(null)
   const [loading, setLoading] = useState(false)
-  const [showOnlyActiveTasks, setShowOnlyActiveTasks] = useState(false)
+  // サーバー版の個人サマリーでは、自分のログがないタスクを既定で出さない
+  const [showOnlyActiveTasks, setShowOnlyActiveTasks] = useState(() => selfOnly && currentUser != null)
 
   const fetchDigest = useCallback(async (): Promise<void> => {
     if (from > to) {
@@ -414,7 +433,14 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
     }
   }, [from, to, selectedIds, selfOnly, currentUser, includePrivate, onShowToast])
 
-  const perTaskReport = buildPerTaskReport(visibleTodos, taskNotes ?? [], taskSubTasks ?? [])
+  // 実際に集計したメンバー（digest.users）が書いたものだけをタスク別レポートに載せる
+  const reportAuthorIds = useMemo(
+    () => new Set((digest?.users ?? []).map((user) => user.user_id).filter((id): id is string => id != null)),
+    [digest]
+  )
+  const authorFiltered = reportAuthorIds.size > 0
+  const reportNotes = useMemo(() => filterNotesByAuthors(taskNotes ?? [], reportAuthorIds), [taskNotes, reportAuthorIds])
+  const perTaskReport = buildPerTaskReport(visibleTodos, reportNotes, taskSubTasks ?? [])
   const displayedTaskReport = showOnlyActiveTasks ? perTaskReport.filter((row) => row.notes.length > 0) : perTaskReport
 
   const handleCopyMarkdown = useCallback(async (): Promise<void> => {
@@ -588,9 +614,20 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
                 </button>
               </div>
             </div>
+            {authorFiltered && (
+              <div style={{ color: '#64748b', fontSize: '0.76rem' }}>
+                {selfOnly
+                  ? '自分が書いた進捗ログ・返信だけを載せています（副担当など他の人のログは含みません）。'
+                  : '選択したメンバーが書いた進捗ログ・返信だけを載せています。'}
+              </div>
+            )}
             {displayedTaskReport.length === 0 ? (
               <div style={{ color: '#64748b', fontSize: '0.84rem' }}>
-                {showOnlyActiveTasks ? 'この期間に進捗記録があるタスクがありません。' : '表示中のタスクがありません。'}
+                {showOnlyActiveTasks
+                  ? selfOnly && authorFiltered
+                    ? 'この期間に自分が書いた進捗ログがあるタスクはありません。'
+                    : 'この期間に進捗記録があるタスクがありません。'
+                  : '表示中のタスクがありません。'}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
