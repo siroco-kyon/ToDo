@@ -125,6 +125,14 @@ async function testFetch() {
   assert.equal(lib.DESKTOP_DOWNLOAD_FILE_URL, '/api/desktop-release/download')
   const other = load(libCode, { window: { location: { origin: 'http://192.168.10.20:4577' } } })
   assert.equal(other.desktopDownloadPageUrl(), 'http://192.168.10.20:4577/download')
+
+  // On the server PC itself the page's own URL cannot be handed to members.
+  for (const origin of ['http://localhost:4577', 'http://LOCALHOST', 'http://127.0.0.1:4577', 'http://127.10.0.3', 'http://[::1]:4577', 'http://hakobi.localhost:4577']) {
+    assert.equal(lib.isLoopbackOrigin(origin), true, `loopback not detected: ${origin}`)
+  }
+  for (const origin of ['http://192.168.10.20:4577', 'http://hakobi-server:4577', 'http://127.0.0.1.example.com', 'http://localhost.example.com', 'not a url', '']) {
+    assert.equal(lib.isLoopbackOrigin(origin), false, `wrongly treated as loopback: ${origin}`)
+  }
 }
 
 async function testDownloadPage() {
@@ -159,6 +167,12 @@ async function testDownloadPage() {
     assert.ok(ready.includes(prompt), `missing install guidance: ${prompt}`)
   }
   assert.match(ready, /<a href="\/"[^>]*>Web版に戻る<\/a>/)
+  assert.ok(!ready.includes('このPC（サーバー）用のURLです'), 'a LAN address needs no warning')
+  const onServer = renderToStaticMarkup(React.createElement(page.DesktopDownloadView, {
+    phase: { kind: 'ready', status: { release: validRelease, reason: null } }, origin: 'http://localhost:4577'
+  }))
+  assert.ok(onServer.includes('このPC（サーバー）用のURLです'), 'opened on the server PC, the page must say the URL only works there')
+  assert.ok(onServer.includes('http://&lt;サーバーのIPアドレス&gt;:4577'))
 }
 
 async function testUpdateNotice() {

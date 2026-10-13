@@ -3,6 +3,7 @@ import {
   DESKTOP_DOWNLOAD_FILE_URL,
   fetchDesktopRelease,
   formatBytes,
+  isLoopbackOrigin,
   type DesktopReleaseStatus
 } from '@renderer/lib/desktopRelease'
 
@@ -111,6 +112,9 @@ export function DesktopDownloadView({ phase, origin, onRetry }: {
             <dd style={styles.value}>
               <code style={styles.code}>{origin}</code>
               <div style={styles.note}>初めて起動したときの接続設定で、このURLを入力します。</div>
+              {isLoopbackOrigin(origin) && <div style={styles.note}>
+                このPC（サーバー）用のURLです。ほかのPCでは http://&lt;サーバーのIPアドレス&gt;:{new URL(origin).port || '80'} を入力し、このページも同じアドレスで開いてください。
+              </div>}
             </dd>
           </dl>
 

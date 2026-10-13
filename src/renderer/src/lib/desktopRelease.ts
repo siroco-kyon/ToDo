@@ -91,6 +91,17 @@ export async function fetchDesktopRelease(signal?: AbortSignal): Promise<Desktop
   return { release: parseRelease(status), reason: null }
 }
 
+/**
+ * True when the page was opened on the server PC itself (localhost). That URL works only there,
+ * so it must not be handed to members as is.
+ */
+export function isLoopbackOrigin(origin: string): boolean {
+  let hostname: string
+  try { hostname = new URL(origin).hostname.toLowerCase() } catch { return false }
+  const host = hostname.replace(/^\[|\]$/g, '')
+  return host === 'localhost' || host.endsWith('.localhost') || host === '::1' || /^127(\.\d{1,3}){3}$/.test(host)
+}
+
 /** Built from the page's own origin, never from server data, so the link always stays on this team server. */
 export function desktopDownloadPageUrl(): string {
   return new URL('/download', window.location.origin).href

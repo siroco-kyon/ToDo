@@ -27,7 +27,7 @@
     "service:uninstall": "npm --prefix server run service:uninstall",
     "generate:icons": "node scripts/generate-build-icons.cjs",
     "dist": "npm run generate:icons && npm run build && electron-builder",
-    "publish:desktop": "npm --prefix server run publish:desktop --",
+    "publish:desktop": "cd server && node node_modules/tsx/dist/cli.mjs scripts/publish-desktop.ts",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {

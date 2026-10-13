@@ -8,7 +8,7 @@ const os = require('node:os')
 const path = require('node:path')
 const net = require('node:net')
 const { pathToFileURL } = require('node:url')
-const { spawn } = require('node:child_process')
+const { spawn, spawnSync } = require('node:child_process')
 
 const root = path.resolve(__dirname, '..')
 const temporaryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hakobi-desktop-download-'))
@@ -17,6 +17,7 @@ const sessionCookie = 'hakobi_download_test'
 const spaMarker = 'hakobi-download-spa-fallback'
 let server
 let serverOutput = ''
+let publishScratch = null
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 async function freePort() {
@@ -149,6 +150,25 @@ async function main() {
   assert.ok(!missingBody.includes(spaMarker), 'A withdrawn installer must not fall through to the SPA html')
   assert.deepEqual(JSON.parse(missingBody), { error: '配布中のインストーラーがありません' })
   console.log('[PASS] withdrawn release returns JSON 404 and the reason only to admins')
+
+  // The admin runs the root script from any folder; relative --from/--to are taken from that folder.
+  // The fixture lives inside the repo so that resolving from the wrong folder gives a different path.
+  const callerDir = path.join(root, 'docs')
+  publishScratch = fs.mkdtempSync(path.join(root, 'node_modules', '.hakobi-publish-test-'))
+  const builtDist = path.join(publishScratch, 'built-dist')
+  writeRelease(builtDist, '9.9.9', crypto.randomBytes(4096))
+  const publishTarget = path.join(publishScratch, 'published')
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  const published = spawnSync(npm, ['run', 'publish:desktop', '--', '--from', path.relative(callerDir, builtDist),
+    '--to', path.relative(callerDir, publishTarget), '--expect-version', '9.9.9'], {
+    cwd: callerDir, encoding: 'utf8', windowsHide: true, shell: process.platform === 'win32',
+    env: { ...process.env, TODO_ENV_FILE: envFile }
+  })
+  assert.equal(published.status, 0, published.stdout + published.stderr)
+  assert.match(published.stdout, /公開しました: HAKOBI 9\.9\.9/)
+  assert.ok(fs.existsSync(path.join(publishTarget, 'latest.yml')), 'Relative paths must resolve from the folder npm was run in')
+  assert.ok(fs.existsSync(path.join(publishTarget, 'HAKOBI-9.9.9-setup.exe')))
+  console.log('[PASS] npm run publish:desktop resolves relative paths from the caller\'s folder')
 }
 
 async function run() {
@@ -161,6 +181,12 @@ async function run() {
     assert.equal(path.dirname(path.resolve(temporaryDir)), path.resolve(os.tmpdir()))
     assert.ok(path.basename(temporaryDir).startsWith('hakobi-desktop-download-'))
     fs.rmSync(temporaryDir, { recursive: true, force: true })
+    if (publishScratch) {
+      // このテストが node_modules 直下に作ったフォルダだけを削除する。
+      assert.equal(path.dirname(path.resolve(publishScratch)), path.join(root, 'node_modules'))
+      assert.ok(path.basename(publishScratch).startsWith('.hakobi-publish-test-'))
+      fs.rmSync(publishScratch, { recursive: true, force: true })
+    }
   }
 }
 

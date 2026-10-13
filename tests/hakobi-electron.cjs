@@ -357,6 +357,7 @@ async function run() {
   await until(main, "Boolean(document.querySelector('[role=dialog][aria-label=設定]'))", 'Settings did not open')
   assert.ok(await main.webContents.executeJavaScript("document.body.innerText.includes('通知をデスクトップに表示')"), 'The desktop notification setting is missing')
   await until(main, "document.body.innerText.includes('このPCのバージョン: 1.0.4 以前') && document.body.innerText.includes('新しいバージョン 9.9.9 を配布しています')", 'Settings did not compare the installed app with the published installer')
+  assert.ok(await main.webContents.executeJavaScript("document.body.innerText.includes(" + JSON.stringify(fixture.origin + '/download') + ") && document.body.innerText.includes('このPC（サーバー）から開いているため')"), 'Admins on the server PC must be told not to share its localhost URL')
   await main.webContents.executeJavaScript("Array.from(document.querySelectorAll('button')).find((button) => button.textContent === '旧版の下書きを確認・復元').click()")
   await until(main, "document.querySelector('[aria-label=旧版の下書きを復元]')?.innerText.includes('下書きの内容を確認する')", 'Legacy draft recovery did not load')
   assert.equal(await main.webContents.executeJavaScript('localStorage.getItem(' + JSON.stringify(recoveredKey) + ')'), null, 'Opening recovery silently claimed an old draft')

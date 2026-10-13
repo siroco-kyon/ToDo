@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { toCsv, downloadCsv, dateStamp } from '../lib/csv'
 import type { Todo } from '../types'
 import type { DesktopContext, DesktopPreferences } from '../../../shared/desktop'
-import { desktopDownloadPageUrl, fetchDesktopRelease, isNewerDesktopRelease, type DesktopReleaseStatus } from '../lib/desktopRelease'
+import { desktopDownloadPageUrl, fetchDesktopRelease, isLoopbackOrigin, isNewerDesktopRelease, type DesktopReleaseStatus } from '../lib/desktopRelease'
 import { LegacyDraftRecoveryModal } from './LegacyDraftRecoveryModal'
 
 interface Props {
@@ -423,6 +423,9 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           {showReleaseAdmin && (offeredRelease ? <>
             <p style={{ fontSize: '0.75rem', color: '#64748b', margin: offerDesktopApp ? '14px 0 4px' : '8px 0 4px' }}>メンバーに案内するダウンロードページ（管理者のみ表示）</p>
             <div style={pathBox}>{desktopDownloadPageUrl()}</div>
+            {isLoopbackOrigin(window.location.origin) && <p style={{ fontSize: '0.72rem', color: '#fbbf24', marginTop: 6, lineHeight: 1.6 }}>
+              このPC（サーバー）から開いているため、ほかのPCではこのURLを使えません。メンバーには {`http://<サーバーのIPアドレス>:${window.location.port || '80'}/download`} を案内してください。
+            </p>}
           </> : <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 8, lineHeight: 1.6 }}>
             <p>配布中のインストーラーはありません。</p>
             {desktopRelease?.reason && <p style={{ fontSize: '0.75rem', color: '#fbbf24', overflowWrap: 'anywhere' }}>{desktopRelease.reason}</p>}
