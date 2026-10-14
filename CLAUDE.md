@@ -63,6 +63,8 @@ src/renderer/src/components/TodoDetail.tsx    タスク詳細
 src/renderer/src/components/PlanView.tsx      今日の計画
 src/renderer/src/components/WorkLogSummary.tsx 作業ログ
 src/renderer/src/components/ReportView.tsx    報告タブ（定例用。担当者別に進捗ログを返信まで全文表示・鮮度判定）
+src/renderer/src/components/ReportSettingsPanel.tsx 報告タブの表示設定（カテゴリ・状態・対象・サブタスク・小見出し・隠したタスク）
+src/renderer/src/lib/reportViewSettings.ts     報告タブの表示設定の型と保存（見ている人ごと。キーにユーザーID）
 src/renderer/src/components/ProgressNoteThread.tsx 進捗ログ＋返信スレッドの表示（報告タブ・概要で共通。コールバックを渡すと、いいね・編集・削除が有効になる）
 src/renderer/src/components/LikeButton.tsx    いいねボタンと押した人のツールチップ（進捗タブ・報告タブ・概要で共通）
 src/renderer/src/components/ProgressSlider.tsx ドラッグ・キー操作で進捗率を変えるバー（離したときに1回だけ保存）

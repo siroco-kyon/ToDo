@@ -430,7 +430,8 @@ export interface TodoChangeEntry {
   todo_id: string
   /** サブタスクの変更のときそのID。タスク自体の変更は null */
   subtask_id: string | null
-  field: 'progress' | 'due_date'
+  /** memo はタスク自体のメモの更新。期間中に更新があったかだけに使い、値（本文）は null */
+  field: 'progress' | 'due_date' | 'memo'
   old_value: string | null
   new_value: string | null
   created_at: string

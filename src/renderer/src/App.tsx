@@ -1360,6 +1360,7 @@ export function App(): React.JSX.Element {
               todos={reportTodos}
               listFilters={categoryAndSearchChips.length > 0 ? <ListFilterChips chips={categoryAndSearchChips} /> : null}
               subTasks={allSubTasks}
+              categories={categories}
               users={users}
               currentUser={currentUser}
               onSelectTodo={openTodoDetail}
