@@ -7,6 +7,7 @@ import { MentionTextarea } from './MentionTextarea'
 import { ProgressNoteThread, discussionBadgeStyle } from './ProgressNoteThread'
 import { ProgressSlider } from './ProgressSlider'
 import { getOnHoldInfo } from '../lib/onHold'
+import { checklistBadgeText, summarizeChecklist } from '../lib/todoList'
 import type {
   CreateSubTaskInput,
   ProgressNote,
@@ -50,7 +51,8 @@ type PeriodPreset = 'thisWeek' | 'lastWeek' | '7' | '14' | '30' | 'custom'
 type QuickFilter = 'all' | 'needsReport' | 'discussion' | 'onHold' | 'overdue' | 'postponed' | 'myNeedsReport'
 type GroupMode = 'assignee' | 'category'
 type AssigneeFilter = 'all' | 'mine' | 'mineWithSubTasks' | `user:${string}`
-type Freshness = 'onHold' | 'fresh' | 'quiet' | 'stale' | 'none' | 'done' | 'notStarted'
+/** list: ToDoリスト（期限なしで続くタスク）。報告の有無では判定しない */
+type Freshness = 'onHold' | 'fresh' | 'quiet' | 'stale' | 'none' | 'done' | 'notStarted' | 'list'
 
 interface ReportRow extends ChangeSummary {
   todo: Todo
@@ -276,6 +278,9 @@ function buildRow(
   let freshness: Freshness
   if (todo.status === 'done') {
     freshness = 'done'
+  } else if (todo.list_mode) {
+    // ToDoリストは日々の項目のチェックで回すもので、進捗ログでの報告は求めない
+    freshness = 'list'
   } else if (todo.status === 'on_hold') {
     freshness = 'onHold'
   } else if (notes.length > 0 || memoUpdatedInPeriod) {
@@ -364,6 +369,8 @@ function freshnessText(row: ReportRow): string {
       return '完了'
     case 'notStarted':
       return '未着手'
+    case 'list':
+      return 'ToDoリスト'
   }
 }
 
@@ -373,12 +380,14 @@ function freshnessTone(freshness: Freshness): { color: string; background: strin
   if (freshness === 'quiet') return { color: '#fde68a', background: '#422006', border: '#a16207' }
   if (freshness === 'stale' || freshness === 'none') return { color: '#fecaca', background: '#450a0a', border: '#b91c1c' }
   if (freshness === 'done') return { color: '#bbf7d0', background: '#0f172a', border: '#334155' }
+  if (freshness === 'list') return { color: '#c7d2fe', background: '#1e1b4b', border: '#4338ca' }
   return { color: '#94a3b8', background: '#0f172a', border: '#334155' }
 }
 
 /** 状態と鮮度をまとめた表記。完了・未着手は状態だけで意味が伝わるので重ねない */
 function statusSummary(row: ReportRow, separator: string): string {
   const status = STATUS_LABEL[row.todo.status]
+  if (row.freshness === 'list') return `ToDoリスト${separator}${checklistBadgeText(summarizeChecklist(row.subTasks))}`
   if (row.freshness === 'done' || row.freshness === 'notStarted') return status
   return `${status}${separator}${freshnessText(row)}`
 }
@@ -1627,6 +1636,12 @@ function ReportTaskCard({
               <button onClick={() => void saveSchedule()} disabled={saving} style={primaryButtonStyle(!saving)}>{saving ? '保存中…' : '保存'}</button>
             </div>
           </div>
+        ) : todo.list_mode ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.8rem' }}>
+            <span style={{ color: '#94a3b8' }}>開始 {formatShortDate(todo.start_date)}</span>
+            <span style={{ color: '#a5b4fc' }} title="ToDoリストは期限を持たず、終えるまで続きます">→ 期限なしで続く</span>
+            <span style={{ color: '#c7d2fe', fontWeight: 700 }}>{checklistBadgeText(summarizeChecklist(subTasks))}</span>
+          </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.8rem' }}>
             <span style={{ color: '#94a3b8' }}>開始 {formatShortDate(todo.start_date)}</span>
@@ -1642,16 +1657,18 @@ function ReportTaskCard({
           </div>
         )}
 
-        <div>
-          <ProgressSlider
-            value={todo.progress}
-            label={`${todo.title}の進捗率`}
-            onCommit={(progress) => updateField({ progress }, `進捗を${progress}%に更新しました`)}
-          />
-          <div style={{ fontSize: '0.72rem', color: progressDeltaColor(row, row.todo.progress), marginTop: -2 }}>
-            {progressDelta ? `期間中 ${progressDelta}` : '期間中の進捗の変更なし'}
+        {!todo.list_mode && (
+          <div>
+            <ProgressSlider
+              value={todo.progress}
+              label={`${todo.title}の進捗率`}
+              onCommit={(progress) => updateField({ progress }, `進捗を${progress}%に更新しました`)}
+            />
+            <div style={{ fontSize: '0.72rem', color: progressDeltaColor(row, row.todo.progress), marginTop: -2 }}>
+              {progressDelta ? `期間中 ${progressDelta}` : '期間中の進捗の変更なし'}
+            </div>
           </div>
-        </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 2, paddingTop: 8, borderTop: '1px dashed #1e293b' }}>
           {subTasks.length > 0 && (

@@ -9,6 +9,8 @@ import { buildEditPatch } from '../lib/editChanges'
 import { ProgressSlider } from './ProgressSlider'
 import { NoteMenu, ProgressNoteThread } from './ProgressNoteThread'
 import { MentionTextarea } from './MentionTextarea'
+import { TodoChecklist } from './TodoChecklist'
+import { isListTodo } from '../lib/todoList'
 
 interface Props {
   todo: Todo | null
@@ -175,6 +177,7 @@ export function TodoDetail({
     recurrence_copy_subtasks: source.recurrence_copy_subtasks ?? 0,
     recurrence_skip_weekends: source.recurrence_skip_weekends ?? 0,
     recurrence_skip_holidays: source.recurrence_skip_holidays ?? 0,
+    list_mode: source.list_mode ?? 0,
     assignee_id: source.assignee_id,
     co_assignee_ids: (source.co_assignees ?? []).map((coAssignee) => coAssignee.user_id)
   }), [])
@@ -374,7 +377,9 @@ export function TodoDetail({
           assignee_id: target.assignee_id,
           start_date: target.start_date,
           due_date: target.due_date,
-          progress: target.progress
+          progress: target.progress,
+          recurrence: target.recurrence,
+          recurrence_workdays: target.recurrence_workdays
         }).then(async (created) => {
           if (target.done && !created.done) await window.api.subtaskUpdate(created.id, { done: true })
           const orderedIds = [...remainingIds]
@@ -667,6 +672,9 @@ export function TodoDetail({
   const totalMinutes = Math.round((logs.reduce((sum, log) => sum + log.duration_seconds, 0) + (isRunning ? elapsedSeconds : 0)) / 60)
   const isDone = todo.status === 'done'
   const isArchived = todo.status === 'archived'
+  const listMode = isListTodo(todo)
+  // 編集中は「使い方」の選択に合わせて、期限・繰り返し・進捗の欄を出し分ける
+  const editingListMode = Boolean(editData.list_mode)
   const doneCount = subTasks.filter((subTask) => subTask.done).length
   const subTaskProgress = subTasks.length > 0
     ? Math.round(subTasks.reduce((sum, subTask) => sum + clampProgress(Boolean(subTask.done) ? 100 : subTask.progress ?? 0), 0) / subTasks.length)
@@ -714,12 +722,14 @@ export function TodoDetail({
     const created = await window.api.todoCreate({
       title: `${todo.title}（コピー）`, description: todo.description, memo: todo.memo,
       category_id: todo.category_id, assignee_id: todo.assignee_id, priority: todo.priority,
-      status: 'not_started', progress: 0, start_date: todo.start_date, due_date: todo.due_date
+      status: 'not_started', progress: 0, start_date: todo.start_date, due_date: todo.due_date,
+      list_mode: todo.list_mode
     })
     for (const subTask of subTasks) {
       await window.api.subtaskCreate(created.id, {
         title: subTask.title, description: subTask.description, assignee_id: subTask.assignee_id,
-        start_date: subTask.start_date, due_date: subTask.due_date, progress: 0
+        start_date: subTask.start_date, due_date: subTask.due_date, progress: 0,
+        recurrence: subTask.recurrence, recurrence_workdays: subTask.recurrence_workdays
       })
     }
     onShowToast(`「${created.title}」を作成しました`)
@@ -735,7 +745,7 @@ export function TodoDetail({
       if (Array.isArray(parsed)) templates = parsed as Array<{ name?: string }>
     } catch { templates = [] }
     templates = templates.filter((template) => template.name !== name)
-    templates.push({ name, todo: createEditData(todo), subTasks: subTasks.map((item) => ({ title: item.title, description: item.description, start_date: item.start_date, due_date: item.due_date })) } as { name: string })
+    templates.push({ name, todo: createEditData(todo), subTasks: subTasks.map((item) => ({ title: item.title, description: item.description, start_date: item.start_date, due_date: item.due_date, recurrence: item.recurrence, recurrence_workdays: item.recurrence_workdays })) } as { name: string })
     window.localStorage.setItem(key, JSON.stringify(templates))
     onShowToast(`テンプレート「${name}」を保存しました`)
   }
@@ -766,10 +776,10 @@ export function TodoDetail({
           {!editing && !isArchived && (
             <button
               onClick={() => void toggleDone()}
-              title={isDone ? '完了を取り消して、未完了に戻します' : 'このタスクを完了にします'}
-              style={isDone ? buttonStyle('#334155', '#cbd5e1') : buttonStyle('#15803d', '#f0fdf4')}
+              title={isDone ? '完了を取り消して、未完了に戻します' : listMode ? 'このToDoリストを使い終えたときに押します（中の項目のチェックとは別です）' : 'このタスクを完了にします'}
+              style={isDone ? buttonStyle('#334155', '#cbd5e1') : listMode ? buttonStyle('#334155', '#cbd5e1') : buttonStyle('#15803d', '#f0fdf4')}
             >
-              {isDone ? '完了を取り消す' : '✓ 完了にする'}
+              {isDone ? '完了を取り消す' : listMode ? 'リストを終える' : '✓ 完了にする'}
             </button>
           )}
           {!editing && todo.status === 'on_hold' && <Badge color="#c084fc">保留中</Badge>}
@@ -855,11 +865,32 @@ export function TodoDetail({
 
       {editing && (
         <fieldset disabled={saving} style={{ border: 0, margin: 0, minWidth: 0, background: '#1e293b', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div>
+            <label style={labelStyle}>使い方</label>
+            <select
+              value={editingListMode ? 'list' : 'task'}
+              aria-label="使い方"
+              onChange={(event) => {
+                const list = event.target.value === 'list'
+                // ToDoリストは期限と繰り返し（次回分の作成）を持たない
+                setEditData((previous) => list ? { ...previous, list_mode: 1, due_date: null, recurrence: null } : { ...previous, list_mode: 0 })
+              }}
+              style={inputStyle}
+            >
+              <option value="task">ふつうのタスク（期限に向けて進める）</option>
+              <option value="list">ToDoリスト（期限なしで続ける。項目を毎日・毎週などでチェックし直す）</option>
+            </select>
+            {editingListMode && !listMode && (
+              <div style={{ marginTop: 4, fontSize: '0.72rem', color: '#a5b4fc', lineHeight: 1.5 }}>
+                保存すると期限と繰り返しを外します。今のサブタスクはそのまま項目になります（繰り返しは項目ごとに設定できます）。
+              </div>
+            )}
+          </div>
           <div><label style={labelStyle}>説明</label><textarea value={editData.description ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, description: event.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} /></div>
-          <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input type="date" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div><div style={{ flex: 1 }}><label style={labelStyle}>期限</label><input type="date" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div></div>
+          <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input type="date" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div>{!editingListMode && <div style={{ flex: 1 }}><label style={labelStyle}>期限</label><input type="date" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div>}</div>
           <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最低</option><option value={2}>低</option><option value={3}>中</option><option value={4}>高</option><option value={5}>最高</option></select></div></div>
-          <div><label style={labelStyle}>繰り返し（完了にすると次回分を自動で作ります）</label><select value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as 'daily' | 'weekly' | 'monthly' | null }))} style={inputStyle}><option value="">なし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option></select></div>
-          {editData.recurrence && (
+          {!editingListMode && <div><label style={labelStyle}>繰り返し（完了にすると次回分を自動で作ります）</label><select value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as 'daily' | 'weekly' | 'monthly' | null }))} style={inputStyle}><option value="">なし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option></select></div>}
+          {!editingListMode && editData.recurrence && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
               <input
                 type="checkbox"
@@ -870,7 +901,7 @@ export function TodoDetail({
               サブタスクも次回分に引き継ぐ（未完了状態で複製）
             </label>
           )}
-          {editData.recurrence && (
+          {!editingListMode && editData.recurrence && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
               <input
                 type="checkbox"
@@ -881,7 +912,7 @@ export function TodoDetail({
               土日をスキップする
             </label>
           )}
-          {editData.recurrence && (
+          {!editingListMode && editData.recurrence && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
               <input
                 type="checkbox"
@@ -928,12 +959,12 @@ export function TodoDetail({
               </div>
             </div>
           )}
-          <div><label style={labelStyle}>進捗 {editData.progress ?? 0}%</label><input type="range" min={0} max={100} step={5} value={editData.progress ?? 0} onChange={(event) => setEditData((previous) => ({ ...previous, progress: Number(event.target.value) }))} style={{ width: '100%', accentColor: '#6366f1' }} /></div>
+          {!editingListMode && <div><label style={labelStyle}>進捗 {editData.progress ?? 0}%</label><input type="range" min={0} max={100} step={5} value={editData.progress ?? 0} onChange={(event) => setEditData((previous) => ({ ...previous, progress: Number(event.target.value) }))} style={{ width: '100%', accentColor: '#6366f1' }} /></div>}
           <button onClick={() => void handleSave()} disabled={saving} style={{ ...buttonStyle('#6366f1'), alignSelf: 'flex-end' }}>{saving ? '保存中…' : '保存'}</button>
         </fieldset>
       )}
 
-      {!editing && (
+      {!editing && !listMode && (
         <div style={{ background: '#1e293b', borderRadius: 10, padding: '12px 16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
             <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>進捗 <span style={{ color: '#64748b', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span></span>
@@ -1079,6 +1110,17 @@ export function TodoDetail({
         </section>
       )}
 
+      {listMode ? (
+        <TodoChecklist
+          todo={todo}
+          items={subTasks}
+          users={users}
+          disabled={saving}
+          onItemsChange={setSubTasks}
+          onDelete={(id) => void handleDeleteSubTask(id)}
+          onShowToast={onShowToast}
+        />
+      ) : (
       <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div style={sectionTitleStyle}>サブタスク {subTasks.length > 0 && `(${doneCount}/${subTasks.length})`}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
@@ -1191,6 +1233,7 @@ export function TodoDetail({
           )}
         </form>
       </fieldset>
+      )}
 
       <section>
         <div style={sectionTitleStyle}>依存関係</div>
@@ -1547,6 +1590,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
   const [startDraft, setStartDraft] = useState('')
   const [dueDraft, setDueDraft] = useState('')
   const isArchived = todo.status === 'archived'
+  const listMode = isListTodo(todo)
   const statusTone = STATUS_OPTIONS.find((option) => option.value === todo.status)?.color ?? '#94a3b8'
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
 
@@ -1577,7 +1621,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
     }
     const data: UpdateTodoInput = {}
     if ((startDraft || null) !== (todo.start_date?.slice(0, 10) ?? null)) data.start_date = startDraft || null
-    if ((dueDraft || null) !== (todo.due_date?.slice(0, 10) ?? null)) data.due_date = dueDraft || null
+    if (!listMode && (dueDraft || null) !== (todo.due_date?.slice(0, 10) ?? null)) data.due_date = dueDraft || null
     if (Object.keys(data).length === 0) {
       setEditingSchedule(false)
       return
@@ -1672,18 +1716,20 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
               開始
               <input type="date" value={startDraft} onChange={(event) => setStartDraft(event.target.value)} aria-label="開始日" style={{ ...compactSelectStyle, width: 'auto' }} />
             </label>
-            <span>→</span>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              期限
-              <input
-                type="date"
-                value={dueDraft}
-                onChange={(event) => setDueDraft(event.target.value)}
-                onKeyDown={(event) => { if (event.key === 'Enter') void saveSchedule() }}
-                aria-label="期限"
-                style={{ ...compactSelectStyle, width: 'auto' }}
-              />
-            </label>
+            {!listMode && <span>→</span>}
+            {!listMode && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                期限
+                <input
+                  type="date"
+                  value={dueDraft}
+                  onChange={(event) => setDueDraft(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === 'Enter') void saveSchedule() }}
+                  aria-label="期限"
+                  style={{ ...compactSelectStyle, width: 'auto' }}
+                />
+              </label>
+            )}
             <button onClick={() => setEditingSchedule(false)} style={buttonStyle('#334155')}>取消</button>
             <button onClick={() => void saveSchedule()} disabled={saving} style={buttonStyle('#2563eb')}>{saving ? '保存中…' : '保存'}</button>
             <span style={{ width: '100%', fontSize: '0.66rem', color: '#64748b' }}>依存関係のある後続タスクも自動で再計算されます</span>
@@ -1691,9 +1737,15 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.82rem' }}>
             <span style={{ color: '#cbd5e1' }}>開始 {todo.start_date ? formatShortDate(todo.start_date) : '未設定'}</span>
-            <span style={{ color: '#475569' }}>→</span>
-            <span style={{ color: dueColor || '#cbd5e1', fontWeight: dueColor ? 700 : 400 }}>期限 {todo.due_date ? formatShortDate(todo.due_date) : '未設定'}</span>
-            {todo.due_date && todo.status !== 'done' && <span style={{ fontSize: '0.74rem', color: dueColor || '#64748b' }}>（{dueRemainingLabel(todo.due_date)}）</span>}
+            {listMode ? (
+              <span style={{ color: '#a5b4fc' }} title="ToDoリストは期限を持たず、終えるまで続きます">→ 期限なしで続くToDoリスト</span>
+            ) : (
+              <>
+                <span style={{ color: '#475569' }}>→</span>
+                <span style={{ color: dueColor || '#cbd5e1', fontWeight: dueColor ? 700 : 400 }}>期限 {todo.due_date ? formatShortDate(todo.due_date) : '未設定'}</span>
+                {todo.due_date && todo.status !== 'done' && <span style={{ fontSize: '0.74rem', color: dueColor || '#64748b' }}>（{dueRemainingLabel(todo.due_date)}）</span>}
+              </>
+            )}
             {!isArchived && (
               <button onClick={openScheduleEditor} style={{ ...buttonStyle('#334155'), padding: '3px 10px', fontSize: '0.74rem' }}>変更</button>
             )}

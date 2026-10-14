@@ -6,7 +6,9 @@ import cookieParser from 'cookie-parser'
 import { DESKTOP_DIST_DIR, PORT, WEB_DIST_DIR } from './config'
 import { initDb } from './db/connection'
 import { attachUser, cleanupExpiredSessions, seedAdminUser } from './auth'
-import { initRealtime } from './realtime'
+import { broadcastDataChanged, initRealtime } from './realtime'
+import { resetRecurringSubTasks } from './db/subtasks'
+import { toLocalDateKey } from './shared/recurring-period'
 import { authRouter } from './routes/auth'
 import { dataRouter } from './routes/data'
 import { createDesktopReleaseRouter } from './routes/desktopRelease'
@@ -44,6 +46,20 @@ if (fs.existsSync(WEB_DIST_DIR)) {
 
 const server = http.createServer(app)
 initRealtime(server)
+
+// ToDoリストの繰り返しの項目は、日付が変わったら未チェックに戻して各画面に取り直してもらう
+let lastDayKey = toLocalDateKey(new Date())
+setInterval(() => {
+  const dayKey = toLocalDateKey(new Date())
+  if (dayKey === lastDayKey) return
+  lastDayKey = dayKey
+  try {
+    resetRecurringSubTasks()
+    broadcastDataChanged('subtask')
+  } catch (error) {
+    console.error('[server] ToDoリストの項目を未チェックに戻せませんでした', error)
+  }
+}, 60 * 1000)
 
 server.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT}`)

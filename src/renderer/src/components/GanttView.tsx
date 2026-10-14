@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Category, CreateSubTaskInput, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, TodoStatus, UpdateSubTaskInput, UpdateTodoInput } from '../types'
 import { discussionBadgeStyle } from './ProgressNoteThread'
+import { buildChecklistSummaries, checklistBadgeText } from '../lib/todoList'
 
 interface Props {
   todos: Todo[]
@@ -632,6 +633,16 @@ function getTodoBar(todo: Todo): TodoBar | null {
   return { startDate: singleDay, endDate: singleDay }
 }
 
+/** ToDoリストは期限を持たずに続くので、開始日（なければ作った日）から今日までのバーにする */
+function getListTodoBar(todo: Todo, todayKey: string): TodoBar {
+  const created = new Date(todo.created_at)
+  const createdKey = Number.isNaN(created.getTime())
+    ? todayKey
+    : `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}`
+  const start = todo.start_date?.slice(0, 10) ?? createdKey
+  return { startDate: start, endDate: start <= todayKey ? todayKey : start }
+}
+
 function getSubTaskBar(subTask: SubTask): TodoBar | null {
   const start = subTask.start_date?.slice(0, 10) ?? null
   const end = subTask.due_date?.slice(0, 10) ?? null
@@ -878,15 +889,24 @@ function buildTodoBarTooltip(options: {
   latestNote: ProgressNote | null
   lastReportAt: string | null
   discussionCount: number
+  /** ToDoリストの項目の進み具合（例: 今回 3/5・残り2） */
+  checklistText?: string
 }): string {
   const { todo, bar, outside, health, progress, latestNote, lastReportAt, discussionCount } = options
   const assignees = [todo.assignee_name, ...(todo.co_assignees ?? []).map((item) => item.display_name)].filter(Boolean)
-  const lines = [
-    todo.title,
-    `状態: ${STATUS_TONE[todo.status].label}`,
-    `担当: ${assignees.length > 0 ? assignees.join('、') : '未割り当て'} ・ 進捗 ${progress}%${health ? ` ・ ${health.label}` : ''}`,
-    `期間: ${shortDateLabel(bar.startDate)} → ${shortDateLabel(bar.endDate)}${outside ? `（${outside === 'before' ? '表示期間より前' : '表示期間より後'}）` : ''}`
-  ]
+  const lines = todo.list_mode
+    ? [
+      todo.title,
+      'ToDoリスト（期限なしで続くタスク。項目は詳細でチェックします）',
+      `担当: ${assignees.length > 0 ? assignees.join('、') : '未割り当て'}${options.checklistText ? ` ・ ${options.checklistText}` : ''}`,
+      `開始: ${shortDateLabel(bar.startDate)} から続いています`
+    ]
+    : [
+      todo.title,
+      `状態: ${STATUS_TONE[todo.status].label}`,
+      `担当: ${assignees.length > 0 ? assignees.join('、') : '未割り当て'} ・ 進捗 ${progress}%${health ? ` ・ ${health.label}` : ''}`,
+      `期間: ${shortDateLabel(bar.startDate)} → ${shortDateLabel(bar.endDate)}${outside ? `（${outside === 'before' ? '表示期間より前' : '表示期間より後'}）` : ''}`
+    ]
   if (health && health.status !== 'done' && health.status !== 'future') {
     const gap = health.behindDays >= 0.5
       ? `（約${Math.round(health.behindDays)}日分の遅れ）`
@@ -1616,7 +1636,7 @@ export function GanttView({
         (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.created_at.localeCompare(b.created_at)
       )
 
-      const todoBar = getTodoBar(todo)
+      const todoBar = todo.list_mode ? getListTodoBar(todo, todayKey) : getTodoBar(todo)
       const datedSubTasks = todoSubTasks
         .map((subTask) => {
           const bar = getSubTaskBar(subTask)
@@ -1638,7 +1658,7 @@ export function GanttView({
         anchorDate: anchorCandidates[0] ?? null
       }
     })
-  }, [ganttTodos, subTasks])
+  }, [ganttTodos, subTasks, todayKey])
 
   const filteredGroups = useMemo(() => {
     return groups.map((group): ChartGroup | null => {
@@ -2517,7 +2537,7 @@ export function GanttView({
       const todoDue = todo.due_date?.slice(0, 10) ?? null
       const todoUpdate: UpdateTodoInput = {}
       if (createdStart && (!todoStart || createdStart < todoStart)) todoUpdate.start_date = createdStart
-      if (createdDue && (!todoDue || createdDue > todoDue)) todoUpdate.due_date = createdDue
+      if (!todo.list_mode && createdDue && (!todoDue || createdDue > todoDue)) todoUpdate.due_date = createdDue
       if (Object.keys(todoUpdate).length > 0) {
         await onUpdateTodo(todo.id, todoUpdate)
         const latestTodos = await window.api.todoGetAll()
@@ -2678,11 +2698,15 @@ export function GanttView({
   const scheduleHealthEntries = useMemo(() => (
     chartGroups
       .map((group) => {
+        // ToDoリストは期限がないので、遅れ・期限超過の判定はしない
+        if (group.todo.list_mode) return null
         const health = getScheduleHealth(group.todo, group.todoBar, todayKey, { behindThresholdDays, workingDaysOnly, holidayNames })
         return health ? { todoId: group.todo.id, health } : null
       })
       .filter((entry): entry is { todoId: string; health: ScheduleHealthInfo } => Boolean(entry))
   ), [behindThresholdDays, chartGroups, holidayNames, todayKey, workingDaysOnly])
+  // ToDoリストの項目の進み具合。完了したサブタスクを隠す絞り込みの影響を受けないよう、絞り込み前の項目で数える
+  const checklistSummaryByTodo = useMemo(() => buildChecklistSummaries(todos, subTasks), [subTasks, todos])
   const scheduleHealthByTodoId = useMemo(() => (
     new Map(scheduleHealthEntries.map((entry) => [entry.todoId, entry.health]))
   ), [scheduleHealthEntries])
@@ -3583,7 +3607,12 @@ export function GanttView({
                     )}
                     {!section.collapsed && section.groups.map((group, groupIndex) => {
                 const tone = parentTone(group.todo)
-                const progress = clamp(group.todo.status === 'done' ? 100 : group.todo.progress, 0, 100)
+                // ToDoリストは進捗率を使わず、ドラッグで日程も変えない（開始日は表の欄で変えられる）
+                const listMode = group.todo.list_mode === 1
+                const barEditable = isTimelineEditable && !listMode
+                const checklistSummary = checklistSummaryByTodo.get(group.todo.id)
+                const checklistText = listMode && checklistSummary ? checklistBadgeText(checklistSummary) : undefined
+                const progress = listMode ? 0 : clamp(group.todo.status === 'done' ? 100 : group.todo.progress, 0, 100)
                 const todoBar = group.todoBar
                 const baselineBar = showBaseline ? baselineSnapshot?.todos[group.todo.id] ?? null : null
                 const scheduleHealth = scheduleHealthByTodoId.get(group.todo.id) ?? null
@@ -3650,7 +3679,8 @@ export function GanttView({
                     progress,
                     latestNote: latestNoteByTodo.get(group.todo.id) ?? null,
                     lastReportAt: lastReportByTodo.get(group.todo.id) ?? null,
-                    discussionCount
+                    discussionCount,
+                    checklistText
                   })
                   : undefined
 
@@ -3775,9 +3805,13 @@ export function GanttView({
                               style={{ ...tableInputStyle, width: '100%' }}
                             />
                           ) : (
-                            <button onClick={() => beginTodoCellEdit(group.todo, 'due_date')} style={tableCellButtonStyle}>
-                              {displayedTodoBar ? shortDateLabel(displayedTodoBar.endDate) : '-'}
-                            </button>
+                            listMode ? (
+                              <span title="ToDoリストは期限を持たずに続きます" style={{ ...tableCellButtonStyle, cursor: 'default', color: '#a5b4fc' }}>続く</span>
+                            ) : (
+                              <button onClick={() => beginTodoCellEdit(group.todo, 'due_date')} style={tableCellButtonStyle}>
+                                {displayedTodoBar ? shortDateLabel(displayedTodoBar.endDate) : '-'}
+                              </button>
+                            )
                           )}
                           {editingTodoCell?.todoId === group.todo.id && editingTodoCell.field === 'progress' ? (
                             <input
@@ -3792,6 +3826,9 @@ export function GanttView({
                               style={{ ...tableInputStyle, width: '100%' }}
                             />
                           ) : (
+                            listMode ? (
+                              <span title={`ToDoリストの項目: ${checklistText ?? ''}（詳細でチェックします）`} style={{ ...tableCellButtonStyle, cursor: 'default', color: '#a5b4fc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{checklistText}</span>
+                            ) : (
                             <button
                               onClick={() => beginTodoCellEdit(group.todo, 'progress')}
                               style={tableCellButtonStyle}
@@ -3802,6 +3839,7 @@ export function GanttView({
                               )}
                               {progress}%
                             </button>
+                            )
                           )}
                           {editingTodoCell?.todoId === group.todo.id && editingTodoCell.field === 'assignee_id' ? (
                             <select
@@ -3895,7 +3933,7 @@ export function GanttView({
                             ref={(node) => setDependencyTargetBarRef(group.todo.id, todoOutsideRange ? null : node)}
                             onClick={() => handleChartItemSelect(group.todo.id)}
                             title={barTooltip}
-                            style={{ position: 'absolute', left: barLeft, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 4, background: barTone.track, border: `1px ${todoOutsideRange ? 'dashed' : 'solid'} ${barTone.border}`, boxSizing: 'border-box', opacity: group.todo.status === 'done' ? 0.75 : 1, boxShadow: activeState ? '0 0 0 2px rgba(59, 130, 246, 0.28)' : isDependencySource || isDependencyTarget ? '0 0 0 2px rgba(56, 189, 248, 0.42)' : 'inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 3px 8px rgba(10, 12, 22, 0.28)', cursor: todoOutsideRange || !isTimelineEditable ? 'pointer' : 'grab' }}
+                            style={{ position: 'absolute', left: barLeft, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 4, background: barTone.track, border: `1px ${todoOutsideRange || listMode ? 'dashed' : 'solid'} ${barTone.border}`, boxSizing: 'border-box', opacity: group.todo.status === 'done' ? 0.75 : 1, boxShadow: activeState ? '0 0 0 2px rgba(59, 130, 246, 0.28)' : isDependencySource || isDependencyTarget ? '0 0 0 2px rgba(56, 189, 248, 0.42)' : 'inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 3px 8px rgba(10, 12, 22, 0.28)', cursor: todoOutsideRange || !barEditable ? 'pointer' : 'grab' }}
                           >
                             {/* 塗りは内側で切り取る。バー自体は overflow を切らない（タスク名を sticky で左端に留めるため） */}
                             <div style={{ position: 'absolute', inset: 0, borderRadius: 3, overflow: 'hidden', pointerEvents: 'none' }}>
@@ -3906,26 +3944,26 @@ export function GanttView({
                             </div>
                             <div
                               onPointerDown={(event) => {
-                                if (event.button !== 0 || !isTimelineEditable || todoOutsideRange) return
+                                if (event.button !== 0 || !barEditable || todoOutsideRange) return
                                 beginInteraction('move', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX)
                               }}
-                              style={{ position: 'absolute', left: 8, right: 8, top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: todoOutsideRange ? 'center' : undefined, cursor: todoOutsideRange || !isTimelineEditable ? 'pointer' : 'grab', color: barTone.text, zIndex: 2 }}
+                              style={{ position: 'absolute', left: 8, right: 8, top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: todoOutsideRange ? 'center' : undefined, cursor: todoOutsideRange || !barEditable ? 'pointer' : 'grab', color: barTone.text, zIndex: 2 }}
                             >
                               {todoOutsideRange ? (
                                 <span style={{ fontSize: '0.64rem', fontWeight: 800, whiteSpace: 'nowrap' }}>{todoOutsideRange === 'before' ? '← 期間前' : '期間後 →'}</span>
                               ) : barWidth > 56 && (
                                 // 開始日が画面の左外にあっても、見えている範囲の左端にタスク名を出し続ける
                                 <span style={{ position: 'sticky', left: leftTableWidth + 10, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0, 0, 0, 0.6)' }}>
-                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.todo.status === 'on_hold' ? '保留中 · ' : ''}{group.todo.title}</span>
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{listMode ? '☑ ' : group.todo.status === 'on_hold' ? '保留中 · ' : ''}{group.todo.title}</span>
                                   {barWidth > 170 && (
                                     <span style={{ fontSize: '0.64rem', fontWeight: 600, opacity: 0.85, flexShrink: 0 }}>
-                                      {[group.todo.assignee_name, `${progress}%`].filter(Boolean).join('・')}
+                                      {[group.todo.assignee_name, listMode ? checklistText : `${progress}%`].filter(Boolean).join('・')}
                                     </span>
                                   )}
                                 </span>
                               )}
                             </div>
-                            {isTimelineEditable && !todoOutsideRange && (
+                            {barEditable && !todoOutsideRange && (
                               <>
                                 <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeStart', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX) }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: 'transparent', zIndex: 3 }} />
                                 <div onClick={(event) => event.stopPropagation()} onPointerDown={(event) => { if (event.button !== 0) return; event.stopPropagation(); beginInteraction('resizeEnd', 'todo', group.todo.id, group.todo.id, displayedTodoBar.startDate, displayedTodoBar.endDate, event.clientX) }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: 'transparent', zIndex: 3 }} />
@@ -3941,7 +3979,7 @@ export function GanttView({
                             要相談{discussionCount > 1 ? ` ${discussionCount}` : ''}
                           </span>
                         )}
-                        {isTimelineEditable && !todoOutsideRange && dependencyGeometry && (
+                        {barEditable && !todoOutsideRange && dependencyGeometry && (
                           <>
                             {dependencyDrag && dependencyDrag.predecessorTodoId !== group.todo.id && (
                               <div

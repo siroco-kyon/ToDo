@@ -61,6 +61,7 @@ export function createSchema(db: Database.Database): void {
       recurrence_copy_subtasks INTEGER DEFAULT 0,
       recurrence_skip_weekends INTEGER DEFAULT 0,
       recurrence_skip_holidays INTEGER DEFAULT 0,
+      list_mode INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       completed_at TEXT,
@@ -85,6 +86,8 @@ export function createSchema(db: Database.Database): void {
       sort_order INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       created_by TEXT,
+      recurrence TEXT DEFAULT NULL,
+      recurrence_workdays INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (todo_id) REFERENCES Todos(id),
       FOREIGN KEY (assignee_id) REFERENCES Users(id),
       FOREIGN KEY (created_by) REFERENCES Users(id)
@@ -186,6 +189,20 @@ export function createSchema(db: Database.Database): void {
       FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE SET NULL
     );
 
+    -- ToDoリストの繰り返しの項目をチェックした記録（周期ごとに1件。報告タブの実施状況に使う）
+    CREATE TABLE IF NOT EXISTS SubTaskChecks (
+      id TEXT PRIMARY KEY,
+      subtask_id TEXT NOT NULL,
+      todo_id TEXT NOT NULL,
+      period_key TEXT NOT NULL,
+      user_id TEXT,
+      checked_at TEXT NOT NULL,
+      UNIQUE(subtask_id, period_key),
+      FOREIGN KEY (subtask_id) REFERENCES SubTasks(id) ON DELETE CASCADE,
+      FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS ProgressNotes (
       id TEXT PRIMARY KEY,
       todo_id TEXT NOT NULL,
@@ -282,6 +299,7 @@ export function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_todo_changes_todo_created ON TodoChangeLogs(todo_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_todo_changes_user_created ON TodoChangeLogs(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_subtask_changes_created ON SubTaskChangeLogs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_subtask_checks_checked ON SubTaskChecks(checked_at);
     CREATE INDEX IF NOT EXISTS idx_progress_notes_todo ON ProgressNotes(todo_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_notes_user ON ProgressNotes(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_comments_note ON ProgressNoteComments(note_id, created_at);
@@ -331,6 +349,9 @@ export function runMigrations(db: Database.Database): void {
       ORDER BY created_at DESC, rowid DESC LIMIT 1
     ) = 'on_hold')`).run()
   }
+  if (!todoColumns.some((c) => c.name === 'list_mode')) {
+    db.prepare('ALTER TABLE Todos ADD COLUMN list_mode INTEGER NOT NULL DEFAULT 0').run()
+  }
   if (!todoColumns.some((c) => c.name === 'completed_at')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN completed_at TEXT').run()
   }
@@ -348,6 +369,13 @@ export function runMigrations(db: Database.Database): void {
   // 追加した人。既存のサブタスクは不明なので NULL のまま（進捗レポートでは親タスクの主担当として数える）
   if (!subTaskColumns.some((c) => c.name === 'created_by')) {
     db.prepare('ALTER TABLE SubTasks ADD COLUMN created_by TEXT').run()
+  }
+  // ToDoリストの繰り返しの項目
+  if (!subTaskColumns.some((c) => c.name === 'recurrence')) {
+    db.prepare('ALTER TABLE SubTasks ADD COLUMN recurrence TEXT DEFAULT NULL').run()
+  }
+  if (!subTaskColumns.some((c) => c.name === 'recurrence_workdays')) {
+    db.prepare('ALTER TABLE SubTasks ADD COLUMN recurrence_workdays INTEGER NOT NULL DEFAULT 0').run()
   }
   db.prepare('CREATE INDEX IF NOT EXISTS idx_subtasks_assignee ON SubTasks(assignee_id)').run()
 

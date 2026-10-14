@@ -92,6 +92,8 @@ export interface Todo {
   recurrence_skip_weekends: number
   /** 1 のとき、繰り返しの次回分が日本の祝日に当たる場合はずらす */
   recurrence_skip_holidays: number
+  /** 1 のとき「ToDoリスト」。期限を持たずに続き、中の項目（サブタスク）を周期ごとにチェックし直して使う */
+  list_mode: number
   /** サブ担当（サーバー版のみ。デスクトップ版では常に未設定） */
   co_assignees?: TodoCoAssignee[]
   created_at: string
@@ -132,6 +134,10 @@ export interface SubTask {
   completed_at: string | null
   sort_order: number
   created_at: string
+  /** ToDoリストの繰り返しの項目。周期が変わると未チェックに戻る（毎週は月曜、毎月は1日） */
+  recurrence: 'daily' | 'weekly' | 'monthly' | null
+  /** 1 のとき、毎日の項目を平日だけにする（土日・祝日は前の平日の分が続く） */
+  recurrence_workdays: number
   parent_due_date_extended_to?: string | null
 }
 
@@ -148,6 +154,8 @@ export interface CreateSubTaskInput {
   start_date?: string | null
   due_date?: string | null
   progress?: number
+  recurrence?: 'daily' | 'weekly' | 'monthly' | null
+  recurrence_workdays?: number
 }
 
 export interface UpdateSubTaskInput {
@@ -158,7 +166,20 @@ export interface UpdateSubTaskInput {
   start_date?: string | null
   due_date?: string | null
   progress?: number
+  recurrence?: 'daily' | 'weekly' | 'monthly' | null
+  recurrence_workdays?: number
   done?: boolean
+}
+
+/** ToDoリストの繰り返しの項目をチェックした記録（周期ごとに1件。チェックを外すと消える） */
+export interface SubTaskCheck {
+  id: string
+  subtask_id: string
+  todo_id: string
+  /** 周期の始まりの日付（毎日はその日、毎週は月曜、毎月は1日） */
+  period_key: string
+  user_id: string | null
+  checked_at: string
 }
 
 export interface CreateTodoInput {
@@ -177,6 +198,8 @@ export interface CreateTodoInput {
   recurrence_copy_subtasks?: number
   recurrence_skip_weekends?: number
   recurrence_skip_holidays?: number
+  /** 1 で「ToDoリスト」にする。期限と繰り返し（次回分の作成）は使わない */
+  list_mode?: number
 }
 
 export interface UpdateTodoInput {
@@ -195,6 +218,8 @@ export interface UpdateTodoInput {
   recurrence_copy_subtasks?: number
   recurrence_skip_weekends?: number
   recurrence_skip_holidays?: number
+  /** 1 で「ToDoリスト」にする。期限と繰り返し（次回分の作成）は使わない */
+  list_mode?: number
   /** 指定された場合、サブ担当をこのユーザーID群で置き換える（サーバー版のみ有効） */
   co_assignee_ids?: string[]
 }

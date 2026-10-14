@@ -76,11 +76,11 @@ export function QuickAddModal({
   const templates = useMemo(() => {
     try {
       const parsed = JSON.parse(window.localStorage.getItem('todo-templates') ?? '[]') as unknown
-      return Array.isArray(parsed) ? parsed as Array<{ name: string; todo: CreateTodoInput; subTasks?: Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null }> }> : []
+      return Array.isArray(parsed) ? parsed as Array<{ name: string; todo: CreateTodoInput; subTasks?: Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | null; recurrence_workdays?: number }> }> : []
     } catch { return [] }
   }, [])
   const [selectedTemplateName, setSelectedTemplateName] = useState('')
-  const [templateSubTasks, setTemplateSubTasks] = useState<Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null }>>([])
+  const [templateSubTasks, setTemplateSubTasks] = useState<Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | null; recurrence_workdays?: number }>>([])
   const savedDraft = useMemo(() => {
     try {
       const parsed = JSON.parse(window.localStorage.getItem('quick-add-draft') ?? '{}') as unknown
@@ -101,15 +101,18 @@ export function QuickAddModal({
   // 開始日を入れておくと、ガントに今日から1日のバーとして出る（日付なしだと下の「未配置」に回る）
   const [startDate, setStartDate] = useState(() => toDateKey(new Date()))
   const [dueDate, setDueDate] = useState('')
+  // ToDoリスト（期限なしで続き、中の項目を毎日・毎週などでチェックし直すタスク）として作る
+  const [listMode, setListMode] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [keepOpen, setKeepOpen] = useState(false)
   const [showDetails, setShowDetails] = useState(() => Boolean(savedDraft.description?.trim() || savedDraft.memo?.trim()))
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const duePresets = useMemo(buildDuePresets, [])
 
+  // ToDoリストは期限を使わないので、隠れている期限で追加できなくならないようにする
   const isDateRangeInvalid = useMemo(() => (
-    Boolean(startDate && dueDate && startDate > dueDate)
-  ), [dueDate, startDate])
+    Boolean(!listMode && startDate && dueDate && startDate > dueDate)
+  ), [dueDate, listMode, startDate])
 
   const titles = title.split(/\r?\n/).map((value) => value.trim()).filter(Boolean)
   const canSubmit = titles.length > 0 && !isDateRangeInvalid && !submitting
@@ -151,6 +154,7 @@ export function QuickAddModal({
     setPriority(template.todo.priority ?? 3)
     setStartDate(template.todo.start_date ?? '')
     setDueDate(template.todo.due_date ?? '')
+    setListMode(Boolean(template.todo.list_mode))
     setTemplateSubTasks(template.subTasks ?? [])
     if (template.todo.description || template.todo.memo || (template.todo.priority ?? 3) !== 3) setShowDetails(true)
   }
@@ -169,10 +173,12 @@ export function QuickAddModal({
           memo: memo.trim(),
           category_id: categoryId || null,
           assignee_id: assigneeId,
-          status,
+          // ToDoリストは作ったときから使い始めるので、未着手のままにしない
+          status: listMode && status === 'not_started' ? 'active' : status,
           priority,
           start_date: startDate || null,
-          due_date: dueDate || null
+          due_date: listMode ? null : dueDate || null,
+          list_mode: listMode ? 1 : 0
         })
         created.push(todo)
         remainingTitles.shift()
@@ -273,6 +279,23 @@ export function QuickAddModal({
           </div>
 
           <div>
+            <span style={labelStyle}>使い方</span>
+            <div role="radiogroup" aria-label="使い方" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button type="button" role="radio" aria-checked={!listMode} onClick={() => setListMode(false)} style={presetButtonStyle(!listMode)}>
+                ふつうのタスク
+              </button>
+              <button type="button" role="radio" aria-checked={listMode} onClick={() => setListMode(true)} style={presetButtonStyle(listMode)} title="期限なしで続くタスク。中の項目を毎日・平日・毎週・毎月でチェックし直したり、思いついたToDoを足したりして使います">
+                ToDoリスト（期限なしで続ける）
+              </button>
+            </div>
+            {listMode && (
+              <div style={{ marginTop: 4, fontSize: '0.7rem', color: '#a5b4fc', lineHeight: 1.5 }}>
+                作ったあと、詳細で項目を追加します。項目ごとに「毎日・平日・毎週・毎月」を選ぶと、周期が変わったときに未チェックに戻ります。期限を延ばし続ける必要はありません。
+              </div>
+            )}
+          </div>
+
+          {!listMode && <div>
             <span style={labelStyle}>期限</span>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               {duePresets.map((preset) => (
@@ -289,7 +312,7 @@ export function QuickAddModal({
                 style={{ ...selectStyle, width: 'auto', flex: '1 1 140px', padding: '6px 10px', fontSize: '0.84rem' }}
               />
             </div>
-          </div>
+          </div>}
 
           <div style={{ display: 'grid', gridTemplateColumns: users.length > 0 ? '1fr 1fr' : '1fr', gap: 10 }}>
             {users.length > 0 && (
@@ -327,7 +350,7 @@ export function QuickAddModal({
                 <button type="button" onClick={() => setStartDate('')} style={presetButtonStyle(false)}>なし</button>
               )}
             </div>
-            {!startDate && !dueDate && (
+            {!startDate && !dueDate && !listMode && (
               <div style={{ marginTop: 4, fontSize: '0.7rem', color: '#fbbf24' }}>
                 開始日も期限もないタスクは、ガントでは下の「未配置タスク」に表示されます。
               </div>

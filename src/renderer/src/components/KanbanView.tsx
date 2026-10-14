@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import type { Category, Todo, TodoStatus } from '../types'
+import { checklistBadgeText, checklistBadgeTitle, type ChecklistSummary } from '../lib/todoList'
 
 interface Props {
   todos: Todo[]
@@ -10,6 +11,8 @@ interface Props {
   onSelectTodo: (id: string) => void
   onChangeStatus: (todo: Todo, status: TodoStatus) => void | Promise<void>
   onCreateInColumn: (title: string, status: TodoStatus) => void | Promise<void>
+  /** ToDoリスト（期限なしで続くタスク）の項目の進み具合 */
+  checklistSummaries?: Map<string, ChecklistSummary>
 }
 
 const COLUMNS: { status: TodoStatus; label: string; accent: string }[] = [
@@ -62,12 +65,14 @@ function avatarStyle(color: string | null | undefined): React.CSSProperties {
 }
 
 function KanbanCard({
-  todo, isRunning, isPrivate, onSelect, onDragStart, onDragEnd
+  todo, isRunning, isPrivate, checklist, onSelect, onDragStart, onDragEnd
 }: {
   todo: Todo; isRunning: boolean; isPrivate: boolean
+  checklist?: ChecklistSummary
   onSelect: () => void; onDragStart: () => void; onDragEnd: () => void
 }): React.JSX.Element {
-  const prog = todo.progress ?? 0
+  // ToDoリストは進捗率を使わない（中の項目のチェックで見る）
+  const prog = todo.list_mode ? 0 : todo.progress ?? 0
   const isDone = todo.status === 'done'
   const coAssignees = todo.co_assignees ?? []
 
@@ -103,6 +108,11 @@ function KanbanCard({
         )}
         {todo.recurrence && (
           <span title="繰り返し" style={{ fontSize: '0.62rem', color: '#818cf8' }}>🔁</span>
+        )}
+        {todo.list_mode === 1 && checklist && (
+          <span title={checklistBadgeTitle(checklist)} style={{ fontSize: '0.6rem', color: '#a5b4fc', border: '1px solid #4338ca', borderRadius: 99, padding: '0 5px' }}>
+            ☑ {checklistBadgeText(checklist)}
+          </span>
         )}
         {isPrivate && (
           <span title="集計から外すカテゴリ（チームの集計・レポートに含めません。ほかの人にも見えます）" style={{ fontSize: '0.6rem', color: '#94a3b8', border: '1px solid #334155', borderRadius: 99, padding: '0 5px' }}>集計外</span>
@@ -159,7 +169,7 @@ function KanbanCard({
 }
 
 export function KanbanView({
-  todos, categories, runningTodoId, listFilters, onSelectTodo, onChangeStatus, onCreateInColumn
+  todos, categories, runningTodoId, listFilters, onSelectTodo, onChangeStatus, onCreateInColumn, checklistSummaries
 }: Props): React.JSX.Element {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<TodoStatus | null>(null)
@@ -253,6 +263,7 @@ export function KanbanView({
                   key={todo.id}
                   todo={todo}
                   isRunning={runningTodoId === todo.id}
+                  checklist={checklistSummaries?.get(todo.id)}
                   isPrivate={todo.category_id != null && privateCategoryIds.has(todo.category_id)}
                   onSelect={() => onSelectTodo(todo.id)}
                   onDragStart={() => setDraggedId(todo.id)}

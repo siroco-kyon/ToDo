@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import Database from 'better-sqlite3'
+import { isItemRecurrence } from '../shared/recurring-period'
 
 /**
  * Imports a single-user desktop (Electron) `todo.db` into the multi-user web
@@ -120,14 +121,15 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
       `INSERT OR IGNORE INTO Todos
         (id, title, description, memo, category_id, assignee_id, created_by, status,
          priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks,
-         recurrence_skip_weekends, recurrence_skip_holidays,
+         recurrence_skip_weekends, recurrence_skip_holidays, list_mode,
          created_at, updated_at, completed_at, archived_at, on_hold_since)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     const insertSubTask = webDb.prepare(
       `INSERT OR IGNORE INTO SubTasks
-        (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by,
+         recurrence, recurrence_workdays)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     const insertDependency = webDb.prepare(
       `INSERT OR IGNORE INTO TodoDependencies
@@ -226,6 +228,7 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
         asInt(todo.recurrence_copy_subtasks, 0),
         asInt(todo.recurrence_skip_weekends, 0),
         asInt(todo.recurrence_skip_holidays, 0),
+        asInt(todo.list_mode, 0) === 1 ? 1 : 0,
         asText(todo.created_at, now),
         updatedAt,
         completedAt,
@@ -256,7 +259,9 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
         asNullableText(sub.completed_at),
         asInt(sub.sort_order, 0),
         asText(sub.created_at, now),
-        targetUserId
+        targetUserId,
+        isItemRecurrence(sub.recurrence) ? sub.recurrence : null,
+        asInt(sub.recurrence_workdays, 0) === 1 ? 1 : 0
       ).changes
       const stored = findSubTask.get(asText(sub.id)) as { todo_id: string } | undefined
       if (stored?.todo_id === todoId) validSubTaskIds.add(asText(sub.id))
