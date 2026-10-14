@@ -27,7 +27,9 @@
 .hakobi-desktop.compact header { margin-bottom: 4px; }
 .hakobi-desktop.compact .compact-task-title { margin: 3px 0 4px; line-height: 18px; }
 .hakobi-desktop .compact-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.hakobi-desktop .compact-row .elapsed { font-size: 21px; }
+.hakobi-desktop .compact-row .elapsed { font-size: 21px; margin-right: auto; }
+.hakobi-desktop .compact-row button { padding-left: 9px; padding-right: 9px; white-space: nowrap; }
+.hakobi-desktop .compact-row button.stop:not(:disabled) { border-color: #b91c1c; color: #fecaca; }
 .hakobi-desktop .status-dot { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: #f0ba70; }
 .hakobi-desktop .status-dot.online { background: #5bddc4; }
 .hakobi-desktop.progress-window { padding: 18px 22px; height: 100vh; overflow-y: auto; }

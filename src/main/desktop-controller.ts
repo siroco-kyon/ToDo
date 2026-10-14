@@ -5,7 +5,7 @@ import { is } from '@electron-toolkit/utils'
 import { generateDefaultIconBuffer } from './icon'
 import { makeProfile, readDesktopConfig, validatePreferences, writeDesktopConfig } from './desktop-config'
 import { applyWindowsJumpList, applyWindowsTaskbarBranding } from './windows-branding'
-import type { LaunchAction } from './windows-branding'
+import type { LaunchAction, LaunchRequest } from './windows-branding'
 import { thumbarImage, unreadBadgeImage, unreadTrayImage } from './desktop-glyphs'
 import { MAX_TIMER_SIZE, normalizeTimerSize, timerGeometry } from './timer-sizing'
 import { DESKTOP_RECENT_TASK_LIMIT } from '../shared/desktop'
@@ -48,7 +48,7 @@ export class DesktopController {
   private shownNotifications = new Set<Notification>()
   private notificationTimes: number[] = []
   private appliedBadge = 0
-  private pendingLaunchAction: LaunchAction | null = null
+  private pendingLaunchAction: LaunchRequest | null = null
 
   constructor(private readonly startLocal: () => void, private readonly revealLocal: () => void) {
     this.registerBridge()
@@ -72,18 +72,32 @@ export class DesktopController {
   }
 
   /** Runs a taskbar jump list action, waiting for sign-in when the app was started by it. */
-  runLaunchAction(action: LaunchAction): void {
+  runLaunchAction(request: LaunchAction | LaunchRequest): void {
+    const { action, todoId } = typeof request === 'string' ? { action: request, todoId: undefined } : request
+    // 終了と接続先の変更は、サインインを待たずにすぐ行う（トレイのメニューと同じ）
+    if (action === 'quit') {
+      app.quit()
+      return
+    }
     if (this.openedLocal) {
       this.revealLocal()
       return
     }
+    if (action === 'connection') {
+      this.showConnectionSettings()
+      return
+    }
     if (!this.windows.has('main') || !this.state.userId) {
-      this.pendingLaunchAction = action
+      this.pendingLaunchAction = { action, todoId }
       this.reveal()
       return
     }
     this.pendingLaunchAction = null
-    if (action === 'quick-add') this.openMainWith({ type: 'quick-add' })
+    if (action === 'main') this.openMain()
+    else if (action === 'notifications') this.openMainWith({ type: 'open-notification' })
+    else if (action === 'quick-add') this.openMainWith({ type: 'quick-add' })
+    else if (action === 'timer-stop') { if (this.timerControls() && this.state.taskId) this.sendCommand({ type: 'timer-stop' }) }
+    else if (action === 'timer-start') { if (this.timerControls() && todoId && this.validId(todoId)) this.sendCommand({ type: 'timer-start', todoId }) }
     else if (this.serverVersion < 1) this.openMain()
     else if (action === 'progress') this.createRemoteWindow('progress', this.state.taskId ?? undefined)
     else this.updatePreferences({ showTimer: true })
@@ -179,7 +193,7 @@ export class DesktopController {
       loadingRemote = true
       this.createRemoteWindow('main')
       this.createRemoteTray()
-      applyWindowsJumpList(true)
+      this.updateJumpList()
       try { this.registerRemoteShortcuts(this.config.preferences, true) } catch { /* The native dialog explains the unavailable shortcut. */ }
       this.message = '画面を読み込んでいます…'
     } catch (error) {
@@ -642,6 +656,21 @@ export class DesktopController {
       { label: 'HAKOBIを終了', click: () => app.quit() }
     ]))
     this.updateThumbar()
+    this.updateJumpList()
+  }
+
+  /** タスクバーのアイコンの右クリック（ジャンプリスト）を、トレイのメニューと同じ内容にそろえる */
+  private updateJumpList(): void {
+    if (this.openedLocal || !this.config.profile) return
+    const ready = !!this.state.userId && this.serverVersion >= 1
+    applyWindowsJumpList({
+      timerControls: this.timerControls(),
+      runningLabel: this.state.taskId ? this.taskLabel() : null,
+      // トレイのメニューと同じく、選ぶときに見るものなのでタスク名は出す
+      recentTasks: (this.state.recentTasks ?? []).map((task) => ({ id: task.id, title: task.title })),
+      unread: this.state.userId && this.state.unreadCount !== undefined ? this.unreadCount() : null,
+      ready
+    })
   }
 
   private assertRemote(event: IpcMainInvokeEvent): WindowKind {
