@@ -75,6 +75,22 @@ module.exports = function checkTodoList(api) {
   assert.equal(back.list_mode, 0)
   assert.equal(back.due_date, '2026-12-01')
 
+  // 終えた ToDoリストの項目は未チェックに戻さない
+  const ended = api.createTodo({ title: '終えたリスト', status: 'active', list_mode: 1 })
+  const endedItem = api.createSubTask(ended.id, { title: '毎日の項目', recurrence: 'daily' })
+  api.updateTodo(ended.id, { status: 'done' })
+  setCompleted(endedItem.id, local(2026, 10, 9))
+  api.resetRecurringSubTasks(local(2026, 10, 13))
+  assert.equal(doneOf(endedItem.id), 1, '終えたリストの項目はそのまま')
+
+  // ふつうのタスクに戻すと、項目の繰り返しを外す（見えないまま未チェックに戻り続けないように）
+  api.updateTodo(ended.id, { status: 'active', list_mode: 0 })
+  assert.equal(db.prepare('SELECT recurrence FROM SubTasks WHERE id = ?').get(endedItem.id).recurrence, null)
+  api.resetRecurringSubTasks(local(2026, 10, 20))
+  assert.equal(doneOf(endedItem.id), 1)
+  // ふつうのタスクの項目には繰り返しを付けない
+  assert.equal(api.createSubTask(ended.id, { title: '繰り返しを付けようとした項目', recurrence: 'daily' }).recurrence, null)
+  assert.equal(api.updateSubTask(endedItem.id, { recurrence: 'weekly' }).recurrence, null)
   // 期間中の実施状況（報告タブ）。期間に重なる周期の数と、そのうちチェックした数
   const key = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
   const today = key(new Date())
