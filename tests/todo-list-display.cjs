@@ -61,4 +61,15 @@ assert.equal(summary.dueByTodayCount, 2)
 assert.equal(lib.hasRemainingToday(summary), true)
 assert.equal(lib.hasRemainingToday(lib.summarizeChecklist([item('done', { recurrence: 'daily', done: 1 })], '2026-10-14')), false)
 
+// 今日やることの区分け（今日やる／今週の分／今月の分）
+const sectionList = { ...list, id: 'list2' }
+const sectionItems = [
+  item('daily', { todo_id: 'list2', recurrence: 'daily' }),
+  item('weekly', { todo_id: 'list2', recurrence: 'weekly', recurrence_day: 3 }),
+  item('monthly', { todo_id: 'list2', recurrence: 'monthly' }),
+  item('dueToday', { todo_id: 'list2', due_date: '2026-10-14' })
+]
+const sections = lib.buildTodaySections(lib.buildTodayGroups([sectionList], new Map([['list2', sectionItems]]), 'u1', '2026-10-14'))
+assert.deepEqual(Array.from(sections, (entry) => `${entry.section}:${Array.from(entry.entries, (e) => e.item.id).join(',')}`), ['today:daily,dueToday', 'week:weekly', 'month:monthly'])
+
 console.log('ToDo list display checks passed')

@@ -835,6 +835,19 @@ export function TodoDetail({
         />
       )}
 
+      {/* ToDoリストは中の項目を毎日使うので、いちばん上に出す */}
+      {listMode && (
+        <TodoChecklist
+          todo={todo}
+          items={subTasks}
+          users={users}
+          disabled={saving}
+          onItemsChange={setSubTasks}
+          onDelete={(id) => void handleDeleteSubTask(id)}
+          onShowToast={onShowToast}
+        />
+      )}
+
       <div style={{ background: '#1e293b', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 4 }}>計測時間</div>
@@ -1115,17 +1128,7 @@ export function TodoDetail({
         </section>
       )}
 
-      {listMode ? (
-        <TodoChecklist
-          todo={todo}
-          items={subTasks}
-          users={users}
-          disabled={saving}
-          onItemsChange={setSubTasks}
-          onDelete={(id) => void handleDeleteSubTask(id)}
-          onShowToast={onShowToast}
-        />
-      ) : (
+      {!listMode && (
       <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div style={sectionTitleStyle}>サブタスク {subTasks.length > 0 && `(${doneCount}/${subTasks.length})`}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
@@ -1240,6 +1243,8 @@ export function TodoDetail({
       </fieldset>
       )}
 
+      {/* ToDoリストは日程を持たないので、依存関係はすでにあるときだけ出す */}
+      {(!listMode || dependencies.length > 0) && (
       <section>
         <div style={sectionTitleStyle}>依存関係</div>
         <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1262,6 +1267,7 @@ export function TodoDetail({
           <DependencyList title="後続タスク" items={successorDependencies} getTodoId={(item) => item.successor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.successor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} />
         </div>
       </section>
+      )}
 
       <section>
         <div style={sectionTitleStyle}>作業ログ</div>

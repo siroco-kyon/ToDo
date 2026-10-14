@@ -232,3 +232,34 @@ export function buildTodayGroups(todos: Todo[], itemsByTodo: Map<string, SubTask
 export function countRemaining(groups: TodayListGroup[]): number {
   return groups.reduce((sum, group) => sum + group.items.filter((item) => !item.done).length, 0)
 }
+
+/** 今日やることの区分け。毎日の項目・やることは「今日やる」、毎週は「今週の分」、毎月は「今月の分」 */
+export type TodaySection = 'today' | 'week' | 'month'
+
+export const TODAY_SECTION_LABEL: Record<TodaySection, { label: string; title: string }> = {
+  today: { label: '今日やる', title: '毎日・平日の項目と、期限が今日までのやること' },
+  week: { label: '今週の分', title: '毎週の項目。戻る曜日までにチェックすれば大丈夫です' },
+  month: { label: '今月の分', title: '毎月の項目。戻る日までにチェックすれば大丈夫です' }
+}
+
+export function sectionOf(item: Pick<SubTask, 'recurrence'>): TodaySection {
+  if (item.recurrence === 'weekly') return 'week'
+  if (item.recurrence === 'monthly') return 'month'
+  return 'today'
+}
+
+export interface TodayEntry {
+  item: SubTask
+  todo: Todo
+}
+
+/** リストごとの今日やることを、区分けごとに並べ直す（リストの順・項目の順はそのまま） */
+export function buildTodaySections(groups: TodayListGroup[]): Array<{ section: TodaySection; entries: TodayEntry[] }> {
+  const sections: TodaySection[] = ['today', 'week', 'month']
+  return sections
+    .map((section) => ({
+      section,
+      entries: groups.flatMap((group) => group.items.filter((item) => sectionOf(item) === section).map((item) => ({ item, todo: group.todo })))
+    }))
+    .filter((entry) => entry.entries.length > 0)
+}

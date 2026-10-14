@@ -793,6 +793,25 @@ export function App(): React.JSX.Element {
       }))
   }, [pendingListItemIds, showToast])
 
+  // ToDo タブで名前だけで ToDoリストを作る。担当は自分、今日から使い始める
+  const handleCreateList = useCallback(async (title: string): Promise<boolean> => {
+    try {
+      const created = await window.api.todoCreate({
+        title,
+        list_mode: 1,
+        status: 'active',
+        assignee_id: multiUser ? currentUser?.id ?? null : null,
+        start_date: getTodayKey()
+      })
+      await loadTodos()
+      showToast(`ToDoリスト「${created.title}」を作りました。項目を追加してください`)
+      return true
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'ToDoリストを作れませんでした', 'error')
+      return false
+    }
+  }, [currentUser, loadTodos, multiUser, showToast])
+
   // ToDo タブのチェックリストからの変更を、全体のサブタスクに反映する
   const handleListItemsChange = useCallback((todoId: string, update: (previous: SubTask[]) => SubTask[]): void => {
     setAllSubTasks((previous) => {
@@ -1445,7 +1464,8 @@ export function App(): React.JSX.Element {
               onToggleItem={handleToggleListItem}
               onItemsChange={handleListItemsChange}
               onSelectTodo={openTodoDetail}
-              onCreateList={() => openQuickAdd({ listMode: true })}
+              onCreateList={handleCreateList}
+              onCreateListWithDetails={() => openQuickAdd({ listMode: true })}
               onShowToast={showToast}
             />
           ) : activeView === 'team' ? (

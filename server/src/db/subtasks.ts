@@ -95,15 +95,18 @@ export function getSubTaskCheckSummaries(from: string, to: string): SubTaskCheck
     const end = today < to ? today : to
     const periods = new Set(start <= end ? periodsOverlapping(item.recurrence, Boolean(item.recurrence_workdays), start, end, isHoliday, item.recurrence_day) : [])
     const itemChecks = checksByItem.get(item.id) ?? []
+    const checkedKeys = [...new Set(itemChecks.filter((check) => periods.has(check.period_key)).map((check) => check.period_key))].sort()
     return [{
       subtask_id: item.id,
       todo_id: item.todo_id,
       periods: periods.size,
-      checked: new Set(itemChecks.filter((check) => periods.has(check.period_key)).map((check) => check.period_key)).size,
+      checked: checkedKeys.length,
       checked_in_range: itemChecks.filter((check) => {
         const day = toLocalDateKey(new Date(check.checked_at))
         return from <= day && day <= to
-      }).length
+      }).length,
+      period_keys: [...periods].sort(),
+      checked_keys: checkedKeys
     }]
   })
 }

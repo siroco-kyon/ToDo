@@ -196,6 +196,10 @@ export interface SubTaskCheckSummary {
   checked: number
   /** 期間中にチェックした回数（「期間中に動きがあったもの」の判定用） */
   checked_in_range: number
+  /** 期間に重なる周期の始まりの日付（毎日の項目なら日ごと。報告タブの日ごとのマスに使う） */
+  period_keys: string[]
+  /** そのうちチェックした周期 */
+  checked_keys: string[]
 }
 
 export interface CreateTodoInput {

@@ -1278,15 +1278,18 @@ export function getSubTaskCheckSummaries(from: string, to: string): SubTaskCheck
     const end = today < to ? today : to
     const periods = new Set(start <= end ? periodsOverlapping(item.recurrence, Boolean(item.recurrence_workdays), start, end, isHoliday, item.recurrence_day) : [])
     const itemChecks = checksByItem.get(item.id) ?? []
+    const checkedKeys = [...new Set(itemChecks.filter((check) => periods.has(check.period_key)).map((check) => check.period_key))].sort()
     return [{
       subtask_id: item.id,
       todo_id: item.todo_id,
       periods: periods.size,
-      checked: new Set(itemChecks.filter((check) => periods.has(check.period_key)).map((check) => check.period_key)).size,
+      checked: checkedKeys.length,
       checked_in_range: itemChecks.filter((check) => {
         const day = toLocalDateKey(new Date(check.checked_at))
         return from <= day && day <= to
-      }).length
+      }).length,
+      period_keys: [...periods].sort(),
+      checked_keys: checkedKeys
     }]
   })
 }
@@ -2687,6 +2690,10 @@ export interface SubTaskCheckSummary {
   checked: number
   /** 期間中にチェックした回数（「期間中に動きがあったもの」の判定用） */
   checked_in_range: number
+  /** 期間に重なる周期の始まりの日付（毎日の項目なら日ごと。報告タブの日ごとのマスに使う） */
+  period_keys: string[]
+  /** そのうちチェックした周期 */
+  checked_keys: string[]
 }
 
 export interface CreateTodoInput {

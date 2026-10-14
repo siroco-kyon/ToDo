@@ -29,7 +29,10 @@ interface Props {
   onToggleItem: (item: SubTask) => void
   onItemsChange: (todoId: string, update: (previous: SubTask[]) => SubTask[]) => void
   onSelectTodo: (id: string) => void
-  onCreateList: () => void
+  /** 名前だけで ToDoリストを作る（担当は自分・今日から） */
+  onCreateList: (title: string) => Promise<boolean>
+  /** カテゴリなども決めて作る（タスク追加の画面を ToDoリストで開く） */
+  onCreateListWithDetails: () => void
   onShowToast: ShowToast
 }
 
@@ -41,7 +44,7 @@ function readScope(key: string): Scope {
   }
 }
 
-export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingIds, onToggleItem, onItemsChange, onSelectTodo, onCreateList, onShowToast }: Props): React.JSX.Element {
+export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingIds, onToggleItem, onItemsChange, onSelectTodo, onCreateList, onCreateListWithDetails, onShowToast }: Props): React.JSX.Element {
   const multiUser = users.length > 0
   const userId = multiUser ? currentUser?.id ?? null : null
   const scopeKey = `todoView.scope:${userId ?? 'local'}`
@@ -123,7 +126,7 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
               <button onClick={() => changeScope('all')} aria-pressed={effectiveScope === 'all'} style={chipStyle(effectiveScope === 'all')}>全員のリスト</button>
             </div>
           )}
-          <button onClick={onCreateList} style={{ ...primaryButtonStyle, marginLeft: 'auto' }}>＋ ToDoリストを作る</button>
+          <NewListForm onCreate={onCreateList} onCreateWithDetails={onCreateListWithDetails} />
         </div>
 
         {showIntro && (
@@ -134,8 +137,8 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
               <br />・毎日のメール確認や週1回の集計など、決まった作業は「毎日／平日／毎週〇曜／毎月〇日」を付けると、その日に未チェックに戻ります。
               <br />・思いついたやることは、繰り返さずに追加すると、チェックしたときに「済み」へ移ります。期限を付けると、期限が来た日にここの「今日やること」に出ます。
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <button onClick={onCreateList} style={primaryButtonStyle}>＋ ToDoリストを作る</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: '0.78rem', color: '#94a3b8' }}>
+              上の欄に名前（例: 毎日のルーティン・今週のやること）を入れて「作る」を押すと始められます。
               {othersHaveLists && (
                 <button onClick={() => changeScope('all')} style={{ background: 'none', border: 'none', padding: 0, color: '#93c5fd', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
                   ほかの人の ToDoリストを見る
@@ -194,6 +197,40 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
         )}
       </div>
     </div>
+  )
+}
+
+/** 名前だけで ToDoリストを作る欄 */
+function NewListForm({ onCreate, onCreateWithDetails }: { onCreate: (title: string) => Promise<boolean>; onCreateWithDetails: () => void }): React.JSX.Element {
+  const [title, setTitle] = useState('')
+  const [creating, setCreating] = useState(false)
+  const submit = async (): Promise<void> => {
+    const trimmed = title.trim()
+    if (!trimmed || creating) return
+    setCreating(true)
+    if (await onCreate(trimmed)) setTitle('')
+    setCreating(false)
+  }
+  return (
+    <form
+      onSubmit={(event) => { event.preventDefault(); void submit() }}
+      style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}
+    >
+      <input
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+        placeholder="新しい ToDoリストの名前"
+        aria-label="新しい ToDoリストの名前"
+        disabled={creating}
+        style={{ padding: '7px 10px', background: '#0b1220', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', fontSize: '0.82rem', width: 220, outline: 'none' }}
+      />
+      <button type="submit" disabled={!title.trim() || creating} style={{ ...primaryButtonStyle, opacity: title.trim() && !creating ? 1 : 0.5 }}>
+        {creating ? '作成中…' : '作る'}
+      </button>
+      <button type="button" onClick={onCreateWithDetails} title="カテゴリや担当なども決めて作ります" style={{ background: 'none', border: 'none', padding: 0, color: '#93c5fd', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700 }}>
+        詳しく設定して作る
+      </button>
+    </form>
   )
 }
 

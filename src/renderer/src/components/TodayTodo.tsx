@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import type { SubTask } from '../types'
 import { toDateKey } from '../lib/dueDate'
-import { countRemaining, type TodayListGroup } from '../lib/todoList'
+import { TODAY_SECTION_LABEL, buildTodaySections, countRemaining, type TodayListGroup } from '../lib/todoList'
 import { QuickCheckItem } from './TodoChecklist'
 
 // 「今日やること」: 自分の ToDoリストの、繰り返しの項目と期限が今日までのやることを、リストごとに並べてその場でチェックする。
@@ -21,31 +21,30 @@ export function TodayTodoItems({ groups, pendingIds, onToggle, onOpenList, showA
   if (groups.length === 0) {
     return <div style={{ fontSize: '0.78rem', color: '#64748b', lineHeight: 1.5 }}>今日やる項目はありません。</div>
   }
+  // リストが一つだけなら、項目ごとのリスト名は出さない
+  const showListName = groups.length > 1
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {groups.map((group) => {
-        const done = group.items.filter((item) => item.done).length
+      {buildTodaySections(groups).map(({ section, entries }) => {
+        const done = entries.filter(({ item }) => item.done).length
         return (
-          <div key={group.todo.id} style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-            <button
-              onClick={() => onOpenList(group.todo.id)}
-              title={`「${group.todo.title}」を開く`}
-              style={{ display: 'flex', alignItems: 'baseline', gap: 6, background: 'none', border: 'none', padding: '0 0 2px', cursor: 'pointer', textAlign: 'left', minWidth: 0 }}
-            >
-              <span style={{ width: 7, height: 7, borderRadius: 2, background: group.todo.category_color ?? '#475569', flexShrink: 0 }} />
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.todo.title}</span>
-              <span style={{ fontSize: '0.66rem', color: done === group.items.length ? '#4ade80' : '#64748b', flexShrink: 0 }}>{done}/{group.items.length}</span>
-            </button>
-            {group.items.map((item) => (
+          <div key={section} style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+            <div title={TODAY_SECTION_LABEL[section].title} style={{ display: 'flex', alignItems: 'baseline', gap: 6, paddingBottom: 2 }}>
+              <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>{TODAY_SECTION_LABEL[section].label}</span>
+              <span style={{ fontSize: '0.66rem', color: done === entries.length ? '#4ade80' : '#64748b' }}>{done}/{entries.length}</span>
+            </div>
+            {entries.map(({ item, todo }) => (
               <QuickCheckItem
                 key={item.id}
                 item={item}
                 pending={pendingIds.has(item.id)}
                 todayKey={todayKey}
-                listTitle={group.todo.title}
+                listTitle={todo.title}
+                listName={showListName ? todo.title : undefined}
+                listColor={todo.category_color}
                 showAssignee={showAssignee}
                 onToggle={() => onToggle(item)}
-                onOpen={() => onOpenList(group.todo.id)}
+                onOpen={() => onOpenList(todo.id)}
               />
             ))}
           </div>

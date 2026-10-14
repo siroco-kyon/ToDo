@@ -146,6 +146,9 @@ module.exports = function checkTodoList(api) {
   db.prepare("UPDATE SubTasks SET created_at = '2026-09-01T00:00:00.000Z' WHERE id = ?").run(wednesdayReport.id)
   insertCheck.run('check-wed', wednesdayReport.id, dayList.id, '2026-10-07', local(2026, 10, 8).toISOString())
   assert.deepEqual(summaryOf(wednesdayReport.id, '2026-10-01', '2026-10-13'), { periods: 2, checked: 1, checked_in_range: 1 })
+  const wednesdayKeys = api.getSubTaskCheckSummaries('2026-10-01', '2026-10-13').find((row) => row.subtask_id === wednesdayReport.id)
+  assert.deepEqual([...wednesdayKeys.period_keys], ['2026-09-30', '2026-10-07'], '報告タブの日ごとのマス用に周期の始まりを返す')
+  assert.deepEqual([...wednesdayKeys.checked_keys], ['2026-10-07'])
   // 周期だけ変えたら、戻る曜日・日付は既定に戻す
   assert.equal(api.updateSubTask(wednesday.id, { recurrence: 'monthly' }).recurrence_day, null)
   assert.equal(api.updateSubTask(wednesday.id, { recurrence_day: 25 }).recurrence_day, 25)

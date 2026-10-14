@@ -84,6 +84,8 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
   const [dragging, setDragging] = useState<{ id: string; group: Group } | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [showOldDone, setShowOldDone] = useState(false)
+  // ToDo タブではリストが並ぶので、項目を追加する欄は押したときだけ開く
+  const [formOpen, setFormOpen] = useState(!compact)
   const [clearing, setClearing] = useState(false)
   const activeUsers = users.filter((user) => user.is_active === 1 || user.id === assigneeId)
 
@@ -319,6 +321,12 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
           </details>
         )}
 
+        {!formOpen && (
+          <button onClick={() => setFormOpen(true)} disabled={disabled} style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed #334155', borderRadius: 8, padding: '5px 12px', color: '#93c5fd', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
+            ＋ 項目を追加
+          </button>
+        )}
+        {formOpen && (
         <form
           onSubmit={(event) => { event.preventDefault(); void add() }}
           style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 10, border: '1px dashed #334155' }}
@@ -336,13 +344,17 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
                 }
               }}
               aria-label="追加する項目"
-              placeholder="＋ 項目を追加（Enterで追加・Shift+Enterで改行）"
+              autoFocus={compact}
+              placeholder={items.length === 0 ? '例: メール確認（下で「毎日」を選ぶ）／ 見積もりを送る' : '＋ 項目を追加（Enterで追加・Shift+Enterで改行）'}
               rows={title.includes('\n') ? Math.min(6, title.split('\n').length + 1) : 1}
               style={{ ...inputStyle, flex: 1, resize: 'vertical' }}
             />
             <button type="submit" disabled={!title.trim() || adding} style={buttonStyle(title.trim() && !adding ? '#2563eb' : '#1e293b', title.trim() && !adding ? '#fff' : '#64748b')}>
               {adding ? '追加中…' : '追加'}
             </button>
+            {compact && (
+              <button type="button" onClick={() => setFormOpen(false)} style={buttonStyle('#334155', '#cbd5e1')}>閉じる</button>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: '#94a3b8' }}>
             <RepeatPicker
@@ -365,6 +377,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
             )}
           </div>
         </form>
+        )}
       </div>
     </section>
   )
@@ -500,6 +513,14 @@ function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
         )}
         {checkedAt && <span style={{ color: '#4ade80' }} title="チェックした日時">✓ {checkedAt}</span>}
         {repeat && <span title={repeatTitle(item)} style={repeatChipStyle}>{repeat}</span>}
+        <button
+          onClick={onEdit}
+          aria-label={`${item.title}を編集`}
+          title="編集（名前・繰り返し・期限・担当・メモ・並べ替え・削除）"
+          style={{ background: 'none', border: 'none', padding: '0 2px', color: '#64748b', cursor: 'pointer', fontSize: '0.78rem' }}
+        >
+          ✎
+        </button>
       </span>
     </div>
   )
@@ -509,12 +530,15 @@ function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
  * ほかの画面（右の「今日のToDo」・タスク一覧の展開）で使う、チェックだけできる小さな行。
  * 名前を押すと、その ToDoリストの詳細を開く。
  */
-export function QuickCheckItem({ item, pending, todayKey, listTitle, showAssignee = false, onToggle, onOpen }: {
+export function QuickCheckItem({ item, pending, todayKey, listTitle, listName, listColor, showAssignee = false, onToggle, onOpen }: {
   item: SubTask
   pending: boolean
   todayKey: string
-  /** どの ToDoリストの項目か（複数のリストを混ぜて並べるとき） */
+  /** どの ToDoリストの項目か（ツールチップ用） */
   listTitle?: string
+  /** 複数のリストを混ぜて並べるとき、項目の横に出すリスト名 */
+  listName?: string
+  listColor?: string | null
   showAssignee?: boolean
   onToggle: () => void
   onOpen: () => void
@@ -542,6 +566,12 @@ export function QuickCheckItem({ item, pending, todayKey, listTitle, showAssigne
         {item.title}
       </button>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: '0.64rem' }}>
+        {listName && (
+          <span title={listName} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#64748b', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ width: 6, height: 6, borderRadius: 2, background: listColor ?? '#475569', flexShrink: 0 }} />
+            {listName}
+          </span>
+        )}
         {showAssignee && item.assignee_name && <span style={{ color: item.assignee_color ?? '#94a3b8' }}>{item.assignee_name}</span>}
         {!item.recurrence && item.due_date && (
           <span style={{ color: dueColor || '#64748b', fontWeight: overdue ? 700 : 400 }}>{overdue ? '期限切れ' : `${formatShortDate(item.due_date)}まで`}</span>
