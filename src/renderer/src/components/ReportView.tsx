@@ -6,8 +6,22 @@ import { diffDaysFromToday, getDueDateColor, isoToDateKey, toDateKey } from '../
 import { MentionTextarea } from './MentionTextarea'
 import { ProgressNoteThread, discussionBadgeStyle } from './ProgressNoteThread'
 import { ProgressSlider } from './ProgressSlider'
+import { ReportSettingsPanel } from './ReportSettingsPanel'
 import { getOnHoldInfo } from '../lib/onHold'
+import {
+  DEFAULT_REPORT_VIEW_SETTINGS,
+  REPORT_SCOPE_OPTIONS,
+  REPORT_STATUS_OPTIONS,
+  loadReportViewSettings,
+  saveReportViewSettings,
+  statusesAreDefault,
+  type ReportScope,
+  type ReportStatusKey,
+  type ReportSubTaskMode,
+  type ReportViewSettings
+} from '../lib/reportViewSettings'
 import type {
+  Category,
   CreateSubTaskInput,
   ProgressNote,
   ProgressNoteComment,
@@ -29,16 +43,20 @@ interface Props {
   /** 画面表示中のタスク一覧（検索・カテゴリ・担当・レンズ適用済み） */
   todos: Todo[]
   subTasks: SubTask[]
+  /** 表示設定のカテゴリの並び順と、小見出しの順に使う */
+  categories: Category[]
   users: PublicUser[]
   currentUser: PublicUser | null
   onSelectTodo: (id: string) => void
   onUpdateTodo: (id: string, data: UpdateTodoInput) => Promise<void>
   onUpdateSubTask: (id: string, data: UpdateSubTaskInput) => Promise<void>
   onCreateSubTask: (todoId: string, data: CreateSubTaskInput) => Promise<void>
-  onShowToast: (message: string, type?: 'success' | 'error') => void
+  onShowToast: ShowToast
   /** タスク一覧の絞り込み（カテゴリ・検索）の表示。見出しの横に出す */
   listFilters?: React.ReactNode
 }
+
+type ShowToast = (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
 
 interface DateRange {
   from: string
@@ -86,6 +104,17 @@ interface ReportGroup {
   label: string
   color: string | null
   isMe: boolean
+  rows: ReportRow[]
+}
+
+/** 担当者の中のカテゴリ（カテゴリの中の担当者）の小見出し */
+type SubGroupMode = 'category' | 'assignee'
+
+interface ReportSubGroup {
+  /** 畳んだ状態の保存キー（'category:<id>' / 'assignee:<id>'）。全員の同じ小見出しで共通 */
+  key: string
+  label: string
+  color: string | null
   rows: ReportRow[]
 }
 
@@ -348,6 +377,102 @@ function groupRows(rows: ReportRow[], mode: GroupMode, users: PublicUser[], curr
   return [...ordered.filter((group) => group.key !== ''), ...ordered.filter((group) => group.key === '')]
 }
 
+/** 小見出しで分ける。並びは毎回同じになるよう、カテゴリはカテゴリ一覧の順、担当者はユーザー一覧の順（空は最後） */
+function subGroupRows(rows: ReportRow[], mode: SubGroupMode, categories: Category[], users: PublicUser[]): ReportSubGroup[] {
+  const subGroups = new Map<string, ReportSubGroup & { id: string }>()
+  for (const row of rows) {
+    const { todo } = row
+    const id = (mode === 'category' ? todo.category_id : todo.assignee_id) ?? ''
+    const key = `${mode}:${id}`
+    let subGroup = subGroups.get(key)
+    if (!subGroup) {
+      subGroup = mode === 'category'
+        ? { key, id, label: todo.category_name ?? '未分類', color: todo.category_color, rows: [] }
+        : { key, id, label: todo.assignee_name ?? '未割り当て', color: todo.assignee_color, rows: [] }
+      subGroups.set(key, subGroup)
+    }
+    subGroup.rows.push(row)
+  }
+  const ids = mode === 'category' ? categories.map((category) => category.id) : users.map((user) => user.id)
+  const order = new Map(ids.map((id, index) => [id, index]))
+  const rank = (id: string): number => id === '' ? Number.MAX_SAFE_INTEGER : order.get(id) ?? ids.length
+  return [...subGroups.values()]
+    .sort((a, b) => rank(a.id) - rank(b.id))
+    .map(({ key, label, color, rows: subRows }) => ({ key, label, color, rows: subRows }))
+}
+
+function subGroupKeyOf(todo: Todo, mode: SubGroupMode): string {
+  return `${mode}:${(mode === 'category' ? todo.category_id : todo.assignee_id) ?? ''}`
+}
+
+// ─── 表示設定による絞り込み ─────────────────────────────────────
+
+function isDoneInOrAfterPeriod(todo: Todo, range: DateRange): boolean {
+  return todo.completed_at != null && isoToDateKey(todo.completed_at) >= range.from
+}
+
+function matchesStatusSetting(todo: Todo, statuses: Record<ReportStatusKey, boolean>, range: DateRange): boolean {
+  switch (todo.status) {
+    case 'archived': return false
+    // 完了日が分からないものは期間前の完了として扱う（以前の「期間前に完了したタスクも表示」と同じ）
+    case 'done': return isDoneInOrAfterPeriod(todo, range) ? statuses.doneInPeriod : statuses.doneBeforePeriod
+    default: return statuses[todo.status]
+  }
+}
+
+function matchesScopeSetting(row: ReportRow, scope: ReportScope, range: DateRange): boolean {
+  if (scope === 'all') return true
+  const { todo } = row
+  if (scope === 'scheduled') {
+    const start = todo.start_date?.slice(0, 10) ?? null
+    let end = todo.due_date?.slice(0, 10) ?? null
+    if (todo.status === 'done') {
+      if (todo.completed_at) end = isoToDateKey(todo.completed_at)
+    } else if (end != null) {
+      // 期限を過ぎてまだ終わっていないものは、今日まで続いているとみなす
+      const today = toDateKey(new Date())
+      if (end < today) end = today
+    }
+    return (start == null || start <= range.to) && (end == null || end >= range.from)
+  }
+  const inRange = (iso: string | null): boolean => iso != null && isInRange(isoToDateKey(iso), range)
+  return row.reportedInPeriod
+    || row.discussions.length > 0
+    || row.progressStart !== null
+    || row.dueChanges.length > 0
+    || inRange(todo.completed_at)
+    || inRange(todo.created_at)
+    || row.subTasks.some((subTask) => {
+      const summary = row.subTaskSummaries.get(subTask.id)
+      return inRange(subTask.completed_at)
+        || (summary != null && (summary.addedInPeriod || summary.progressStart !== null || summary.dueChanges.length > 0))
+    })
+}
+
+/** サブタスクの見せ方に応じて、そのまま出すものと畳むものに分ける */
+function splitSubTasks(subTasks: SubTask[], mode: ReportSubTaskMode, periodFrom: string): { visible: SubTask[]; folded: SubTask[]; foldedLabel: string } {
+  if (mode === 'hide') {
+    return { visible: [], folded: subTasks, foldedLabel: `サブタスク ${subTasks.length}件を表示` }
+  }
+  // 完了日が不明なものは隠さず、期間より前に完了したものだけを折りたたむ。
+  const isFolded = mode === 'openOnly'
+    ? (subTask: SubTask) => subTask.done === 1
+    : (subTask: SubTask) => subTask.done === 1 && subTask.completed_at != null && isoToDateKey(subTask.completed_at) < periodFrom
+  const folded = subTasks.filter(isFolded)
+  return {
+    visible: subTasks.filter((subTask) => !isFolded(subTask)),
+    folded,
+    foldedLabel: mode === 'openOnly' ? `完了済み ${folded.length}件` : `完了済み ${folded.length}件（期間前）`
+  }
+}
+
+/** Markdown・CSV に出すサブタスク。「完了済みは畳む」では未完了だけ、「すべて畳む」では出さない */
+function subTasksForExport(subTasks: SubTask[], mode: ReportSubTaskMode): SubTask[] {
+  if (mode === 'hide') return []
+  if (mode === 'openOnly') return subTasks.filter((subTask) => subTask.done !== 1)
+  return subTasks
+}
+
 function freshnessText(row: ReportRow): string {
   switch (row.freshness) {
     case 'onHold':
@@ -456,7 +581,63 @@ function noteToMarkdown(note: ProgressNote, indent: string, withTask: boolean): 
   return lines
 }
 
-function reportToMarkdown(groups: ReportGroup[], range: DateRange, mode: GroupMode, multiUser: boolean): string {
+interface MarkdownOptions {
+  mode: GroupMode
+  multiUser: boolean
+  /** 小見出しで分けるとき、その分け方と並べ方 */
+  subGroupMode: SubGroupMode | null
+  categories: Category[]
+  users: PublicUser[]
+  subTaskMode: ReportSubTaskMode
+}
+
+function rowToMarkdown(row: ReportRow, heading: string, options: MarkdownOptions): string[] {
+  const { todo } = row
+  const lines = [`${heading} ${todo.title}（${todo.progress}%・${statusSummary(row, '・')}）`]
+  if (todo.status === 'on_hold') {
+    const hold = getOnHoldInfo(todo.on_hold_since)
+    lines.push(`- 保留開始: ${hold.sinceLabel} / ${hold.durationLabel}`)
+  }
+  lines.push(`- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} / 期限 ${todo.due_date?.slice(0, 10) ?? '未設定'}`)
+  const delta = progressDeltaText(row, row.todo.progress)
+  if (delta) lines.push(`- 期間中の進捗: ${delta}`)
+  const dueChange = dueChangeText(row, row.todo.due_date)
+  if (dueChange) lines.push(`- 期限の変更: ${dueChange}`)
+  // 小見出しで分かることは繰り返さない
+  if (options.mode === 'assignee') {
+    if (options.subGroupMode !== 'category') lines.push(`- カテゴリ: ${todo.category_name ?? '未分類'}`)
+  } else if (options.multiUser) {
+    lines.push(`- 担当: ${assigneeText(todo)}`)
+  }
+  if (row.lastReportAt) lines.push(`- 最終報告: ${formatDateTime(row.lastReportAt)}`)
+  if (todo.memo.trim()) {
+    lines.push('- メモ:')
+    lines.push(...indentLines(todo.memo.trim(), '  '))
+  }
+  const subTasks = subTasksForExport(row.subTasks, options.subTaskMode)
+  if (subTasks.length > 0) {
+    lines.push('- サブタスク:')
+    for (const subTask of subTasks) {
+      const meta = [
+        subTask.assignee_name,
+        subTask.due_date ? `期限 ${subTask.due_date.slice(0, 10)}` : null,
+        `${subTask.progress}%`
+      ].filter(Boolean).join('・')
+      const change = subTaskChangeText(subTask, row.subTaskSummaries.get(subTask.id))
+      lines.push(`  - [${subTask.done ? 'x' : ' '}] ${subTask.title}（${meta}${change ? `・${change}` : ''}）`)
+    }
+  }
+  if (row.notes.length === 0) {
+    lines.push('- 進捗: この期間の記録なし')
+  } else {
+    lines.push('- 進捗:')
+    for (const note of row.notes) lines.push(...noteToMarkdown(note, '  ', false))
+  }
+  lines.push('')
+  return lines
+}
+
+function reportToMarkdown(groups: ReportGroup[], range: DateRange, options: MarkdownOptions): string {
   const lines: string[] = [`# 報告 ${range.from} ～ ${range.to}`, '']
   const discussions = groups.flatMap((group) => group.rows.flatMap((row) => row.discussions))
   if (discussions.length > 0) {
@@ -466,44 +647,13 @@ function reportToMarkdown(groups: ReportGroup[], range: DateRange, mode: GroupMo
   }
   for (const group of groups) {
     lines.push(`## ${group.label}（${group.rows.length}件）`, '')
-    for (const row of group.rows) {
-      const { todo } = row
-      lines.push(`### ${todo.title}（${todo.progress}%・${statusSummary(row, '・')}）`)
-      if (todo.status === 'on_hold') {
-        const hold = getOnHoldInfo(todo.on_hold_since)
-        lines.push(`- 保留開始: ${hold.sinceLabel} / ${hold.durationLabel}`)
+    if (options.subGroupMode) {
+      for (const subGroup of subGroupRows(group.rows, options.subGroupMode, options.categories, options.users)) {
+        lines.push(`### ${subGroup.label}（${subGroup.rows.length}件）`, '')
+        for (const row of subGroup.rows) lines.push(...rowToMarkdown(row, '####', options))
       }
-      lines.push(`- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} / 期限 ${todo.due_date?.slice(0, 10) ?? '未設定'}`)
-      const delta = progressDeltaText(row, row.todo.progress)
-      if (delta) lines.push(`- 期間中の進捗: ${delta}`)
-      const dueChange = dueChangeText(row, row.todo.due_date)
-      if (dueChange) lines.push(`- 期限の変更: ${dueChange}`)
-      if (mode === 'assignee') lines.push(`- カテゴリ: ${todo.category_name ?? '未分類'}`)
-      else if (multiUser) lines.push(`- 担当: ${assigneeText(todo)}`)
-      if (row.lastReportAt) lines.push(`- 最終報告: ${formatDateTime(row.lastReportAt)}`)
-      if (todo.memo.trim()) {
-        lines.push('- メモ:')
-        lines.push(...indentLines(todo.memo.trim(), '  '))
-      }
-      if (row.subTasks.length > 0) {
-        lines.push('- サブタスク:')
-        for (const subTask of row.subTasks) {
-          const meta = [
-            subTask.assignee_name,
-            subTask.due_date ? `期限 ${subTask.due_date.slice(0, 10)}` : null,
-            `${subTask.progress}%`
-          ].filter(Boolean).join('・')
-          const change = subTaskChangeText(subTask, row.subTaskSummaries.get(subTask.id))
-          lines.push(`  - [${subTask.done ? 'x' : ' '}] ${subTask.title}（${meta}${change ? `・${change}` : ''}）`)
-        }
-      }
-      if (row.notes.length === 0) {
-        lines.push('- 進捗: この期間の記録なし')
-      } else {
-        lines.push('- 進捗:')
-        for (const note of row.notes) lines.push(...noteToMarkdown(note, '  ', false))
-      }
-      lines.push('')
+    } else {
+      for (const row of group.rows) lines.push(...rowToMarkdown(row, '###', options))
     }
   }
   return lines.join('\n')
@@ -527,7 +677,7 @@ function notesToPlainText(notes: ProgressNote[]): string {
     .join('\n\n')
 }
 
-function reportToCsv(groups: ReportGroup[]): string {
+function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode): string {
   const headers = ['担当', 'カテゴリ', 'タスク', 'サブタスク', '状態', '保留開始', '保留期間', '開始', '期限', '進捗(%)', '期間中の進捗', '期限の変更', '最終報告', '要相談', '期間内の進捗コメント', 'メモ']
   const rows: Array<Array<string | number | null>> = []
   for (const group of groups) {
@@ -551,7 +701,7 @@ function reportToCsv(groups: ReportGroup[]): string {
         notesToPlainText(row.notes),
         todo.memo.trim()
       ])
-      for (const subTask of row.subTasks) {
+      for (const subTask of subTasksForExport(row.subTasks, subTaskMode)) {
         const summary = row.subTaskSummaries.get(subTask.id)
         rows.push([
           subTask.assignee_name ?? '',
@@ -579,15 +729,19 @@ function reportToCsv(groups: ReportGroup[]): string {
 
 // ─── 画面 ─────────────────────────────────────────────────────
 
-export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, onUpdateTodo, onUpdateSubTask, onCreateSubTask, onShowToast, listFilters }: Props): React.JSX.Element {
+export function ReportView({ todos, subTasks, categories, users, currentUser, onSelectTodo, onUpdateTodo, onUpdateSubTask, onCreateSubTask, onShowToast, listFilters }: Props): React.JSX.Element {
   const multiUser = users.length > 0
+  const settingsUserId = currentUser?.id ?? null
   const [preset, setPreset] = useState<PeriodPreset>(loadPreset)
   const [range, setRange] = useState<DateRange>(() => presetRange(loadPreset()))
   const [groupMode, setGroupMode] = useState<GroupMode>(() => readStorage(STORAGE_KEYS.groupMode) === 'category' ? 'category' : 'assignee')
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>(loadAssigneeFilter)
   const [excludeCoAssigned, setExcludeCoAssigned] = useState(() => readStorage(STORAGE_KEYS.excludeCoAssigned) === '1')
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all')
-  const [includeOldDone, setIncludeOldDone] = useState(false)
+  // 表示設定（カテゴリ・状態・対象・サブタスク・個別に隠したタスク・小見出し）。見ている人ごとに保存する
+  const [settingsState, setSettingsState] = useState(() => ({ userId: settingsUserId, settings: loadReportViewSettings(settingsUserId) }))
+  const settings = settingsState.userId === settingsUserId ? settingsState.settings : loadReportViewSettings(settingsUserId)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   // 折りたたんだ担当者（カテゴリ）の見出しキー。定例で話し終えた人を畳んでおける
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
   const [notes, setNotes] = useState<ProgressNote[]>([])
@@ -661,6 +815,43 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     writeStorage(STORAGE_KEYS.assigneeFilter, value)
   }
 
+  // ログインし直して別の人になったら、その人の表示設定に切り替える
+  useEffect(() => {
+    if (settingsState.userId !== settingsUserId) {
+      setSettingsState({ userId: settingsUserId, settings: loadReportViewSettings(settingsUserId) })
+    }
+  }, [settingsState.userId, settingsUserId])
+
+  const updateSettings = useCallback((update: (previous: ReportViewSettings) => ReportViewSettings): void => {
+    setSettingsState((previous) => {
+      const base = previous.userId === settingsUserId ? previous.settings : loadReportViewSettings(settingsUserId)
+      const next = update(base)
+      saveReportViewSettings(settingsUserId, next)
+      return { userId: settingsUserId, settings: next }
+    })
+  }, [settingsUserId])
+
+  const setTodoHidden = useCallback((todo: Todo, hidden: boolean): void => {
+    updateSettings((previous) => ({
+      ...previous,
+      hiddenTodoIds: hidden
+        ? [...previous.hiddenTodoIds.filter((id) => id !== todo.id), todo.id]
+        : previous.hiddenTodoIds.filter((id) => id !== todo.id)
+    }))
+    if (hidden) {
+      onShowToast(`「${todo.title}」を報告に出さないようにしました`, 'success', { label: '元に戻す', run: () => setTodoHidden(todo, false) })
+    }
+  }, [onShowToast, updateSettings])
+
+  const toggleSubGroupCollapsed = (key: string): void => {
+    updateSettings((previous) => ({
+      ...previous,
+      collapsedSubGroupKeys: previous.collapsedSubGroupKeys.includes(key)
+        ? previous.collapsedSubGroupKeys.filter((item) => item !== key)
+        : [...previous.collapsedSubGroupKeys, key]
+    }))
+  }
+
   const notesByTodo = useMemo(() => {
     const map = new Map<string, ProgressNote[]>()
     for (const note of notes) {
@@ -686,10 +877,14 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
   const changesByTodo = useMemo(() => groupByTodo(changes), [changes])
   const discussionsByTodo = useMemo(() => groupByTodo(discussions), [discussions])
 
+  const hiddenTodoIdSet = useMemo(() => new Set(settings.hiddenTodoIds), [settings.hiddenTodoIds])
+  const hiddenCategoryKeySet = useMemo(() => new Set(settings.hiddenCategoryKeys), [settings.hiddenCategoryKeys])
+
   const baseRows = useMemo(() => todos
-    .filter((todo) => todo.status !== 'archived')
-    // 期間より前に完了したタスクは既定で隠す（期間中・期間後に完了したものは報告対象）
-    .filter((todo) => includeOldDone || todo.status !== 'done' || (todo.completed_at != null && isoToDateKey(todo.completed_at) >= range.from))
+    .filter((todo) => !hiddenTodoIdSet.has(todo.id))
+    .filter((todo) => !hiddenCategoryKeySet.has(todo.category_id ?? ''))
+    // 既定では、期間より前に完了したタスクは隠す（期間中・期間後に完了したものは報告対象）
+    .filter((todo) => matchesStatusSetting(todo, settings.statuses, range))
     .filter((todo) => selectedUserId == null || isMyTask(todo,
       effectiveAssigneeFilter === 'mineWithSubTasks' ? subTasksByTodo.get(todo.id) ?? [] : [], selectedUserId))
     .filter((todo) => selectedUserId == null || !excludeCoAssigned || todo.assignee_id === selectedUserId)
@@ -701,8 +896,29 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
       range,
       changesByTodo.get(todo.id) ?? [],
       discussionsByTodo.get(todo.id) ?? []
-    )),
-  [activity, changesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, includeOldDone, notesByTodo, range, selectedUserId, subTasksByTodo, todos])
+    ))
+    .filter((row) => matchesScopeSetting(row, settings.scope, range)),
+  [activity, changesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, hiddenCategoryKeySet, hiddenTodoIdSet, notesByTodo, range, selectedUserId, settings.scope, settings.statuses, subTasksByTodo, todos])
+
+  // 表示設定のカテゴリの選択肢（アーカイブ以外のタスクがあるカテゴリだけ。並びはカテゴリ一覧の順、未分類は最後）
+  const categoryOptions = useMemo(() => {
+    const counts = new Map<string, { label: string; color: string | null; count: number }>()
+    for (const todo of todos) {
+      if (todo.status === 'archived') continue
+      const key = todo.category_id ?? ''
+      const entry = counts.get(key)
+      if (entry) entry.count++
+      else counts.set(key, { label: todo.category_name ?? '未分類', color: todo.category_color, count: 1 })
+    }
+    const order = new Map(categories.map((category, index) => [category.id, index]))
+    const rank = (key: string): number => key === '' ? Number.MAX_SAFE_INTEGER : order.get(key) ?? categories.length
+    return [...counts.entries()]
+      .map(([key, value]) => ({ key, ...value }))
+      .sort((a, b) => rank(a.key) - rank(b.key))
+  }, [categories, todos])
+
+  const hiddenTodos = useMemo(() => todos.filter((todo) => hiddenTodoIdSet.has(todo.id)), [hiddenTodoIdSet, todos])
+  const hiddenCategoryCount = categoryOptions.filter((option) => hiddenCategoryKeySet.has(option.key)).length
 
   const currentUserId = currentUser?.id ?? null
   // 自分の未報告の案内はサーバー版でログインしているときだけ
@@ -717,6 +933,42 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     () => groupRows(rows, effectiveGroupMode, users, currentUser?.id ?? null, selectedUserId),
     [currentUser, effectiveGroupMode, rows, selectedUserId, users]
   )
+
+  // 担当者別ではカテゴリ、カテゴリ別では担当者で小見出しを作る。カテゴリ別で一人に絞っているときは分けても同じなので分けない
+  const subGroupMode: SubGroupMode | null = !settings.splitSubGroups
+    ? null
+    : effectiveGroupMode === 'assignee'
+      ? 'category'
+      : multiUser && selectedUserId == null ? 'assignee' : null
+  const collapsedSubGroupSet = useMemo(() => new Set(settings.collapsedSubGroupKeys), [settings.collapsedSubGroupKeys])
+  const visibleSubGroupKeys = useMemo(
+    () => subGroupMode ? [...new Set(rows.map((row) => subGroupKeyOf(row.todo, subGroupMode)))] : [],
+    [rows, subGroupMode]
+  )
+  const anySubGroupCollapsed = visibleSubGroupKeys.some((key) => collapsedSubGroupSet.has(key))
+  const toggleAllSubGroups = (): void => {
+    updateSettings((previous) => ({
+      ...previous,
+      collapsedSubGroupKeys: anySubGroupCollapsed
+        ? previous.collapsedSubGroupKeys.filter((key) => !visibleSubGroupKeys.includes(key))
+        : [...new Set([...previous.collapsedSubGroupKeys, ...visibleSubGroupKeys])]
+    }))
+  }
+
+  // 既定と違う表示設定。見出しの近くに出して、隠れているものがあると分かるようにする
+  const settingsChips: Array<{ key: string; label: string; clear: () => void }> = [
+    ...(hiddenCategoryCount > 0 ? [{ key: 'category', label: `カテゴリ ${hiddenCategoryCount}件を非表示`, clear: () => updateSettings((previous) => ({ ...previous, hiddenCategoryKeys: [] })) }] : []),
+    ...(!statusesAreDefault(settings.statuses) ? [{
+      key: 'status',
+      label: `状態: ${REPORT_STATUS_OPTIONS.filter((option) => settings.statuses[option.key]).map((option) => option.label).join('・') || 'なし'}`,
+      clear: () => updateSettings((previous) => ({ ...previous, statuses: { ...DEFAULT_REPORT_VIEW_SETTINGS.statuses } }))
+    }] : []),
+    ...(settings.scope !== 'all' ? [{
+      key: 'scope',
+      label: REPORT_SCOPE_OPTIONS.find((option) => option.value === settings.scope)?.label ?? '',
+      clear: () => updateSettings((previous) => ({ ...previous, scope: 'all' }))
+    }] : [])
+  ]
 
   // 件数は絞り込みチップを押す前の対象から数える（押しても他のチップの件数が変わらないように）
   const countOf = (filter: QuickFilter): number => baseRows.filter((row) => matchesQuickFilter(row, filter, currentUserId)).length
@@ -902,23 +1154,47 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
     onUpdateSubTask: updateSubTask,
     onCreateSubTask: createSubTask,
     onSelectTodo,
+    onHideTodo: (todo) => setTodoHidden(todo, true),
     onShowToast,
     users,
     // 「@」の候補（自分を呼んでも通知は届かないので外す）
     mentionUsers: users.filter((user) => user.id !== currentUser?.id)
-  }), [canModifyNote, createNote, createSubTask, currentUser, deleteNote, onSelectTodo, onShowToast, replyNote, toggleDiscussion, toggleReaction, updateNote, updateSubTask, updateTask, users])
+  }), [canModifyNote, createNote, createSubTask, currentUser, deleteNote, onSelectTodo, onShowToast, replyNote, setTodoHidden, toggleDiscussion, toggleReaction, updateNote, updateSubTask, updateTask, users])
 
   const handleCopyMarkdown = async (): Promise<void> => {
     try {
-      await copyTextToClipboard(reportToMarkdown(groups, range, effectiveGroupMode, multiUser))
+      await copyTextToClipboard(reportToMarkdown(groups, range, {
+        mode: effectiveGroupMode,
+        multiUser,
+        subGroupMode,
+        categories,
+        users,
+        subTaskMode: settings.subTaskMode
+      }))
       onShowToast('Markdownをコピーしました')
     } catch {
       onShowToast('クリップボードへのコピーに失敗しました', 'error')
     }
   }
 
+  const renderCard = (row: ReportRow): React.JSX.Element => (
+    <ReportTaskCard
+      key={row.todo.id}
+      row={row}
+      periodFrom={range.from}
+      groupMode={effectiveGroupMode}
+      subGroupMode={subGroupMode}
+      subTaskMode={settings.subTaskMode}
+      showAssignee={selectedUserId != null}
+      multiUser={multiUser}
+      isMine={currentUser != null && isMyTask(row.todo, row.subTasks, currentUser.id)}
+      onSelectTodo={onSelectTodo}
+      actions={actions}
+    />
+  )
+
   const handleDownloadCsv = (): void => {
-    downloadCsv(`report-${range.from}_${range.to}-${dateStamp()}.csv`, reportToCsv(groups))
+    downloadCsv(`report-${range.from}_${range.to}-${dateStamp()}.csv`, reportToCsv(groups, settings.subTaskMode))
   }
 
   return (
@@ -1014,11 +1290,42 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
                 副担当のタスクを除く（主担当のみ）
               </label>
             )}
-            <label style={checkboxLabelStyle} title="期間が始まる前に完了したタスクは、ふだんは隠しています">
-              <input type="checkbox" checked={includeOldDone} onChange={(event) => setIncludeOldDone(event.target.checked)} style={{ accentColor: '#6366f1' }} />
-              期間前に完了したタスクも表示
-            </label>
+            <button
+              onClick={() => setSettingsOpen((open) => !open)}
+              aria-expanded={settingsOpen}
+              aria-controls="report-view-settings"
+              title="報告に出すカテゴリ・状態・対象・サブタスクの見せ方などを選びます"
+              style={{ ...secondaryButtonStyle, borderColor: settingsOpen ? '#6366f1' : '#334155' }}
+            >
+              表示設定 {settingsOpen ? '▴' : '▾'}
+            </button>
+            {(settingsChips.length > 0 || hiddenTodos.length > 0) && (
+              <span role="group" aria-label="表示設定で隠しているもの" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', minWidth: 0 }}>
+                {settingsChips.map((chip) => (
+                  <button key={chip.key} onClick={chip.clear} title={`${chip.label} をやめる`} style={settingsChipStyle}>
+                    {chip.label} ×
+                  </button>
+                ))}
+                {hiddenTodos.length > 0 && (
+                  <button onClick={() => setSettingsOpen(true)} title="隠したタスクは表示設定から戻せます" style={settingsChipStyle}>
+                    隠したタスク {hiddenTodos.length}件
+                  </button>
+                )}
+              </span>
+            )}
           </div>
+
+          {settingsOpen && (
+            <ReportSettingsPanel
+              settings={settings}
+              onChange={updateSettings}
+              categoryOptions={categoryOptions}
+              hiddenTodos={hiddenTodos}
+              onUnhideTodo={(todo) => setTodoHidden(todo, false)}
+              subGroupLabel={effectiveGroupMode === 'assignee' ? '担当者の中をカテゴリで分ける' : multiUser ? 'カテゴリの中を担当者で分ける' : null}
+              onClose={() => setSettingsOpen(false)}
+            />
+          )}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }} role="group" aria-label="件数で絞り込み">
             {quickFilterChips.map((chip) => {
@@ -1055,10 +1362,10 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
             </div>
           )}
 
-          {loaded && groups.length > 1 && (
+          {loaded && (groups.length > 1 || visibleSubGroupKeys.length > 1) && (
             <nav aria-label={effectiveGroupMode === 'assignee' ? '担当者へ移動' : 'カテゴリへ移動'} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', paddingTop: 2 }}>
-              <span style={{ fontSize: '0.72rem', color: '#64748b' }}>{effectiveGroupMode === 'assignee' ? '担当者へ移動:' : 'カテゴリへ移動:'}</span>
-              {groups.map((group) => {
+              {groups.length > 1 && <span style={{ fontSize: '0.72rem', color: '#64748b' }}>{effectiveGroupMode === 'assignee' ? '担当者へ移動:' : 'カテゴリへ移動:'}</span>}
+              {groups.length > 1 && groups.map((group) => {
                 const needs = group.rows.filter((row) => needsReport(row.freshness)).length
                 return (
                   <button key={group.key} onClick={() => jumpToGroup(group.key)} title={`${group.label}の欄へ移動`} style={jumpChipStyle}>
@@ -1069,9 +1376,18 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
                   </button>
                 )
               })}
-              <button onClick={() => setCollapsedGroups(collapsedGroups.size > 0 ? new Set() : new Set(groups.map((group) => group.key)))} style={{ ...inlineActionStyle, marginLeft: 4 }}>
-                {collapsedGroups.size > 0 ? 'すべて開く' : 'すべて折りたたむ'}
-              </button>
+              {groups.length > 1 && (
+                <button onClick={() => setCollapsedGroups(collapsedGroups.size > 0 ? new Set() : new Set(groups.map((group) => group.key)))} style={{ ...inlineActionStyle, marginLeft: 4 }}>
+                  {collapsedGroups.size > 0 ? 'すべて開く' : 'すべて折りたたむ'}
+                </button>
+              )}
+              {subGroupMode && visibleSubGroupKeys.length > 1 && (
+                <button onClick={toggleAllSubGroups} style={{ ...inlineActionStyle, marginLeft: 4 }}>
+                  {subGroupMode === 'category'
+                    ? anySubGroupCollapsed ? 'カテゴリをすべて開く' : 'カテゴリをすべて畳む'
+                    : anySubGroupCollapsed ? '担当者をすべて開く' : '担当者をすべて畳む'}
+                </button>
+              )}
             </nav>
           )}
         </div>
@@ -1088,7 +1404,9 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
           <div style={emptyStyle}>
             {effectiveQuickFilter !== 'all'
               ? <>条件に合うタスクはありません。<button onClick={() => setQuickFilter('all')} style={{ ...inlineActionStyle, marginLeft: 8, fontSize: '0.82rem' }}>すべて表示</button></>
-              : '表示できるタスクがありません。見出しの横の「絞り込み中」も確認してください。'}
+              : settingsChips.length > 0
+                ? '表示できるタスクがありません。「表示設定」の横に出ている条件も確認してください。'
+                : '表示できるタスクがありません。見出しの横の「絞り込み中」も確認してください。'}
           </div>
         )}
 
@@ -1134,19 +1452,35 @@ export function ReportView({ todos, subTasks, users, currentUser, onSelectTodo, 
                   ))}
                 </div>
               )}
-              {!collapsed && group.rows.map((row) => (
-                <ReportTaskCard
-                  key={row.todo.id}
-                  row={row}
-                  periodFrom={range.from}
-                  groupMode={effectiveGroupMode}
-                  showAssignee={selectedUserId != null}
-                  multiUser={multiUser}
-                  isMine={currentUser != null && isMyTask(row.todo, row.subTasks, currentUser.id)}
-                  onSelectTodo={onSelectTodo}
-                  actions={actions}
-                />
-              ))}
+              {!collapsed && !subGroupMode && group.rows.map(renderCard)}
+              {!collapsed && subGroupMode && subGroupRows(group.rows, subGroupMode, categories, users).map((subGroup) => {
+                const subCollapsed = collapsedSubGroupSet.has(subGroup.key)
+                const subNeeds = subGroup.rows.filter((row) => needsReport(row.freshness)).length
+                const subDiscussions = subGroup.rows.reduce((sum, row) => sum + row.discussions.length, 0)
+                return (
+                  <div key={subGroup.key} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={subGroupHeaderStyle(subGroup.color)}>
+                      <button
+                        onClick={() => toggleSubGroupCollapsed(subGroup.key)}
+                        aria-expanded={!subCollapsed}
+                        aria-label={subCollapsed ? `${group.label}の${subGroup.label}を開く` : `${group.label}の${subGroup.label}を折りたたむ`}
+                        title={subCollapsed
+                          ? '開く'
+                          : `折りたたむ（ほかの${subGroupMode === 'category' ? '担当者' : 'カテゴリ'}の「${subGroup.label}」も一緒に畳み、次に開いたときも畳んだままにします）`}
+                        style={collapseButtonStyle(subCollapsed)}
+                      >
+                        ▾
+                      </button>
+                      <span style={{ width: 9, height: 9, borderRadius: subGroupMode === 'category' ? 2 : '50%', background: subGroup.color ?? '#475569', flexShrink: 0 }} />
+                      <span style={{ fontSize: '0.86rem', color: '#e2e8f0', fontWeight: 800 }}>{subGroup.label}</span>
+                      <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>{subGroup.rows.length}件</span>
+                      {subNeeds > 0 && <span style={{ fontSize: '0.74rem', color: '#fde68a', fontWeight: 700 }}>報告なし {subNeeds}</span>}
+                      {subDiscussions > 0 && <span style={{ fontSize: '0.74rem', color: '#d6b38a' }}>要相談 {subDiscussions}</span>}
+                    </div>
+                    {!subCollapsed && subGroup.rows.map(renderCard)}
+                  </div>
+                )
+              })}
             </section>
           )
         })}
@@ -1168,7 +1502,9 @@ interface ReportCardActions {
   onUpdateSubTask: (subTask: SubTask, data: UpdateSubTaskInput, successMessage: string) => Promise<boolean>
   onCreateSubTask: (todo: Todo, data: CreateSubTaskInput) => Promise<boolean>
   onSelectTodo: (id: string) => void
-  onShowToast: (message: string, type?: 'success' | 'error') => void
+  /** このタスクを報告に出さない（見ている人の表示設定に入る） */
+  onHideTodo: (todo: Todo) => void
+  onShowToast: ShowToast
   /** サブタスクの担当の選択肢（デスクトップ版は空） */
   users: PublicUser[]
   /** 進捗ログ・返信で「@」を打ったときの候補（自分を除く） */
@@ -1443,6 +1779,8 @@ function ReportTaskCard({
   row,
   periodFrom,
   groupMode,
+  subGroupMode,
+  subTaskMode,
   showAssignee,
   multiUser,
   isMine,
@@ -1452,6 +1790,8 @@ function ReportTaskCard({
   row: ReportRow
   periodFrom: string
   groupMode: GroupMode
+  subGroupMode: SubGroupMode | null
+  subTaskMode: ReportSubTaskMode
   showAssignee: boolean
   multiUser: boolean
   isMine: boolean
@@ -1459,10 +1799,7 @@ function ReportTaskCard({
   actions: ReportCardActions
 }): React.JSX.Element {
   const { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness } = row
-  // 完了日が不明なものは隠さず、期間より前に完了したものだけを折りたたむ。
-  const oldDoneSubTasks = subTasks.filter((subTask) => subTask.done && subTask.completed_at != null && isoToDateKey(subTask.completed_at) < periodFrom)
-  const oldDoneIds = new Set(oldDoneSubTasks.map((subTask) => subTask.id))
-  const visibleSubTasks = subTasks.filter((subTask) => !oldDoneIds.has(subTask.id))
+  const { visible: visibleSubTasks, folded: foldedSubTasks, foldedLabel } = splitSubTasks(subTasks, subTaskMode, periodFrom)
   const [composerOpen, setComposerOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const [draftNeedsDiscussion, setDraftNeedsDiscussion] = useState(false)
@@ -1578,7 +1915,7 @@ function ReportTaskCard({
             <option value="active">進行中</option><option value="on_hold">保留中</option>
             <option value="done">完了</option>
           </select>
-          {groupMode === 'assignee' ? (
+          {groupMode === 'assignee' && subGroupMode !== 'category' ? (
             <span style={{ ...pillStyle, color: todo.category_color ?? '#94a3b8', borderColor: `${todo.category_color ?? '#475569'}80` }}>
               {todo.category_name ?? '未分類'}
             </span>
@@ -1662,13 +1999,13 @@ function ReportTaskCard({
           {visibleSubTasks.map((subTask) => (
             <SubTaskRow key={subTask.id} subTask={subTask} summary={row.subTaskSummaries.get(subTask.id)} actions={actions} />
           ))}
-          {oldDoneSubTasks.length > 0 && (
+          {foldedSubTasks.length > 0 && (
             <details>
               <summary style={{ cursor: 'pointer', fontSize: '0.76rem', color: '#94a3b8', padding: '5px 0' }}>
-                完了済み {oldDoneSubTasks.length}件（期間前）
+                {foldedLabel}
               </summary>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingTop: 5 }}>
-                {oldDoneSubTasks.map((subTask) => (
+                {foldedSubTasks.map((subTask) => (
                   <SubTaskRow key={subTask.id} subTask={subTask} summary={row.subTaskSummaries.get(subTask.id)} actions={actions} />
                 ))}
               </div>
@@ -1697,6 +2034,14 @@ function ReportTaskCard({
             {!composerOpen && (
               <button onClick={() => setComposerOpen(true)} style={reportButtonStyle(isMine)}>＋ 進捗を報告</button>
             )}
+            <button
+              onClick={() => actions.onHideTodo(todo)}
+              aria-label={`${todo.title}を報告に出さない`}
+              title="このタスクを報告に出さない（自分の表示だけ。表示設定から戻せます）"
+              style={{ ...inlineActionStyle, textDecoration: 'none', color: '#64748b', fontWeight: 700, padding: '0 2px' }}
+            >
+              隠す
+            </button>
           </div>
         </div>
 
@@ -1938,6 +2283,36 @@ const groupHeaderStyle: React.CSSProperties = {
   top: 0,
   background: '#0f172a',
   zIndex: 1
+}
+
+const settingsChipStyle: React.CSSProperties = {
+  maxWidth: 260,
+  padding: '1px 7px',
+  borderRadius: 999,
+  border: '1px solid #4f46e5',
+  background: '#1e1b4b',
+  color: '#c7d2fe',
+  cursor: 'pointer',
+  fontSize: '0.68rem',
+  fontWeight: 600,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap'
+}
+
+// 担当者の中のカテゴリ（カテゴリの中の担当者）の小見出し。大見出しより控えめにし、左の色線で区別する
+function subGroupHeaderStyle(color: string | null): React.CSSProperties {
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    padding: '5px 8px',
+    marginLeft: 6,
+    borderLeft: `3px solid ${color ?? '#475569'}`,
+    borderRadius: 4,
+    background: '#0b1220'
+  }
 }
 
 const pillStyle: React.CSSProperties = {
