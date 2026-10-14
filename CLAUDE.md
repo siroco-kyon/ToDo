@@ -69,6 +69,9 @@ src/renderer/src/components/ProgressNoteThread.tsx 進捗ログ＋返信スレ�
 src/renderer/src/components/LikeButton.tsx    いいねボタンと押した人のツールチップ（進捗タブ・報告タブ・概要で共通）
 src/renderer/src/components/ProgressSlider.tsx ドラッグ・キー操作で進捗率を変えるバー（離したときに1回だけ保存）
 src/renderer/src/lib/dueDate.ts               日付のみ文字列のローカル解釈と期限色分けの共通ヘルパー
+src/renderer/src/components/TodoChecklist.tsx ToDoリスト（期限なしで続くタスク）の項目の表示・チェック・追加・編集
+src/renderer/src/lib/todoList.ts              ToDoリストの項目の繰り返しの選択肢と「今回 3/5・残り2」の集計
+server/src/shared/recurring-period.ts         ToDoリストの項目の周期の計算（サーバー版・デスクトップ版で共通）
 src/renderer/src/lib/desktopRelease.ts        配布中のデスクトップ版の取得・検証とバージョン比較（React 非依存）
 src/renderer/src/components/UserManagementModal.tsx 管理者用ユーザー管理（サーバー版）
 
@@ -115,6 +118,8 @@ server/scripts/publish-desktop.ts npm run publish:desktop の本体（dist/ を�
 - `/download` はログイン不要のページ。`web/main.tsx` で `AuthGate` より前に分岐して描画する
 - 更新のお知らせ（`DesktopUpdateNotice`）はデスクトップ版のメイン画面（`isDesktopMain`）だけで出し、`App.tsx` には入れない。「後で」で閉じた版は localStorage の `hakobi-desktop-update-dismissed` に保存する
 - 進捗レポート（`ProgressReportModal`）は「やった人」で数える。タスク別レポートには集計したメンバー（`digest.users`）が書いた進捗ログ・返信だけを載せる（副担当など他の人のログを自分の報告に混ぜない。デスクトップ版は絞らない）。サーバー版の完了タスクは完了にした人（`completed_at` と同じ時刻の `TodoChangeLogs` の status → done の操作者。アーカイブからの復元は完了日時を変えないので数えない）、追加サブタスクは `SubTasks.created_by` で数え、記録がない古いデータだけ主担当で数える。サブタスクに合わせて親の期限を延ばした変更も、サブタスクを操作した人の変更として記録する
+- ToDoリスト（`Todos.list_mode = 1`）は期限と繰り返し（次回分の作成）を持たない。`applyTodoUpdate` は SQL 側でも期限を入れないようにしていて、項目の期限に合わせた親の期限延長もしない。両 DB に同じ規則がある
+- ToDoリストの項目（サブタスク）の `recurrence`（daily / weekly / monthly、平日だけは `recurrence_workdays`）は、周期が変わると未チェックに戻す。戻すのは `resetRecurringSubTasks`（サブタスクの読み書きの前と、日付が変わったときの1分ごとの点検。点検で戻したら `subtask` の変更を全画面に知らせる）。チェックの記録は `SubTaskChecks`（周期ごとに1件）に残し、`SubTaskChangeLogs` の進捗の変化には数えない
 - 報告タブの「期間中の変化」は変更履歴から計算する。タスクは `TodoChangeLogs`（`updateTodo` で記録）、サブタスクは `SubTaskChangeLogs`（`updateSubTask` で progress / due_date が変わったときだけ記録）。`todoChangeGetByRange` が両方を返し、`subtask_id` で区別する
 - タスク一覧の絞り込み（担当・カテゴリ・検索）はガント・カンバン・計画・概要・報告にも効く。効いているときは各画面の見出しの横に「絞り込み中」のチップ（`ListFilterChips`、`App.tsx` の `listFilters` を各画面に渡す）を出し、その場で解除できる。1行を取る帯にはしない。報告タブには一覧の担当絞り込みをかけず（`reportTodos`）、報告タブ自身の担当絞り込みで決める。進捗タブの投稿先の選択肢も絞り込み前のタスクから選ぶ
 - タスク追加（`QuickAddModal`）の初期値は、担当＝一覧の担当絞り込みの人（絞っていなければ自分）、カテゴリ＝左で選んでいるもの、開始日＝今日。追加したタスクが今の絞り込みで見えないときは、`handleAdded` が「絞り込みを解除して開く」付きで知らせる

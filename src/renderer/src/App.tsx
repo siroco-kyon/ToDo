@@ -26,6 +26,7 @@ import { NotificationPanel } from './components/NotificationPanel'
 import { OverviewDashboard } from './components/OverviewDashboard'
 import { ReportView } from './components/ReportView'
 import { ListFilterChips, type ListFilterChip } from './components/ListFilterChips'
+import { buildChecklistSummaries } from './lib/todoList'
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
 type CenterView = 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban'
@@ -588,6 +589,8 @@ export function App(): React.JSX.Element {
   }
 
   const filteredTodos = lensTodos.filter((todo) => matchesListFilters(todo)).sort(compareTodos)
+  // ToDoリスト（期限なしで続くタスク）の項目の進み具合。一覧・カンバンのバッジに使う
+  const checklistSummaries = useMemo(() => buildChecklistSummaries(todos, allSubTasks), [allSubTasks, todos])
   const reportTodos = lensTodos.filter((todo) => matchesListFilters(todo, true)).sort(compareTodos)
 
   // タイマーの秒更新では変化せず、概要の集計元が実際に変わったときだけ更新されるキー。
@@ -1261,6 +1264,7 @@ export function App(): React.JSX.Element {
               onReorder={handleReorder}
               onStartTimer={start}
               onStopTimer={stop}
+              checklistSummaries={checklistSummaries}
             />
           </div>
         </div>
@@ -1311,6 +1315,7 @@ export function App(): React.JSX.Element {
               onSelectTodo={openTodoDetail}
               onChangeStatus={handleKanbanMove}
               onCreateInColumn={handleKanbanCreate}
+              checklistSummaries={checklistSummaries}
             />
           ) : activeView === 'plan' && selectedPlanLoading ? (
             <div role="status" style={{ padding: 24, color: '#94a3b8' }}>計画を読み込んでいます…</div>

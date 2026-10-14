@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react'
 import type { Todo } from '../types'
 import { TimerDisplay } from './TimerDisplay'
 import { diffDaysFromToday, getDueDateColor } from '../lib/dueDate'
+import { checklistBadgeText, checklistBadgeTitle, type ChecklistSummary } from '../lib/todoList'
 
 interface Props {
   todos: Todo[]
@@ -23,6 +24,8 @@ interface Props {
   onReorder: (orderedIds: string[]) => Promise<void>
   onStartTimer: (todoId: string) => Promise<void>
   onStopTimer: (note?: string) => Promise<void>
+  /** ToDoリスト（期限なしで続くタスク）の項目の進み具合 */
+  checklistSummaries?: Map<string, ChecklistSummary>
 }
 
 /** 期限の表示。近いものは「今日まで」「3日遅れ」のように残り日数で出す（完了済みは日付だけ） */
@@ -61,13 +64,15 @@ function Highlight({ text, query }: { text: string; query: string }): React.JSX.
 }
 
 function TodoItem({
-  todo, isSelected, isRunning, elapsedSeconds, isManualSort, searchQuery,
+  todo, isSelected, isRunning, elapsedSeconds, isManualSort, searchQuery, checklist,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete,
   onStartTimer, onStopTimer,
   onDragStart, onDragOver, onDrop, isDragOver
 }: {
   todo: Todo; isSelected: boolean; isRunning: boolean; elapsedSeconds: number
   isManualSort: boolean; searchQuery: string
+  /** ToDoリストのときだけ渡す */
+  checklist?: ChecklistSummary
   onSelect: () => void; onToggleDone: () => void
   onArchive: () => void; onUnarchive: () => void; onDelete: () => void
   onStartTimer: () => void; onStopTimer: () => void
@@ -77,7 +82,8 @@ function TodoItem({
   const [hovered, setHovered] = useState(false)
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
   const isArchived = todo.status === 'archived'
-  const prog = todo.progress ?? 0
+  const listMode = Boolean(todo.list_mode)
+  const prog = listMode ? 0 : todo.progress ?? 0
 
   return (
     <div
@@ -104,8 +110,16 @@ function TodoItem({
             <span style={{ color: '#334155', fontSize: '0.8rem', cursor: 'grab', flexShrink: 0, marginTop: 2, userSelect: 'none' }}>⠿</span>
           )}
 
-          {/* 完了チェック */}
-          {!isArchived ? (
+          {/* 完了チェック。ToDoリストは中の項目をチェックして使うので、一覧からは終えられないようにする */}
+          {listMode && !isArchived && todo.status !== 'done' ? (
+            <span
+              title="ToDoリスト（期限なしで続くタスク）。項目のチェックは詳細で行います"
+              aria-label="ToDoリスト"
+              style={{ width: 17, height: 17, flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a5b4fc', fontSize: '0.8rem' }}
+            >
+              ☑
+            </span>
+          ) : !isArchived ? (
             <button
               onClick={(e) => { e.stopPropagation(); onToggleDone() }}
               title={todo.status === 'done' ? '完了を取り消す' : '完了にする'}
@@ -142,6 +156,11 @@ function TodoItem({
               {todo.recurrence && !isArchived && (
                 <span title={`繰り返し: ${todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : '毎月'}`}
                   style={{ fontSize: '0.65rem', color: '#818cf8', flexShrink: 0 }}>🔁</span>
+              )}
+              {listMode && checklist && !isArchived && (
+                <span title={checklistBadgeTitle(checklist)} style={{ fontSize: '0.65rem', color: '#a5b4fc', border: '1px solid #4338ca', borderRadius: 99, padding: '0 6px', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  {checklistBadgeText(checklist)}
+                </span>
               )}
             </div>
 
@@ -223,8 +242,8 @@ function TodoItem({
         </div>
       </div>
 
-      {/* プログレスバー */}
-      {!isArchived && (
+      {/* プログレスバー（ToDoリストは進捗率を使わない） */}
+      {!isArchived && !listMode && (
         <div style={{ height: 3, background: '#0f172a' }}>
           <div style={{ height: '100%', width: `${prog}%`, background: progressColor(prog), transition: 'width 0.3s' }} />
         </div>
@@ -237,7 +256,7 @@ export function TodoList({
   todos, selectedId, runningTodoId, elapsedSeconds, isManualSort, searchQuery,
   hasOtherFilters = false, onClearSearch, onClearFilters, onAddTodo,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete, onReorder,
-  onStartTimer, onStopTimer
+  onStartTimer, onStopTimer, checklistSummaries
 }: Props): React.JSX.Element {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
@@ -288,6 +307,7 @@ export function TodoList({
           elapsedSeconds={runningTodoId === todo.id ? elapsedSeconds : 0}
           isManualSort={isManualSort}
           searchQuery={searchQuery}
+          checklist={checklistSummaries?.get(todo.id)}
           isDragOver={dragOverId === todo.id}
           onSelect={() => onSelect(todo.id)}
           onToggleDone={() => onToggleDone(todo)}

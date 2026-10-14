@@ -57,7 +57,8 @@ const CHANGE_FIELD_LABEL: Record<string, string> = {
   start_date: '開始日',
   due_date: '期限',
   recurrence: '繰り返し',
-  recurrence_copy_subtasks: 'サブタスク引継ぎ'
+  recurrence_copy_subtasks: 'サブタスク引継ぎ',
+  list_mode: '使い方'
 }
 
 const RECURRENCE_LABEL: Record<string, string> = {
@@ -143,6 +144,7 @@ function formatChangeValue(field: string, value: string | null): string {
   if (field === 'priority' && value) return `レベル${value}`
   if (field === 'recurrence' && value) return RECURRENCE_LABEL[value] ?? value
   if (field === 'recurrence_copy_subtasks') return value === '1' ? 'する' : 'しない'
+  if (field === 'list_mode') return value === '1' ? 'ToDoリスト' : 'ふつうのタスク'
   return compactText(value)
 }
 

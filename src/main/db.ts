@@ -5,6 +5,7 @@ import HolidayJp from '@holiday-jp/holiday_jp'
 import { getDataDir } from './config'
 import { assertExpectedValues } from '../../server/src/shared/todo-update-guard'
 import { dependencyCascadeOrder } from '../../server/src/shared/dependency-order'
+import { isCheckStale, isItemRecurrence, periodStartOf, toLocalDateKey, type ItemRecurrence } from '../../server/src/shared/recurring-period'
 
 let db: Database.Database
 
@@ -63,6 +64,7 @@ function createTables(): void {
       recurrence_copy_subtasks INTEGER DEFAULT 0,
       recurrence_skip_weekends INTEGER DEFAULT 0,
       recurrence_skip_holidays INTEGER DEFAULT 0,
+      list_mode INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       archived_at TEXT,
@@ -83,6 +85,8 @@ function createTables(): void {
       completed_at TEXT,
       sort_order INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
+      recurrence TEXT DEFAULT NULL,
+      recurrence_workdays INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (todo_id) REFERENCES Todos(id)
     );
 
@@ -167,6 +171,19 @@ function createTables(): void {
       FOREIGN KEY (subtask_id) REFERENCES SubTasks(id) ON DELETE CASCADE
     );
 
+    -- ToDoリストの繰り返しの項目をチェックした記録（周期ごとに1件。報告タブの実施状況に使う）
+    CREATE TABLE IF NOT EXISTS SubTaskChecks (
+      id TEXT PRIMARY KEY,
+      subtask_id TEXT NOT NULL,
+      todo_id TEXT NOT NULL,
+      period_key TEXT NOT NULL,
+      user_id TEXT,
+      checked_at TEXT NOT NULL,
+      UNIQUE(subtask_id, period_key),
+      FOREIGN KEY (subtask_id) REFERENCES SubTasks(id) ON DELETE CASCADE,
+      FOREIGN KEY (todo_id) REFERENCES Todos(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS ProgressNoteComments (
       id TEXT PRIMARY KEY,
       note_id TEXT NOT NULL,
@@ -204,6 +221,7 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_progress_notes_todo ON ProgressNotes(todo_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_todo_changes_todo_created ON TodoChangeLogs(todo_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_subtask_changes_created ON SubTaskChangeLogs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_subtask_checks_checked ON SubTaskChecks(checked_at);
     CREATE INDEX IF NOT EXISTS idx_progress_comments_note ON ProgressNoteComments(note_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_progress_reactions_note ON ProgressNoteReactions(note_id, emoji);
     CREATE INDEX IF NOT EXISTS idx_comment_reactions_comment ON ProgressCommentReactions(comment_id, emoji);
@@ -282,6 +300,9 @@ function migrateDb(): void {
   if (!todoColumns.some((c) => c.name === 'recurrence_skip_holidays')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN recurrence_skip_holidays INTEGER DEFAULT 0').run()
   }
+  if (!todoColumns.some((c) => c.name === 'list_mode')) {
+    db.prepare('ALTER TABLE Todos ADD COLUMN list_mode INTEGER NOT NULL DEFAULT 0').run()
+  }
   if (!todoColumns.some((c) => c.name === 'on_hold_since')) {
     db.prepare('ALTER TABLE Todos ADD COLUMN on_hold_since TEXT').run()
     // 最後の保留開始を履歴から復元する。アーカイブの取り消しは開始日時を変えない。
@@ -321,6 +342,13 @@ function migrateDb(): void {
   if (!subTaskColumns.some((c) => c.name === 'progress')) {
     db.prepare('ALTER TABLE SubTasks ADD COLUMN progress INTEGER DEFAULT 0').run()
     db.prepare('UPDATE SubTasks SET progress = CASE WHEN done = 1 THEN 100 ELSE 0 END WHERE progress IS NULL OR progress = 0').run()
+  }
+  // ToDoリストの繰り返しの項目
+  if (!subTaskColumns.some((c) => c.name === 'recurrence')) {
+    db.prepare('ALTER TABLE SubTasks ADD COLUMN recurrence TEXT DEFAULT NULL').run()
+  }
+  if (!subTaskColumns.some((c) => c.name === 'recurrence_workdays')) {
+    db.prepare('ALTER TABLE SubTasks ADD COLUMN recurrence_workdays INTEGER NOT NULL DEFAULT 0').run()
   }
 
   if (!dailyPlanColumns.some((c) => c.name === 'lane')) {
@@ -589,6 +617,7 @@ function todoChangeSnapshot(todo: Todo): Record<string, string | null> {
     due_date: todo.due_date,
     recurrence: todo.recurrence,
     recurrence_copy_subtasks: todo.recurrence_copy_subtasks ? '1' : '0',
+    list_mode: todo.list_mode ? '1' : '0',
     co_assignees: (todo.co_assignees ?? []).map((assignee) => assignee.display_name).sort().join('、')
   }
 }
@@ -639,9 +668,15 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
       fields.push('completed_at = COALESCE(completed_at, ?)'); values.push(updatedAt)
     }
   }
+  // ToDoリストは期限と繰り返し（次回分の作成）を持たない。依存関係の再計算などで期限が入らないよう SQL 側でも止める
+  const listModeAfter = data.list_mode !== undefined ? (data.list_mode ? 1 : 0) : undefined
+  const unlessListMode = (column: string): string => listModeAfter === undefined
+    ? `${column} = CASE WHEN list_mode = 1 THEN NULL ELSE ? END`
+    : `${column} = ?`
+  if (listModeAfter !== undefined) { fields.push('list_mode = ?'); values.push(listModeAfter) }
   if (data.start_date !== undefined) { fields.push('start_date = ?'); values.push(normalizeDateKey(data.start_date)) }
-  if (data.due_date !== undefined) { fields.push('due_date = ?'); values.push(normalizeDateKey(data.due_date)) }
-  if (data.recurrence !== undefined) { fields.push('recurrence = ?'); values.push(data.recurrence) }
+  if (data.due_date !== undefined) { fields.push(unlessListMode('due_date')); values.push(listModeAfter === 1 ? null : normalizeDateKey(data.due_date)) }
+  if (data.recurrence !== undefined) { fields.push(unlessListMode('recurrence')); values.push(listModeAfter === 1 ? null : data.recurrence) }
   if (data.recurrence_copy_subtasks !== undefined) { fields.push('recurrence_copy_subtasks = ?'); values.push(data.recurrence_copy_subtasks ? 1 : 0) }
   if (data.recurrence_skip_weekends !== undefined) { fields.push('recurrence_skip_weekends = ?'); values.push(data.recurrence_skip_weekends ? 1 : 0) }
   if (data.recurrence_skip_holidays !== undefined) { fields.push('recurrence_skip_holidays = ?'); values.push(data.recurrence_skip_holidays ? 1 : 0) }
@@ -657,8 +692,8 @@ function getMaxSubTaskDueDate(todoId: string): string | null {
   return normalizeDateKey(row.max_due_date)
 }
 
-function keepTodoDueDateAfterSubTasks(id: string, data: UpdateTodoInput): UpdateTodoInput {
-  if (data.due_date === undefined) return data
+function keepTodoDueDateAfterSubTasks(id: string, data: UpdateTodoInput, listMode: boolean): UpdateTodoInput {
+  if (data.due_date === undefined || listMode) return data
   const maxSubTaskDueDate = getMaxSubTaskDueDate(id)
   const requestedDueDate = normalizeDateKey(data.due_date)
   if (!maxSubTaskDueDate || (requestedDueDate && requestedDueDate >= maxSubTaskDueDate)) return data
@@ -736,13 +771,15 @@ export function createTodo(data: CreateTodoInput): Todo {
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
   const status = data.status ?? 'not_started'
+  const listMode = data.list_mode ? 1 : 0
   const startDate = normalizeDateKey(data.start_date)
-  const dueDate = normalizeDateKey(data.due_date)
+  // ToDoリストは期限と繰り返し（次回分の作成）を持たない
+  const dueDate = listMode ? null : normalizeDateKey(data.due_date)
   // 新規タスクはsort_orderを最小値-1にして先頭に表示
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) as m FROM Todos').get() as { m: number }).m
   db.prepare(
-    `INSERT INTO Todos (id, title, description, memo, category_id, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, recurrence_skip_weekends, recurrence_skip_holidays, created_at, updated_at, completed_at, on_hold_since)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO Todos (id, title, description, memo, category_id, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, recurrence_skip_weekends, recurrence_skip_holidays, list_mode, created_at, updated_at, completed_at, on_hold_since)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     data.title,
@@ -755,10 +792,11 @@ export function createTodo(data: CreateTodoInput): Todo {
     startDate,
     dueDate,
     minOrder - 1,
-    data.recurrence ?? null,
+    listMode ? null : data.recurrence ?? null,
     data.recurrence_copy_subtasks ? 1 : 0,
     data.recurrence_skip_weekends ? 1 : 0,
     data.recurrence_skip_holidays ? 1 : 0,
+    listMode,
     now,
     now,
     status === 'done' ? now : null,
@@ -846,7 +884,7 @@ function spawnNextRecurrence(source: Todo): void {
   if (source.recurrence_copy_subtasks) {
     const now = new Date().toISOString()
     const insert = db.prepare(
-      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?)'
+      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, recurrence, recurrence_workdays) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?, ?, ?)'
     )
     for (const sub of getSubTasksByTodo(source.id)) {
       insert.run(
@@ -858,7 +896,9 @@ function spawnNextRecurrence(source: Todo): void {
         shiftAndSkip(sub.start_date),
         shiftAndSkip(sub.due_date),
         sub.sort_order,
-        now
+        now,
+        sub.recurrence ?? null,
+        sub.recurrence_workdays ? 1 : 0
       )
     }
   }
@@ -870,15 +910,21 @@ export function updateTodo(id: string, data: UpdateTodoInput): Todo {
     const before = getTodoById(id)
     if (!before) throw new Error('タスクが見つかりません。再読み込みしてください')
     assertExpectedValues(before, data)
-    const constrainedData = keepTodoDueDateAfterSubTasks(id, data)
+    const listMode = data.list_mode !== undefined ? Boolean(data.list_mode) : Boolean(before.list_mode)
+    // ToDoリストにするときは、期限と繰り返し（次回分の作成）を外す
+    const listModeData: UpdateTodoInput = data.list_mode && !before.list_mode ? { ...data, due_date: null, recurrence: null } : data
+    const constrainedData = keepTodoDueDateAfterSubTasks(id, listModeData, listMode)
     applyTodoUpdate(id, constrainedData, now)
     if (constrainedData.status === 'on_hold' && getRunningState()?.todo_id === id) {
       stopTimer('タスクを保留しました')
     }
+    if (before.list_mode && data.list_mode !== undefined && !data.list_mode) {
+      db.prepare('UPDATE SubTasks SET recurrence = NULL, recurrence_workdays = 0 WHERE todo_id = ?').run(id)
+    }
     resolveDependencyCascade(id, now)
     const updated = getTodoById(id)
     recordTodoChanges(before, updated, now)
-    if (before.status !== 'done' && updated.status === 'done' && updated.recurrence) {
+    if (before.status !== 'done' && updated.status === 'done' && updated.recurrence && !updated.list_mode) {
       spawnNextRecurrence(updated)
     }
   })()
@@ -890,6 +936,8 @@ function syncTodoDueDateWithSubTasks(todoId: string): string | null {
   if (!maxSubTaskDueDate) return null
 
   const todo = getTodoById(todoId)
+  // ToDoリストは期限を持たないので、項目の期限に合わせて延ばさない
+  if (todo.list_mode) return null
   const normalizedTodoDueDate = normalizeDateKey(todo.due_date)
   if (normalizedTodoDueDate && normalizedTodoDueDate >= maxSubTaskDueDate) return null
 
@@ -1148,15 +1196,64 @@ export function reorderDailyPlanItems(planDate: string, orderedIds: string[]): v
   })()
 }
 
+const isHoliday = (date: Date): boolean => HolidayJp.isHoliday(date)
+
+function normalizeItemRecurrence(value: unknown): ItemRecurrence | null {
+  return isItemRecurrence(value) ? value : null
+}
+
+/** 項目の繰り返しは ToDoリストだけで使う（ふつうのタスクの項目には付けない） */
+function isListTodoId(todoId: string): boolean {
+  const row = db.prepare('SELECT list_mode FROM Todos WHERE id = ?').get(todoId) as { list_mode: number } | undefined
+  return Boolean(row?.list_mode)
+}
+
+/**
+ * ToDoリストの繰り返しの項目のうち、前の周期にチェックしたままのものを未チェックに戻す。戻した件数を返す。
+ * 日付が変わったときの点検と、サブタスクの読み書きの前に呼ぶ。チェックの記録（SubTaskChecks）は残す。
+ */
+export function resetRecurringSubTasks(now: Date = new Date()): number {
+  const rows = db.prepare(
+    // 終えた（完了・アーカイブ）ToDoリストの項目はそのままにしておく
+    `SELECT st.id, st.recurrence, st.recurrence_workdays, st.completed_at
+     FROM SubTasks st JOIN Todos t ON t.id = st.todo_id
+     WHERE st.recurrence IS NOT NULL AND st.done = 1 AND t.list_mode = 1 AND t.status NOT IN ('done', 'archived')`
+  ).all() as Array<{ id: string; recurrence: string; recurrence_workdays: number; completed_at: string | null }>
+  const stale = rows.filter((row) => isItemRecurrence(row.recurrence)
+    && isCheckStale(row.recurrence, Boolean(row.recurrence_workdays), row.completed_at, now, isHoliday))
+  if (stale.length === 0) return 0
+  const reset = db.prepare('UPDATE SubTasks SET done = 0, progress = 0, completed_at = NULL WHERE id = ?')
+  db.transaction(() => { for (const row of stale) reset.run(row.id) })()
+  return stale.length
+}
+
+/** 繰り返しの項目のチェックを、いまの周期の記録として残す（外したときは消す） */
+function recordRecurringCheck(subTask: SubTask, checked: boolean): void {
+  const recurrence = normalizeItemRecurrence(subTask.recurrence)
+  if (!recurrence) return
+  const now = new Date()
+  const periodKey = periodStartOf(recurrence, Boolean(subTask.recurrence_workdays), toLocalDateKey(now), isHoliday)
+  if (checked) {
+    db.prepare(
+      'INSERT OR IGNORE INTO SubTaskChecks (id, subtask_id, todo_id, period_key, user_id, checked_at) VALUES (?, ?, ?, ?, NULL, ?)'
+    ).run(crypto.randomUUID(), subTask.id, subTask.todo_id, periodKey, now.toISOString())
+  } else {
+    db.prepare('DELETE FROM SubTaskChecks WHERE subtask_id = ? AND period_key = ?').run(subTask.id, periodKey)
+  }
+}
+
 export function getSubTasksByTodo(todoId: string): SubTask[] {
+  resetRecurringSubTasks()
   return db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.todo_id = ? ORDER BY st.sort_order ASC, st.created_at ASC').all(todoId) as SubTask[]
 }
 
 export function getAllSubTasks(): SubTask[] {
+  resetRecurringSubTasks()
   return db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st ORDER BY st.todo_id ASC, st.sort_order ASC, st.created_at ASC').all() as SubTask[]
 }
 
 export function getSubTasksForCalendar(): CalendarSubTask[] {
+  resetRecurringSubTasks()
   return db.prepare(
     `SELECT st.*, NULL AS assignee_name, NULL AS assignee_color, t.title AS todo_title, t.status AS todo_status, c.color AS category_color
      FROM SubTasks st
@@ -1196,10 +1293,12 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
     const dueDate = normalizeDateKey(data.due_date)
     const progress = clampProgress(data.progress)
     const done = progress >= 100 ? 1 : 0
+    const recurrence = isListTodoId(todoId) ? normalizeItemRecurrence(data.recurrence) : null
     db.prepare(
-      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now)
+      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, recurrence, recurrence_workdays) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now, recurrence, recurrence && data.recurrence_workdays ? 1 : 0)
     const created = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
+    if (done) recordRecurringCheck(created, true)
     const extendedTo = syncTodoDueDateWithSubTasks(todoId)
     return { ...created, parent_due_date_extended_to: extendedTo }
   })()
@@ -1207,6 +1306,8 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
 
 export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
   return db.transaction(() => {
+    // 前の周期のチェックが残ったまま操作しないよう、先に戻しておく
+    resetRecurringSubTasks()
     const current = db.prepare('SELECT * FROM SubTasks WHERE id = ?').get(id) as SubTask | undefined
     if (!current) throw new Error('サブタスクが見つかりません。再読み込みしてください')
     assertExpectedValues(current, data, 'subtask')
@@ -1226,6 +1327,12 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
     if (data.due_date !== undefined) {
       db.prepare('UPDATE SubTasks SET due_date = ? WHERE id = ?').run(normalizeDateKey(data.due_date), id)
     }
+    if (data.recurrence !== undefined) {
+      db.prepare('UPDATE SubTasks SET recurrence = ? WHERE id = ?').run(isListTodoId(current.todo_id) ? normalizeItemRecurrence(data.recurrence) : null, id)
+    }
+    if (data.recurrence_workdays !== undefined) {
+      db.prepare('UPDATE SubTasks SET recurrence_workdays = ? WHERE id = ?').run(data.recurrence_workdays ? 1 : 0, id)
+    }
     if ((data.done !== undefined || data.progress !== undefined) && current) {
       const progressFromInput = data.progress !== undefined
         ? clampProgress(Number(data.progress))
@@ -1242,19 +1349,23 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
       db.prepare('UPDATE SubTasks SET progress = ?, done = ?, completed_at = ? WHERE id = ?').run(nextProgress, nextDone ? 1 : 0, nextCompletedAt, id)
     }
     const updated = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
+    if (Boolean(current.done) !== Boolean(updated.done)) recordRecurringCheck(updated, Boolean(updated.done))
     if (current) recordSubTaskChanges(current, updated)
     const extendedTo = syncTodoDueDateWithSubTasks(updated.todo_id)
     return { ...updated, parent_due_date_extended_to: extendedTo }
   })()
 }
 
-/** 進捗率・期限が変わったときだけ SubTaskChangeLogs に残す（報告タブの期間中の変化表示用） */
+/**
+ * 進捗率・期限が変わったときだけ SubTaskChangeLogs に残す（報告タブの期間中の変化表示用）。
+ * 繰り返しの項目のチェックは SubTaskChecks に残すので、進捗の変化としては数えない（毎回 0%→100% と出てしまうため）
+ */
 function recordSubTaskChanges(before: { progress: number; due_date: string | null }, after: SubTask): void {
   const now = new Date().toISOString()
   const insert = db.prepare(
     'INSERT INTO SubTaskChangeLogs (id, subtask_id, todo_id, field, old_value, new_value, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
   )
-  if (before.progress !== after.progress) {
+  if (before.progress !== after.progress && !after.recurrence) {
     insert.run(crypto.randomUUID(), after.id, after.todo_id, 'progress', String(before.progress), String(after.progress), now)
   }
   if ((before.due_date ?? null) !== (after.due_date ?? null)) {
@@ -2415,6 +2526,8 @@ export interface Todo {
   recurrence_skip_weekends: number
   /** 1 のとき、繰り返しの次回分が日本の祝日に当たる場合はずらす */
   recurrence_skip_holidays: number
+  /** 1 のとき「ToDoリスト」。期限を持たずに続き、中の項目（サブタスク）を周期ごとにチェックし直して使う */
+  list_mode: number
   /** サブ担当（サーバー版のみ。デスクトップ版では常に未設定） */
   co_assignees?: TodoCoAssignee[]
   created_at: string
@@ -2455,6 +2568,10 @@ export interface SubTask {
   completed_at: string | null
   sort_order: number
   created_at: string
+  /** ToDoリストの繰り返しの項目。周期が変わると未チェックに戻る（毎週は月曜、毎月は1日） */
+  recurrence: 'daily' | 'weekly' | 'monthly' | null
+  /** 1 のとき、毎日の項目を平日だけにする（土日・祝日は前の平日の分が続く） */
+  recurrence_workdays: number
   parent_due_date_extended_to?: string | null
 }
 
@@ -2471,6 +2588,8 @@ export interface CreateSubTaskInput {
   start_date?: string | null
   due_date?: string | null
   progress?: number
+  recurrence?: 'daily' | 'weekly' | 'monthly' | null
+  recurrence_workdays?: number
 }
 
 export interface UpdateSubTaskInput {
@@ -2481,7 +2600,20 @@ export interface UpdateSubTaskInput {
   start_date?: string | null
   due_date?: string | null
   progress?: number
+  recurrence?: 'daily' | 'weekly' | 'monthly' | null
+  recurrence_workdays?: number
   done?: boolean
+}
+
+/** ToDoリストの繰り返しの項目をチェックした記録（周期ごとに1件。チェックを外すと消える） */
+export interface SubTaskCheck {
+  id: string
+  subtask_id: string
+  todo_id: string
+  /** 周期の始まりの日付（毎日はその日、毎週は月曜、毎月は1日） */
+  period_key: string
+  user_id: string | null
+  checked_at: string
 }
 
 export interface CreateTodoInput {
@@ -2500,6 +2632,8 @@ export interface CreateTodoInput {
   recurrence_copy_subtasks?: number
   recurrence_skip_weekends?: number
   recurrence_skip_holidays?: number
+  /** 1 で「ToDoリスト」にする。期限と繰り返し（次回分の作成）は使わない */
+  list_mode?: number
 }
 
 export interface UpdateTodoInput {
@@ -2518,6 +2652,8 @@ export interface UpdateTodoInput {
   recurrence_copy_subtasks?: number
   recurrence_skip_weekends?: number
   recurrence_skip_holidays?: number
+  /** 1 で「ToDoリスト」にする。期限と繰り返し（次回分の作成）は使わない */
+  list_mode?: number
   /** 指定された場合、サブ担当をこのユーザーID群で置き換える（サーバー版のみ有効） */
   co_assignee_ids?: string[]
 }

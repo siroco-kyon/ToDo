@@ -38,6 +38,7 @@ import {
   createSubTask,
   updateSubTask,
   deleteSubTask,
+  resetRecurringSubTasks,
   getProgressNotesByTodo,
   getProgressNotesByDate,
   getProgressNotesByRange,
@@ -73,6 +74,7 @@ import { getDataDir, setDataDir, isFirstLaunch, getDefaultDataDir } from './conf
 import { reregisterShortcuts } from './shortcuts'
 import { runArchiveCleanupSafely } from './archive'
 import { changeLocalDataDirectory } from './data-migration'
+import { toLocalDateKey } from '../../server/src/shared/recurring-period'
 
 export function registerIpcHandlers(
   mainWindow: BrowserWindow,
@@ -96,6 +98,20 @@ export function registerIpcHandlers(
     scopes.forEach(broadcastDataChange)
     return result
   }
+
+  // ToDoリストの繰り返しの項目は、日付が変わったら未チェックに戻して画面に取り直してもらう
+  let lastDayKey = toLocalDateKey(new Date())
+  setInterval(() => {
+    const dayKey = toLocalDateKey(new Date())
+    if (dayKey === lastDayKey) return
+    lastDayKey = dayKey
+    try {
+      resetRecurringSubTasks()
+      broadcastDataChange('subtask')
+    } catch (error) {
+      console.error('ToDoリストの項目を未チェックに戻せませんでした', error)
+    }
+  }, 60 * 1000)
 
   // Categories
   ipcMain.handle('category:getAll', () => getAllCategories())

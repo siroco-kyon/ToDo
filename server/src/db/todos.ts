@@ -97,6 +97,7 @@ function todoChangeSnapshot(todo: Todo): Record<string, string | null> {
     due_date: todo.due_date,
     recurrence: todo.recurrence,
     recurrence_copy_subtasks: todo.recurrence_copy_subtasks ? '1' : '0',
+    list_mode: todo.list_mode ? '1' : '0',
     co_assignees: (todo.co_assignees ?? []).map((assignee) => assignee.display_name).sort().join('、')
   }
 }
@@ -148,9 +149,15 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
       fields.push('completed_at = COALESCE(completed_at, ?)'); values.push(updatedAt)
     }
   }
+  // ToDoリストは期限と繰り返し（次回分の作成）を持たない。依存関係の再計算などで期限が入らないよう SQL 側でも止める
+  const listModeAfter = data.list_mode !== undefined ? (data.list_mode ? 1 : 0) : undefined
+  const unlessListMode = (column: string): string => listModeAfter === undefined
+    ? `${column} = CASE WHEN list_mode = 1 THEN NULL ELSE ? END`
+    : `${column} = ?`
+  if (listModeAfter !== undefined) { fields.push('list_mode = ?'); values.push(listModeAfter) }
   if (data.start_date !== undefined) { fields.push('start_date = ?'); values.push(normalizeDateKey(data.start_date)) }
-  if (data.due_date !== undefined) { fields.push('due_date = ?'); values.push(normalizeDateKey(data.due_date)) }
-  if (data.recurrence !== undefined) { fields.push('recurrence = ?'); values.push(data.recurrence) }
+  if (data.due_date !== undefined) { fields.push(unlessListMode('due_date')); values.push(listModeAfter === 1 ? null : normalizeDateKey(data.due_date)) }
+  if (data.recurrence !== undefined) { fields.push(unlessListMode('recurrence')); values.push(listModeAfter === 1 ? null : data.recurrence) }
   if (data.recurrence_copy_subtasks !== undefined) { fields.push('recurrence_copy_subtasks = ?'); values.push(data.recurrence_copy_subtasks ? 1 : 0) }
   if (data.recurrence_skip_weekends !== undefined) { fields.push('recurrence_skip_weekends = ?'); values.push(data.recurrence_skip_weekends ? 1 : 0) }
   if (data.recurrence_skip_holidays !== undefined) { fields.push('recurrence_skip_holidays = ?'); values.push(data.recurrence_skip_holidays ? 1 : 0) }
@@ -166,8 +173,8 @@ function getMaxSubTaskDueDate(todoId: string): string | null {
   return normalizeDateKey(row.max_due_date)
 }
 
-function keepTodoDueDateAfterSubTasks(id: string, data: UpdateTodoInput): UpdateTodoInput {
-  if (data.due_date === undefined) return data
+function keepTodoDueDateAfterSubTasks(id: string, data: UpdateTodoInput, listMode: boolean): UpdateTodoInput {
+  if (data.due_date === undefined || listMode) return data
   const maxSubTaskDueDate = getMaxSubTaskDueDate(id)
   const requestedDueDate = normalizeDateKey(data.due_date)
   if (!maxSubTaskDueDate || (requestedDueDate && requestedDueDate >= maxSubTaskDueDate)) return data
@@ -247,12 +254,14 @@ export function createTodo(data: CreateTodoInput, createdByUserId: string | null
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
   const status = data.status ?? 'not_started'
+  const listMode = data.list_mode ? 1 : 0
   const startDate = normalizeDateKey(data.start_date)
-  const dueDate = normalizeDateKey(data.due_date)
+  // ToDoリストは期限と繰り返し（次回分の作成）を持たない
+  const dueDate = listMode ? null : normalizeDateKey(data.due_date)
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) AS m FROM Todos').get() as { m: number }).m
   db.prepare(
-    `INSERT INTO Todos (id, title, description, memo, category_id, assignee_id, created_by, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, recurrence_skip_weekends, recurrence_skip_holidays, created_at, updated_at, completed_at, on_hold_since)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO Todos (id, title, description, memo, category_id, assignee_id, created_by, status, priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks, recurrence_skip_weekends, recurrence_skip_holidays, list_mode, created_at, updated_at, completed_at, on_hold_since)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     data.title,
@@ -267,10 +276,11 @@ export function createTodo(data: CreateTodoInput, createdByUserId: string | null
     startDate,
     dueDate,
     minOrder - 1,
-    data.recurrence ?? null,
+    listMode ? null : data.recurrence ?? null,
     data.recurrence_copy_subtasks ? 1 : 0,
     data.recurrence_skip_weekends ? 1 : 0,
     data.recurrence_skip_holidays ? 1 : 0,
+    listMode,
     now,
     now,
     status === 'done' ? now : null,
@@ -363,11 +373,11 @@ function spawnNextRecurrence(source: Todo): void {
     const now = new Date().toISOString()
     // 追加した人はタスク本体（created_by）と同じく元のサブタスクから引き継ぐ
     const insert = db.prepare(
-      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?, ?)'
+      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by, recurrence, recurrence_workdays) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, ?, ?, ?, ?)'
     )
     const subTasks = db
       .prepare('SELECT * FROM SubTasks WHERE todo_id = ? ORDER BY sort_order ASC, created_at ASC')
-      .all(source.id) as Array<{ title: string; description: string | null; assignee_id: string | null; start_date: string | null; due_date: string | null; sort_order: number; created_by: string | null }>
+      .all(source.id) as Array<{ title: string; description: string | null; assignee_id: string | null; start_date: string | null; due_date: string | null; sort_order: number; created_by: string | null; recurrence: string | null; recurrence_workdays: number }>
     for (const sub of subTasks) {
       insert.run(
         crypto.randomUUID(),
@@ -379,7 +389,9 @@ function spawnNextRecurrence(source: Todo): void {
         shiftAndSkip(sub.due_date),
         sub.sort_order,
         now,
-        sub.created_by ?? null
+        sub.created_by ?? null,
+        sub.recurrence ?? null,
+        sub.recurrence_workdays ? 1 : 0
       )
     }
   }
@@ -393,7 +405,10 @@ export function updateTodo(id: string, data: UpdateTodoInput, changedByUserId: s
     const before = getTodoById(id)
     if (!before) throw new Error('タスクが見つかりません。再読み込みしてください')
     assertExpectedValues(before, data)
-    const constrainedData = keepTodoDueDateAfterSubTasks(id, data)
+    const listMode = data.list_mode !== undefined ? Boolean(data.list_mode) : Boolean(before.list_mode)
+    // ToDoリストにするときは、期限と繰り返し（次回分の作成）を外す
+    const listModeData: UpdateTodoInput = data.list_mode && !before.list_mode ? { ...data, due_date: null, recurrence: null } : data
+    const constrainedData = keepTodoDueDateAfterSubTasks(id, listModeData, listMode)
     applyTodoUpdate(id, constrainedData, now)
     if (constrainedData.status === 'on_hold') {
       const running = db.prepare('SELECT user_id FROM RunningState WHERE todo_id = ?').all(id) as Array<{ user_id: string }>
@@ -402,10 +417,13 @@ export function updateTodo(id: string, data: UpdateTodoInput, changedByUserId: s
     if (constrainedData.co_assignee_ids !== undefined) {
       replaceCoAssignees(id, constrainedData.co_assignee_ids, now)
     }
+    if (before.list_mode && data.list_mode !== undefined && !data.list_mode) {
+      db.prepare('UPDATE SubTasks SET recurrence = NULL, recurrence_workdays = 0 WHERE todo_id = ?').run(id)
+    }
     resolveDependencyCascade(id, now)
     const updated = getTodoById(id)
     recordTodoChanges(before, updated, changedByUserId, now)
-    if (before.status !== 'done' && updated.status === 'done' && updated.recurrence) {
+    if (before.status !== 'done' && updated.status === 'done' && updated.recurrence && !updated.list_mode) {
       spawnNextRecurrence(updated)
     }
   })()
@@ -418,6 +436,8 @@ export function syncTodoDueDateWithSubTasks(todoId: string, changedByUserId: str
   if (!maxSubTaskDueDate) return null
 
   const todo = getTodoById(todoId)
+  // ToDoリストは期限を持たないので、項目の期限に合わせて延ばさない
+  if (todo.list_mode) return null
   const normalizedTodoDueDate = normalizeDateKey(todo.due_date)
   if (normalizedTodoDueDate && normalizedTodoDueDate >= maxSubTaskDueDate) return null
 

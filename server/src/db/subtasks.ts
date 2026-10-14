@@ -1,7 +1,9 @@
 import { assertAssignableUser } from './users'
 import crypto from 'crypto'
+import HolidayJp from '@holiday-jp/holiday_jp'
 import { getDb } from './connection'
 import { assertExpectedValues } from '../shared/todo-update-guard'
+import { isCheckStale, isItemRecurrence, periodStartOf, toLocalDateKey, type ItemRecurrence } from '../shared/recurring-period'
 import { clampProgress, normalizeDateKey } from './helpers'
 import { syncTodoDueDateWithSubTasks } from './todos'
 import type { CalendarSubTask, CreateSubTaskInput, SubTask, UpdateSubTaskInput } from './types'
@@ -14,19 +16,70 @@ const SUBTASK_SELECT = `
   LEFT JOIN Users u ON st.assignee_id = u.id
 `
 
+const isHoliday = (date: Date): boolean => HolidayJp.isHoliday(date)
+
+function normalizeItemRecurrence(value: unknown): ItemRecurrence | null {
+  return isItemRecurrence(value) ? value : null
+}
+
+/** 項目の繰り返しは ToDoリストだけで使う（ふつうのタスクの項目には付けない） */
+function isListTodoId(todoId: string): boolean {
+  const row = getDb().prepare('SELECT list_mode FROM Todos WHERE id = ?').get(todoId) as { list_mode: number } | undefined
+  return Boolean(row?.list_mode)
+}
+
+/**
+ * ToDoリストの繰り返しの項目のうち、前の周期にチェックしたままのものを未チェックに戻す。戻した件数を返す。
+ * 日付が変わったときの点検と、サブタスクの読み書きの前に呼ぶ。チェックの記録（SubTaskChecks）は残す。
+ */
+export function resetRecurringSubTasks(now: Date = new Date()): number {
+  const db = getDb()
+  const rows = db.prepare(
+    // 終えた（完了・アーカイブ）ToDoリストの項目はそのままにしておく
+    `SELECT st.id, st.recurrence, st.recurrence_workdays, st.completed_at
+     FROM SubTasks st JOIN Todos t ON t.id = st.todo_id
+     WHERE st.recurrence IS NOT NULL AND st.done = 1 AND t.list_mode = 1 AND t.status NOT IN ('done', 'archived')`
+  ).all() as Array<{ id: string; recurrence: string; recurrence_workdays: number; completed_at: string | null }>
+  const stale = rows.filter((row) => isItemRecurrence(row.recurrence)
+    && isCheckStale(row.recurrence, Boolean(row.recurrence_workdays), row.completed_at, now, isHoliday))
+  if (stale.length === 0) return 0
+  const reset = db.prepare('UPDATE SubTasks SET done = 0, progress = 0, completed_at = NULL WHERE id = ?')
+  db.transaction(() => { for (const row of stale) reset.run(row.id) })()
+  return stale.length
+}
+
+/** 繰り返しの項目のチェックを、いまの周期の記録として残す（外したときは消す） */
+function recordRecurringCheck(subTask: SubTask, checked: boolean, userId: string | null): void {
+  const recurrence = normalizeItemRecurrence(subTask.recurrence)
+  if (!recurrence) return
+  const now = new Date()
+  const periodKey = periodStartOf(recurrence, Boolean(subTask.recurrence_workdays), toLocalDateKey(now), isHoliday)
+  const db = getDb()
+  if (checked) {
+    db.prepare(
+      'INSERT OR IGNORE INTO SubTaskChecks (id, subtask_id, todo_id, period_key, user_id, checked_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(crypto.randomUUID(), subTask.id, subTask.todo_id, periodKey, userId, now.toISOString())
+  } else {
+    db.prepare('DELETE FROM SubTaskChecks WHERE subtask_id = ? AND period_key = ?').run(subTask.id, periodKey)
+  }
+}
+
 export function getSubTasksByTodo(todoId: string): SubTask[] {
+  resetRecurringSubTasks()
   return getDb()
     .prepare(`${SUBTASK_SELECT} WHERE st.todo_id = ? ORDER BY st.sort_order ASC, st.created_at ASC`)
     .all(todoId) as SubTask[]
 }
 
 export function getAllSubTasks(): SubTask[] {
+  resetRecurringSubTasks()
   return getDb()
     .prepare(`${SUBTASK_SELECT} ORDER BY st.todo_id ASC, st.sort_order ASC, st.created_at ASC`)
     .all() as SubTask[]
 }
 
 export function getSubTasksForCalendar(): CalendarSubTask[] {
+  resetRecurringSubTasks()
   return getDb()
     .prepare(
       `SELECT st.*,
@@ -77,10 +130,12 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput, createdB
     const dueDate = normalizeDateKey(data.due_date)
     const progress = clampProgress(data.progress)
     const done = progress >= 100 ? 1 : 0
+    const recurrence = isListTodoId(todoId) ? normalizeItemRecurrence(data.recurrence) : null
     db.prepare(
-      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now, createdByUserId)
+      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by, recurrence, recurrence_workdays) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now, createdByUserId, recurrence, recurrence && data.recurrence_workdays ? 1 : 0)
     const created = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
+    if (done) recordRecurringCheck(created, true, createdByUserId)
     const extendedTo = syncTodoDueDateWithSubTasks(todoId, createdByUserId)
     return { ...created, parent_due_date_extended_to: extendedTo }
   })()
@@ -90,6 +145,8 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput, changedByUse
   assertAssignableUser(data.assignee_id)
   const db = getDb()
   return db.transaction(() => {
+    // 前の周期のチェックが残ったまま操作しないよう、先に戻しておく
+    resetRecurringSubTasks()
     const current = db.prepare('SELECT * FROM SubTasks WHERE id = ?').get(id) as SubTask | undefined
     if (!current) throw new Error('サブタスクが見つかりません。再読み込みしてください')
     assertExpectedValues(current, data, 'subtask')
@@ -109,6 +166,12 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput, changedByUse
     if (data.due_date !== undefined) {
       db.prepare('UPDATE SubTasks SET due_date = ? WHERE id = ?').run(normalizeDateKey(data.due_date), id)
     }
+    if (data.recurrence !== undefined) {
+      db.prepare('UPDATE SubTasks SET recurrence = ? WHERE id = ?').run(isListTodoId(current.todo_id) ? normalizeItemRecurrence(data.recurrence) : null, id)
+    }
+    if (data.recurrence_workdays !== undefined) {
+      db.prepare('UPDATE SubTasks SET recurrence_workdays = ? WHERE id = ?').run(data.recurrence_workdays ? 1 : 0, id)
+    }
     if ((data.done !== undefined || data.progress !== undefined) && current) {
       const progressFromInput = data.progress !== undefined
         ? clampProgress(Number(data.progress))
@@ -125,13 +188,17 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput, changedByUse
       db.prepare('UPDATE SubTasks SET progress = ?, done = ?, completed_at = ? WHERE id = ?').run(nextProgress, nextDone ? 1 : 0, nextCompletedAt, id)
     }
     const updated = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
+    if (Boolean(current.done) !== Boolean(updated.done)) recordRecurringCheck(updated, Boolean(updated.done), changedByUserId)
     if (current) recordSubTaskChanges(current, updated, changedByUserId)
     const extendedTo = syncTodoDueDateWithSubTasks(updated.todo_id, changedByUserId)
     return { ...updated, parent_due_date_extended_to: extendedTo }
   })()
 }
 
-/** 進捗率・期限が変わったときだけ SubTaskChangeLogs に残す（報告タブの期間中の変化表示用） */
+/**
+ * 進捗率・期限が変わったときだけ SubTaskChangeLogs に残す（報告タブの期間中の変化表示用）。
+ * 繰り返しの項目のチェックは SubTaskChecks に残すので、進捗の変化としては数えない（毎回 0%→100% と出てしまうため）
+ */
 function recordSubTaskChanges(
   before: { progress: number; due_date: string | null },
   after: SubTask,
@@ -141,7 +208,7 @@ function recordSubTaskChanges(
   const insert = getDb().prepare(
     'INSERT INTO SubTaskChangeLogs (id, subtask_id, todo_id, user_id, field, old_value, new_value, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   )
-  if (before.progress !== after.progress) {
+  if (before.progress !== after.progress && !after.recurrence) {
     insert.run(crypto.randomUUID(), after.id, after.todo_id, changedByUserId, 'progress', String(before.progress), String(after.progress), now)
   }
   if ((before.due_date ?? null) !== (after.due_date ?? null)) {
