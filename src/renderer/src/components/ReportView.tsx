@@ -479,11 +479,12 @@ function splitSubTasks(subTasks: SubTask[], mode: ReportSubTaskMode, periodFrom:
 }
 
 /** ToDoリストの項目を、繰り返しの項目・まだのやること・期間中に済んだやることに分ける */
-function splitListItems(row: ReportRow, periodFrom: string): { repeat: SubTask[]; open: SubTask[]; doneInPeriod: SubTask[] } {
+function splitListItems(row: ReportRow, period: DateRange): { repeat: SubTask[]; open: SubTask[]; doneInPeriod: SubTask[] } {
   return {
     repeat: row.subTasks.filter((item) => item.recurrence),
     open: row.subTasks.filter((item) => !item.recurrence && !item.done),
-    doneInPeriod: row.subTasks.filter((item) => !item.recurrence && item.done && item.completed_at != null && isoToDateKey(item.completed_at) >= periodFrom)
+    // 過去の期間を選んだときに、その後で済んだものを数えないよう、期間の終わりでも区切る
+    doneInPeriod: row.subTasks.filter((item) => !item.recurrence && item.done && item.completed_at != null && isInRange(isoToDateKey(item.completed_at), period))
   }
 }
 
@@ -613,8 +614,8 @@ function noteToMarkdown(note: ProgressNote, indent: string, withTask: boolean): 
 }
 
 interface MarkdownOptions {
-  /** 期間の開始日（ToDoリストの「期間中に済んだやること」に使う） */
-  periodFrom: string
+  /** 報告の期間（ToDoリストの「期間中に済んだやること」に使う） */
+  period: DateRange
   mode: GroupMode
   multiUser: boolean
   /** 小見出しで分けるとき、その分け方と並べ方 */
@@ -637,9 +638,9 @@ function rowToMarkdown(row: ReportRow, heading: string, options: MarkdownOptions
   lines.push(todo.list_mode
     ? `- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} から続く（期限なし）`
     : `- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} / 期限 ${todo.due_date?.slice(0, 10) ?? '未設定'}`)
-  const delta = progressDeltaText(row, row.todo.progress)
+  const delta = todo.list_mode ? null : progressDeltaText(row, row.todo.progress)
   if (delta) lines.push(`- 期間中の進捗: ${delta}`)
-  const dueChange = dueChangeText(row, row.todo.due_date)
+  const dueChange = todo.list_mode ? null : dueChangeText(row, row.todo.due_date)
   if (dueChange) lines.push(`- 期限の変更: ${dueChange}`)
   // 小見出しで分かることは繰り返さない
   if (options.mode === 'assignee') {
@@ -654,7 +655,7 @@ function rowToMarkdown(row: ReportRow, heading: string, options: MarkdownOptions
   }
   const subTasks = todo.list_mode ? [] : subTasksForExport(row.subTasks, options.subTaskMode)
   if (todo.list_mode) {
-    const items = splitListItems(row, options.periodFrom)
+    const items = splitListItems(row, options.period)
     if (items.repeat.length > 0) {
       lines.push('- 繰り返しの項目（期間中にチェックした回数）:')
       for (const item of items.repeat) lines.push(`  - ${item.title}（${repeatLabel(item) ?? ''}・${checkCountText(row.checkSummaries.get(item.id)) ?? '対象の期間なし'}）`)
@@ -730,7 +731,7 @@ function notesToPlainText(notes: ProgressNote[]): string {
     .join('\n\n')
 }
 
-function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, periodFrom: string): string {
+function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, period: DateRange): string {
   const headers = ['担当', 'カテゴリ', 'タスク', 'サブタスク', '状態', '保留開始', '保留期間', '開始', '期限', '進捗(%)', '期間中の進捗', '期限の変更', '最終報告', '要相談', '期間内の進捗コメント', 'メモ']
   const rows: Array<Array<string | number | null>> = []
   for (const group of groups) {
@@ -747,15 +748,15 @@ function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, peri
         todo.start_date?.slice(0, 10) ?? '',
         todo.due_date?.slice(0, 10) ?? '',
         todo.list_mode ? '' : todo.progress,
-        progressDeltaText(row, row.todo.progress) ?? '',
-        dueChangeText(row, row.todo.due_date) ?? '',
+        todo.list_mode ? '' : progressDeltaText(row, row.todo.progress) ?? '',
+        todo.list_mode ? '' : dueChangeText(row, row.todo.due_date) ?? '',
         row.lastReportAt ? formatDateTime(row.lastReportAt) : '',
         row.discussions.length > 0 ? `${row.discussions.length}件` : '',
         notesToPlainText(row.notes),
         todo.memo.trim()
       ])
       if (todo.list_mode) {
-        const items = splitListItems(row, periodFrom)
+        const items = splitListItems(row, period)
         for (const item of [...items.repeat, ...items.open, ...items.doneInPeriod]) {
           rows.push([
             item.assignee_name ?? '',
@@ -1250,7 +1251,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const handleCopyMarkdown = async (): Promise<void> => {
     try {
       await copyTextToClipboard(reportToMarkdown(groups, range, {
-        periodFrom: range.from,
+        period: range,
         mode: effectiveGroupMode,
         multiUser,
         subGroupMode,
@@ -1269,6 +1270,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       key={row.todo.id}
       row={row}
       periodFrom={range.from}
+      periodTo={range.to}
       groupMode={effectiveGroupMode}
       subGroupMode={subGroupMode}
       subTaskMode={settings.subTaskMode}
@@ -1281,7 +1283,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   )
 
   const handleDownloadCsv = (): void => {
-    downloadCsv(`report-${range.from}_${range.to}-${dateStamp()}.csv`, reportToCsv(groups, settings.subTaskMode, range.from))
+    downloadCsv(`report-${range.from}_${range.to}-${dateStamp()}.csv`, reportToCsv(groups, settings.subTaskMode, range))
   }
 
   return (
@@ -1863,8 +1865,8 @@ function AddSubTaskForm({ todo, actions }: { todo: Todo; actions: ReportCardActi
 }
 
 /** ToDoリストの項目の、期間中の実施状況（繰り返しの項目は何回チェックしたか、やることは残りと済んだもの） */
-function ListItemsSummary({ row, periodFrom }: { row: ReportRow; periodFrom: string }): React.JSX.Element {
-  const items = splitListItems(row, periodFrom)
+function ListItemsSummary({ row, period }: { row: ReportRow; period: DateRange }): React.JSX.Element {
+  const items = splitListItems(row, period)
   const labelStyle: React.CSSProperties = { fontSize: '0.7rem', color: '#64748b' }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 2, paddingTop: 8, borderTop: '1px dashed #1e293b' }}>
@@ -1911,6 +1913,7 @@ function ListItemsSummary({ row, periodFrom }: { row: ReportRow; periodFrom: str
 function ReportTaskCard({
   row,
   periodFrom,
+  periodTo,
   groupMode,
   subGroupMode,
   subTaskMode,
@@ -1922,6 +1925,7 @@ function ReportTaskCard({
 }: {
   row: ReportRow
   periodFrom: string
+  periodTo: string
   groupMode: GroupMode
   subGroupMode: SubGroupMode | null
   subTaskMode: ReportSubTaskMode
@@ -1948,8 +1952,9 @@ function ReportTaskCard({
   const dueLabel = formatDueLabel(todo.due_date, todo.status)
   const hold = getOnHoldInfo(todo.on_hold_since)
   const memo = todo.memo.trim()
-  const progressDelta = progressDeltaText(row, row.todo.progress)
-  const dueChange = dueChangeText(row, row.todo.due_date)
+  // ToDoリストは進捗率と期限を使わないので、切り替える前の変化も出さない
+  const progressDelta = todo.list_mode ? null : progressDeltaText(row, row.todo.progress)
+  const dueChange = todo.list_mode ? null : dueChangeText(row, row.todo.due_date)
   const canPost = !posting && draft.trim().length > 0
   const memoChanged = memoDraft !== todo.memo
 
@@ -2132,7 +2137,7 @@ function ReportTaskCard({
         )}
 
         {todo.list_mode ? (
-          <ListItemsSummary row={row} periodFrom={periodFrom} />
+          <ListItemsSummary row={row} period={{ from: periodFrom, to: periodTo }} />
         ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 2, paddingTop: 8, borderTop: '1px dashed #1e293b' }}>
           {subTasks.length > 0 && (
