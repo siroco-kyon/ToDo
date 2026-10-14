@@ -1853,9 +1853,13 @@ export function getTodoChangesByRange(from: string, to: string): TodoChangeEntry
   }
   return db
     .prepare(
-      `SELECT id, todo_id, NULL AS subtask_id, field, old_value, new_value, created_at
+      // メモは「期間中に更新があったか」だけに使うので、本文は返さない
+      `SELECT id, todo_id, NULL AS subtask_id, field,
+              CASE WHEN field = 'memo' THEN NULL ELSE old_value END AS old_value,
+              CASE WHEN field = 'memo' THEN NULL ELSE new_value END AS new_value,
+              created_at
        FROM TodoChangeLogs
-       WHERE field IN ('progress', 'due_date') AND date(created_at, 'localtime') BETWEEN ? AND ?
+       WHERE field IN ('progress', 'due_date', 'memo') AND date(created_at, 'localtime') BETWEEN ? AND ?
        UNION ALL
        SELECT id, todo_id, subtask_id, field, old_value, new_value, created_at
        FROM SubTaskChangeLogs
@@ -2214,7 +2218,8 @@ export interface TodoChangeEntry {
   todo_id: string
   /** サブタスクの変更のときそのID。タスク自体の変更は null */
   subtask_id: string | null
-  field: 'progress' | 'due_date'
+  /** memo はタスク自体のメモの更新。期間中に更新があったかだけに使い、値（本文）は null */
+  field: 'progress' | 'due_date' | 'memo'
   old_value: string | null
   new_value: string | null
   created_at: string
