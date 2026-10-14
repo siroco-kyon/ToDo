@@ -1,8 +1,28 @@
 import React, { useState, useRef } from 'react'
-import type { Todo } from '../types'
+import type { SubTask, Todo } from '../types'
 import { TimerDisplay } from './TimerDisplay'
-import { diffDaysFromToday, getDueDateColor } from '../lib/dueDate'
+import { QuickCheckItem } from './TodoChecklist'
+import { diffDaysFromToday, getDueDateColor, toDateKey } from '../lib/dueDate'
 import { checklistBadgeText, checklistBadgeTitle, type ChecklistSummary } from '../lib/todoList'
+
+const EXPANDED_LISTS_KEY = 'todoList.expandedLists'
+
+function readExpandedLists(): Set<string> {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(EXPANDED_LISTS_KEY) ?? '[]') as unknown
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+/** 一覧で開いたときに出す項目。繰り返しの項目 → まだのやること（期限が過ぎたものを上に） */
+function expandedItemsOf(items: SubTask[], todayKey: string): SubTask[] {
+  const open = items.filter((item) => !item.recurrence && !item.done)
+  const overdue = open.filter((item) => item.due_date != null && item.due_date.slice(0, 10) < todayKey)
+    .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+  return [...items.filter((item) => item.recurrence), ...overdue, ...open.filter((item) => !overdue.includes(item))]
+}
 
 interface Props {
   todos: Todo[]
@@ -26,6 +46,10 @@ interface Props {
   onStopTimer: (note?: string) => Promise<void>
   /** ToDoリスト（期限なしで続くタスク）の項目の進み具合 */
   checklistSummaries?: Map<string, ChecklistSummary>
+  /** ToDoリストの項目（▸ で開いて、その場でチェックできる） */
+  listItemsByTodo?: Map<string, SubTask[]>
+  pendingItemIds?: Set<string>
+  onToggleListItem?: (item: SubTask) => void
 }
 
 /** 期限の表示。近いものは「今日まで」「3日遅れ」のように残り日数で出す（完了済みは日付だけ） */
@@ -65,6 +89,7 @@ function Highlight({ text, query }: { text: string; query: string }): React.JSX.
 
 function TodoItem({
   todo, isSelected, isRunning, elapsedSeconds, isManualSort, searchQuery, checklist,
+  listItems, expanded, pendingItemIds, onToggleExpanded, onToggleListItem,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete,
   onStartTimer, onStopTimer,
   onDragStart, onDragOver, onDrop, isDragOver
@@ -73,6 +98,11 @@ function TodoItem({
   isManualSort: boolean; searchQuery: string
   /** ToDoリストのときだけ渡す */
   checklist?: ChecklistSummary
+  listItems?: SubTask[]
+  expanded: boolean
+  pendingItemIds?: Set<string>
+  onToggleExpanded: () => void
+  onToggleListItem?: (item: SubTask) => void
   onSelect: () => void; onToggleDone: () => void
   onArchive: () => void; onUnarchive: () => void; onDelete: () => void
   onStartTimer: () => void; onStopTimer: () => void
@@ -84,6 +114,9 @@ function TodoItem({
   const isArchived = todo.status === 'archived'
   const listMode = Boolean(todo.list_mode)
   const prog = listMode ? 0 : todo.progress ?? 0
+  const canExpand = listMode && !isArchived && onToggleListItem != null && (listItems?.length ?? 0) > 0
+  const todayKey = toDateKey(new Date())
+  const shownItems = canExpand && expanded ? expandedItemsOf(listItems ?? [], todayKey) : []
 
   return (
     <div
@@ -161,6 +194,17 @@ function TodoItem({
                 <span title={checklistBadgeTitle(checklist)} style={{ fontSize: '0.65rem', color: '#a5b4fc', border: '1px solid #4338ca', borderRadius: 99, padding: '0 6px', flexShrink: 0, whiteSpace: 'nowrap' }}>
                   {checklistBadgeText(checklist)}
                 </span>
+              )}
+              {canExpand && (
+                <button
+                  onClick={(event) => { event.stopPropagation(); onToggleExpanded() }}
+                  aria-expanded={expanded}
+                  aria-label={expanded ? `${todo.title}の項目を閉じる` : `${todo.title}の項目を開く`}
+                  title={expanded ? '項目を閉じる' : '項目を開いて、ここでチェックする'}
+                  style={{ background: 'none', border: 'none', padding: '0 2px', cursor: 'pointer', color: '#a5b4fc', fontSize: '0.72rem', flexShrink: 0, transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }}
+                >
+                  ▸
+                </button>
               )}
             </div>
 
@@ -242,6 +286,26 @@ function TodoItem({
         </div>
       </div>
 
+      {/* ToDoリストを開いたときの項目。その場でチェックでき、名前を押すと詳細を開く */}
+      {shownItems.length > 0 && (
+        <div onClick={(event) => event.stopPropagation()} style={{ padding: '0 12px 8px 37px', display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {shownItems.map((item) => (
+            <QuickCheckItem
+              key={item.id}
+              item={item}
+              pending={pendingItemIds?.has(item.id) ?? false}
+              todayKey={todayKey}
+              listTitle={todo.title}
+              onToggle={() => onToggleListItem?.(item)}
+              onOpen={onSelect}
+            />
+          ))}
+        </div>
+      )}
+      {canExpand && expanded && shownItems.length === 0 && (
+        <div style={{ padding: '0 12px 8px 37px', fontSize: '0.72rem', color: '#64748b' }}>まだのやることはありません</div>
+      )}
+
       {/* プログレスバー（ToDoリストは進捗率を使わない） */}
       {!isArchived && !listMode && (
         <div style={{ height: 3, background: '#0f172a' }}>
@@ -256,8 +320,22 @@ export function TodoList({
   todos, selectedId, runningTodoId, elapsedSeconds, isManualSort, searchQuery,
   hasOtherFilters = false, onClearSearch, onClearFilters, onAddTodo,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete, onReorder,
-  onStartTimer, onStopTimer, checklistSummaries
+  onStartTimer, onStopTimer, checklistSummaries, listItemsByTodo, pendingItemIds, onToggleListItem
 }: Props): React.JSX.Element {
+  const [expandedLists, setExpandedLists] = useState<Set<string>>(readExpandedLists)
+  const toggleExpanded = (id: string): void => {
+    setExpandedLists((previous) => {
+      const next = new Set(previous)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      try {
+        window.localStorage.setItem(EXPANDED_LISTS_KEY, JSON.stringify([...next]))
+      } catch {
+        // 保存できなくても開閉はできる
+      }
+      return next
+    })
+  }
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const dragging = useRef(false)
@@ -308,6 +386,11 @@ export function TodoList({
           isManualSort={isManualSort}
           searchQuery={searchQuery}
           checklist={checklistSummaries?.get(todo.id)}
+          listItems={listItemsByTodo?.get(todo.id)}
+          expanded={expandedLists.has(todo.id)}
+          pendingItemIds={pendingItemIds}
+          onToggleExpanded={() => toggleExpanded(todo.id)}
+          onToggleListItem={onToggleListItem}
           isDragOver={dragOverId === todo.id}
           onSelect={() => onSelect(todo.id)}
           onToggleDone={() => onToggleDone(todo)}

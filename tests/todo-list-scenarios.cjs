@@ -116,4 +116,38 @@ module.exports = function checkTodoList(api) {
 
   // ふつうのタスクの項目は対象外
   assert.equal(api.getSubTaskCheckSummaries('2026-10-01', today).some((item) => item.todo_id === task.id), false)
+
+  // 戻る曜日・日付の指定。毎週水曜（3）、毎月31日（ない月は末日）
+  const dayList = api.createTodo({ title: '曜日と日付の指定', status: 'active', list_mode: 1 })
+  const wednesday = api.createSubTask(dayList.id, { title: '毎週水曜の項目', recurrence: 'weekly', recurrence_day: 3 })
+  const monthEnd = api.createSubTask(dayList.id, { title: '月末の項目', recurrence: 'monthly', recurrence_day: 31 })
+  assert.equal(wednesday.recurrence_day, 3)
+  assert.equal(api.createSubTask(dayList.id, { title: '範囲外の曜日', recurrence: 'weekly', recurrence_day: 9 }).recurrence_day, null, '範囲外は既定にする')
+  assert.equal(api.createSubTask(dayList.id, { title: '毎日に曜日', recurrence: 'daily', recurrence_day: 3 }).recurrence_day, null, '毎日には曜日を付けない')
+  // 2026-10-13 は火曜、10-14 は水曜
+  setCompleted(wednesday.id, local(2026, 10, 13))
+  api.resetRecurringSubTasks(local(2026, 10, 13, 20))
+  assert.equal(doneOf(wednesday.id), 1, '火曜のうちは戻さない')
+  api.resetRecurringSubTasks(local(2026, 10, 14))
+  assert.equal(doneOf(wednesday.id), 0, '水曜に戻る')
+  setCompleted(wednesday.id, local(2026, 10, 14))
+  api.resetRecurringSubTasks(local(2026, 10, 20))
+  assert.equal(doneOf(wednesday.id), 1, '次の火曜までは戻さない')
+  api.resetRecurringSubTasks(local(2026, 10, 21))
+  assert.equal(doneOf(wednesday.id), 0, '次の水曜に戻る')
+  // 31日の指定は、30日までの月は末日に戻る
+  setCompleted(monthEnd.id, local(2026, 10, 31))
+  api.resetRecurringSubTasks(local(2026, 11, 29))
+  assert.equal(doneOf(monthEnd.id), 1)
+  api.resetRecurringSubTasks(local(2026, 11, 30))
+  assert.equal(doneOf(monthEnd.id), 0, '11月は30日に戻る')
+  // 実施状況も水曜始まりの週で数える（10/1〜10/13 に重なるのは 9/30 と 10/7 の週）
+  const wednesdayReport = api.createSubTask(dayList.id, { title: '水曜始まりの集計', recurrence: 'weekly', recurrence_day: 3 })
+  db.prepare("UPDATE SubTasks SET created_at = '2026-09-01T00:00:00.000Z' WHERE id = ?").run(wednesdayReport.id)
+  insertCheck.run('check-wed', wednesdayReport.id, dayList.id, '2026-10-07', local(2026, 10, 8).toISOString())
+  assert.deepEqual(summaryOf(wednesdayReport.id, '2026-10-01', '2026-10-13'), { periods: 2, checked: 1, checked_in_range: 1 })
+  // 周期だけ変えたら、戻る曜日・日付は既定に戻す
+  assert.equal(api.updateSubTask(wednesday.id, { recurrence: 'monthly' }).recurrence_day, null)
+  assert.equal(api.updateSubTask(wednesday.id, { recurrence_day: 25 }).recurrence_day, 25)
+  assert.equal(api.updateSubTask(wednesday.id, { title: '名前だけ変える' }).recurrence_day, 25, 'ほかの変更では変えない')
 }

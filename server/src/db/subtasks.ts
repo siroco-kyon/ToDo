@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import HolidayJp from '@holiday-jp/holiday_jp'
 import { getDb } from './connection'
 import { assertExpectedValues } from '../shared/todo-update-guard'
-import { isCheckStale, isItemRecurrence, periodStartOf, periodsOverlapping, toLocalDateKey, type ItemRecurrence } from '../shared/recurring-period'
+import { isCheckStale, isItemRecurrence, normalizeRecurrenceDay, periodStartOf, periodsOverlapping, toLocalDateKey, type ItemRecurrence } from '../shared/recurring-period'
 import { clampProgress, normalizeDateKey } from './helpers'
 import { syncTodoDueDateWithSubTasks } from './todos'
 import type { CalendarSubTask, CreateSubTaskInput, SubTask, SubTaskCheckSummary, UpdateSubTaskInput } from './types'
@@ -36,12 +36,12 @@ export function resetRecurringSubTasks(now: Date = new Date()): number {
   const db = getDb()
   const rows = db.prepare(
     // 終えた（完了・アーカイブ）ToDoリストの項目はそのままにしておく
-    `SELECT st.id, st.recurrence, st.recurrence_workdays, st.completed_at
+    `SELECT st.id, st.recurrence, st.recurrence_workdays, st.recurrence_day, st.completed_at
      FROM SubTasks st JOIN Todos t ON t.id = st.todo_id
      WHERE st.recurrence IS NOT NULL AND st.done = 1 AND t.list_mode = 1 AND t.status NOT IN ('done', 'archived')`
-  ).all() as Array<{ id: string; recurrence: string; recurrence_workdays: number; completed_at: string | null }>
+  ).all() as Array<{ id: string; recurrence: string; recurrence_workdays: number; recurrence_day: number | null; completed_at: string | null }>
   const stale = rows.filter((row) => isItemRecurrence(row.recurrence)
-    && isCheckStale(row.recurrence, Boolean(row.recurrence_workdays), row.completed_at, now, isHoliday))
+    && isCheckStale(row.recurrence, Boolean(row.recurrence_workdays), row.completed_at, now, isHoliday, row.recurrence_day))
   if (stale.length === 0) return 0
   const reset = db.prepare('UPDATE SubTasks SET done = 0, progress = 0, completed_at = NULL WHERE id = ?')
   db.transaction(() => { for (const row of stale) reset.run(row.id) })()
@@ -53,7 +53,7 @@ function recordRecurringCheck(subTask: SubTask, checked: boolean, userId: string
   const recurrence = normalizeItemRecurrence(subTask.recurrence)
   if (!recurrence) return
   const now = new Date()
-  const periodKey = periodStartOf(recurrence, Boolean(subTask.recurrence_workdays), toLocalDateKey(now), isHoliday)
+  const periodKey = periodStartOf(recurrence, Boolean(subTask.recurrence_workdays), toLocalDateKey(now), isHoliday, subTask.recurrence_day)
   const db = getDb()
   if (checked) {
     db.prepare(
@@ -71,10 +71,10 @@ export function getSubTaskCheckSummaries(from: string, to: string): SubTaskCheck
   }
   const db = getDb()
   const items = db.prepare(
-    `SELECT st.id, st.todo_id, st.recurrence, st.recurrence_workdays, st.created_at
+    `SELECT st.id, st.todo_id, st.recurrence, st.recurrence_workdays, st.recurrence_day, st.created_at
      FROM SubTasks st JOIN Todos t ON t.id = st.todo_id
      WHERE st.recurrence IS NOT NULL AND t.list_mode = 1`
-  ).all() as Array<{ id: string; todo_id: string; recurrence: string; recurrence_workdays: number; created_at: string }>
+  ).all() as Array<{ id: string; todo_id: string; recurrence: string; recurrence_workdays: number; recurrence_day: number | null; created_at: string }>
   if (items.length === 0) return []
   // 周期の始まりは期間の開始より前のこともある（毎月なら最大で約1か月前）
   const earliest = new Date(Number(from.slice(0, 4)), Number(from.slice(5, 7)) - 1, Number(from.slice(8, 10)) - 40)
@@ -93,7 +93,7 @@ export function getSubTaskCheckSummaries(from: string, to: string): SubTaskCheck
     const created = toLocalDateKey(new Date(item.created_at))
     const start = created > from ? created : from
     const end = today < to ? today : to
-    const periods = new Set(start <= end ? periodsOverlapping(item.recurrence, Boolean(item.recurrence_workdays), start, end, isHoliday) : [])
+    const periods = new Set(start <= end ? periodsOverlapping(item.recurrence, Boolean(item.recurrence_workdays), start, end, isHoliday, item.recurrence_day) : [])
     const itemChecks = checksByItem.get(item.id) ?? []
     return [{
       subtask_id: item.id,
@@ -176,8 +176,8 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput, createdB
     const done = progress >= 100 ? 1 : 0
     const recurrence = isListTodoId(todoId) ? normalizeItemRecurrence(data.recurrence) : null
     db.prepare(
-      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by, recurrence, recurrence_workdays) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now, createdByUserId, recurrence, recurrence && data.recurrence_workdays ? 1 : 0)
+      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by, recurrence, recurrence_workdays, recurrence_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now, createdByUserId, recurrence, recurrence && data.recurrence_workdays ? 1 : 0, normalizeRecurrenceDay(recurrence, data.recurrence_day))
     const created = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
     if (done) recordRecurringCheck(created, true, createdByUserId)
     const extendedTo = syncTodoDueDateWithSubTasks(todoId, createdByUserId)
@@ -215,6 +215,14 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput, changedByUse
     }
     if (data.recurrence_workdays !== undefined) {
       db.prepare('UPDATE SubTasks SET recurrence_workdays = ? WHERE id = ?').run(data.recurrence_workdays ? 1 : 0, id)
+    }
+    // 戻る曜日・日付は、変更後の周期に合わせて整える（周期だけ変えたときは既定に戻す）
+    if (data.recurrence !== undefined || data.recurrence_day !== undefined) {
+      const recurrenceAfter = normalizeItemRecurrence((db.prepare('SELECT recurrence FROM SubTasks WHERE id = ?').get(id) as { recurrence: string | null }).recurrence)
+      const requestedDay = data.recurrence_day !== undefined
+        ? data.recurrence_day
+        : recurrenceAfter === (current.recurrence ?? null) ? current.recurrence_day : null
+      db.prepare('UPDATE SubTasks SET recurrence_day = ? WHERE id = ?').run(normalizeRecurrenceDay(recurrenceAfter, requestedDay), id)
     }
     if ((data.done !== undefined || data.progress !== undefined) && current) {
       const progressFromInput = data.progress !== undefined

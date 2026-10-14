@@ -14,7 +14,7 @@
     "test:progress-report": "node tests/progress-report-authors.cjs && npm --prefix server run test:progress-digest",
     "test:links-members": "node tests/links.cjs && npm --prefix server run test:members",
     "test:on-hold": "node tests/on-hold-display.cjs && node tests/on-hold-desktop.cjs && npm --prefix server run test:on-hold",
-    "test:todo-list": "node tests/todo-list-desktop.cjs && npm --prefix server run test:todo-list",
+    "test:todo-list": "node tests/todo-list-display.cjs && node tests/todo-list-desktop.cjs && npm --prefix server run test:todo-list",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",

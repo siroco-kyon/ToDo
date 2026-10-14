@@ -1,12 +1,18 @@
 import React, { useState } from 'react'
 import type { PublicUser, SubTask, Todo, UpdateSubTaskInput } from '../types'
-import { getDueDateColor } from '../lib/dueDate'
+import { getDueDateColor, toDateKey } from '../lib/dueDate'
 import {
   ITEM_REPEAT_OPTIONS,
+  MONTH_DAY_OPTIONS,
+  WEEKDAY_OPTIONS,
   checklistBadgeText,
+  duePresets,
+  isDueByToday,
   repeatChoiceOf,
+  repeatDayOf,
   repeatFields,
   repeatLabel,
+  repeatTitle,
   summarizeChecklist,
   type ItemRepeatChoice
 } from '../lib/todoList'
@@ -20,6 +26,8 @@ interface Props {
   items: SubTask[]
   users: PublicUser[]
   disabled?: boolean
+  /** ToDo タブのように見出しを外に出すときは、見出しと説明を省く */
+  compact?: boolean
   onItemsChange: (update: (previous: SubTask[]) => SubTask[]) => void
   /** 削除（元に戻す付き）は詳細画面の処理をそのまま使う */
   onDelete: (id: string) => void
@@ -27,6 +35,9 @@ interface Props {
 }
 
 type Group = 'repeat' | 'open' | 'done'
+
+/** 済んだやることは、この日数を過ぎたら「それより前」に畳む */
+const RECENT_DONE_DAYS = 7
 
 function groupOf(item: SubTask): Group {
   if (item.recurrence) return 'repeat'
@@ -45,23 +56,50 @@ function formatCheckedAt(iso: string | null): string | null {
   return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
-export function TodoChecklist({ todo, items, users, disabled = false, onItemsChange, onDelete, onShowToast }: Props): React.JSX.Element {
+function completedKeyOf(item: SubTask): string | null {
+  if (!item.completed_at) return null
+  const date = new Date(item.completed_at)
+  return Number.isNaN(date.getTime()) ? null : toDateKey(date)
+}
+
+/** やることの表示順。期限が過ぎたものを上に（期限の早い順）、ほかは並び順どおり */
+function orderOpenItems(items: SubTask[], todayKey: string): SubTask[] {
+  const overdue = items
+    .filter((item) => item.due_date != null && item.due_date.slice(0, 10) < todayKey)
+    .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+  const overdueIds = new Set(overdue.map((item) => item.id))
+  return [...overdue, ...items.filter((item) => !overdueIds.has(item.id))]
+}
+
+export function TodoChecklist({ todo, items, users, disabled = false, compact = false, onItemsChange, onDelete, onShowToast }: Props): React.JSX.Element {
   const [title, setTitle] = useState('')
   const [repeat, setRepeat] = useState<ItemRepeatChoice>('')
+  const [repeatDay, setRepeatDay] = useState<number | null>(null)
   const [dueDate, setDueDate] = useState('')
   const [assigneeId, setAssigneeId] = useState<string>(todo.assignee_id ?? '')
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set())
   const [reordering, setReordering] = useState(false)
+  const [dragging, setDragging] = useState<{ id: string; group: Group } | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [showOldDone, setShowOldDone] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const activeUsers = users.filter((user) => user.is_active === 1 || user.id === assigneeId)
 
-  const summary = summarizeChecklist(items)
+  const todayKey = toDateKey(new Date())
+  const recentLimit = new Date()
+  recentLimit.setDate(recentLimit.getDate() - RECENT_DONE_DAYS)
+  const recentLimitKey = toDateKey(recentLimit)
+
+  const summary = summarizeChecklist(items, todayKey)
   const repeatItems = items.filter((item) => groupOf(item) === 'repeat')
-  const openItems = items.filter((item) => groupOf(item) === 'open')
-  // 済みは新しく済んだものから
+  const openItems = orderOpenItems(items.filter((item) => groupOf(item) === 'open'), todayKey)
+  // 済みは新しく済んだものから。しばらく前に済んだものは畳んでおく
   const doneItems = items.filter((item) => groupOf(item) === 'done')
     .sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? ''))
+  const recentDone = doneItems.filter((item) => (completedKeyOf(item) ?? '') >= recentLimitKey)
+  const oldDone = doneItems.filter((item) => (completedKeyOf(item) ?? '') < recentLimitKey)
 
   const replaceItem = (updated: SubTask): void => {
     onItemsChange((previous) => previous.map((item) => item.id === updated.id ? updated : item))
@@ -89,20 +127,17 @@ export function TodoChecklist({ todo, items, users, disabled = false, onItemsCha
     void update(item, { done: !item.done, expected_values: { done: Boolean(item.done) } }, '項目を更新できませんでした')
   }
 
-  // 同じまとまり（繰り返し／やること）の中で、となりの項目と入れ替える
-  const move = async (item: SubTask, direction: -1 | 1): Promise<void> => {
+  const displayedOf = (group: Group): SubTask[] => group === 'repeat' ? repeatItems : group === 'open' ? openItems : doneItems
+
+  /** あるまとまりの並びを変える。ほかのまとまりの項目の位置はそのまま */
+  const reorderGroup = async (group: Group, groupIds: string[]): Promise<void> => {
     if (reordering) return
-    const group = groupOf(item)
-    const sameGroup = items.filter((candidate) => groupOf(candidate) === group)
-    const neighbor = sameGroup[sameGroup.findIndex((candidate) => candidate.id === item.id) + direction]
-    if (!neighbor) return
-    const ordered = items.map((candidate) => candidate.id)
-    const from = ordered.indexOf(item.id)
-    const to = ordered.indexOf(neighbor.id)
-    ordered[from] = neighbor.id
-    ordered[to] = item.id
+    const ordered = items.map((item) => item.id)
+    const positions = items.map((item, index) => groupOf(item) === group ? index : -1).filter((index) => index >= 0)
+    positions.forEach((position, index) => { ordered[position] = groupIds[index] })
+    if (ordered.every((id, index) => id === items[index].id)) return
     const previous = items
-    const byId = new Map(items.map((candidate) => [candidate.id, candidate]))
+    const byId = new Map(items.map((item) => [item.id, item]))
     onItemsChange(() => ordered.map((id, index) => ({ ...byId.get(id)!, sort_order: index })))
     setReordering(true)
     try {
@@ -113,6 +148,25 @@ export function TodoChecklist({ todo, items, users, disabled = false, onItemsCha
     } finally {
       setReordering(false)
     }
+  }
+
+  // 同じまとまりの中で、となりの項目と入れ替える（編集欄の ↑↓）
+  const move = (item: SubTask, direction: -1 | 1): void => {
+    const group = groupOf(item)
+    const ids = displayedOf(group).map((candidate) => candidate.id)
+    const from = ids.indexOf(item.id)
+    const to = from + direction
+    if (from < 0 || to < 0 || to >= ids.length) return
+    ;[ids[from], ids[to]] = [ids[to], ids[from]]
+    void reorderGroup(group, ids)
+  }
+
+  // ドラッグした項目を、落とした項目の位置へ（同じまとまりの中だけ）
+  const dropOn = (target: SubTask): void => {
+    if (!dragging || dragging.id === target.id || dragging.group !== groupOf(target)) return
+    const ids = displayedOf(dragging.group).map((item) => item.id).filter((id) => id !== dragging.id)
+    ids.splice(ids.indexOf(target.id), 0, dragging.id)
+    void reorderGroup(dragging.group, ids)
   }
 
   const add = async (): Promise<void> => {
@@ -128,7 +182,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, onItemsCha
           // ToDoリストの項目は開始日を持たせない（ガントに毎日のバーが並ばないように）。期限は繰り返さない項目だけ
           start_date: null,
           due_date: repeat === '' ? dueDate || null : null,
-          ...repeatFields(repeat)
+          ...repeatFields(repeat, repeatDay)
         }))
       }
       setTitle('')
@@ -142,41 +196,95 @@ export function TodoChecklist({ todo, items, users, disabled = false, onItemsCha
     }
   }
 
-  const renderItem = (item: SubTask, index: number, groupItems: SubTask[]): React.JSX.Element => editingId === item.id ? (
-    <ItemEditor
-      key={item.id}
-      item={item}
-      users={users}
-      canMoveUp={index > 0}
-      canMoveDown={index < groupItems.length - 1}
-      onMove={(direction) => void move(item, direction)}
-      onCancel={() => setEditingId(null)}
-      onSave={async (data) => {
-        if (await update(item, data, '項目を保存できませんでした')) setEditingId(null)
-      }}
-      onDelete={() => { setEditingId(null); onDelete(item.id) }}
-      onShowToast={onShowToast}
-    />
-  ) : (
-    <ItemRow
-      key={item.id}
-      item={item}
-      disabled={disabled || pendingIds.has(item.id)}
-      onToggle={() => toggle(item)}
-      onEdit={() => setEditingId(item.id)}
-    />
-  )
+  const clearOldDone = async (): Promise<void> => {
+    if (oldDone.length === 0 || clearing) return
+    if (!window.confirm(`${RECENT_DONE_DAYS}日より前に済んだやること ${oldDone.length}件を削除しますか？\n報告タブの「期間中に済んだやること」にも出なくなります。元には戻せません。`)) return
+    setClearing(true)
+    const removed: string[] = []
+    try {
+      for (const item of oldDone) {
+        await window.api.subtaskDelete(item.id)
+        removed.push(item.id)
+      }
+      onShowToast(`済んだやること ${removed.length}件を削除しました`)
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '済んだやることを削除できませんでした', 'error')
+    } finally {
+      if (removed.length > 0) onItemsChange((previous) => previous.filter((item) => !removed.includes(item.id)))
+      setClearing(false)
+    }
+  }
+
+  const renderItem = (item: SubTask, index: number, groupItems: SubTask[]): React.JSX.Element => {
+    if (editingId === item.id) {
+      return (
+        <ItemEditor
+          key={item.id}
+          item={item}
+          users={users}
+          canMoveUp={groupOf(item) !== 'done' && index > 0}
+          canMoveDown={groupOf(item) !== 'done' && index < groupItems.length - 1}
+          onMove={(direction) => move(item, direction)}
+          onCancel={() => setEditingId(null)}
+          onSave={async (data) => {
+            if (await update(item, data, '項目を保存できませんでした')) setEditingId(null)
+          }}
+          onDelete={() => { setEditingId(null); onDelete(item.id) }}
+          onShowToast={onShowToast}
+        />
+      )
+    }
+    const group = groupOf(item)
+    const draggable = group !== 'done' && !disabled && !reordering && groupItems.length > 1
+    return (
+      <div
+        key={item.id}
+        draggable={draggable}
+        onDragStart={(event) => {
+          event.dataTransfer.effectAllowed = 'move'
+          event.dataTransfer.setData('text/plain', item.id)
+          setDragging({ id: item.id, group })
+        }}
+        onDragOver={(event) => {
+          if (!dragging || dragging.group !== group || dragging.id === item.id) return
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'move'
+          if (dragOverId !== item.id) setDragOverId(item.id)
+        }}
+        onDragLeave={() => { if (dragOverId === item.id) setDragOverId(null) }}
+        onDrop={(event) => { event.preventDefault(); dropOn(item); setDragOverId(null) }}
+        onDragEnd={() => { setDragging(null); setDragOverId(null) }}
+        style={{
+          borderTop: `2px solid ${dragOverId === item.id ? '#6366f1' : 'transparent'}`,
+          opacity: dragging?.id === item.id ? 0.4 : 1
+        }}
+      >
+        <ItemRow
+          item={item}
+          todayKey={todayKey}
+          draggable={draggable}
+          disabled={disabled || pendingIds.has(item.id)}
+          onToggle={() => toggle(item)}
+          onEdit={() => setEditingId(item.id)}
+        />
+      </div>
+    )
+  }
 
   return (
     <section>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.75rem', color: '#64748b', fontWeight: 700, marginBottom: 8, letterSpacing: '0.05em' }}>
-        ToDoリスト
-        <span style={{ letterSpacing: 0, color: '#a5b4fc', fontWeight: 700 }}>{checklistBadgeText(summary)}</span>
-      </div>
-      <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ fontSize: '0.74rem', color: '#94a3b8', lineHeight: 1.5 }}>
-          期限なしで続くタスクです。繰り返しの項目は周期が変わると未チェックに戻り（毎週は月曜・毎月は1日）、繰り返さない項目はチェックすると「済み」に移ります。項目名を押すと編集できます。
+      {!compact && (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.75rem', color: '#64748b', fontWeight: 700, marginBottom: 8, letterSpacing: '0.05em' }}>
+          ToDoリスト
+          <span style={{ letterSpacing: 0, color: '#a5b4fc', fontWeight: 700 }}>{checklistBadgeText(summary)}</span>
         </div>
+      )}
+      <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {!compact && (
+          <div style={{ fontSize: '0.74rem', color: '#94a3b8', lineHeight: 1.5 }}>
+            期限なしで続くタスクです。繰り返しの項目は周期が変わると未チェックに戻り、繰り返さない項目はチェックすると「済み」に移ります。項目名を押すと編集、⠿ をドラッグすると並べ替えられます。
+          </div>
+        )}
 
         {repeatItems.length > 0 && (
           <ItemGroup label="繰り返し" note={summary.repeatTotal > 0 ? `今回 ${summary.repeatDone}/${summary.repeatTotal} 済み` : undefined}>
@@ -184,7 +292,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, onItemsCha
           </ItemGroup>
         )}
         {openItems.length > 0 && (
-          <ItemGroup label="やること" note={`${openItems.length}件`}>
+          <ItemGroup label="やること" note={`${openItems.length}件${summary.dueByTodayCount > 0 ? `（期限が今日まで ${summary.dueByTodayCount}件）` : ''}`}>
             {openItems.map((item, index) => renderItem(item, index, openItems))}
           </ItemGroup>
         )}
@@ -193,9 +301,20 @@ export function TodoChecklist({ todo, items, users, disabled = false, onItemsCha
         )}
         {doneItems.length > 0 && (
           <details>
-            <summary style={{ cursor: 'pointer', fontSize: '0.76rem', color: '#94a3b8', padding: '2px 0' }}>済み {doneItems.length}件</summary>
+            <summary style={{ cursor: 'pointer', fontSize: '0.76rem', color: '#94a3b8', padding: '2px 0' }}>
+              済み {recentDone.length}件{oldDone.length > 0 ? `（ほかに ${RECENT_DONE_DAYS}日より前 ${oldDone.length}件）` : ''}
+            </summary>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 6 }}>
-              {doneItems.map((item, index) => renderItem(item, index, doneItems))}
+              {recentDone.map((item, index) => renderItem(item, index, recentDone))}
+              {recentDone.length === 0 && <div style={{ fontSize: '0.74rem', color: '#64748b' }}>この{RECENT_DONE_DAYS}日に済んだやることはありません。</div>}
+              {oldDone.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 4, fontSize: '0.72rem', color: '#64748b' }}>
+                  {RECENT_DONE_DAYS}日より前に済んだもの {oldDone.length}件
+                  <button onClick={() => setShowOldDone((open) => !open)} style={linkButtonStyle}>{showOldDone ? '隠す' : '表示する'}</button>
+                  <button onClick={() => void clearOldDone()} disabled={clearing} style={{ ...linkButtonStyle, color: '#fca5a5' }}>{clearing ? '削除中…' : 'まとめて削除'}</button>
+                </div>
+              )}
+              {showOldDone && oldDone.map((item, index) => renderItem(item, index, oldDone))}
             </div>
           </details>
         )}
@@ -226,17 +345,14 @@ export function TodoChecklist({ todo, items, users, disabled = false, onItemsCha
             </button>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: '#94a3b8' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              繰り返し
-              <select value={repeat} onChange={(event) => setRepeat(event.target.value as ItemRepeatChoice)} aria-label="追加する項目の繰り返し" style={smallInputStyle}>
-                {ITEM_REPEAT_OPTIONS.map((option) => <option key={option.value} value={option.value} title={option.title}>{option.label}</option>)}
-              </select>
-            </label>
+            <RepeatPicker
+              choice={repeat}
+              day={repeatDay}
+              onChange={(choice, day) => { setRepeat(choice); setRepeatDay(day) }}
+              labelPrefix="追加する項目の"
+            />
             {repeat === '' && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                期限
-                <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} aria-label="追加する項目の期限" style={smallInputStyle} />
-              </label>
+              <DuePicker value={dueDate} onChange={setDueDate} label="追加する項目の期限" />
             )}
             {users.length > 0 && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -254,6 +370,78 @@ export function TodoChecklist({ todo, items, users, disabled = false, onItemsCha
   )
 }
 
+/** 繰り返しの選択と、毎週の曜日・毎月の日付 */
+function RepeatPicker({ choice, day, onChange, labelPrefix }: {
+  choice: ItemRepeatChoice
+  day: number | null
+  onChange: (choice: ItemRepeatChoice, day: number | null) => void
+  labelPrefix: string
+}): React.JSX.Element {
+  const effectiveDay = repeatDayOf(choice, day)
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        繰り返し
+        <select
+          value={choice}
+          onChange={(event) => {
+            const next = event.target.value as ItemRepeatChoice
+            onChange(next, repeatDayOf(next, null))
+          }}
+          aria-label={`${labelPrefix}繰り返し`}
+          style={smallInputStyle}
+        >
+          {ITEM_REPEAT_OPTIONS.map((option) => <option key={option.value} value={option.value} title={option.title}>{option.label}</option>)}
+        </select>
+      </label>
+      {choice === 'weekly' && (
+        <select
+          value={effectiveDay ?? 1}
+          onChange={(event) => onChange(choice, Number(event.target.value))}
+          aria-label={`${labelPrefix}戻る曜日`}
+          title="この曜日に未チェックに戻ります"
+          style={smallInputStyle}
+        >
+          {WEEKDAY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}曜</option>)}
+        </select>
+      )}
+      {choice === 'monthly' && (
+        <select
+          value={effectiveDay ?? 1}
+          onChange={(event) => onChange(choice, Number(event.target.value))}
+          aria-label={`${labelPrefix}戻る日`}
+          title="この日に未チェックに戻ります（その日がない月は末日）"
+          style={smallInputStyle}
+        >
+          {MONTH_DAY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      )}
+    </span>
+  )
+}
+
+/** 期限の入力。今日・明日・今週中（来週中）はボタン一つで */
+function DuePicker({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }): React.JSX.Element {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+      期限
+      {duePresets().map((preset) => (
+        <button
+          key={preset.label}
+          type="button"
+          onClick={() => onChange(value === preset.value ? '' : preset.value)}
+          aria-pressed={value === preset.value}
+          title={`${preset.value}（もう一度押すと期限なし）`}
+          style={presetStyle(value === preset.value)}
+        >
+          {preset.label}
+        </button>
+      ))}
+      <input type="date" value={value} onChange={(event) => onChange(event.target.value)} aria-label={label} style={smallInputStyle} />
+    </span>
+  )
+}
+
 function ItemGroup({ label, note, children }: { label: string; note?: string; children: React.ReactNode }): React.JSX.Element {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -266,14 +454,28 @@ function ItemGroup({ label, note, children }: { label: string; note?: string; ch
   )
 }
 
-function ItemRow({ item, disabled, onToggle, onEdit }: { item: SubTask; disabled: boolean; onToggle: () => void; onEdit: () => void }): React.JSX.Element {
+function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
+  item: SubTask
+  todayKey: string
+  draggable: boolean
+  disabled: boolean
+  onToggle: () => void
+  onEdit: () => void
+}): React.JSX.Element {
   const done = Boolean(item.done)
   const repeat = repeatLabel(item)
-  const repeatTitle = ITEM_REPEAT_OPTIONS.find((option) => option.value === repeatChoiceOf(item))?.title
   const dueColor = done ? '' : getDueDateColor(item.due_date)
+  const overdue = !done && !item.recurrence && item.due_date != null && item.due_date.slice(0, 10) < todayKey
   const checkedAt = done ? formatCheckedAt(item.completed_at) : null
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', borderRadius: 8, background: done ? 'transparent' : '#0f172a80' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', borderRadius: 8, background: done ? 'transparent' : overdue ? '#450a0a66' : '#0f172a80' }}>
+      <span
+        aria-hidden="true"
+        title={draggable ? 'ドラッグして並べ替え' : undefined}
+        style={{ width: 10, flexShrink: 0, color: draggable ? '#475569' : 'transparent', cursor: draggable ? 'grab' : 'default', fontSize: '0.8rem', userSelect: 'none' }}
+      >
+        ⠿
+      </span>
       <input
         type="checkbox"
         checked={done}
@@ -292,10 +494,59 @@ function ItemRow({ item, disabled, onToggle, onEdit }: { item: SubTask; disabled
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, fontSize: '0.7rem' }}>
         {item.assignee_name && <span style={{ color: item.assignee_color ?? '#94a3b8' }}>{item.assignee_name}</span>}
         {!item.recurrence && item.due_date && (
-          <span style={{ color: dueColor || '#64748b', fontWeight: dueColor ? 700 : 400 }}>{formatShortDate(item.due_date)}まで</span>
+          <span style={{ color: dueColor || '#64748b', fontWeight: dueColor ? 700 : 400 }}>
+            {overdue ? `${formatShortDate(item.due_date)}まで（過ぎています）` : `${formatShortDate(item.due_date)}まで`}
+          </span>
         )}
         {checkedAt && <span style={{ color: '#4ade80' }} title="チェックした日時">✓ {checkedAt}</span>}
-        {repeat && <span title={repeatTitle} style={{ color: '#a5b4fc', border: '1px solid #4338ca', borderRadius: 999, padding: '0 7px' }}>{repeat}</span>}
+        {repeat && <span title={repeatTitle(item)} style={repeatChipStyle}>{repeat}</span>}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * ほかの画面（右の「今日のToDo」・タスク一覧の展開）で使う、チェックだけできる小さな行。
+ * 名前を押すと、その ToDoリストの詳細を開く。
+ */
+export function QuickCheckItem({ item, pending, todayKey, listTitle, showAssignee = false, onToggle, onOpen }: {
+  item: SubTask
+  pending: boolean
+  todayKey: string
+  /** どの ToDoリストの項目か（複数のリストを混ぜて並べるとき） */
+  listTitle?: string
+  showAssignee?: boolean
+  onToggle: () => void
+  onOpen: () => void
+}): React.JSX.Element {
+  const done = Boolean(item.done)
+  const repeat = repeatLabel(item)
+  const overdue = !done && isDueByToday(item, todayKey) && (item.due_date ?? '').slice(0, 10) < todayKey
+  const dueColor = done ? '' : getDueDateColor(item.due_date)
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '3px 2px', minWidth: 0 }}>
+      <input
+        type="checkbox"
+        checked={done}
+        disabled={pending}
+        onChange={onToggle}
+        onClick={(event) => event.stopPropagation()}
+        aria-label={`${item.title}を${done ? '未チェックに戻す' : 'チェックする'}`}
+        style={{ width: 15, height: 15, accentColor: '#22c55e', cursor: pending ? 'default' : 'pointer', flexShrink: 0, margin: 0 }}
+      />
+      <button
+        onClick={(event) => { event.stopPropagation(); onOpen() }}
+        title={listTitle ? `「${listTitle}」を開く` : 'ToDoリストを開く'}
+        style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: done ? '#64748b' : '#e2e8f0', textDecoration: done ? 'line-through' : 'none', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      >
+        {item.title}
+      </button>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: '0.64rem' }}>
+        {showAssignee && item.assignee_name && <span style={{ color: item.assignee_color ?? '#94a3b8' }}>{item.assignee_name}</span>}
+        {!item.recurrence && item.due_date && (
+          <span style={{ color: dueColor || '#64748b', fontWeight: overdue ? 700 : 400 }}>{overdue ? '期限切れ' : `${formatShortDate(item.due_date)}まで`}</span>
+        )}
+        {repeat && <span title={repeatTitle(item)} style={{ ...repeatChipStyle, padding: '0 5px' }}>{repeat}</span>}
       </span>
     </div>
   )
@@ -314,6 +565,7 @@ function ItemEditor({ item, users, canMoveUp, canMoveDown, onMove, onCancel, onS
 }): React.JSX.Element {
   const [title, setTitle] = useState(item.title)
   const [repeat, setRepeat] = useState<ItemRepeatChoice>(repeatChoiceOf(item))
+  const [repeatDay, setRepeatDay] = useState<number | null>(repeatDayOf(repeatChoiceOf(item), item.recurrence_day))
   const [dueDate, setDueDate] = useState(item.due_date?.slice(0, 10) ?? '')
   const [assigneeId, setAssigneeId] = useState(item.assignee_id ?? '')
   const [description, setDescription] = useState(item.description ?? '')
@@ -324,6 +576,7 @@ function ItemEditor({ item, users, canMoveUp, canMoveDown, onMove, onCancel, onS
     description: item.description ?? '',
     recurrence: item.recurrence ?? null,
     recurrence_workdays: item.recurrence_workdays ? 1 : 0,
+    recurrence_day: item.recurrence_day ?? null,
     due_date: item.due_date?.slice(0, 10) ?? null,
     assignee_id: item.assignee_id ?? null
   }))
@@ -333,7 +586,7 @@ function ItemEditor({ item, users, canMoveUp, canMoveDown, onMove, onCancel, onS
       onShowToast('項目名を入力してください', 'error')
       return
     }
-    const nextRepeat = repeatFields(repeat)
+    const nextRepeat = repeatFields(repeat, repeatDay)
     const data: UpdateSubTaskInput = {}
     const expected: Record<string, unknown> = {}
     const change = <K extends keyof typeof base>(field: K, value: (typeof base)[K]): void => {
@@ -345,6 +598,10 @@ function ItemEditor({ item, users, canMoveUp, canMoveDown, onMove, onCancel, onS
     change('description', description)
     change('recurrence', nextRepeat.recurrence)
     change('recurrence_workdays', nextRepeat.recurrence_workdays)
+    // 既定（月曜・1日）のままなら null と同じ扱いなので、送らない
+    if (nextRepeat.recurrence_day !== repeatDayOf(repeatChoiceOf(base), base.recurrence_day) || nextRepeat.recurrence !== base.recurrence) {
+      change('recurrence_day', nextRepeat.recurrence_day)
+    }
     // 繰り返しの項目は期限を持たない
     change('due_date', repeat === '' ? dueDate || null : null)
     if (users.length > 0) change('assignee_id', assigneeId || null)
@@ -371,18 +628,8 @@ function ItemEditor({ item, users, canMoveUp, canMoveDown, onMove, onCancel, onS
         style={inputStyle}
       />
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: '#94a3b8' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          繰り返し
-          <select value={repeat} onChange={(event) => setRepeat(event.target.value as ItemRepeatChoice)} aria-label="項目の繰り返し" style={smallInputStyle}>
-            {ITEM_REPEAT_OPTIONS.map((option) => <option key={option.value} value={option.value} title={option.title}>{option.label}</option>)}
-          </select>
-        </label>
-        {repeat === '' && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            期限
-            <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} aria-label="項目の期限" style={smallInputStyle} />
-          </label>
-        )}
+        <RepeatPicker choice={repeat} day={repeatDay} onChange={(choice, day) => { setRepeat(choice); setRepeatDay(day) }} labelPrefix="項目の" />
+        {repeat === '' && <DuePicker value={dueDate} onChange={setDueDate} label="項目の期限" />}
         {users.length > 0 && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             担当
@@ -422,6 +669,37 @@ const smallInputStyle: React.CSSProperties = {
   width: 'auto',
   fontSize: '0.76rem',
   padding: '3px 6px'
+}
+
+const repeatChipStyle: React.CSSProperties = {
+  color: '#a5b4fc',
+  border: '1px solid #4338ca',
+  borderRadius: 999,
+  padding: '0 7px',
+  whiteSpace: 'nowrap'
+}
+
+const linkButtonStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  color: '#93c5fd',
+  cursor: 'pointer',
+  fontSize: '0.72rem',
+  fontWeight: 700
+}
+
+function presetStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: '2px 8px',
+    borderRadius: 999,
+    border: `1px solid ${active ? '#6366f1' : '#334155'}`,
+    background: active ? '#312e81' : 'transparent',
+    color: active ? '#e0e7ff' : '#94a3b8',
+    cursor: 'pointer',
+    fontSize: '0.72rem',
+    fontWeight: 700
+  }
 }
 
 function buttonStyle(background: string, color = '#fff'): React.CSSProperties {

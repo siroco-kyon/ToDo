@@ -8,7 +8,7 @@ interface Props {
   showArchived: boolean
   onToggleArchived: () => void
   onOpenSettings: () => void
-  activeView: 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban'
+  activeView: 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban' | 'todo'
   scopeLens: 'personal' | 'team'
   onSetScopeLens: (lens: 'personal' | 'team') => void
   /** 「集計から外す」カテゴリがあるときだけ、隠す／表示の切り替えを出す */
@@ -19,6 +19,9 @@ interface Props {
   showTeamButton?: boolean
   /** 「進捗」タブに出す新着の件数（前回見たあとにほかの人が書いた投稿・返信） */
   progressUnseenCount?: number
+  /** ToDo タブに出す、今日やる項目のうちまだの数 */
+  todoRemainingCount?: number
+  onToggleTodoView: () => void
   /** サーバー版のログイン中ユーザー。デスクトップ版は null で何も表示しない */
   currentUser?: PublicUser | null
   notificationUnreadCount?: number
@@ -38,7 +41,7 @@ interface Props {
 }
 
 interface ViewButton {
-  key: 'overview' | 'plan' | 'gantt' | 'kanban' | 'log' | 'progress' | 'report' | 'team'
+  key: 'overview' | 'plan' | 'gantt' | 'kanban' | 'log' | 'progress' | 'report' | 'team' | 'todo'
   label: string
   /** 何をする画面かをホバーで出す */
   description: string
@@ -62,6 +65,8 @@ export function Toolbar({
   showTaskPane,
   showTeamButton = false,
   progressUnseenCount = 0,
+  todoRemainingCount = 0,
+  onToggleTodoView,
   currentUser = null,
   notificationUnreadCount = 0,
   onLogout,
@@ -86,6 +91,7 @@ export function Toolbar({
     { key: 'progress', label: '進捗', description: '進捗ログのタイムライン。投稿・返信・いいねができます', active: activeView === 'progress', onClick: onToggleProgressView },
     { key: 'report', label: '報告', description: '定例ミーティング用。担当者ごとに進捗と報告の有無を一覧します', active: activeView === 'report', onClick: onToggleReportView },
     { key: 'plan', label: '計画', description: '1日の予定を時間割で組みます', active: activeView === 'plan', onClick: onTogglePlanView },
+    { key: 'todo', label: 'ToDo', description: 'ToDoリスト（期限なしで続くチェックリスト）の今日やることと、リストごとの項目をまとめて見て、その場でチェックします', active: activeView === 'todo', onClick: onToggleTodoView },
     { key: 'log', label: '記録', description: 'タイマーで計測した作業時間の記録を見ます', active: activeView === 'log', onClick: onToggleLogView }
   ]
 
@@ -135,12 +141,17 @@ export function Toolbar({
               role="tab"
               aria-selected={button.active}
               onClick={button.onClick}
-              title={button.key === 'progress' && progressUnseenCount > 0 ? `${button.description}（新着 ${progressUnseenCount}件）` : button.description}
+              title={button.key === 'progress' && progressUnseenCount > 0
+                ? `${button.description}（新着 ${progressUnseenCount}件）`
+                : button.key === 'todo' && todoRemainingCount > 0 ? `${button.description}（今日の残り ${todoRemainingCount}件）` : button.description}
               style={viewButtonStyle(button.active)}
             >
               {button.label}
               {button.key === 'progress' && progressUnseenCount > 0 && (
                 <span aria-label={`新着 ${progressUnseenCount}件`} style={tabBadgeStyle}>{progressUnseenCount > 99 ? '99+' : progressUnseenCount}</span>
+              )}
+              {button.key === 'todo' && todoRemainingCount > 0 && (
+                <span aria-label={`今日の残り ${todoRemainingCount}件`} style={todoBadgeStyle}>{todoRemainingCount > 99 ? '99+' : todoRemainingCount}</span>
               )}
             </button>
           ))}
@@ -273,6 +284,13 @@ const tabBadgeStyle: React.CSSProperties = {
   lineHeight: 1,
   fontWeight: 800,
   verticalAlign: 'middle'
+}
+
+// ToDo タブの残り。新着のような赤ではなく、落ち着いた色にする
+const todoBadgeStyle: React.CSSProperties = {
+  ...tabBadgeStyle,
+  background: '#4338ca',
+  color: '#e0e7ff'
 }
 
 function viewButtonStyle(active: boolean): React.CSSProperties {

@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import Database from 'better-sqlite3'
-import { isItemRecurrence } from '../shared/recurring-period'
+import { isItemRecurrence, normalizeRecurrenceDay } from '../shared/recurring-period'
 
 /**
  * Imports a single-user desktop (Electron) `todo.db` into the multi-user web
@@ -128,8 +128,8 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
     const insertSubTask = webDb.prepare(
       `INSERT OR IGNORE INTO SubTasks
         (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by,
-         recurrence, recurrence_workdays)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         recurrence, recurrence_workdays, recurrence_day)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     const insertDependency = webDb.prepare(
       `INSERT OR IGNORE INTO TodoDependencies
@@ -261,7 +261,8 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
         asText(sub.created_at, now),
         targetUserId,
         isItemRecurrence(sub.recurrence) ? sub.recurrence : null,
-        asInt(sub.recurrence_workdays, 0) === 1 ? 1 : 0
+        asInt(sub.recurrence_workdays, 0) === 1 ? 1 : 0,
+        normalizeRecurrenceDay(isItemRecurrence(sub.recurrence) ? sub.recurrence : null, sub.recurrence_day)
       ).changes
       const stored = findSubTask.get(asText(sub.id)) as { todo_id: string } | undefined
       if (stored?.todo_id === todoId) validSubTaskIds.add(asText(sub.id))

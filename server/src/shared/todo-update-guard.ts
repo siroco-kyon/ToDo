@@ -9,7 +9,7 @@ const TODO_FIELDS: Record<string, string> = {
 const SUBTASK_FIELDS: Record<string, string> = {
   title: 'サブタスク名', description: 'サブタスクの説明', assignee_id: '担当者',
   start_date: '開始日', due_date: '期限', progress: '進捗', done: '完了状態',
-  recurrence: '項目の繰り返し', recurrence_workdays: '平日だけの設定'
+  recurrence: '項目の繰り返し', recurrence_workdays: '平日だけの設定', recurrence_day: '戻る曜日・日付'
 }
 
 function canonical(field: string, value: unknown): unknown {
@@ -19,6 +19,8 @@ function canonical(field: string, value: unknown): unknown {
     return [...new Set(value)].sort()
   }
   if (field === 'done') return Boolean(value)
+  // 戻る曜日・日付は 0（日曜）と未設定を区別する
+  if (field === 'recurrence_day') return value ?? null
   if (field.startsWith('recurrence_') || field === 'list_mode') return Number(value ?? 0)
   if (['title', 'description', 'memo'].includes(field)) return value ?? ''
   return value ?? null
