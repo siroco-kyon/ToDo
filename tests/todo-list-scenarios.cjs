@@ -74,4 +74,30 @@ module.exports = function checkTodoList(api) {
   const back = api.updateTodo(task.id, { list_mode: 0, due_date: '2026-12-01' })
   assert.equal(back.list_mode, 0)
   assert.equal(back.due_date, '2026-12-01')
+
+  // 期間中の実施状況（報告タブ）。期間に重なる周期の数と、そのうちチェックした数
+  const key = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  const today = key(new Date())
+  const yesterday = key(new Date(Date.now() - 86400000))
+  const routine = api.createTodo({ title: '実施状況の確認', status: 'active', list_mode: 1 })
+  const everyDay = api.createSubTask(routine.id, { title: '毎日の確認', recurrence: 'daily' })
+  api.updateSubTask(everyDay.id, { done: true })
+  const summaryOf = (id, from, to) => {
+    const row = api.getSubTaskCheckSummaries(from, to).find((item) => item.subtask_id === id)
+    return row && { periods: row.periods, checked: row.checked, checked_in_range: row.checked_in_range }
+  }
+  assert.deepEqual(summaryOf(everyDay.id, today, today), { periods: 1, checked: 1, checked_in_range: 1 })
+  assert.deepEqual(summaryOf(everyDay.id, yesterday, yesterday), { periods: 0, checked: 0, checked_in_range: 0 }, '項目を作る前の周期は数えない')
+
+  // 期間の開始より前に始まった週も、期間に重なっていれば数える（2026-09-28 と 10-05 の週）
+  const everyWeek = api.createSubTask(routine.id, { title: '毎週の確認', recurrence: 'weekly' })
+  db.prepare("UPDATE SubTasks SET created_at = '2026-09-01T00:00:00.000Z' WHERE id = ?").run(everyWeek.id)
+  const insertCheck = db.prepare('INSERT INTO SubTaskChecks (id, subtask_id, todo_id, period_key, user_id, checked_at) VALUES (?, ?, ?, ?, NULL, ?)')
+  insertCheck.run('check-1', everyWeek.id, routine.id, '2026-09-28', local(2026, 9, 29).toISOString())
+  assert.deepEqual(summaryOf(everyWeek.id, '2026-10-01', '2026-10-11'), { periods: 2, checked: 1, checked_in_range: 0 })
+  insertCheck.run('check-2', everyWeek.id, routine.id, '2026-10-05', local(2026, 10, 7).toISOString())
+  assert.deepEqual(summaryOf(everyWeek.id, '2026-10-01', '2026-10-11'), { periods: 2, checked: 2, checked_in_range: 1 })
+
+  // ふつうのタスクの項目は対象外
+  assert.equal(api.getSubTaskCheckSummaries('2026-10-01', today).some((item) => item.todo_id === task.id), false)
 }

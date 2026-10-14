@@ -35,7 +35,8 @@ import {
   reorderSubTasks,
   createSubTask,
   updateSubTask,
-  deleteSubTask
+  deleteSubTask,
+  getSubTaskCheckSummaries
 } from '../db/subtasks'
 import { startTimer, stopTimer, getRunningState } from '../db/timer'
 import { createQuickProgress, stopExpectedTimer } from '../db/desktop'
@@ -302,6 +303,8 @@ dataRouter.delete('/dependencies/:id', (req, res) => run(res, () => deleteTodoDe
 // ─── SubTasks ─────────────────────────────────────────────────
 dataRouter.get('/subtasks', (_req, res) => run(res, () => getAllSubTasks()))
 dataRouter.get('/subtasks/calendar', (_req, res) => run(res, () => getSubTasksForCalendar()))
+dataRouter.get('/subtask-checks/summary', (req, res) =>
+  run(res, () => getSubTaskCheckSummaries(String(req.query.from ?? ''), String(req.query.to ?? ''))))
 dataRouter.get('/todos/:todoId/subtasks', (req, res) => run(res, () => getSubTasksByTodo(req.params.todoId)))
 dataRouter.get('/todos/:todoId/subscription', (req, res) => run(res, () => ({ subscribed: Boolean(getDb().prepare('SELECT 1 FROM TodoSubscriptions WHERE user_id = ? AND todo_id = ?').get(req.user!.id, req.params.todoId)) })))
 dataRouter.post('/todos/:todoId/subscription', (req, res) => run(res, () => {
