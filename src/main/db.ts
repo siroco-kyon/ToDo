@@ -918,6 +918,9 @@ export function updateTodo(id: string, data: UpdateTodoInput): Todo {
     if (constrainedData.status === 'on_hold' && getRunningState()?.todo_id === id) {
       stopTimer('タスクを保留しました')
     }
+    if (before.list_mode && data.list_mode !== undefined && !data.list_mode) {
+      db.prepare('UPDATE SubTasks SET recurrence = NULL, recurrence_workdays = 0 WHERE todo_id = ?').run(id)
+    }
     resolveDependencyCascade(id, now)
     const updated = getTodoById(id)
     recordTodoChanges(before, updated, now)
@@ -1199,13 +1202,22 @@ function normalizeItemRecurrence(value: unknown): ItemRecurrence | null {
   return isItemRecurrence(value) ? value : null
 }
 
+/** 項目の繰り返しは ToDoリストだけで使う（ふつうのタスクの項目には付けない） */
+function isListTodoId(todoId: string): boolean {
+  const row = db.prepare('SELECT list_mode FROM Todos WHERE id = ?').get(todoId) as { list_mode: number } | undefined
+  return Boolean(row?.list_mode)
+}
+
 /**
  * ToDoリストの繰り返しの項目のうち、前の周期にチェックしたままのものを未チェックに戻す。戻した件数を返す。
  * 日付が変わったときの点検と、サブタスクの読み書きの前に呼ぶ。チェックの記録（SubTaskChecks）は残す。
  */
 export function resetRecurringSubTasks(now: Date = new Date()): number {
   const rows = db.prepare(
-    'SELECT id, recurrence, recurrence_workdays, completed_at FROM SubTasks WHERE recurrence IS NOT NULL AND done = 1'
+    // 終えた（完了・アーカイブ）ToDoリストの項目はそのままにしておく
+    `SELECT st.id, st.recurrence, st.recurrence_workdays, st.completed_at
+     FROM SubTasks st JOIN Todos t ON t.id = st.todo_id
+     WHERE st.recurrence IS NOT NULL AND st.done = 1 AND t.list_mode = 1 AND t.status NOT IN ('done', 'archived')`
   ).all() as Array<{ id: string; recurrence: string; recurrence_workdays: number; completed_at: string | null }>
   const stale = rows.filter((row) => isItemRecurrence(row.recurrence)
     && isCheckStale(row.recurrence, Boolean(row.recurrence_workdays), row.completed_at, now, isHoliday))
@@ -1281,9 +1293,10 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput): SubTask
     const dueDate = normalizeDateKey(data.due_date)
     const progress = clampProgress(data.progress)
     const done = progress >= 100 ? 1 : 0
+    const recurrence = isListTodoId(todoId) ? normalizeItemRecurrence(data.recurrence) : null
     db.prepare(
       'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, recurrence, recurrence_workdays) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now, normalizeItemRecurrence(data.recurrence), data.recurrence_workdays ? 1 : 0)
+    ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now, recurrence, recurrence && data.recurrence_workdays ? 1 : 0)
     const created = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
     if (done) recordRecurringCheck(created, true)
     const extendedTo = syncTodoDueDateWithSubTasks(todoId)
@@ -1315,7 +1328,7 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
       db.prepare('UPDATE SubTasks SET due_date = ? WHERE id = ?').run(normalizeDateKey(data.due_date), id)
     }
     if (data.recurrence !== undefined) {
-      db.prepare('UPDATE SubTasks SET recurrence = ? WHERE id = ?').run(normalizeItemRecurrence(data.recurrence), id)
+      db.prepare('UPDATE SubTasks SET recurrence = ? WHERE id = ?').run(isListTodoId(current.todo_id) ? normalizeItemRecurrence(data.recurrence) : null, id)
     }
     if (data.recurrence_workdays !== undefined) {
       db.prepare('UPDATE SubTasks SET recurrence_workdays = ? WHERE id = ?').run(data.recurrence_workdays ? 1 : 0, id)

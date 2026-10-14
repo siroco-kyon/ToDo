@@ -318,6 +318,15 @@ function ItemEditor({ item, users, canMoveUp, canMoveDown, onMove, onCancel, onS
   const [assigneeId, setAssigneeId] = useState(item.assignee_id ?? '')
   const [description, setDescription] = useState(item.description ?? '')
   const [saving, setSaving] = useState(false)
+  // 編集を始めたときの値。ほかの人が同時に変えていたら、保存時にサーバーが気づけるように送る
+  const [base] = useState(() => ({
+    title: item.title,
+    description: item.description ?? '',
+    recurrence: item.recurrence ?? null,
+    recurrence_workdays: item.recurrence_workdays ? 1 : 0,
+    due_date: item.due_date?.slice(0, 10) ?? null,
+    assignee_id: item.assignee_id ?? null
+  }))
 
   const save = async (): Promise<void> => {
     if (!title.trim()) {
@@ -326,20 +335,25 @@ function ItemEditor({ item, users, canMoveUp, canMoveDown, onMove, onCancel, onS
     }
     const nextRepeat = repeatFields(repeat)
     const data: UpdateSubTaskInput = {}
-    if (title.trim() !== item.title) data.title = title.trim()
-    if (description !== (item.description ?? '')) data.description = description
-    if (nextRepeat.recurrence !== (item.recurrence ?? null)) data.recurrence = nextRepeat.recurrence
-    if (nextRepeat.recurrence_workdays !== (item.recurrence_workdays ? 1 : 0)) data.recurrence_workdays = nextRepeat.recurrence_workdays
+    const expected: Record<string, unknown> = {}
+    const change = <K extends keyof typeof base>(field: K, value: (typeof base)[K]): void => {
+      if (value === base[field]) return
+      ;(data as Record<string, unknown>)[field] = value
+      expected[field] = base[field]
+    }
+    change('title', title.trim())
+    change('description', description)
+    change('recurrence', nextRepeat.recurrence)
+    change('recurrence_workdays', nextRepeat.recurrence_workdays)
     // 繰り返しの項目は期限を持たない
-    const nextDue = repeat === '' ? dueDate || null : null
-    if (nextDue !== (item.due_date?.slice(0, 10) ?? null)) data.due_date = nextDue
-    if (users.length > 0 && (assigneeId || null) !== (item.assignee_id ?? null)) data.assignee_id = assigneeId || null
+    change('due_date', repeat === '' ? dueDate || null : null)
+    if (users.length > 0) change('assignee_id', assigneeId || null)
     if (Object.keys(data).length === 0) {
       onCancel()
       return
     }
     setSaving(true)
-    await onSave(data)
+    await onSave({ ...data, expected_values: expected })
     setSaving(false)
   }
 

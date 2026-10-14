@@ -417,6 +417,9 @@ export function updateTodo(id: string, data: UpdateTodoInput, changedByUserId: s
     if (constrainedData.co_assignee_ids !== undefined) {
       replaceCoAssignees(id, constrainedData.co_assignee_ids, now)
     }
+    if (before.list_mode && data.list_mode !== undefined && !data.list_mode) {
+      db.prepare('UPDATE SubTasks SET recurrence = NULL, recurrence_workdays = 0 WHERE todo_id = ?').run(id)
+    }
     resolveDependencyCascade(id, now)
     const updated = getTodoById(id)
     recordTodoChanges(before, updated, changedByUserId, now)

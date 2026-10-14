@@ -633,14 +633,17 @@ function getTodoBar(todo: Todo): TodoBar | null {
   return { startDate: singleDay, endDate: singleDay }
 }
 
-/** ToDoリストは期限を持たずに続くので、開始日（なければ作った日）から今日までのバーにする */
+function localDateKeyOf(iso: string | null, fallback: string): string {
+  const date = iso ? new Date(iso) : null
+  if (!date || Number.isNaN(date.getTime())) return fallback
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+/** ToDoリストは期限を持たずに続くので、開始日（なければ作った日）から今日まで（終えたリストは終えた日まで）のバーにする */
 function getListTodoBar(todo: Todo, todayKey: string): TodoBar {
-  const created = new Date(todo.created_at)
-  const createdKey = Number.isNaN(created.getTime())
-    ? todayKey
-    : `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}`
-  const start = todo.start_date?.slice(0, 10) ?? createdKey
-  return { startDate: start, endDate: start <= todayKey ? todayKey : start }
+  const start = todo.start_date?.slice(0, 10) ?? localDateKeyOf(todo.created_at, todayKey)
+  const end = todo.status === 'done' ? localDateKeyOf(todo.completed_at, todayKey) : todayKey
+  return { startDate: start, endDate: start <= end ? end : start }
 }
 
 function getSubTaskBar(subTask: SubTask): TodoBar | null {
@@ -899,7 +902,7 @@ function buildTodoBarTooltip(options: {
       todo.title,
       'ToDoリスト（期限なしで続くタスク。項目は詳細でチェックします）',
       `担当: ${assignees.length > 0 ? assignees.join('、') : '未割り当て'}${options.checklistText ? ` ・ ${options.checklistText}` : ''}`,
-      `開始: ${shortDateLabel(bar.startDate)} から続いています`
+      todo.status === 'done' ? `期間: ${shortDateLabel(bar.startDate)} → ${shortDateLabel(bar.endDate)}（終えたリスト）` : `開始: ${shortDateLabel(bar.startDate)} から続いています`
     ]
     : [
       todo.title,

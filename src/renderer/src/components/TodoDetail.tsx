@@ -885,6 +885,11 @@ export function TodoDetail({
                 保存すると期限と繰り返しを外します。今のサブタスクはそのまま項目になります（繰り返しは項目ごとに設定できます）。
               </div>
             )}
+            {!editingListMode && listMode && (
+              <div style={{ marginTop: 4, fontSize: '0.72rem', color: '#fde68a', lineHeight: 1.5 }}>
+                保存すると、項目の繰り返し（毎日・毎週など）を外し、ふつうのサブタスクに戻します。
+              </div>
+            )}
           </div>
           <div><label style={labelStyle}>説明</label><textarea value={editData.description ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, description: event.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} /></div>
           <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input type="date" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div>{!editingListMode && <div style={{ flex: 1 }}><label style={labelStyle}>期限</label><input type="date" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div>}</div>
