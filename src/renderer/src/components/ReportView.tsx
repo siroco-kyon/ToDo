@@ -300,7 +300,9 @@ function buildRow(
   const lastNoteAt = activity?.last_note_at ?? null
   const lastMemoAt = activity?.last_memo_at ?? null
   const lastReportAt = latestIso(lastNoteAt, lastMemoAt)
-  const memoUpdatedInPeriod = lastMemoAt != null && isInRange(isoToDateKey(lastMemoAt), range)
+  // 最終更新だけでは、過去の期間を選んだときに期間中の更新を見落とすので、期間中の変更履歴も見る
+  const memoUpdatedInPeriod = (lastMemoAt != null && isInRange(isoToDateKey(lastMemoAt), range))
+    || changes.some((change) => change.subtask_id == null && change.field === 'memo')
 
   let freshness: Freshness
   if (todo.status === 'done') {
@@ -900,21 +902,18 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     .filter((row) => matchesScopeSetting(row, settings.scope, range)),
   [activity, changesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, hiddenCategoryKeySet, hiddenTodoIdSet, notesByTodo, range, selectedUserId, settings.scope, settings.statuses, subTasksByTodo, todos])
 
-  // 表示設定のカテゴリの選択肢（アーカイブ以外のタスクがあるカテゴリだけ。並びはカテゴリ一覧の順、未分類は最後）
+  // 表示設定のカテゴリの選択肢。検索などで今は出ていないカテゴリも選べるよう、カテゴリ一覧のすべてを並べる（未分類は最後）
   const categoryOptions = useMemo(() => {
-    const counts = new Map<string, { label: string; color: string | null; count: number }>()
+    const counts = new Map<string, number>()
     for (const todo of todos) {
       if (todo.status === 'archived') continue
       const key = todo.category_id ?? ''
-      const entry = counts.get(key)
-      if (entry) entry.count++
-      else counts.set(key, { label: todo.category_name ?? '未分類', color: todo.category_color, count: 1 })
+      counts.set(key, (counts.get(key) ?? 0) + 1)
     }
-    const order = new Map(categories.map((category, index) => [category.id, index]))
-    const rank = (key: string): number => key === '' ? Number.MAX_SAFE_INTEGER : order.get(key) ?? categories.length
-    return [...counts.entries()]
-      .map(([key, value]) => ({ key, ...value }))
-      .sort((a, b) => rank(a.key) - rank(b.key))
+    return [
+      ...categories.map((category) => ({ key: category.id, label: category.name, color: category.color, count: counts.get(category.id) ?? 0 })),
+      { key: '', label: '未分類', color: null, count: counts.get('') ?? 0 }
+    ]
   }, [categories, todos])
 
   const hiddenTodos = useMemo(() => todos.filter((todo) => hiddenTodoIdSet.has(todo.id)), [hiddenTodoIdSet, todos])

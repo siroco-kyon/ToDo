@@ -16,7 +16,7 @@ export interface ReportCategoryOption {
   key: string
   label: string
   color: string | null
-  /** アーカイブ以外のタスク数 */
+  /** 表示中のタスク一覧（検索などの絞り込み後）のうち、アーカイブ以外のタスク数 */
   count: number
 }
 
@@ -43,7 +43,7 @@ export function ReportSettingsPanel({ settings, onChange, categoryOptions, hidde
     }))
   }
 
-  // 「これだけ」: 押したカテゴリ以外をすべて隠す
+  // 「これだけ」: 押したカテゴリ以外をすべて隠す（選択肢はカテゴリ一覧のすべてと未分類）
   const showOnlyCategory = (key: string): void => {
     onChange((previous) => ({
       ...previous,
@@ -74,7 +74,6 @@ export function ReportSettingsPanel({ settings, onChange, categoryOptions, hidde
 
       <Row label="カテゴリ" hint="外したカテゴリのタスクは出しません">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {categoryOptions.length === 0 && <span style={{ fontSize: '0.76rem', color: '#64748b' }}>カテゴリのあるタスクがありません</span>}
           {categoryOptions.map((option) => {
             const shown = !hiddenCategories.has(option.key)
             return (

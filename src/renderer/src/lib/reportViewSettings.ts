@@ -32,7 +32,7 @@ export const REPORT_STATUS_OPTIONS: Array<{ key: ReportStatusKey; label: string;
 export const REPORT_SCOPE_OPTIONS: Array<{ value: ReportScope; label: string; title: string }> = [
   { value: 'all', label: 'すべて', title: '状態とカテゴリの条件に合うタスクをすべて出します' },
   { value: 'scheduled', label: '日程が期間にかかるもの', title: '開始日〜期限が報告期間と重なるタスクだけ。期限を過ぎて完了していないものは今日まで続いているとみなします' },
-  { value: 'activity', label: '期間中に動きがあったもの', title: '期間中に進捗ログ・メモ・進捗や期限の変更・サブタスクの追加や変更・完了・作成があったタスクと、要相談のタスクだけ' }
+  { value: 'activity', label: '期間中に動きがあったもの', title: '期間中に、進捗ログ・メモの更新・進捗や期限の変更・完了・作成があったタスク、サブタスクの追加・完了・進捗や期限の変更があったタスク、要相談のタスクだけ（サブタスクの名前や担当の変更は数えません）' }
 ]
 
 export const REPORT_SUBTASK_OPTIONS: Array<{ value: ReportSubTaskMode; label: string }> = [
