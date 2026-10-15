@@ -104,6 +104,16 @@ module.exports = function checkTodoList(api) {
   }
   assert.deepEqual(summaryOf(everyDay.id, today, today), { periods: 1, checked: 1, checked_in_range: 1 })
   assert.deepEqual(summaryOf(everyDay.id, yesterday, yesterday), { periods: 0, checked: 0, checked_in_range: 0 }, '項目を作る前の周期は数えない')
+  // 今日を含む周期（報告タブでは途中の回として、実施の回数に入れない）
+  const currentKeyOf = (id, from, to) => api.getSubTaskCheckSummaries(from, to).find((item) => item.subtask_id === id).current_key
+  assert.equal(currentKeyOf(everyDay.id, today, today), today)
+  assert.equal(currentKeyOf(everyDay.id, yesterday, yesterday), null, '期間に重ならなければ null')
+  // 毎月の周期は、今日より前の期間を選んでも、今月の分が続いていれば返す
+  const everyMonth = api.createSubTask(routine.id, { title: '毎月の確認', recurrence: 'monthly' })
+  db.prepare("UPDATE SubTasks SET created_at = '2026-01-01T00:00:00.000Z' WHERE id = ?").run(everyMonth.id)
+  const monthStart = `${today.slice(0, 8)}01`
+  assert.equal(currentKeyOf(everyMonth.id, monthStart, monthStart), monthStart)
+  assert.equal(currentKeyOf(everyMonth.id, '2026-02-01', '2026-02-10'), null, '終わった月だけの期間なら null')
 
   // 期間の開始より前に始まった週も、期間に重なっていれば数える（2026-09-28 と 10-05 の週）
   const everyWeek = api.createSubTask(routine.id, { title: '毎週の確認', recurrence: 'weekly' })

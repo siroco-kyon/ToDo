@@ -257,6 +257,11 @@ export interface SubTaskCheckSummary {
   period_keys: string[]
   /** そのうちチェックした周期 */
   checked_keys: string[]
+  /**
+   * 今日を含む周期の始まり（期間に重なるときだけ。重ならなければ null）。
+   * この周期はまだ途中なので、報告タブでは実施の回数に入れず「今日 1/5」のように別に出す
+   */
+  current_key: string | null
 }
 
 // ─── Timer & work logs ────────────────────────────────────────
