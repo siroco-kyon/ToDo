@@ -65,7 +65,7 @@ export function ReportSettingsPanel({ settings, onChange, categoryOptions, hidde
     <section id="report-view-settings" aria-label="報告の表示設定" style={panelStyle}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <strong style={{ fontSize: '0.86rem', color: '#e2e8f0' }}>表示設定</strong>
-        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>自分の画面だけに効きます（ほかの人の報告タブは変わりません）</span>
+        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>自分の画面だけに反映されます（ほかの人の報告タブは変わりません）</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button onClick={resetAll} title="カテゴリ・状態・対象・サブタスク・小見出しを既定に戻します（個別に隠したタスクはそのまま）" style={smallButtonStyle}>既定に戻す</button>
           <button onClick={onClose} style={smallButtonStyle}>閉じる</button>
@@ -156,7 +156,7 @@ export function ReportSettingsPanel({ settings, onChange, categoryOptions, hidde
               style={{ accentColor: '#6366f1' }}
             />
             {subGroupLabel}
-            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>（畳んだ小見出しは次に開いたときも畳んだまま）</span>
+            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>（折りたたんだ小見出しは、次に開いたときも折りたたんだまま）</span>
           </label>
         </Row>
       )}

@@ -759,7 +759,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                   <option value="">タスクがありません</option>
                 ) : (
                   <>
-                    <option value="">どのタスクの進捗を書きますか？（選んでください）</option>
+                    <option value="">進捗を書くタスクを選んでください</option>
                     {taskOptionGroups.map((group) => (
                       <optgroup key={group.label} label={group.label}>
                         {group.todos.map((todo) => (

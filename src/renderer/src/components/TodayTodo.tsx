@@ -86,7 +86,7 @@ export function TodayTodoCard({ groups, pendingIds, storageKey, onToggle, onOpen
         <button
           onClick={toggleCollapsed}
           aria-expanded={!collapsed}
-          title={collapsed ? '開く' : '畳む'}
+          title={collapsed ? '開く' : '折りたたむ'}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#94a3b8', fontSize: '0.75rem', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s ease' }}
         >
           ▾

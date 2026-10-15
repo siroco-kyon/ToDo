@@ -446,7 +446,7 @@ function CandidateCard({
         cursor: 'grab',
         boxShadow: placementActive ? '0 0 0 1px #1d4ed8 inset' : 'none'
       }}
-      title="ドラッグで時間割へ置けます。クリック配置なら「時間に置く」を押してください。"
+      title="ドラッグで時間割へ置けます。クリックで置くときは「時間に置く」を押してください。"
     >
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '0.86rem', color: '#e2e8f0', fontWeight: 600, lineHeight: 1.4 }}>{todo.title}</div>
@@ -543,7 +543,7 @@ function UnscheduledCard({
         cursor: 'grab',
         boxShadow: placementActive ? '0 0 0 1px #1d4ed8 inset' : 'none'
       }}
-      title="ドラッグまたはクリック配置で時間割に入れられます。"
+      title="ドラッグかクリックで時間割に置けます。"
     >
       <div style={{ flex: 1, minWidth: 0 }}>
         <button
@@ -1009,7 +1009,7 @@ export function PlanView({
 
           <Section
             title="時間割"
-            subtitle="ドラッグで時間変更。下端ドラッグで長さ調整。候補や未割当はドラッグまたはクリック配置できます。"
+            subtitle="ドラッグで時刻、下端のドラッグで長さを変えられます。候補や未割り当てのタスクは、ドラッグかクリックで置けます。"
           >
             {placementDraft && (
               <div
@@ -1024,7 +1024,7 @@ export function PlanView({
                   lineHeight: 1.6
                 }}
               >
-                <strong>{placementDraft.title}</strong> を配置中です。時間割の空いている場所をクリックすると置けます。`Esc` でキャンセルできます。
+                <strong>{placementDraft.title}</strong> を配置中です。時間割の空いている場所をクリックすると置けます。Esc でキャンセルできます。
               </div>
             )}
 
@@ -1429,10 +1429,10 @@ export function PlanView({
           </Section>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
-          <Section title="未割当の今日タスク" subtitle="まだ時刻を決めていないタスクです。ドラッグまたはクリック配置できます。">
+          <Section title="未割り当ての今日タスク" subtitle="まだ時刻を決めていないタスクです。ドラッグかクリックで時間割に置けます。">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {unscheduledItems.length === 0 ? (
-                <EmptyState label="未割当のタスクはありません。候補やバックログから追加して時間を決めてください。" />
+                <EmptyState label="未割り当てのタスクはありません。候補やバックログから追加して時間を決めてください。" />
               ) : (
                 unscheduledItems.map((item) => (
                   <UnscheduledCard
@@ -1512,13 +1512,12 @@ export function PlanView({
             </div>
           </Section>
 
-          <Section title="使い方" subtitle="配置と移動をすばやく行うためのヒントです。">
+          <Section title="使い方">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, color: '#94a3b8', fontSize: '0.8rem', lineHeight: 1.6 }}>
-              <div>候補や未割当のカードは、ドラッグして時間割へ落とすか、「時間に置く」を押してから空き時間をクリックすると配置できます。</div>
+              <div>候補や未割り当てのカードは、ドラッグして時間割へ落とすか、「時間に置く」を押してから空き時間をクリックすると配置できます。</div>
               <div>時間割のブロックは、ドラッグで開始時刻、下端ドラッグで長さを調整できます。</div>
               <div>同じタスクは1日に何個でも置けます。ブロックの「複製」を押すか、「タスクを探す」から同じタスクをもう一度ドラッグしてください。</div>
-              <div>時刻ラベルと時間割は同じスクロール領域なので、上下に動かしてもズレません。</div>
-              <div>`Esc` を押すとクリック配置モードをキャンセルできます。</div>
+              <div>クリックで置いている途中は、Esc でキャンセルできます。</div>
             </div>
           </Section>
         </div>

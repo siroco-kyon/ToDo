@@ -282,18 +282,18 @@ export function QuickAddModal({
           </div>
 
           <div>
-            <span style={labelStyle}>使い方</span>
-            <div role="radiogroup" aria-label="使い方" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button type="button" role="radio" aria-checked={!listMode} onClick={() => setListMode(false)} style={presetButtonStyle(!listMode)}>
-                ふつうのタスク
+            <span style={labelStyle}>種類</span>
+            <div role="radiogroup" aria-label="種類" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button type="button" role="radio" aria-checked={!listMode} onClick={() => setListMode(false)} style={presetButtonStyle(!listMode)} title="開始日と期限を決めて進め、終わったら完了にします">
+                タスク
               </button>
-              <button type="button" role="radio" aria-checked={listMode} onClick={() => setListMode(true)} style={presetButtonStyle(listMode)} title="期限なしで続くタスク。中の項目を毎日・平日・毎週・毎月でチェックし直したり、思いついたToDoを足したりして使います">
-                ToDoリスト（期限なしで続ける）
+              <button type="button" role="radio" aria-checked={listMode} onClick={() => setListMode(true)} style={presetButtonStyle(listMode)} title="毎日・毎週のチェックや細かいやることをまとめるリストです">
+                ToDoリスト
               </button>
             </div>
             {listMode && (
               <div style={{ marginTop: 4, fontSize: '0.7rem', color: '#a5b4fc', lineHeight: 1.5 }}>
-                作ったあと、詳細で項目を追加します。項目ごとに「毎日・平日・毎週・毎月」を選ぶと、周期が変わったときに未チェックに戻ります。期限を延ばし続ける必要はありません。
+                毎日・毎週のチェックや細かいやることをまとめるリストです。期限はありません。作ったあと、詳細か ToDo タブで項目を追加します。項目ごとに「毎日・平日・毎週・毎月」を選ぶと、決めた日が来るたびに未チェックに戻ります。
               </div>
             )}
           </div>

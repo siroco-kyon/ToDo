@@ -84,15 +84,15 @@ export function Toolbar({
   onToggleTaskPane
 }: Props): React.JSX.Element {
   const viewButtons: ViewButton[] = [
-    { key: 'overview', label: '概要', description: '期限が近いタスクや最近の動きをまとめて見ます', active: activeView === 'overview', onClick: onToggleOverviewView },
-    { key: 'gantt', label: 'ガント', description: '開始日〜期限を横棒で見ます。バーをドラッグして日程を変えられます', active: activeView === 'gantt', onClick: onToggleGanttView },
-    { key: 'kanban', label: 'カンバン', description: '未着手・進行中・保留中・完了の列で、カードを動かして状態を変えます', active: activeView === 'kanban', onClick: onToggleKanbanView },
-    ...(showTeamButton ? [{ key: 'team' as const, label: 'チーム', description: '誰が何を計測中か、期限超過・期限が近いタスク、メンバーごとの件数を見ます', active: activeView === 'team', onClick: onToggleTeamView }] : []),
+    { key: 'overview', label: '概要', description: '期限が近いタスクや最近の動きをまとめて表示します', active: activeView === 'overview', onClick: onToggleOverviewView },
+    { key: 'gantt', label: 'ガント', description: '開始日から期限までを横棒で表示します。バーをドラッグすると日程を変えられます', active: activeView === 'gantt', onClick: onToggleGanttView },
+    { key: 'kanban', label: 'カンバン', description: '未着手・進行中・保留中・完了の列に分けて表示します。カードを動かすと状態を変えられます', active: activeView === 'kanban', onClick: onToggleKanbanView },
+    ...(showTeamButton ? [{ key: 'team' as const, label: 'チーム', description: '誰が何を計測中か、期限超過・期限が近いタスク、メンバーごとの件数を表示します', active: activeView === 'team', onClick: onToggleTeamView }] : []),
     { key: 'progress', label: '進捗', description: '進捗ログのタイムライン。投稿・返信・いいねができます', active: activeView === 'progress', onClick: onToggleProgressView },
-    { key: 'report', label: '報告', description: '定例ミーティング用。担当者ごとに進捗と報告の有無を一覧します', active: activeView === 'report', onClick: onToggleReportView },
-    { key: 'plan', label: '計画', description: '1日の予定を時間割で組みます', active: activeView === 'plan', onClick: onTogglePlanView },
-    { key: 'todo', label: 'ToDo', description: 'ToDoリスト（期限なしで続くチェックリスト）の今日やることと、リストごとの項目をまとめて見て、その場でチェックします', active: activeView === 'todo', onClick: onToggleTodoView },
-    { key: 'log', label: '記録', description: 'タイマーで計測した作業時間の記録を見ます', active: activeView === 'log', onClick: onToggleLogView }
+    { key: 'report', label: '報告', description: '定例ミーティング用に、担当者ごとの進捗と報告の有無を並べて表示します', active: activeView === 'report', onClick: onToggleReportView },
+    { key: 'plan', label: '計画', description: '1日の予定を時間割で組み立てられます', active: activeView === 'plan', onClick: onTogglePlanView },
+    { key: 'todo', label: 'ToDo', description: 'ToDoリストの今日やることと項目をまとめて表示します。その場でチェックできます', active: activeView === 'todo', onClick: onToggleTodoView },
+    { key: 'log', label: '記録', description: 'タイマーで計測した作業時間の記録を表示します', active: activeView === 'log', onClick: onToggleLogView }
   ]
 
   return (

@@ -900,9 +900,9 @@ function buildTodoBarTooltip(options: {
   const lines = todo.list_mode
     ? [
       todo.title,
-      'ToDoリスト（期限なしで続くタスク。項目は詳細でチェックします）',
+      'ToDoリスト。項目は詳細か ToDo タブでチェックします',
       `担当: ${assignees.length > 0 ? assignees.join('、') : '未割り当て'}${options.checklistText ? ` ・ ${options.checklistText}` : ''}`,
-      todo.status === 'done' ? `期間: ${shortDateLabel(bar.startDate)} → ${shortDateLabel(bar.endDate)}（終えたリスト）` : `開始: ${shortDateLabel(bar.startDate)} から続いています`
+      todo.status === 'done' ? `期間: ${shortDateLabel(bar.startDate)} → ${shortDateLabel(bar.endDate)}（終えたリスト）` : `開始: ${shortDateLabel(bar.startDate)}・期限なし`
     ]
     : [
       todo.title,
@@ -2998,7 +2998,7 @@ export function GanttView({
             <div style={{ fontSize: '0.95rem', color: '#f8fafc', fontWeight: 700 }}>ガントチャート</div>
             {listFilters}
           </div>
-          {isReorderMode && <div style={{ marginTop: 2, fontSize: '0.72rem', color: '#93c5fd' }}>並び替えモード中</div>}
+          {isReorderMode && <div style={{ marginTop: 2, fontSize: '0.72rem', color: '#93c5fd' }}>並べ替えモード中</div>}
           {reorderFeedback && <div role="alert" style={{ marginTop: 2, fontSize: '0.72rem', color: '#fca5a5' }}>{reorderFeedback}</div>}
         </div>
 
@@ -3014,9 +3014,9 @@ export function GanttView({
               cursor: reorderPending || (!isReorderMode && !canStartReorderMode) ? 'not-allowed' : 'pointer',
               opacity: reorderPending || (!isReorderMode && !canStartReorderMode) ? 0.55 : 1
             }}
-            title={!isReorderMode && !canStartReorderMode ? '並び替え対象のタスクが2件以上あるときに有効です。' : undefined}
+            title={!isReorderMode && !canStartReorderMode ? '並べ替え対象のタスクが2件以上あるときに有効です。' : undefined}
           >
-            {reorderPending ? '並び替えを保存中...' : isReorderMode ? '並び替え完了' : '並び替え'}
+            {reorderPending ? '並べ替えを保存中...' : isReorderMode ? '並べ替え完了' : '並べ替え'}
           </button>
           <button
             onClick={() => void performUndo()}
@@ -3053,7 +3053,7 @@ export function GanttView({
         <span style={collapsedSummaryChipStyle}>ズーム {ZOOM_LABELS[zoom]}</span>
         <span style={collapsedSummaryChipStyle}>表示 {rangeChartGroups.length}件</span>
         {showOutOfRange && <span style={collapsedSummaryChipStyle}>期間外を表示</span>}
-        {isReorderMode && <span style={healthSummaryChipStyle('#14532d', '#16a34a', '#dcfce7')}>並び替えモード</span>}
+        {isReorderMode && <span style={healthSummaryChipStyle('#14532d', '#16a34a', '#dcfce7')}>並べ替えモード</span>}
         <span style={collapsedSummaryChipStyle}>サブタスク {visibleSubTaskCount}/{datedSubTaskCount}</span>
         {expandableTodoIds.length > 0 && (
           <span style={collapsedSummaryChipStyle}>展開 {expandedTodoCount}/{expandableTodoIds.length}</span>
@@ -3719,7 +3719,7 @@ export function GanttView({
                               draggable={!reorderPending}
                               onDragStart={(event) => handleReorderDragStart(group.todo.id, event)}
                               style={reorderHandleStyle(reorderPending, isReorderDragSource)}
-                              title="ドラッグして並び替え"
+                              title="ドラッグして並べ替え"
                             >
                               ⋮⋮
                             </div>
@@ -3809,7 +3809,7 @@ export function GanttView({
                             />
                           ) : (
                             listMode ? (
-                              <span title="ToDoリストは期限を持たずに続きます" style={{ ...tableCellButtonStyle, cursor: 'default', color: '#a5b4fc' }}>続く</span>
+                              <span title="ToDoリストに期限はありません" style={{ ...tableCellButtonStyle, cursor: 'default', color: '#a5b4fc' }}>なし</span>
                             ) : (
                               <button onClick={() => beginTodoCellEdit(group.todo, 'due_date')} style={tableCellButtonStyle}>
                                 {displayedTodoBar ? shortDateLabel(displayedTodoBar.endDate) : '-'}
@@ -3830,7 +3830,7 @@ export function GanttView({
                             />
                           ) : (
                             listMode ? (
-                              <span title={`ToDoリストの項目: ${checklistText ?? ''}（詳細でチェックします）`} style={{ ...tableCellButtonStyle, cursor: 'default', color: '#a5b4fc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{checklistText}</span>
+                              <span title={`ToDoリストの項目: ${checklistText ?? ''}（詳細か ToDo タブでチェックします）`} style={{ ...tableCellButtonStyle, cursor: 'default', color: '#a5b4fc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{checklistText}</span>
                             ) : (
                             <button
                               onClick={() => beginTodoCellEdit(group.todo, 'progress')}
@@ -4087,7 +4087,7 @@ export function GanttView({
                                     draggable={!reorderPending}
                                     onDragStart={(event) => handleSubTaskReorderDragStart(subTask.id, event)}
                                     style={{ ...reorderHandleStyle(reorderPending, isSubTaskReorderSource), width: 16, minWidth: 16, fontSize: '0.68rem' }}
-                                    title="同じタスク内でドラッグして並び替え"
+                                    title="同じタスク内でドラッグして並べ替え"
                                   >
                                     ⋮⋮
                                   </div>

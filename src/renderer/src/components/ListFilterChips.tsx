@@ -15,7 +15,7 @@ export function ListFilterChips({ chips }: { chips: ListFilterChip[] }): React.J
     <span
       role="group"
       aria-label="タスク一覧の絞り込み"
-      title="左のタスク一覧の絞り込みが、この画面にも効いています"
+      title="左のタスク一覧の絞り込みを、この画面にも反映しています"
       style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', minWidth: 0 }}
     >
       <span style={{ fontSize: '0.68rem', color: '#64748b', whiteSpace: 'nowrap' }}>絞り込み中</span>

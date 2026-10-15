@@ -444,7 +444,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           <section>
             <h3 style={sectionHead}>管理者</h3>
             <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
-              メンバーの追加・編集・削除・権限変更・パスワード再設定を行います。
+              メンバーの追加・編集・削除、権限の変更、パスワードの再設定ができます。
             </p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button onClick={onManageUsers} style={primaryBtn}>👤 ユーザー管理を開く</button>
@@ -473,7 +473,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         <section>
           <h3 style={sectionHead}>データのエクスポート</h3>
           <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
-            CSV（UTF-8 BOM付き・Excel対応）でダウンロードします。バックアップや共有にどうぞ。
+            CSV（UTF-8 BOM付き・Excel対応）でダウンロードします。
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={() => void exportCsv('todos')} disabled={exporting} style={secondaryBtn}>📋 タスクCSV</button>
@@ -493,7 +493,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         <section>
           <h3 style={sectionHead}>表示テーマ</h3>
           <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
-            アプリ表示をライト/ダークで切り替えます。設定は保存され、次回起動時も維持されます。
+            アプリ表示をライト/ダークで切り替えます。
           </p>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
@@ -525,7 +525,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         <section>
           <h3 style={sectionHead}>フォント</h3>
           <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
-            アプリ全体の表示フォントを切り替えます。設定は保存され、次回起動時も維持されます。
+            アプリ全体の表示フォントを切り替えます。
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {FONT_PRESETS.map((preset) => (
@@ -550,7 +550,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         <section>
           <h3 style={sectionHead}>文字サイズ</h3>
           <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
-            アプリ全体の文字サイズを切り替えます。設定は保存され、次回起動時も維持されます。
+            アプリ全体の文字サイズを切り替えます。
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {FONT_SCALE_PRESETS.map((preset) => (
@@ -574,7 +574,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           <h3 style={sectionHead}>キーボードショートカット</h3>
           <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
             キーをクリックして新しいキーを押すと変更できます。Escでキャンセル。<br/>
-            グローバルはアプリが非表示・最小化でも動作します。
+            グローバルショートカットは、アプリを隠したり最小化したりしていても使えます。
           </p>
 
           {/* キャプチャ用隠しinput */}

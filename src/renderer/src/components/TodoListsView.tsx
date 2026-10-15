@@ -133,7 +133,7 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
           <section aria-label="ToDoリストとは" style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#e0e7ff' }}>ToDoリストを使ってみる</div>
             <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.7 }}>
-              ToDoリストは、期限なしで続くチェックリストです。期限を延ばし続けなくても、ずっと使えます。
+              ToDoリストは、毎日・毎週のチェックや細かいやることをまとめるリストです。期限がないので、延長しなくてもずっと使えます。
               <br />・毎日のメール確認や週1回の集計など、決まった作業は「毎日／平日／毎週〇曜／毎月〇日」を付けると、その日に未チェックに戻ります。
               <br />・思いついたやることは、繰り返さずに追加すると、チェックしたときに「済み」へ移ります。期限を付けると、期限が来た日にここの「今日やること」に出ます。
             </div>
