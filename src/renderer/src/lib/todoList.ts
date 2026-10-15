@@ -253,6 +253,17 @@ export interface TodayEntry {
   todo: Todo
 }
 
+/** 区分けの中の項目を、ToDoリストごとにまとめる（リストの小見出しを付けるため。並びはそのまま） */
+export function groupEntriesByList(entries: TodayEntry[]): Array<{ todo: Todo; items: SubTask[] }> {
+  const groups: Array<{ todo: Todo; items: SubTask[] }> = []
+  for (const { item, todo } of entries) {
+    const last = groups[groups.length - 1]
+    if (last && last.todo.id === todo.id) last.items.push(item)
+    else groups.push({ todo, items: [item] })
+  }
+  return groups
+}
+
 /** リストごとの今日やることを、区分けごとに並べ直す（リストの順・項目の順はそのまま） */
 export function buildTodaySections(groups: TodayListGroup[]): Array<{ section: TodaySection; entries: TodayEntry[] }> {
   const sections: TodaySection[] = ['today', 'week', 'month']

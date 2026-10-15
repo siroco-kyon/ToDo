@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
-import type { SubTask } from '../types'
+import type { SubTask, Todo } from '../types'
 import { toDateKey } from '../lib/dueDate'
-import { TODAY_SECTION_LABEL, buildTodaySections, countRemaining, type TodayListGroup } from '../lib/todoList'
+import { TODAY_SECTION_LABEL, buildTodaySections, countRemaining, groupEntriesByList, type TodayListGroup } from '../lib/todoList'
 import { QuickCheckItem } from './TodoChecklist'
 
 // 「今日やること」: 自分の ToDoリストの、繰り返しの項目と期限が今日までのやることを、リストごとに並べてその場でチェックする。
+// 区分け（今日やる／今週の分／今月の分）の中は、どのリストの項目か分かるように、カテゴリとリスト名の小見出しでまとめる。
 // ToDo タブと、右の「今日の予定」パネルの両方で使う。ToDoリストを使っていない人には出さない。
 
 interface ItemsProps {
@@ -21,8 +22,6 @@ export function TodayTodoItems({ groups, pendingIds, onToggle, onOpenList, showA
   if (groups.length === 0) {
     return <div style={{ fontSize: '0.78rem', color: '#64748b', lineHeight: 1.5 }}>今日やる項目はありません。</div>
   }
-  // リストが一つだけなら、項目ごとのリスト名は出さない
-  const showListName = groups.length > 1
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {buildTodaySections(groups).map(({ section, entries }) => {
@@ -33,24 +32,53 @@ export function TodayTodoItems({ groups, pendingIds, onToggle, onOpenList, showA
               <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>{TODAY_SECTION_LABEL[section].label}</span>
               <span style={{ fontSize: '0.66rem', color: done === entries.length ? '#4ade80' : '#64748b' }}>{done}/{entries.length}</span>
             </div>
-            {entries.map(({ item, todo }) => (
-              <QuickCheckItem
-                key={item.id}
-                item={item}
-                pending={pendingIds.has(item.id)}
-                todayKey={todayKey}
-                listTitle={todo.title}
-                listName={showListName ? todo.title : undefined}
-                listColor={todo.category_color}
-                showAssignee={showAssignee}
-                onToggle={() => onToggle(item)}
-                onOpen={() => onOpenList(todo.id)}
-              />
-            ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+              {groupEntriesByList(entries).map(({ todo, items }) => (
+                <div key={todo.id} style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <ListHeading todo={todo} onOpen={() => onOpenList(todo.id)} />
+                  <div style={{ marginLeft: 3, paddingLeft: 8, borderLeft: `2px solid ${todo.category_color ?? '#475569'}66`, minWidth: 0 }}>
+                    {items.map((item) => (
+                      <QuickCheckItem
+                        key={item.id}
+                        item={item}
+                        pending={pendingIds.has(item.id)}
+                        todayKey={todayKey}
+                        listTitle={todo.title}
+                        showAssignee={showAssignee}
+                        onToggle={() => onToggle(item)}
+                        onOpen={() => onOpenList(todo.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )
       })}
     </div>
+  )
+}
+
+/** どの ToDoリストの項目かを示す小見出し（カテゴリとリスト名）。押すとリストの詳細を開く */
+function ListHeading({ todo, onOpen }: { todo: Todo; onOpen: () => void }): React.JSX.Element {
+  const color = todo.category_color ?? '#475569'
+  return (
+    <button
+      onClick={onOpen}
+      title={`「${todo.title}」を開く${todo.category_name ? `（カテゴリ: ${todo.category_name}）` : ''}`}
+      style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', textAlign: 'left' }}
+    >
+      <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+      {todo.category_name && (
+        <span style={{ fontSize: '0.68rem', color, fontWeight: 700, flexShrink: 0, maxWidth: '45%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {todo.category_name}
+        </span>
+      )}
+      <span style={{ fontSize: '0.72rem', color: '#cbd5e1', fontWeight: 700, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {todo.title}
+      </span>
+    </button>
   )
 }
 
