@@ -886,8 +886,8 @@ export function TodoDetail({
               aria-label="種類"
               onChange={(event) => {
                 const list = event.target.value === 'list'
-                // ToDoリストは期限と繰り返し（次回分の作成）を持たない
-                setEditData((previous) => list ? { ...previous, list_mode: 1, due_date: null, recurrence: null } : { ...previous, list_mode: 0 })
+                // ToDoリストは繰り返し（次回分の作成）を持たない。期限はそのまま（空にすると期限なし）
+                setEditData((previous) => list ? { ...previous, list_mode: 1, recurrence: null } : { ...previous, list_mode: 0 })
               }}
               style={inputStyle}
             >
@@ -896,7 +896,7 @@ export function TodoDetail({
             </select>
             {editingListMode && !listMode && (
               <div style={{ marginTop: 4, fontSize: '0.72rem', color: '#a5b4fc', lineHeight: 1.5 }}>
-                保存すると期限と繰り返しを外します。今のサブタスクはそのまま項目になります（繰り返しは項目ごとに設定できます）。
+                保存すると繰り返し（次回分の作成）を外します。期限はそのままです（期限なしにするときは期限を空にします）。今のサブタスクはそのまま項目になります（繰り返しは項目ごとに設定できます）。
               </div>
             )}
             {!editingListMode && listMode && (
@@ -906,7 +906,7 @@ export function TodoDetail({
             )}
           </div>
           <div><label style={labelStyle}>説明</label><textarea value={editData.description ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, description: event.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} /></div>
-          <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input type="date" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div>{!editingListMode && <div style={{ flex: 1 }}><label style={labelStyle}>期限</label><input type="date" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div>}</div>
+          <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input type="date" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div><div style={{ flex: 1 }}><label style={labelStyle}>{editingListMode ? '期限（空にすると期限なし）' : '期限'}</label><input type="date" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div></div>
           <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最低</option><option value={2}>低</option><option value={3}>中</option><option value={4}>高</option><option value={5}>最高</option></select></div></div>
           {!editingListMode && <div><label style={labelStyle}>繰り返し（完了にすると次回分を自動で作ります）</label><select value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as 'daily' | 'weekly' | 'monthly' | null }))} style={inputStyle}><option value="">なし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option></select></div>}
           {!editingListMode && editData.recurrence && (
@@ -1633,7 +1633,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
     }
     const data: UpdateTodoInput = {}
     if ((startDraft || null) !== (todo.start_date?.slice(0, 10) ?? null)) data.start_date = startDraft || null
-    if (!listMode && (dueDraft || null) !== (todo.due_date?.slice(0, 10) ?? null)) data.due_date = dueDraft || null
+    if ((dueDraft || null) !== (todo.due_date?.slice(0, 10) ?? null)) data.due_date = dueDraft || null
     if (Object.keys(data).length === 0) {
       setEditingSchedule(false)
       return
@@ -1728,19 +1728,20 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
               開始
               <input type="date" value={startDraft} onChange={(event) => setStartDraft(event.target.value)} aria-label="開始日" style={{ ...compactSelectStyle, width: 'auto' }} />
             </label>
-            {!listMode && <span>→</span>}
-            {!listMode && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                期限
-                <input
-                  type="date"
-                  value={dueDraft}
-                  onChange={(event) => setDueDraft(event.target.value)}
-                  onKeyDown={(event) => { if (event.key === 'Enter') void saveSchedule() }}
-                  aria-label="期限"
-                  style={{ ...compactSelectStyle, width: 'auto' }}
-                />
-              </label>
+            <span>→</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              期限
+              <input
+                type="date"
+                value={dueDraft}
+                onChange={(event) => setDueDraft(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') void saveSchedule() }}
+                aria-label="期限"
+                style={{ ...compactSelectStyle, width: 'auto' }}
+              />
+            </label>
+            {listMode && dueDraft && (
+              <button onClick={() => setDueDraft('')} title="期限を外して、期限なしのリストにします" style={{ ...buttonStyle('#334155'), padding: '3px 10px', fontSize: '0.74rem' }}>期限なし</button>
             )}
             <button onClick={() => setEditingSchedule(false)} style={buttonStyle('#334155')}>取消</button>
             <button onClick={() => void saveSchedule()} disabled={saving} style={buttonStyle('#2563eb')}>{saving ? '保存中…' : '保存'}</button>
@@ -1749,8 +1750,8 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.82rem' }}>
             <span style={{ color: '#cbd5e1' }}>開始 {todo.start_date ? formatShortDate(todo.start_date) : '未設定'}</span>
-            {listMode ? (
-              <span style={{ color: '#a5b4fc' }} title="ToDoリストに期限はありません。使い終えたら「リストを終える」を押します">→ 期限なし</span>
+            {listMode && !todo.due_date ? (
+              <span style={{ color: '#a5b4fc' }} title="期限を決めるときは「変更」から入れます。使い終えたら「リストを終える」を押します">→ 期限なし</span>
             ) : (
               <>
                 <span style={{ color: '#475569' }}>→</span>

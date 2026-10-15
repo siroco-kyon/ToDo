@@ -591,7 +591,7 @@ export function App(): React.JSX.Element {
   }
 
   const filteredTodos = lensTodos.filter((todo) => matchesListFilters(todo)).sort(compareTodos)
-  // ToDoリスト（期限なしで続くタスク）の項目の進み具合。一覧・カンバンのバッジに使う
+  // ToDoリスト（中の項目をチェックして使うタスク）の項目の進み具合。一覧・カンバンのバッジに使う
   const checklistSummaries = useMemo(() => buildChecklistSummaries(todos, allSubTasks), [allSubTasks, todos])
   // ToDoリストの項目（リストごと・並び順どおり）と、自分の「今日やること」。ToDoリストを使う人だけに ToDo タブ・右の「今日のToDo」を出す
   const listItemsByTodo = useMemo(

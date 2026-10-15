@@ -44,7 +44,7 @@ interface Props {
   onReorder: (orderedIds: string[]) => Promise<void>
   onStartTimer: (todoId: string) => Promise<void>
   onStopTimer: (note?: string) => Promise<void>
-  /** ToDoリスト（期限なしで続くタスク）の項目の進み具合 */
+  /** ToDoリスト（中の項目をチェックして使うタスク）の項目の進み具合 */
   checklistSummaries?: Map<string, ChecklistSummary>
   /** ToDoリストの項目（▸ で開いて、その場でチェックできる） */
   listItemsByTodo?: Map<string, SubTask[]>

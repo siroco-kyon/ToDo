@@ -81,7 +81,7 @@ type PeriodPreset = 'thisWeek' | 'lastWeek' | '7' | '14' | '30' | 'custom'
 type QuickFilter = 'all' | 'needsReport' | 'discussion' | 'onHold' | 'overdue' | 'postponed' | 'myNeedsReport'
 type GroupMode = 'assignee' | 'category'
 type AssigneeFilter = 'all' | 'mine' | 'mineWithSubTasks' | `user:${string}`
-/** list: ToDoリスト（期限なしで続くタスク）。報告の有無では判定しない */
+/** list: ToDoリスト（中の項目をチェックして使うタスク）。報告の有無では判定しない */
 type Freshness = 'onHold' | 'fresh' | 'quiet' | 'stale' | 'none' | 'done' | 'notStarted' | 'list'
 
 interface ReportRow extends ChangeSummary {
@@ -576,8 +576,11 @@ function dueChangeText(summary: ChangeSummary, current: string | null): string |
   const first = summary.dueChanges[0].old_value
   const route = `${formatShortDate(first)} → ${formatShortDate(current)}`
   if (summary.postponedCount > 0) return `延期${summary.postponedCount}回（${route}）`
+  // 入れてから外した・変えてから戻したなど、期間の始めと同じ期限に戻っているなら出さない
+  if ((first?.slice(0, 10) ?? null) === (current?.slice(0, 10) ?? null)) return null
   if (first && current && current.slice(0, 10) < first.slice(0, 10)) return `前倒し（${route}）`
   if (!first && current) return `期限を設定（${formatShortDate(current)}）`
+  if (first && !current) return `期限を外した（${formatShortDate(first)} → なし）`
   return `期限を変更（${route}）`
 }
 
@@ -649,12 +652,12 @@ function rowToMarkdown(row: ReportRow, heading: string, options: MarkdownOptions
     const hold = getOnHoldInfo(todo.on_hold_since)
     lines.push(`- 保留開始: ${hold.sinceLabel} / ${hold.durationLabel}`)
   }
-  lines.push(todo.list_mode
+  lines.push(todo.list_mode && !todo.due_date
     ? `- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'}・期限なし`
     : `- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} / 期限 ${todo.due_date?.slice(0, 10) ?? '未設定'}`)
   const delta = todo.list_mode ? null : progressDeltaText(row, row.todo.progress)
   if (delta) lines.push(`- 期間中の進捗: ${delta}`)
-  const dueChange = todo.list_mode ? null : dueChangeText(row, row.todo.due_date)
+  const dueChange = dueChangeText(row, row.todo.due_date)
   if (dueChange) lines.push(`- 期限の変更: ${dueChange}`)
   // 小見出しで分かることは繰り返さない
   if (options.mode === 'assignee') {
@@ -767,7 +770,7 @@ function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, peri
         todo.due_date?.slice(0, 10) ?? '',
         todo.list_mode ? '' : todo.progress,
         todo.list_mode ? listProgressText(row, period) : progressDeltaText(row, row.todo.progress) ?? '',
-        todo.list_mode ? '' : dueChangeText(row, row.todo.due_date) ?? '',
+        dueChangeText(row, row.todo.due_date) ?? '',
         row.lastReportAt ? formatDateTime(row.lastReportAt) : '',
         row.discussions.length > 0 ? `${row.discussions.length}件` : '',
         notesToPlainText(row.notes),
@@ -2046,9 +2049,9 @@ function ReportTaskCard({
   const dueLabel = formatDueLabel(todo.due_date, todo.status)
   const hold = getOnHoldInfo(todo.on_hold_since)
   const memo = todo.memo.trim()
-  // ToDoリストは進捗率と期限を使わないので、切り替える前の変化も出さない
+  // ToDoリストは進捗率を使わないので、切り替える前の進捗の変化も出さない
   const progressDelta = todo.list_mode ? null : progressDeltaText(row, row.todo.progress)
-  const dueChange = todo.list_mode ? null : dueChangeText(row, row.todo.due_date)
+  const dueChange = dueChangeText(row, row.todo.due_date)
   const canPost = !posting && draft.trim().length > 0
   const memoChanged = memoDraft !== todo.memo
 
@@ -2196,10 +2199,11 @@ function ReportTaskCard({
               <button onClick={() => void saveSchedule()} disabled={saving} style={primaryButtonStyle(!saving)}>{saving ? '保存中…' : '保存'}</button>
             </div>
           </div>
-        ) : todo.list_mode ? (
+        ) : todo.list_mode && !todo.due_date ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.8rem' }}>
             <span style={{ color: '#94a3b8' }}>開始 {formatShortDate(todo.start_date)}</span>
-            <span style={{ color: '#a5b4fc' }} title="ToDoリストに期限はありません。使い終えたら「リストを終える」を押します">→ 期限なし</span>
+            <span style={{ color: '#a5b4fc' }} title="期限のない ToDoリストです。使い終えたら「リストを終える」を押します">→ 期限なし</span>
+            <button onClick={openScheduleEditor} title="開始日・期限を変更" style={inlineActionStyle}>変更</button>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.8rem' }}>

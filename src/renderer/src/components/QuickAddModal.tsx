@@ -104,7 +104,7 @@ export function QuickAddModal({
   // 開始日を入れておくと、ガントに今日から1日のバーとして出る（日付なしだと下の「未配置」に回る）
   const [startDate, setStartDate] = useState(() => toDateKey(new Date()))
   const [dueDate, setDueDate] = useState('')
-  // ToDoリスト（期限なしで続き、中の項目を毎日・毎週などでチェックし直すタスク）として作る
+  // ToDoリスト（中の項目を毎日・毎週などでチェックし直すタスク）として作る。期限は「なし」のままでも決めてもよい
   const [listMode, setListMode] = useState(defaultListMode)
   const [submitting, setSubmitting] = useState(false)
   const [keepOpen, setKeepOpen] = useState(false)
@@ -112,10 +112,9 @@ export function QuickAddModal({
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const duePresets = useMemo(buildDuePresets, [])
 
-  // ToDoリストは期限を使わないので、隠れている期限で追加できなくならないようにする
   const isDateRangeInvalid = useMemo(() => (
-    Boolean(!listMode && startDate && dueDate && startDate > dueDate)
-  ), [dueDate, listMode, startDate])
+    Boolean(startDate && dueDate && startDate > dueDate)
+  ), [dueDate, startDate])
 
   const titles = title.split(/\r?\n/).map((value) => value.trim()).filter(Boolean)
   const canSubmit = titles.length > 0 && !isDateRangeInvalid && !submitting
@@ -180,7 +179,7 @@ export function QuickAddModal({
           status: listMode && status === 'not_started' ? 'active' : status,
           priority,
           start_date: startDate || null,
-          due_date: listMode ? null : dueDate || null,
+          due_date: dueDate || null,
           list_mode: listMode ? 1 : 0
         })
         created.push(todo)
@@ -293,12 +292,12 @@ export function QuickAddModal({
             </div>
             {listMode && (
               <div style={{ marginTop: 4, fontSize: '0.7rem', color: '#a5b4fc', lineHeight: 1.5 }}>
-                毎日・毎週のチェックや細かいやることをまとめるリストです。期限はありません。作ったあと、詳細か ToDo タブで項目を追加します。項目ごとに「毎日・平日・毎週・毎月」を選ぶと、決めた日が来るたびに未チェックに戻ります。
+                毎日・毎週のチェックや細かいやることをまとめるリストです。期限は「なし」のままでも、決めても使えます。作ったあと、詳細か ToDo タブで項目を追加します。項目ごとに「毎日・平日・毎週・毎月」を選ぶと、決めた日が来るたびに未チェックに戻ります。
               </div>
             )}
           </div>
 
-          {!listMode && <div>
+          <div>
             <span style={labelStyle}>期限</span>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               {duePresets.map((preset) => (
@@ -315,7 +314,7 @@ export function QuickAddModal({
                 style={{ ...selectStyle, width: 'auto', flex: '1 1 140px', padding: '6px 10px', fontSize: '0.84rem' }}
               />
             </div>
-          </div>}
+          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: users.length > 0 ? '1fr 1fr' : '1fr', gap: 10 }}>
             {users.length > 0 && (

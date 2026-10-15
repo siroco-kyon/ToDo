@@ -642,7 +642,8 @@ function localDateKeyOf(iso: string | null, fallback: string): string {
 /** ToDoリストは期限を持たずに続くので、開始日（なければ作った日）から今日まで（終えたリストは終えた日まで）のバーにする */
 function getListTodoBar(todo: Todo, todayKey: string): TodoBar {
   const start = todo.start_date?.slice(0, 10) ?? localDateKeyOf(todo.created_at, todayKey)
-  const end = todo.status === 'done' ? localDateKeyOf(todo.completed_at, todayKey) : todayKey
+  // 期限のあるリストは期限まで、期限のないリストは今日まで（終えたリストは終えた日まで）
+  const end = todo.status === 'done' ? localDateKeyOf(todo.completed_at, todayKey) : todo.due_date?.slice(0, 10) ?? todayKey
   return { startDate: start, endDate: start <= end ? end : start }
 }
 
@@ -902,7 +903,9 @@ function buildTodoBarTooltip(options: {
       todo.title,
       'ToDoリスト。項目は詳細か ToDo タブでチェックします',
       `担当: ${assignees.length > 0 ? assignees.join('、') : '未割り当て'}${options.checklistText ? ` ・ ${options.checklistText}` : ''}`,
-      todo.status === 'done' ? `期間: ${shortDateLabel(bar.startDate)} → ${shortDateLabel(bar.endDate)}（終えたリスト）` : `開始: ${shortDateLabel(bar.startDate)}・期限なし`
+      todo.status === 'done'
+        ? `期間: ${shortDateLabel(bar.startDate)} → ${shortDateLabel(bar.endDate)}（終えたリスト）`
+        : todo.due_date ? `期間: ${shortDateLabel(bar.startDate)} → ${shortDateLabel(bar.endDate)}` : `開始: ${shortDateLabel(bar.startDate)}・期限なし`
     ]
     : [
       todo.title,
@@ -2701,7 +2704,7 @@ export function GanttView({
   const scheduleHealthEntries = useMemo(() => (
     chartGroups
       .map((group) => {
-        // ToDoリストは期限がないので、遅れ・期限超過の判定はしない
+        // ToDoリストは進捗率を使わないので、遅れ・期限超過の判定はしない（期限があれば期限の欄の色で分かる）
         if (group.todo.list_mode) return null
         const health = getScheduleHealth(group.todo, group.todoBar, todayKey, { behindThresholdDays, workingDaysOnly, holidayNames })
         return health ? { todoId: group.todo.id, health } : null
@@ -3809,7 +3812,9 @@ export function GanttView({
                             />
                           ) : (
                             listMode ? (
-                              <span title="ToDoリストに期限はありません" style={{ ...tableCellButtonStyle, cursor: 'default', color: '#a5b4fc' }}>なし</span>
+                              <button onClick={() => beginTodoCellEdit(group.todo, 'due_date')} title="ToDoリストの期限（空にすると期限なし）" style={{ ...tableCellButtonStyle, color: group.todo.due_date ? undefined : '#a5b4fc' }}>
+                                {group.todo.due_date ? shortDateLabel(group.todo.due_date.slice(0, 10)) : 'なし'}
+                              </button>
                             ) : (
                               <button onClick={() => beginTodoCellEdit(group.todo, 'due_date')} style={tableCellButtonStyle}>
                                 {displayedTodoBar ? shortDateLabel(displayedTodoBar.endDate) : '-'}
