@@ -50,7 +50,7 @@ function makeHarness(code, options = {}) {
     external: [], trays: [], localDbCalls: 0, localStarts: 0, localReveals: 0, quits: 0, relaunches: 0,
     dialogs: [], dialogResponses: [], deferredLoads: new Map(), timers: new Map(), nextTimer: 1,
     blockedShortcuts: new Set(), invalidShortcuts: new Set(), shortcutRegistrations: 0,
-    notifications: [], notificationsSupported: true, badgeCounts: [], userTasks: [], jumpLists: [],
+    notifications: [], notificationsSupported: true, badgeCounts: [], userTasks: [], jumpLists: [], removedJumpItems: [],
     workArea: options.workArea ?? { x: 0, y: 0, width: 1920, height: 1080 },
     response: options.health ?? { ok: true, desktopProtocol: 1, webReady: true }
   }
@@ -160,7 +160,8 @@ function makeHarness(code, options = {}) {
       quit: () => harness.quits++, relaunch: () => harness.relaunches++,
       setBadgeCount: (count) => { harness.badgeCounts.push(count); return true },
       setUserTasks: (tasks) => { harness.userTasks.push(tasks); return true },
-      setJumpList: (categories) => { harness.jumpLists.push(categories); return 'ok' }
+      setJumpList: (categories) => { harness.jumpLists.push(categories); return 'ok' },
+      getJumpListSettings: () => ({ minItems: 10, removedItems: harness.removedJumpItems })
     },
     BrowserWindow: Window, Tray: MockTray, Notification: MockNotification,
     ipcMain: { handle: (channel, handler) => harness.handlers.set(channel, handler) },
@@ -490,6 +491,13 @@ async function testNativeIntegration(code, profile) {
   assert.equal(winMain.thumbar[0].tooltip, '直前のタスクで計測を開始', 'the taskbar tooltip respects the hidden task title setting')
   await win.invoke('hakobi:state', winMain, { ...signedInState, taskId: 'task-c', taskTitle: '実装', startTime: new Date().toISOString(), recentTasks, unreadCount: 12 })
   assert.equal(jumpTimer()[0].title, '計測を停止（作業中）', 'the running task title stays hidden in the jump list')
+  // ユーザーが消した項目は出し直さない（出し直すと Windows が「計測」の欄ごと出さなくなる）
+  win.removedJumpItems.push({ type: 'task', args: '--hakobi-action=timer-start --hakobi-task=task-a', title: '切り替え: 設計 & レビュー' })
+  await win.invoke('hakobi:state', winMain, { ...signedInState, recentTasks, unreadCount: 12 })
+  assert.deepEqual(jumpTimer().map((item) => item.args), ['--hakobi-action=timer-start --hakobi-task=task-b'], 'a shortcut the user removed is not re-added')
+  win.removedJumpItems.length = 0
+  await win.invoke('hakobi:state', winMain, { ...signedInState, taskId: 'task-c', taskTitle: '実装', startTime: new Date().toISOString(), recentTasks, unreadCount: 12 })
+  assert.deepEqual(jumpTimer().map((item) => item.args), ['--hakobi-action=timer-stop', '--hakobi-action=timer-start --hakobi-task=task-b'], 'a removed shortcut stays removed for this run')
   await win.invoke('hakobi:state', winMain, { ...signedInState, recentTasks, unreadCount: 12 })
   await win.invoke('hakobi:state', winMain, { ...signedInState, recentTasks: [], unreadCount: 0 })
   assert.deepEqual(plain(winMain.thumbar[0].flags), ['disabled'])

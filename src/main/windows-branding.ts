@@ -103,6 +103,29 @@ export interface JumpListState {
 
 const JUMP_LIST_RECENT_LIMIT = 5
 let appliedJumpList: string | null = null
+/** ユーザーがジャンプリストから消した項目（引数で見分ける）。この起動中は出し直さない */
+const removedJumpListArgs = new Set<string>()
+
+/**
+ * 消された項目をもう一度入れると、Windows はその欄ごと出さなくなる。
+ * 作り直す前に消された項目を聞いて、カスタムの欄から外す。
+ */
+function withoutRemovedItems(categories: Electron.JumpListCategory[]): Electron.JumpListCategory[] {
+  if (!categories.some((category) => category.type === 'custom')) return categories
+  try {
+    for (const removed of app.getJumpListSettings().removedItems ?? []) {
+      if (removed.args) removedJumpListArgs.add(removed.args)
+    }
+  } catch (error) {
+    console.error('[HAKOBI] ジャンプリストから消された項目を読めませんでした', error)
+  }
+  if (removedJumpListArgs.size === 0) return categories
+  return categories.flatMap((category) => {
+    if (category.type !== 'custom') return [category]
+    const items = (category.items ?? []).filter((item) => !item.args || !removedJumpListArgs.has(item.args))
+    return items.length ? [{ ...category, items }] : []
+  })
+}
 
 function menuTitle(value: string, max = 40): string {
   const flat = value.replace(/\s+/g, ' ').trim()
@@ -150,10 +173,11 @@ export function applyWindowsJumpList(state: JumpListState | false): void {
   const signature = JSON.stringify(categories)
   if (signature === appliedJumpList) return
   try {
-    const result = categories.length ? app.setJumpList(categories) : app.setJumpList(null)
-    // ユーザーがジャンプリストから消した項目があると、カスタムの欄は出せない。そのときは「タスク」だけ出す
-    if (result === 'customCategoryAccessDeniedError' && categories.some((category) => category.type === 'custom')) {
-      const fallback = app.setJumpList(categories.filter((category) => category.type !== 'custom'))
+    const applied = withoutRemovedItems(categories)
+    const result = applied.length ? app.setJumpList(applied) : app.setJumpList(null)
+    // プライバシーやグループポリシーの設定でカスタムの欄を出せないときは、「タスク」だけ出す
+    if (result === 'customCategoryAccessDeniedError' && applied.some((category) => category.type === 'custom')) {
+      const fallback = app.setJumpList(applied.filter((category) => category.type !== 'custom'))
       if (fallback !== 'ok') console.error('[HAKOBI] タスクバーのジャンプリストを更新できませんでした', fallback)
     } else if (result !== 'ok') {
       console.error('[HAKOBI] タスクバーのジャンプリストを更新できませんでした', result)
