@@ -3,10 +3,10 @@ import crypto from 'crypto'
 import HolidayJp from '@holiday-jp/holiday_jp'
 import { getDb } from './connection'
 import { assertExpectedValues } from '../shared/todo-update-guard'
-import { isCheckStale, isItemRecurrence, periodStartOf, toLocalDateKey, type ItemRecurrence } from '../shared/recurring-period'
+import { isCheckStale, isItemRecurrence, periodStartOf, periodsOverlapping, toLocalDateKey, type ItemRecurrence } from '../shared/recurring-period'
 import { clampProgress, normalizeDateKey } from './helpers'
 import { syncTodoDueDateWithSubTasks } from './todos'
-import type { CalendarSubTask, CreateSubTaskInput, SubTask, UpdateSubTaskInput } from './types'
+import type { CalendarSubTask, CreateSubTaskInput, SubTask, SubTaskCheckSummary, UpdateSubTaskInput } from './types'
 
 const SUBTASK_SELECT = `
   SELECT st.*,
@@ -62,6 +62,50 @@ function recordRecurringCheck(subTask: SubTask, checked: boolean, userId: string
   } else {
     db.prepare('DELETE FROM SubTaskChecks WHERE subtask_id = ? AND period_key = ?').run(subTask.id, periodKey)
   }
+}
+
+/** ToDoリストの繰り返しの項目ごとに、期間に重なる周期の数とチェックした数を返す（報告タブの実施状況） */
+export function getSubTaskCheckSummaries(from: string, to: string): SubTaskCheckSummary[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
+    throw new Error('実施状況の期間が不正です')
+  }
+  const db = getDb()
+  const items = db.prepare(
+    `SELECT st.id, st.todo_id, st.recurrence, st.recurrence_workdays, st.created_at
+     FROM SubTasks st JOIN Todos t ON t.id = st.todo_id
+     WHERE st.recurrence IS NOT NULL AND t.list_mode = 1`
+  ).all() as Array<{ id: string; todo_id: string; recurrence: string; recurrence_workdays: number; created_at: string }>
+  if (items.length === 0) return []
+  // 周期の始まりは期間の開始より前のこともある（毎月なら最大で約1か月前）
+  const earliest = new Date(Number(from.slice(0, 4)), Number(from.slice(5, 7)) - 1, Number(from.slice(8, 10)) - 40)
+  const checks = db.prepare(
+    'SELECT subtask_id, period_key, checked_at FROM SubTaskChecks WHERE period_key BETWEEN ? AND ?'
+  ).all(toLocalDateKey(earliest), to) as Array<{ subtask_id: string; period_key: string; checked_at: string }>
+  const checksByItem = new Map<string, typeof checks>()
+  for (const check of checks) {
+    const list = checksByItem.get(check.subtask_id)
+    if (list) list.push(check)
+    else checksByItem.set(check.subtask_id, [check])
+  }
+  const today = toLocalDateKey(new Date())
+  return items.flatMap((item) => {
+    if (!isItemRecurrence(item.recurrence)) return []
+    const created = toLocalDateKey(new Date(item.created_at))
+    const start = created > from ? created : from
+    const end = today < to ? today : to
+    const periods = new Set(start <= end ? periodsOverlapping(item.recurrence, Boolean(item.recurrence_workdays), start, end, isHoliday) : [])
+    const itemChecks = checksByItem.get(item.id) ?? []
+    return [{
+      subtask_id: item.id,
+      todo_id: item.todo_id,
+      periods: periods.size,
+      checked: new Set(itemChecks.filter((check) => periods.has(check.period_key)).map((check) => check.period_key)).size,
+      checked_in_range: itemChecks.filter((check) => {
+        const day = toLocalDateKey(new Date(check.checked_at))
+        return from <= day && day <= to
+      }).length
+    }]
+  })
 }
 
 export function getSubTasksByTodo(todoId: string): SubTask[] {

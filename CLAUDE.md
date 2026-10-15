@@ -120,6 +120,7 @@ server/scripts/publish-desktop.ts npm run publish:desktop の本体（dist/ を�
 - 進捗レポート（`ProgressReportModal`）は「やった人」で数える。タスク別レポートには集計したメンバー（`digest.users`）が書いた進捗ログ・返信だけを載せる（副担当など他の人のログを自分の報告に混ぜない。デスクトップ版は絞らない）。サーバー版の完了タスクは完了にした人（`completed_at` と同じ時刻の `TodoChangeLogs` の status → done の操作者。アーカイブからの復元は完了日時を変えないので数えない）、追加サブタスクは `SubTasks.created_by` で数え、記録がない古いデータだけ主担当で数える。サブタスクに合わせて親の期限を延ばした変更も、サブタスクを操作した人の変更として記録する
 - ToDoリスト（`Todos.list_mode = 1`）は期限と繰り返し（次回分の作成）を持たない。`applyTodoUpdate` は SQL 側でも期限を入れないようにしていて、項目の期限に合わせた親の期限延長もしない。両 DB に同じ規則がある
 - ToDoリストの項目（サブタスク）の `recurrence`（daily / weekly / monthly、平日だけは `recurrence_workdays`）は、周期が変わると未チェックに戻す。戻すのは `resetRecurringSubTasks`（サブタスクの読み書きの前と、日付が変わったときの1分ごとの点検。点検で戻したら `subtask` の変更を全画面に知らせる）。チェックの記録は `SubTaskChecks`（周期ごとに1件）に残し、`SubTaskChangeLogs` の進捗の変化には数えない
+- 報告タブの ToDoリストのカードは、繰り返しの項目ごとに「期間中にチェックした回数」を出す。`subtaskCheckSummaryGetByRange` が、期間に重なる周期の数（項目を作った日から今日まで）と、そのうち `SubTaskChecks` がある周期の数を返す
 - 報告タブの「期間中の変化」は変更履歴から計算する。タスクは `TodoChangeLogs`（`updateTodo` で記録）、サブタスクは `SubTaskChangeLogs`（`updateSubTask` で progress / due_date が変わったときだけ記録）。`todoChangeGetByRange` が両方を返し、`subtask_id` で区別する
 - タスク一覧の絞り込み（担当・カテゴリ・検索）はガント・カンバン・計画・概要・報告にも効く。効いているときは各画面の見出しの横に「絞り込み中」のチップ（`ListFilterChips`、`App.tsx` の `listFilters` を各画面に渡す）を出し、その場で解除できる。1行を取る帯にはしない。報告タブには一覧の担当絞り込みをかけず（`reportTodos`）、報告タブ自身の担当絞り込みで決める。進捗タブの投稿先の選択肢も絞り込み前のタスクから選ぶ
 - タスク追加（`QuickAddModal`）の初期値は、担当＝一覧の担当絞り込みの人（絞っていなければ自分）、カテゴリ＝左で選んでいるもの、開始日＝今日。追加したタスクが今の絞り込みで見えないときは、`handleAdded` が「絞り込みを解除して開く」付きで知らせる

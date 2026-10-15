@@ -20,7 +20,7 @@ import {
   type ReportSubTaskMode,
   type ReportViewSettings
 } from '../lib/reportViewSettings'
-import { checklistBadgeText, summarizeChecklist } from '../lib/todoList'
+import { checklistBadgeText, repeatLabel, summarizeChecklist } from '../lib/todoList'
 import type {
   Category,
   CreateSubTaskInput,
@@ -28,6 +28,7 @@ import type {
   ProgressNoteComment,
   PublicUser,
   SubTask,
+  SubTaskCheckSummary,
   Todo,
   TodoChangeEntry,
   TodoReportActivity,
@@ -85,6 +86,8 @@ interface ReportRow extends ChangeSummary {
   subTaskSummaries: Map<string, SubTaskChangeSummary>
   /** 未解決の「要相談」進捗ログ（期間に関係なく） */
   discussions: ProgressNote[]
+  /** ToDoリストの繰り返しの項目ごとの、期間中の実施状況（項目のID → 状況） */
+  checkSummaries: Map<string, SubTaskCheckSummary>
 }
 
 /** 期間中の進捗・期限の変化（タスク・サブタスク共通） */
@@ -297,7 +300,8 @@ function buildRow(
   activity: TodoReportActivity | undefined,
   range: DateRange,
   changes: TodoChangeEntry[],
-  discussions: ProgressNote[]
+  discussions: ProgressNote[],
+  checkSummaries: Map<string, SubTaskCheckSummary>
 ): ReportRow {
   const lastNoteAt = activity?.last_note_at ?? null
   const lastMemoAt = activity?.last_memo_at ?? null
@@ -337,7 +341,7 @@ function buildRow(
     addedInPeriod: isInRange(isoToDateKey(subTask.created_at), range)
   }]))
 
-  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, reportedInPeriod: notes.length > 0 || memoUpdatedInPeriod, ...summary, subTaskSummaries, discussions }
+  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, reportedInPeriod: notes.length > 0 || memoUpdatedInPeriod, ...summary, subTaskSummaries, discussions, checkSummaries }
 }
 
 function summarizeChanges(changes: TodoChangeEntry[]): ChangeSummary {
@@ -445,6 +449,7 @@ function matchesScopeSetting(row: ReportRow, scope: ReportScope, range: DateRang
   const inRange = (iso: string | null): boolean => iso != null && isInRange(isoToDateKey(iso), range)
   return row.reportedInPeriod
     || row.discussions.length > 0
+    || [...row.checkSummaries.values()].some((summary) => summary.checked_in_range > 0)
     || row.progressStart !== null
     || row.dueChanges.length > 0
     || inRange(todo.completed_at)
@@ -471,6 +476,22 @@ function splitSubTasks(subTasks: SubTask[], mode: ReportSubTaskMode, periodFrom:
     folded,
     foldedLabel: mode === 'openOnly' ? `完了済み ${folded.length}件` : `完了済み ${folded.length}件（期間前）`
   }
+}
+
+/** ToDoリストの項目を、繰り返しの項目・まだのやること・期間中に済んだやることに分ける */
+function splitListItems(row: ReportRow, period: DateRange): { repeat: SubTask[]; open: SubTask[]; doneInPeriod: SubTask[] } {
+  return {
+    repeat: row.subTasks.filter((item) => item.recurrence),
+    open: row.subTasks.filter((item) => !item.recurrence && !item.done),
+    // 過去の期間を選んだときに、その後で済んだものを数えないよう、期間の終わりでも区切る
+    doneInPeriod: row.subTasks.filter((item) => !item.recurrence && item.done && item.completed_at != null && isInRange(isoToDateKey(item.completed_at), period))
+  }
+}
+
+/** 繰り返しの項目の実施回数の表記（例: 4/5回）。数える周期がなければ null */
+function checkCountText(summary: SubTaskCheckSummary | undefined): string | null {
+  if (!summary || summary.periods === 0) return null
+  return `${summary.checked}/${summary.periods}回`
 }
 
 /** Markdown・CSV に出すサブタスク。「完了済みは畳む」では未完了だけ、「すべて畳む」では出さない */
@@ -593,6 +614,8 @@ function noteToMarkdown(note: ProgressNote, indent: string, withTask: boolean): 
 }
 
 interface MarkdownOptions {
+  /** 報告の期間（ToDoリストの「期間中に済んだやること」に使う） */
+  period: DateRange
   mode: GroupMode
   multiUser: boolean
   /** 小見出しで分けるとき、その分け方と並べ方 */
@@ -604,15 +627,20 @@ interface MarkdownOptions {
 
 function rowToMarkdown(row: ReportRow, heading: string, options: MarkdownOptions): string[] {
   const { todo } = row
-  const lines = [`${heading} ${todo.title}（${todo.progress}%・${statusSummary(row, '・')}）`]
+  // ToDoリストは進捗率と期限を使わない
+  const lines = [todo.list_mode
+    ? `${heading} ${todo.title}（${statusSummary(row, '・')}）`
+    : `${heading} ${todo.title}（${todo.progress}%・${statusSummary(row, '・')}）`]
   if (todo.status === 'on_hold') {
     const hold = getOnHoldInfo(todo.on_hold_since)
     lines.push(`- 保留開始: ${hold.sinceLabel} / ${hold.durationLabel}`)
   }
-  lines.push(`- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} / 期限 ${todo.due_date?.slice(0, 10) ?? '未設定'}`)
-  const delta = progressDeltaText(row, row.todo.progress)
+  lines.push(todo.list_mode
+    ? `- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} から続く（期限なし）`
+    : `- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} / 期限 ${todo.due_date?.slice(0, 10) ?? '未設定'}`)
+  const delta = todo.list_mode ? null : progressDeltaText(row, row.todo.progress)
   if (delta) lines.push(`- 期間中の進捗: ${delta}`)
-  const dueChange = dueChangeText(row, row.todo.due_date)
+  const dueChange = todo.list_mode ? null : dueChangeText(row, row.todo.due_date)
   if (dueChange) lines.push(`- 期限の変更: ${dueChange}`)
   // 小見出しで分かることは繰り返さない
   if (options.mode === 'assignee') {
@@ -625,7 +653,22 @@ function rowToMarkdown(row: ReportRow, heading: string, options: MarkdownOptions
     lines.push('- メモ:')
     lines.push(...indentLines(todo.memo.trim(), '  '))
   }
-  const subTasks = subTasksForExport(row.subTasks, options.subTaskMode)
+  const subTasks = todo.list_mode ? [] : subTasksForExport(row.subTasks, options.subTaskMode)
+  if (todo.list_mode) {
+    const items = splitListItems(row, options.period)
+    if (items.repeat.length > 0) {
+      lines.push('- 繰り返しの項目（期間中にチェックした回数）:')
+      for (const item of items.repeat) lines.push(`  - ${item.title}（${repeatLabel(item) ?? ''}・${checkCountText(row.checkSummaries.get(item.id)) ?? '対象の期間なし'}）`)
+    }
+    if (items.open.length > 0) {
+      lines.push('- まだのやること:')
+      for (const item of items.open) lines.push(`  - [ ] ${item.title}${item.due_date ? `（期限 ${item.due_date.slice(0, 10)}）` : ''}`)
+    }
+    if (items.doneInPeriod.length > 0) {
+      lines.push('- 期間中に済んだやること:')
+      for (const item of items.doneInPeriod) lines.push(`  - [x] ${item.title}`)
+    }
+  }
   if (subTasks.length > 0) {
     lines.push('- サブタスク:')
     for (const subTask of subTasks) {
@@ -688,7 +731,7 @@ function notesToPlainText(notes: ProgressNote[]): string {
     .join('\n\n')
 }
 
-function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode): string {
+function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, period: DateRange): string {
   const headers = ['担当', 'カテゴリ', 'タスク', 'サブタスク', '状態', '保留開始', '保留期間', '開始', '期限', '進捗(%)', '期間中の進捗', '期限の変更', '最終報告', '要相談', '期間内の進捗コメント', 'メモ']
   const rows: Array<Array<string | number | null>> = []
   for (const group of groups) {
@@ -704,14 +747,33 @@ function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode): str
         todo.status === 'on_hold' ? getOnHoldInfo(todo.on_hold_since).durationLabel : '',
         todo.start_date?.slice(0, 10) ?? '',
         todo.due_date?.slice(0, 10) ?? '',
-        todo.progress,
-        progressDeltaText(row, row.todo.progress) ?? '',
-        dueChangeText(row, row.todo.due_date) ?? '',
+        todo.list_mode ? '' : todo.progress,
+        todo.list_mode ? '' : progressDeltaText(row, row.todo.progress) ?? '',
+        todo.list_mode ? '' : dueChangeText(row, row.todo.due_date) ?? '',
         row.lastReportAt ? formatDateTime(row.lastReportAt) : '',
         row.discussions.length > 0 ? `${row.discussions.length}件` : '',
         notesToPlainText(row.notes),
         todo.memo.trim()
       ])
+      if (todo.list_mode) {
+        const items = splitListItems(row, period)
+        for (const item of [...items.repeat, ...items.open, ...items.doneInPeriod]) {
+          rows.push([
+            item.assignee_name ?? '',
+            todo.category_name ?? '未分類',
+            todo.title,
+            item.title,
+            item.recurrence
+              ? `${repeatLabel(item) ?? ''} ${checkCountText(row.checkSummaries.get(item.id)) ?? '対象の期間なし'}`
+              : item.done ? '済み' : 'まだ',
+            '', '', '',
+            item.due_date?.slice(0, 10) ?? '',
+            '', '', '', '', '', '',
+            item.description.trim()
+          ])
+        }
+        continue
+      }
       for (const subTask of subTasksForExport(row.subTasks, subTaskMode)) {
         const summary = row.subTaskSummaries.get(subTask.id)
         rows.push([
@@ -759,6 +821,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const [activity, setActivity] = useState<Map<string, TodoReportActivity>>(() => new Map())
   const [changes, setChanges] = useState<TodoChangeEntry[]>([])
   const [discussions, setDiscussions] = useState<ProgressNote[]>([])
+  const [checkSummaries, setCheckSummaries] = useState<SubTaskCheckSummary[]>([])
   const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -777,17 +840,19 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     const requestId = ++requestIdRef.current
     setLoading(true)
     try {
-      const [nextNotes, nextActivity, nextChanges, nextDiscussions] = await Promise.all([
+      const [nextNotes, nextActivity, nextChanges, nextDiscussions, nextCheckSummaries] = await Promise.all([
         window.api.progressNoteGetByRange(range.from, range.to),
         window.api.progressNoteGetLastActivity(),
         window.api.todoChangeGetByRange(range.from, range.to),
-        window.api.progressNoteGetOpenDiscussions()
+        window.api.progressNoteGetOpenDiscussions(),
+        window.api.subtaskCheckSummaryGetByRange(range.from, range.to)
       ])
       if (requestId !== requestIdRef.current) return
       setNotes(nextNotes)
       setActivity(new Map(nextActivity.map((item) => [item.todo_id, item])))
       setChanges(nextChanges)
       setDiscussions(nextDiscussions)
+      setCheckSummaries(nextCheckSummaries)
       setLoadError(null)
       setLoaded(true)
     } catch (error) {
@@ -806,6 +871,10 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     const unsubscribe = window.api.onDataChanged((scope) => {
       // 'todo' はメモの変更（最終報告日時）を反映するために必要
       if (scope === 'progress' || scope === 'todo') void load()
+      // ToDoリストの項目のチェックは実施状況だけを取り直す
+      if (scope === 'subtask' && range.from <= range.to) {
+        void window.api.subtaskCheckSummaryGetByRange(range.from, range.to).then(setCheckSummaries).catch(() => { /* 次の読み込みで取り直す */ })
+      }
     })
     return () => unsubscribe()
   }, [load])
@@ -887,6 +956,15 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
 
   const changesByTodo = useMemo(() => groupByTodo(changes), [changes])
   const discussionsByTodo = useMemo(() => groupByTodo(discussions), [discussions])
+  const checkSummariesByTodo = useMemo(() => {
+    const map = new Map<string, Map<string, SubTaskCheckSummary>>()
+    for (const summary of checkSummaries) {
+      const byItem = map.get(summary.todo_id)
+      if (byItem) byItem.set(summary.subtask_id, summary)
+      else map.set(summary.todo_id, new Map([[summary.subtask_id, summary]]))
+    }
+    return map
+  }, [checkSummaries])
 
   const hiddenTodoIdSet = useMemo(() => new Set(settings.hiddenTodoIds), [settings.hiddenTodoIds])
   const hiddenCategoryKeySet = useMemo(() => new Set(settings.hiddenCategoryKeys), [settings.hiddenCategoryKeys])
@@ -906,10 +984,11 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       activity.get(todo.id),
       range,
       changesByTodo.get(todo.id) ?? [],
-      discussionsByTodo.get(todo.id) ?? []
+      discussionsByTodo.get(todo.id) ?? [],
+      checkSummariesByTodo.get(todo.id) ?? new Map()
     ))
     .filter((row) => matchesScopeSetting(row, settings.scope, range)),
-  [activity, changesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, hiddenCategoryKeySet, hiddenTodoIdSet, notesByTodo, range, selectedUserId, settings.scope, settings.statuses, subTasksByTodo, todos])
+  [activity, changesByTodo, checkSummariesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, hiddenCategoryKeySet, hiddenTodoIdSet, notesByTodo, range, selectedUserId, settings.scope, settings.statuses, subTasksByTodo, todos])
 
   // 表示設定のカテゴリの選択肢。検索などで今は出ていないカテゴリも選べるよう、カテゴリ一覧のすべてを並べる（未分類は最後）
   const categoryOptions = useMemo(() => {
@@ -1172,6 +1251,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const handleCopyMarkdown = async (): Promise<void> => {
     try {
       await copyTextToClipboard(reportToMarkdown(groups, range, {
+        period: range,
         mode: effectiveGroupMode,
         multiUser,
         subGroupMode,
@@ -1190,6 +1270,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       key={row.todo.id}
       row={row}
       periodFrom={range.from}
+      periodTo={range.to}
       groupMode={effectiveGroupMode}
       subGroupMode={subGroupMode}
       subTaskMode={settings.subTaskMode}
@@ -1202,7 +1283,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   )
 
   const handleDownloadCsv = (): void => {
-    downloadCsv(`report-${range.from}_${range.to}-${dateStamp()}.csv`, reportToCsv(groups, settings.subTaskMode))
+    downloadCsv(`report-${range.from}_${range.to}-${dateStamp()}.csv`, reportToCsv(groups, settings.subTaskMode, range))
   }
 
   return (
@@ -1783,9 +1864,56 @@ function AddSubTaskForm({ todo, actions }: { todo: Todo; actions: ReportCardActi
   )
 }
 
+/** ToDoリストの項目の、期間中の実施状況（繰り返しの項目は何回チェックしたか、やることは残りと済んだもの） */
+function ListItemsSummary({ row, period }: { row: ReportRow; period: DateRange }): React.JSX.Element {
+  const items = splitListItems(row, period)
+  const labelStyle: React.CSSProperties = { fontSize: '0.7rem', color: '#64748b' }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 2, paddingTop: 8, borderTop: '1px dashed #1e293b' }}>
+      {row.subTasks.length === 0 && <div style={labelStyle}>まだ項目がありません</div>}
+      {items.repeat.length > 0 && <div style={labelStyle}>繰り返しの項目（期間中にチェックした回数）</div>}
+      {items.repeat.map((item) => {
+        const summary = row.checkSummaries.get(item.id)
+        const count = checkCountText(summary)
+        const tone = !summary || summary.periods === 0
+          ? '#64748b'
+          : summary.checked >= summary.periods ? '#86efac' : summary.checked === 0 ? '#fca5a5' : '#fde68a'
+        return (
+          <div key={item.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.78rem' }}>
+            <span style={{ flex: 1, minWidth: 0, color: '#cbd5e1', overflowWrap: 'anywhere' }}>{item.title}</span>
+            <span style={{ fontSize: '0.68rem', color: '#a5b4fc', flexShrink: 0 }}>{repeatLabel(item)}</span>
+            <span
+              title={summary ? `期間に重なる周期 ${summary.periods}回のうち ${summary.checked}回チェック（今日の分も含みます）` : undefined}
+              style={{ color: tone, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0, minWidth: 44, textAlign: 'right' }}
+            >
+              {count ?? '—'}
+            </span>
+          </div>
+        )
+      })}
+      {items.open.length > 0 && <div style={{ ...labelStyle, marginTop: 4 }}>まだのやること {items.open.length}件</div>}
+      {items.open.map((item) => {
+        const dueColor = getDueDateColor(item.due_date)
+        return (
+          <div key={item.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.78rem' }}>
+            <span style={{ flex: 1, minWidth: 0, color: '#cbd5e1', overflowWrap: 'anywhere' }}>☐ {item.title}</span>
+            {item.due_date && <span style={{ fontSize: '0.7rem', color: dueColor || '#64748b', fontWeight: dueColor ? 700 : 400, flexShrink: 0 }}>{formatShortDate(item.due_date)}まで</span>}
+          </div>
+        )
+      })}
+      {items.doneInPeriod.length > 0 && (
+        <div style={{ ...labelStyle, marginTop: 4 }}>
+          期間中に済んだやること {items.doneInPeriod.length}件: <span style={{ color: '#94a3b8' }}>{items.doneInPeriod.map((item) => item.title).join('、')}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ReportTaskCard({
   row,
   periodFrom,
+  periodTo,
   groupMode,
   subGroupMode,
   subTaskMode,
@@ -1797,6 +1925,7 @@ function ReportTaskCard({
 }: {
   row: ReportRow
   periodFrom: string
+  periodTo: string
   groupMode: GroupMode
   subGroupMode: SubGroupMode | null
   subTaskMode: ReportSubTaskMode
@@ -1823,8 +1952,9 @@ function ReportTaskCard({
   const dueLabel = formatDueLabel(todo.due_date, todo.status)
   const hold = getOnHoldInfo(todo.on_hold_since)
   const memo = todo.memo.trim()
-  const progressDelta = progressDeltaText(row, row.todo.progress)
-  const dueChange = dueChangeText(row, row.todo.due_date)
+  // ToDoリストは進捗率と期限を使わないので、切り替える前の変化も出さない
+  const progressDelta = todo.list_mode ? null : progressDeltaText(row, row.todo.progress)
+  const dueChange = todo.list_mode ? null : dueChangeText(row, row.todo.due_date)
   const canPost = !posting && draft.trim().length > 0
   const memoChanged = memoDraft !== todo.memo
 
@@ -2006,6 +2136,9 @@ function ReportTaskCard({
           </div>
         )}
 
+        {todo.list_mode ? (
+          <ListItemsSummary row={row} period={{ from: periodFrom, to: periodTo }} />
+        ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 2, paddingTop: 8, borderTop: '1px dashed #1e293b' }}>
           {subTasks.length > 0 && (
             <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
@@ -2029,6 +2162,7 @@ function ReportTaskCard({
           )}
           <AddSubTaskForm todo={todo} actions={actions} />
         </div>
+        )}
       </div>
 
       {/* ─── 右: 報告内容（メモ・進捗ログ） ─── */}

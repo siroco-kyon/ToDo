@@ -54,6 +54,21 @@ export function periodStartOf(
   return candidate
 }
 
+/** from〜to（日付）に重なる周期の始まりの日付の一覧。報告タブの「期間中に何回チェックしたか」の分母に使う */
+export function periodsOverlapping(
+  recurrence: ItemRecurrence,
+  workdaysOnly: boolean,
+  from: string,
+  to: string,
+  isHoliday: (date: Date) => boolean
+): string[] {
+  const keys = new Set<string>()
+  for (let day = from.slice(0, 10); day <= to.slice(0, 10); day = shiftDays(day, 1)) {
+    keys.add(periodStartOf(recurrence, workdaysOnly, day, isHoliday))
+  }
+  return [...keys]
+}
+
 /** 完了日時（ISO）がいまの周期より前なら true（＝未チェックに戻す） */
 export function isCheckStale(
   recurrence: ItemRecurrence,

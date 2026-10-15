@@ -239,6 +239,18 @@ export interface SubTaskCheck {
   checked_at: string
 }
 
+/** ToDoリストの繰り返しの項目の、期間中の実施状況（報告タブ用） */
+export interface SubTaskCheckSummary {
+  subtask_id: string
+  todo_id: string
+  /** 期間に重なる周期の数（項目を作った日から今日までに限る） */
+  periods: number
+  /** そのうちチェックした周期の数 */
+  checked: number
+  /** 期間中にチェックした回数（「期間中に動きがあったもの」の判定用） */
+  checked_in_range: number
+}
+
 // ─── Timer & work logs ────────────────────────────────────────
 
 export interface WorkLog {
