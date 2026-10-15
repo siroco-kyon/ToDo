@@ -571,16 +571,19 @@ function progressDeltaColor(summary: ChangeSummary, current: number): string {
 }
 
 /** 期間中の期限の変更。変更がなければ null */
-function dueChangeText(summary: ChangeSummary, current: string | null): string | null {
+function dueChangeText(summary: ChangeSummary): string | null {
   if (summary.dueChanges.length === 0) return null
+  // 期間の始めと終わりの期限。終わりは今の期限ではなく、期間中の最後の変更の値
+  // （過去の期間を選んだとき、その後の変更と混ぜないため）
   const first = summary.dueChanges[0].old_value
-  const route = `${formatShortDate(first)} → ${formatShortDate(current)}`
+  const end = summary.dueChanges[summary.dueChanges.length - 1].new_value
+  const route = `${formatShortDate(first)} → ${formatShortDate(end)}`
   if (summary.postponedCount > 0) return `延期${summary.postponedCount}回（${route}）`
   // 入れてから外した・変えてから戻したなど、期間の始めと同じ期限に戻っているなら出さない
-  if ((first?.slice(0, 10) ?? null) === (current?.slice(0, 10) ?? null)) return null
-  if (first && current && current.slice(0, 10) < first.slice(0, 10)) return `前倒し（${route}）`
-  if (!first && current) return `期限を設定（${formatShortDate(current)}）`
-  if (first && !current) return `期限を外した（${formatShortDate(first)} → なし）`
+  if ((first?.slice(0, 10) ?? null) === (end?.slice(0, 10) ?? null)) return null
+  if (first && end && end.slice(0, 10) < first.slice(0, 10)) return `前倒し（${route}）`
+  if (!first && end) return `期限を設定（${formatShortDate(end)}）`
+  if (first && !end) return `期限を外した（${formatShortDate(first)} → なし）`
   return `期限を変更（${route}）`
 }
 
@@ -591,7 +594,7 @@ function subTaskChangeText(subTask: SubTask, summary: SubTaskChangeSummary | und
   if (summary.addedInPeriod) parts.push('期間中に追加')
   const delta = progressDeltaText(summary, subTask.progress)
   if (delta) parts.push(`期間中 ${delta}`)
-  const due = dueChangeText(summary, subTask.due_date)
+  const due = dueChangeText(summary)
   if (due) parts.push(due)
   return parts.length > 0 ? parts.join('・') : null
 }
@@ -657,7 +660,7 @@ function rowToMarkdown(row: ReportRow, heading: string, options: MarkdownOptions
     : `- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} / 期限 ${todo.due_date?.slice(0, 10) ?? '未設定'}`)
   const delta = todo.list_mode ? null : progressDeltaText(row, row.todo.progress)
   if (delta) lines.push(`- 期間中の進捗: ${delta}`)
-  const dueChange = dueChangeText(row, row.todo.due_date)
+  const dueChange = dueChangeText(row)
   if (dueChange) lines.push(`- 期限の変更: ${dueChange}`)
   // 小見出しで分かることは繰り返さない
   if (options.mode === 'assignee') {
@@ -770,7 +773,7 @@ function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, peri
         todo.due_date?.slice(0, 10) ?? '',
         todo.list_mode ? '' : todo.progress,
         todo.list_mode ? listProgressText(row, period) : progressDeltaText(row, row.todo.progress) ?? '',
-        dueChangeText(row, row.todo.due_date) ?? '',
+        dueChangeText(row) ?? '',
         row.lastReportAt ? formatDateTime(row.lastReportAt) : '',
         row.discussions.length > 0 ? `${row.discussions.length}件` : '',
         notesToPlainText(row.notes),
@@ -810,7 +813,7 @@ function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, peri
           subTask.due_date?.slice(0, 10) ?? '',
           subTask.progress,
           summary ? progressDeltaText(summary, subTask.progress) ?? '' : '',
-          summary ? dueChangeText(summary, subTask.due_date) ?? '' : '',
+          summary ? dueChangeText(summary) ?? '' : '',
           '',
           '',
           '',
@@ -2051,7 +2054,7 @@ function ReportTaskCard({
   const memo = todo.memo.trim()
   // ToDoリストは進捗率を使わないので、切り替える前の進捗の変化も出さない
   const progressDelta = todo.list_mode ? null : progressDeltaText(row, row.todo.progress)
-  const dueChange = dueChangeText(row, row.todo.due_date)
+  const dueChange = dueChangeText(row)
   const canPost = !posting && draft.trim().length > 0
   const memoChanged = memoDraft !== todo.memo
 
