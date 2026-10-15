@@ -1,7 +1,7 @@
 import type { SubTask, Todo } from '../types'
 import { toDateKey } from './dueDate'
 
-// 「ToDoリスト」（期限を持たずに続くタスク）の項目まわりの共通処理。
+// 「ToDoリスト」（中の項目をチェックして使うタスク。期限はなしでもよい）の項目まわりの共通処理。
 // 項目＝サブタスク。繰り返しの項目は周期が変わると未チェックに戻る（戻すのはサーバー／デスクトップ版の本体）。
 
 export type ItemRecurrence = 'daily' | 'weekly' | 'monthly'

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import type { PublicUser, SubTask, Todo } from '../types'
-import { toDateKey } from '../lib/dueDate'
+import { getDueDateColor, toDateKey } from '../lib/dueDate'
 import {
   buildTodayGroups,
   checklistBadgeText,
@@ -12,7 +12,7 @@ import {
 import { TodoChecklist } from './TodoChecklist'
 import { TodayTodoItems } from './TodayTodo'
 
-// ToDo タブ。ToDoリスト（期限なしで続くタスク）を使う人のための画面。
+// ToDo タブ。ToDoリスト（中の項目をチェックして使うタスク）を使う人のための画面。
 // 上に「今日やること」、下に ToDoリストごとのチェックリスト（追加・編集・並べ替えもここでできる）。
 
 type ShowToast = (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
@@ -133,7 +133,7 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
           <section aria-label="ToDoリストとは" style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#e0e7ff' }}>ToDoリストを使ってみる</div>
             <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.7 }}>
-              ToDoリストは、毎日・毎週のチェックや細かいやることをまとめるリストです。期限がないので、延長しなくてもずっと使えます。
+              ToDoリストは、毎日・毎週のチェックや細かいやることをまとめるリストです。期限を決めなくても使えるので、延長し続けなくてもかまいません（期限を決めたいときは「詳しく設定して作る」か、作ったあとの詳細で入れられます）。
               <br />・毎日のメール確認や週1回の集計など、決まった作業は「毎日／平日／毎週〇曜／毎月〇日」を付けると、その日に未チェックに戻ります。
               <br />・思いついたやることは、繰り返さずに追加すると、チェックしたときに「済み」へ移ります。開始日を付けるとその日から、期限だけを付けると期限の日から、ここの「今日やること」に出ます。
             </div>
@@ -177,6 +177,11 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
                     {todo.status === 'on_hold' && <span style={{ fontSize: '0.7rem', color: '#d8b4fe' }}>保留中</span>}
                     {multiUser && todo.assignee_name && (
                       <span style={{ fontSize: '0.72rem', color: todo.assignee_color ?? '#94a3b8' }}>{todo.assignee_name}</span>
+                    )}
+                    {todo.due_date && (
+                      <span title="この ToDoリストの期限" style={{ fontSize: '0.72rem', color: getDueDateColor(todo.due_date) || '#94a3b8', fontWeight: getDueDateColor(todo.due_date) ? 700 : 400 }}>
+                        期限 {Number(todo.due_date.slice(5, 7))}/{Number(todo.due_date.slice(8, 10))}
+                      </span>
                     )}
                     <span style={{ fontSize: '0.7rem', color: '#a5b4fc', marginLeft: 'auto' }}>{checklistBadgeText(summarizeChecklist(items, todayKey))}</span>
                   </div>

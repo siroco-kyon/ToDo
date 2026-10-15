@@ -69,7 +69,7 @@ src/renderer/src/components/ProgressNoteThread.tsx 進捗ログ＋返信スレ�
 src/renderer/src/components/LikeButton.tsx    いいねボタンと押した人のツールチップ（進捗タブ・報告タブ・概要で共通）
 src/renderer/src/components/ProgressSlider.tsx ドラッグ・キー操作で進捗率を変えるバー（離したときに1回だけ保存）
 src/renderer/src/lib/dueDate.ts               日付のみ文字列のローカル解釈と期限色分けの共通ヘルパー
-src/renderer/src/components/TodoChecklist.tsx ToDoリスト（期限なしで続くタスク）の項目の表示・チェック・追加・編集
+src/renderer/src/components/TodoChecklist.tsx ToDoリスト（中の項目をチェックして使うタスク）の項目の表示・チェック・追加・編集
 src/renderer/src/lib/todoList.ts              ToDoリストの項目の繰り返しの選択肢と「今回 3/5・残り2」の集計
 src/renderer/src/lib/todoListReport.ts        報告タブの ToDoリストの実施状況（終わった回と今の回を分けて数える。React 非依存）
 server/src/shared/recurring-period.ts         ToDoリストの項目の周期の計算（サーバー版・デスクトップ版で共通）
@@ -119,7 +119,7 @@ server/scripts/publish-desktop.ts npm run publish:desktop の本体（dist/ を�
 - `/download` はログイン不要のページ。`web/main.tsx` で `AuthGate` より前に分岐して描画する
 - 更新のお知らせ（`DesktopUpdateNotice`）はデスクトップ版のメイン画面（`isDesktopMain`）だけで出し、`App.tsx` には入れない。「後で」で閉じた版は localStorage の `hakobi-desktop-update-dismissed` に保存する
 - 進捗レポート（`ProgressReportModal`）は「やった人」で数える。タスク別レポートには集計したメンバー（`digest.users`）が書いた進捗ログ・返信だけを載せる（副担当など他の人のログを自分の報告に混ぜない。デスクトップ版は絞らない）。サーバー版の完了タスクは完了にした人（`completed_at` と同じ時刻の `TodoChangeLogs` の status → done の操作者。アーカイブからの復元は完了日時を変えないので数えない）、追加サブタスクは `SubTasks.created_by` で数え、記録がない古いデータだけ主担当で数える。サブタスクに合わせて親の期限を延ばした変更も、サブタスクを操作した人の変更として記録する
-- ToDoリスト（`Todos.list_mode = 1`）は期限と繰り返し（次回分の作成）を持たない。`applyTodoUpdate` は SQL 側でも期限を入れないようにしていて、項目の期限に合わせた親の期限延長もしない。両 DB に同じ規則がある
+- ToDoリスト（`Todos.list_mode = 1`）は繰り返し（次回分の作成）を持たない（`applyTodoUpdate` は SQL 側でも止める）。期限は持てるが、なしでもよい。項目の期限に合わせた親の期限延長はしない。依存関係の再計算では、期限のないリストは開始日だけずらし、期限を入れない（`shiftListToStart`）。タスクを ToDoリストにしても期限は消さない。両 DB に同じ規則がある
 - ToDoリストの項目（サブタスク）の `recurrence`（daily / weekly / monthly、平日だけは `recurrence_workdays`）は、周期が変わると未チェックに戻す。戻すのは `resetRecurringSubTasks`（サブタスクの読み書きの前と、日付が変わったときの1分ごとの点検。点検で戻したら `subtask` の変更を全画面に知らせる）。チェックの記録は `SubTaskChecks`（周期ごとに1件）に残し、`SubTaskChangeLogs` の進捗の変化には数えない
 - ToDoリストの繰り返さない項目は開始日と期限を持てる。開始日が来たか、期限が今日か過ぎていれば「今日やること」に出す（`isTodayItem`・`todayItemsOf`）。繰り返しの項目には開始日・期限を持たせない（ガントに毎日のバーが並ぶため。画面で繰り返しにすると両方を空にして保存する）
 - 報告タブの ToDoリストのカードは、周期（毎日・平日／毎週／毎月）ごとに「終わった回の実施（昨日まで 18/20回）」と「今の回（今日 1/5）」を分けて出す。数え方は `lib/todoListReport.ts`（画面・Markdown・CSV で共通）。今日を含む回（`subtaskCheckSummaryGetByRange` の `current_key`）はチェックしても実施の回数に入れない（入れると作ったばかりのリストが1件のチェックで 1/1回＝100% になる）。率（%）は終わった回が5回以上のときだけ出す。カード上部に一覧の「今回 3/5」は出さない

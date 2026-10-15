@@ -11,7 +11,7 @@ interface Props {
   onSelectTodo: (id: string) => void
   onChangeStatus: (todo: Todo, status: TodoStatus) => void | Promise<void>
   onCreateInColumn: (title: string, status: TodoStatus) => void | Promise<void>
-  /** ToDoリスト（期限なしで続くタスク）の項目の進み具合 */
+  /** ToDoリスト（中の項目をチェックして使うタスク）の項目の進み具合 */
   checklistSummaries?: Map<string, ChecklistSummary>
 }
 

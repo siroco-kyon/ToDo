@@ -8,19 +8,34 @@ module.exports = function checkTodoList(api) {
   const setCompleted = (id, date) => db.prepare('UPDATE SubTasks SET done = 1, progress = 100, completed_at = ? WHERE id = ?').run(date.toISOString(), id)
   const local = (y, m, d, h = 9) => new Date(y, m - 1, d, h)
 
-  // 作るときは期限と繰り返し（次回分の作成）を持たない
+  // 繰り返し（次回分の作成）は持たない。期限は持てる（なしでもよい）
   const list = api.createTodo({
     title: '日々のToDo', status: 'active', start_date: '2026-10-01', due_date: '2026-10-20', recurrence: 'daily', list_mode: 1
   })
   assert.equal(list.list_mode, 1)
-  assert.equal(list.due_date, null)
+  assert.equal(list.due_date, '2026-10-20', '期限ありのToDoリスト')
   assert.equal(list.recurrence, null)
-  assert.equal(api.updateTodo(list.id, { due_date: '2026-11-01' }).due_date, null, 'ToDoリストには期限を入れない')
+  assert.equal(api.createTodo({ title: '期限なしのリスト', status: 'active', list_mode: 1 }).due_date, null)
+  assert.equal(api.updateTodo(list.id, { due_date: '2026-11-01' }).due_date, '2026-11-01', 'あとから期限を変えられる')
+  assert.equal(api.updateTodo(list.id, { recurrence: 'weekly' }).recurrence, null, '繰り返し（次回分の作成）は入れない')
 
-  // 項目の期限に合わせて親の期限を延ばさない
+  // 項目の期限に合わせて親の期限を延ばさない（リストの期限はリストそのものの期限）
   const oneOff = api.createSubTask(list.id, { title: '見積もりに返信', due_date: '2026-12-01' })
   assert.equal(oneOff.parent_due_date_extended_to ?? null, null)
-  assert.equal(api.getTodoById(list.id).due_date, null)
+  assert.equal(api.getTodoById(list.id).due_date, '2026-11-01')
+  assert.equal(api.updateTodo(list.id, { due_date: null }).due_date, null, '期限なしに戻せる')
+
+  // 依存関係の再計算で、期限のないリストに期限を入れない（開始日だけずらす）。期限のあるリストは期間を保ってずらす
+  const before = api.createTodo({ title: '先行タスク', status: 'active', start_date: '2026-10-01', due_date: '2026-10-05' })
+  const noDueList = api.createTodo({ title: '後続の期限なしリスト', status: 'active', start_date: '2026-10-02', list_mode: 1 })
+  const dueList = api.createTodo({ title: '後続の期限ありリスト', status: 'active', start_date: '2026-10-02', due_date: '2026-10-04', list_mode: 1 })
+  api.createTodoDependency(before.id, noDueList.id, 0)
+  api.createTodoDependency(before.id, dueList.id, 0)
+  api.updateTodo(before.id, { due_date: '2026-10-09' })
+  const shiftedNoDue = api.getTodoById(noDueList.id)
+  assert.deepEqual([shiftedNoDue.start_date?.slice(0, 10), shiftedNoDue.due_date], ['2026-10-10', null])
+  const shiftedDue = api.getTodoById(dueList.id)
+  assert.deepEqual([shiftedDue.start_date?.slice(0, 10), shiftedDue.due_date?.slice(0, 10)], ['2026-10-10', '2026-10-12'])
 
   const daily = api.createSubTask(list.id, { title: 'メール確認', recurrence: 'daily' })
   const workdays = api.createSubTask(list.id, { title: '日報', recurrence: 'daily', recurrence_workdays: 1 })
@@ -58,14 +73,16 @@ module.exports = function checkTodoList(api) {
   assert.equal(doneOf(oneOff.id), 1, '繰り返さない項目は戻さない')
   assert.equal(countChecks(weekly.id), 1, '未チェックに戻してもチェックの記録は残す')
 
-  // ふつうのタスクを ToDoリストにすると、期限と繰り返しが外れ、完了しても次回分を作らない
+  // ふつうのタスクを ToDoリストにすると、繰り返しが外れ、完了しても次回分を作らない。期限は送った値になる
   const task = api.createTodo({ title: '延長し続けていたタスク', status: 'active', start_date: '2026-09-01', due_date: '2026-10-31', recurrence: 'weekly' })
   api.createSubTask(task.id, { title: '既存の項目', due_date: '2026-11-15' })
   assert.equal(api.getTodoById(task.id).due_date, '2026-11-15', 'ふつうのタスクは項目の期限に合わせて延びる')
-  const converted = api.updateTodo(task.id, { list_mode: 1, expected_values: { list_mode: 0 } })
+  const converted = api.updateTodo(task.id, { list_mode: 1, due_date: null, expected_values: { list_mode: 0 } })
   assert.equal(converted.list_mode, 1)
-  assert.equal(converted.due_date, null)
+  assert.equal(converted.due_date, null, '期限なしを選んで ToDoリストにした')
   assert.equal(converted.recurrence, null)
+  const keepDue = api.createTodo({ title: '期限を残してリストにする', status: 'active', due_date: '2026-11-30' })
+  assert.equal(api.updateTodo(keepDue.id, { list_mode: 1 }).due_date, '2026-11-30', '期限を送らなければ、そのまま残す')
   const countBefore = api.getAllTodos().length
   api.updateTodo(task.id, { status: 'done' })
   assert.equal(api.getAllTodos().length, countBefore, 'ToDoリストを終えても次回分は作らない')

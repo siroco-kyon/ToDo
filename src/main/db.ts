@@ -673,14 +673,15 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
       fields.push('completed_at = COALESCE(completed_at, ?)'); values.push(updatedAt)
     }
   }
-  // ToDoリストは期限と繰り返し（次回分の作成）を持たない。依存関係の再計算などで期限が入らないよう SQL 側でも止める
+  // ToDoリストは繰り返し（次回分の作成）を持たない。SQL 側でも止める。
+  // 期限は持てる（なしでもよい）。依存関係の再計算で期限のないリストに期限が入らないよう、shiftTodoToStart で開始日だけずらす
   const listModeAfter = data.list_mode !== undefined ? (data.list_mode ? 1 : 0) : undefined
   const unlessListMode = (column: string): string => listModeAfter === undefined
     ? `${column} = CASE WHEN list_mode = 1 THEN NULL ELSE ? END`
     : `${column} = ?`
   if (listModeAfter !== undefined) { fields.push('list_mode = ?'); values.push(listModeAfter) }
   if (data.start_date !== undefined) { fields.push('start_date = ?'); values.push(normalizeDateKey(data.start_date)) }
-  if (data.due_date !== undefined) { fields.push(unlessListMode('due_date')); values.push(listModeAfter === 1 ? null : normalizeDateKey(data.due_date)) }
+  if (data.due_date !== undefined) { fields.push('due_date = ?'); values.push(normalizeDateKey(data.due_date)) }
   if (data.recurrence !== undefined) { fields.push(unlessListMode('recurrence')); values.push(listModeAfter === 1 ? null : data.recurrence) }
   if (data.recurrence_copy_subtasks !== undefined) { fields.push('recurrence_copy_subtasks = ?'); values.push(data.recurrence_copy_subtasks ? 1 : 0) }
   if (data.recurrence_skip_weekends !== undefined) { fields.push('recurrence_skip_weekends = ?'); values.push(data.recurrence_skip_weekends ? 1 : 0) }
@@ -707,6 +708,7 @@ function keepTodoDueDateAfterSubTasks(id: string, data: UpdateTodoInput, listMod
 
 function shiftTodoToStart(todoId: string, nextStartDate: string, updatedAt: string): TodoBar {
   const current = getTodoById(todoId)
+  if (current.list_mode) return shiftListToStart(current, nextStartDate, updatedAt)
   const currentBar = getNormalizedTodoBar(current)
 
   if (!currentBar) {
@@ -723,6 +725,22 @@ function shiftTodoToStart(todoId: string, nextStartDate: string, updatedAt: stri
   const maxSubTaskDueDate = getMaxSubTaskDueDate(todoId)
   const nextEndDate = maxSubTaskDueDate && maxSubTaskDueDate > calculatedEndDate ? maxSubTaskDueDate : calculatedEndDate
   applyTodoUpdate(todoId, { start_date: nextStartDate, due_date: nextEndDate }, updatedAt)
+  return { startDate: nextStartDate, endDate: nextEndDate }
+}
+
+/**
+ * ToDoリストの依存関係の再計算。期限のないリストは開始日だけずらし、期限を入れない。
+ * 期限のあるリストは期間を保ってずらす（項目の期限に合わせて延ばしはしない）
+ */
+function shiftListToStart(current: Todo, nextStartDate: string, updatedAt: string): TodoBar {
+  const currentBar = getNormalizedTodoBar(current)
+  if (!normalizeDateKey(current.due_date)) {
+    if (normalizeDateKey(current.start_date) !== nextStartDate) applyTodoUpdate(current.id, { start_date: nextStartDate }, updatedAt)
+    return { startDate: nextStartDate, endDate: nextStartDate }
+  }
+  if (currentBar && currentBar.startDate === nextStartDate) return currentBar
+  const nextEndDate = addDays(nextStartDate, getTodoDurationDays(current))
+  applyTodoUpdate(current.id, { start_date: nextStartDate, due_date: nextEndDate }, updatedAt)
   return { startDate: nextStartDate, endDate: nextEndDate }
 }
 
@@ -778,8 +796,8 @@ export function createTodo(data: CreateTodoInput): Todo {
   const status = data.status ?? 'not_started'
   const listMode = data.list_mode ? 1 : 0
   const startDate = normalizeDateKey(data.start_date)
-  // ToDoリストは期限と繰り返し（次回分の作成）を持たない
-  const dueDate = listMode ? null : normalizeDateKey(data.due_date)
+  // ToDoリストは繰り返し（次回分の作成）を持たない。期限はなしでもよい
+  const dueDate = normalizeDateKey(data.due_date)
   // 新規タスクはsort_orderを最小値-1にして先頭に表示
   const minOrder = (db.prepare('SELECT COALESCE(MIN(sort_order), 0) as m FROM Todos').get() as { m: number }).m
   db.prepare(
@@ -917,8 +935,8 @@ export function updateTodo(id: string, data: UpdateTodoInput): Todo {
     if (!before) throw new Error('タスクが見つかりません。再読み込みしてください')
     assertExpectedValues(before, data)
     const listMode = data.list_mode !== undefined ? Boolean(data.list_mode) : Boolean(before.list_mode)
-    // ToDoリストにするときは、期限と繰り返し（次回分の作成）を外す
-    const listModeData: UpdateTodoInput = data.list_mode && !before.list_mode ? { ...data, due_date: null, recurrence: null } : data
+    // ToDoリストにするときは、繰り返し（次回分の作成）を外す。期限はそのまま（なしにするかは画面で選ぶ）
+    const listModeData: UpdateTodoInput = data.list_mode && !before.list_mode ? { ...data, recurrence: null } : data
     const constrainedData = keepTodoDueDateAfterSubTasks(id, listModeData, listMode)
     applyTodoUpdate(id, constrainedData, now)
     if (constrainedData.status === 'on_hold' && getRunningState()?.todo_id === id) {
@@ -942,7 +960,7 @@ function syncTodoDueDateWithSubTasks(todoId: string): string | null {
   if (!maxSubTaskDueDate) return null
 
   const todo = getTodoById(todoId)
-  // ToDoリストは期限を持たないので、項目の期限に合わせて延ばさない
+  // ToDoリストの期限はリストそのものの期限なので、項目の期限に合わせて延ばさない
   if (todo.list_mode) return null
   const normalizedTodoDueDate = normalizeDateKey(todo.due_date)
   if (normalizedTodoDueDate && normalizedTodoDueDate >= maxSubTaskDueDate) return null
