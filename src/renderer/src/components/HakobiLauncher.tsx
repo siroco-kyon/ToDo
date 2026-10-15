@@ -101,9 +101,9 @@ export function HakobiLauncher(): React.JSX.Element {
             <span className="hakobi-launcher-bar hakobi-launcher-bar-four" />
             <span className="hakobi-launcher-current-line" />
           </div>
-          <div className="hakobi-launcher-illustration-note"><span />チームの進捗を、いつものデスクトップで。</div>
+          <div className="hakobi-launcher-illustration-note"><span />チームのタスクと進捗を、このPCから使えます。</div>
         </div>
-        <p className="hakobi-launcher-brand-footer">計画する。取り組む。進み具合を伝える。</p>
+        <p className="hakobi-launcher-brand-footer">タスクの計画・作業時間の計測・進捗の共有</p>
       </section>
 
       <section className="hakobi-launcher-content">

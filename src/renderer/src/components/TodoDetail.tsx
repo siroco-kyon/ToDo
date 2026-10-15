@@ -880,10 +880,10 @@ export function TodoDetail({
       {editing && (
         <fieldset disabled={saving} style={{ border: 0, margin: 0, minWidth: 0, background: '#1e293b', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div>
-            <label style={labelStyle}>使い方</label>
+            <label style={labelStyle}>種類</label>
             <select
               value={editingListMode ? 'list' : 'task'}
-              aria-label="使い方"
+              aria-label="種類"
               onChange={(event) => {
                 const list = event.target.value === 'list'
                 // ToDoリストは期限と繰り返し（次回分の作成）を持たない
@@ -891,8 +891,8 @@ export function TodoDetail({
               }}
               style={inputStyle}
             >
-              <option value="task">ふつうのタスク（期限に向けて進める）</option>
-              <option value="list">ToDoリスト（期限なしで続ける。項目を毎日・毎週などでチェックし直す）</option>
+              <option value="task">タスク（開始日と期限を決めて進める）</option>
+              <option value="list">ToDoリスト（毎日・毎週のチェックや細かいやることをまとめる）</option>
             </select>
             {editingListMode && !listMode && (
               <div style={{ marginTop: 4, fontSize: '0.72rem', color: '#a5b4fc', lineHeight: 1.5 }}>
@@ -901,7 +901,7 @@ export function TodoDetail({
             )}
             {!editingListMode && listMode && (
               <div style={{ marginTop: 4, fontSize: '0.72rem', color: '#fde68a', lineHeight: 1.5 }}>
-                保存すると、項目の繰り返し（毎日・毎週など）を外し、ふつうのサブタスクに戻します。
+                保存すると、項目の繰り返し（毎日・毎週など）を外し、サブタスクに戻します。
               </div>
             )}
           </div>
@@ -1750,7 +1750,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.82rem' }}>
             <span style={{ color: '#cbd5e1' }}>開始 {todo.start_date ? formatShortDate(todo.start_date) : '未設定'}</span>
             {listMode ? (
-              <span style={{ color: '#a5b4fc' }} title="ToDoリストは期限を持たず、終えるまで続きます">→ 期限なしで続くToDoリスト</span>
+              <span style={{ color: '#a5b4fc' }} title="ToDoリストに期限はありません。使い終えたら「リストを終える」を押します">→ 期限なし</span>
             ) : (
               <>
                 <span style={{ color: '#475569' }}>→</span>

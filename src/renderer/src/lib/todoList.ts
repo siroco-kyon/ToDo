@@ -14,7 +14,7 @@ type RepeatFields = Pick<SubTask, 'recurrence' | 'recurrence_workdays' | 'recurr
 export const ITEM_REPEAT_OPTIONS: Array<{ value: ItemRepeatChoice; label: string; title: string }> = [
   { value: '', label: '繰り返さない', title: 'チェックしたら「済み」に移ります' },
   { value: 'daily', label: '毎日', title: '毎日、未チェックに戻ります' },
-  { value: 'workdays', label: '平日', title: '平日の朝に未チェックに戻ります（土日・祝日は前の平日の分が続きます）' },
+  { value: 'workdays', label: '平日', title: '平日ごとに未チェックに戻ります（土日・祝日は前の平日の分が続きます）' },
   { value: 'weekly', label: '毎週', title: '毎週、選んだ曜日に未チェックに戻ります' },
   { value: 'monthly', label: '毎月', title: '毎月、選んだ日に未チェックに戻ります' }
 ]
@@ -78,7 +78,7 @@ export function repeatTitle(subTask: RepeatFields): string {
   const choice = repeatChoiceOf(subTask)
   if (choice === '') return 'チェックしたら「済み」に移ります'
   if (choice === 'daily') return '毎日、未チェックに戻ります'
-  if (choice === 'workdays') return '平日の朝に未チェックに戻ります（土日・祝日は前の平日の分が続きます）'
+  if (choice === 'workdays') return '平日ごとに未チェックに戻ります（土日・祝日は前の平日の分が続きます）'
   const day = repeatDayOf(choice, subTask.recurrence_day)!
   if (choice === 'weekly') return `毎週${weekdayLabel(day)}曜に未チェックに戻ります`
   return day === 31 ? '毎月の末日に未チェックに戻ります' : `毎月${day}日に未チェックに戻ります（その日がない月は末日）`
@@ -149,7 +149,7 @@ export function checklistBadgeText(summary: ChecklistSummary): string {
 
 export function checklistBadgeTitle(summary: ChecklistSummary): string {
   const due = summary.dueByTodayCount > 0 ? `（うち期限が今日まで ${summary.dueByTodayCount}件）` : ''
-  return `ToDoリスト（期限なしで続くタスク）: 繰り返しの項目 ${summary.repeatDone}/${summary.repeatTotal} 済み・まだの項目 ${summary.openCount}件${due}`
+  return `ToDoリスト: 繰り返しの項目 ${summary.repeatDone}/${summary.repeatTotal} 済み・まだの項目 ${summary.openCount}件${due}`
 }
 
 /** タスクIDごとのまとめ。ToDoリストのタスクだけを対象にする */
@@ -238,8 +238,8 @@ export type TodaySection = 'today' | 'week' | 'month'
 
 export const TODAY_SECTION_LABEL: Record<TodaySection, { label: string; title: string }> = {
   today: { label: '今日やる', title: '毎日・平日の項目と、期限が今日までのやること' },
-  week: { label: '今週の分', title: '毎週の項目。戻る曜日までにチェックすれば大丈夫です' },
-  month: { label: '今月の分', title: '毎月の項目。戻る日までにチェックすれば大丈夫です' }
+  week: { label: '今週の分', title: '毎週の項目。戻る曜日の前日までにチェックすれば間に合います' },
+  month: { label: '今月の分', title: '毎月の項目。戻る日の前日までにチェックすれば間に合います' }
 }
 
 export function sectionOf(item: Pick<SubTask, 'recurrence'>): TodaySection {

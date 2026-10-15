@@ -146,7 +146,7 @@ function TodoItem({
           {/* 完了チェック。ToDoリストは中の項目をチェックして使うので、一覧からは終えられないようにする */}
           {listMode && !isArchived && todo.status !== 'done' ? (
             <span
-              title="ToDoリスト（期限なしで続くタスク）。項目のチェックは詳細で行います"
+              title="ToDoリスト。▸ で項目を開くと、ここでチェックできます"
               aria-label="ToDoリスト"
               style={{ width: 17, height: 17, flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a5b4fc', fontSize: '0.8rem' }}
             >

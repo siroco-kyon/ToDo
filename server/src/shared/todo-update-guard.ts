@@ -4,7 +4,7 @@ const TODO_FIELDS: Record<string, string> = {
   priority: '優先度', progress: '進捗', start_date: '開始日', due_date: '期限',
   recurrence: '繰り返し', recurrence_copy_subtasks: 'サブタスクの引き継ぎ',
   recurrence_skip_weekends: '土日の扱い', recurrence_skip_holidays: '祝日の扱い',
-  list_mode: '使い方（ToDoリスト）'
+  list_mode: '種類（タスク／ToDoリスト）'
 }
 const SUBTASK_FIELDS: Record<string, string> = {
   title: 'サブタスク名', description: 'サブタスクの説明', assignee_id: '担当者',

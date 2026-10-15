@@ -710,7 +710,7 @@ function rowToMarkdown(row: ReportRow, heading: string, options: MarkdownOptions
     lines.push(`- 保留開始: ${hold.sinceLabel} / ${hold.durationLabel}`)
   }
   lines.push(todo.list_mode
-    ? `- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} から続く（期限なし）`
+    ? `- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'}・期限なし`
     : `- 期間: 開始 ${todo.start_date?.slice(0, 10) ?? '未設定'} / 期限 ${todo.due_date?.slice(0, 10) ?? '未設定'}`)
   const delta = todo.list_mode ? null : progressDeltaText(row, row.todo.progress)
   if (delta) lines.push(`- 期間中の進捗: ${delta}`)
@@ -732,11 +732,11 @@ function rowToMarkdown(row: ReportRow, heading: string, options: MarkdownOptions
     // 繰り返しの項目は1行にまとめ、取りこぼしたものだけ名前を出す（全部並べると長くなりすぎるため）
     const digest = digestListItems(row, options.period)
     if (digest.repeatCount > 0) {
-      const rate = digest.periods > 0 ? `実施 ${digest.checked}/${digest.periods}回（${percentText(digest.checked, digest.periods)}）` : digest.pending > 0 ? 'これから（今日・今週の分はまだ途中）' : '期間中の対象なし'
+      const rate = digest.periods > 0 ? `実施 ${digest.checked}/${digest.periods}回（${percentText(digest.checked, digest.periods)}）` : digest.pending > 0 ? 'まだ数える回がありません（今日・今週の分は途中）' : '期間中の対象なし'
       const missed = digest.missed.length > 0
         ? `。取りこぼし: ${namesText(digest.missed.map(({ item, checked, periods }) => `${item.title} ${checked}/${periods}回`), 3)}`
         : digest.periods > 0 ? '。取りこぼしなし' : ''
-      lines.push(`- 繰り返す項目 ${digest.repeatCount}件: ${rate}${missed}`)
+      lines.push(`- 繰り返しの項目 ${digest.repeatCount}件: ${rate}${missed}`)
     }
     if (digest.open.length > 0 || digest.doneInPeriod.length > 0) {
       const parts: string[] = []
@@ -1375,7 +1375,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
             </div>
             {listFilters}
             <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
-              定例用に、タスクごとの進捗と報告（進捗ログ・メモ）を1ページで見ます。状態・日程・進捗・メモはその場で変えられます
+              定例用に、タスクごとの進捗と報告（進捗ログ・メモ）を1ページにまとめて表示します。状態・日程・進捗・メモはその場で変えられます
             </div>
           </div>
 
@@ -1550,8 +1550,8 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               {subGroupMode && visibleSubGroupKeys.length > 1 && (
                 <button onClick={toggleAllSubGroups} style={{ ...inlineActionStyle, marginLeft: 4 }}>
                   {subGroupMode === 'category'
-                    ? anySubGroupCollapsed ? 'カテゴリをすべて開く' : 'カテゴリをすべて畳む'
-                    : anySubGroupCollapsed ? '担当者をすべて開く' : '担当者をすべて畳む'}
+                    ? anySubGroupCollapsed ? 'カテゴリをすべて開く' : 'カテゴリをすべて折りたたむ'
+                    : anySubGroupCollapsed ? '担当者をすべて開く' : '担当者をすべて折りたたむ'}
                 </button>
               )}
             </nav>
@@ -1632,7 +1632,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                         aria-label={subCollapsed ? `${group.label}の${subGroup.label}を開く` : `${group.label}の${subGroup.label}を折りたたむ`}
                         title={subCollapsed
                           ? '開く'
-                          : `折りたたむ（ほかの${subGroupMode === 'category' ? '担当者' : 'カテゴリ'}の「${subGroup.label}」も一緒に畳み、次に開いたときも畳んだままにします）`}
+                          : `折りたたむ（ほかの${subGroupMode === 'category' ? '担当者' : 'カテゴリ'}の「${subGroup.label}」も一緒に折りたたみ、次に開いたときも折りたたんだままにします）`}
                         style={collapseButtonStyle(subCollapsed)}
                       >
                         ▾
@@ -1965,12 +1965,12 @@ function ListItemsSummary({ row, period }: { row: ReportRow; period: DateRange }
       {row.subTasks.length === 0 && <div style={labelStyle}>まだ項目がありません</div>}
       {digest.repeatCount > 0 && (
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', fontSize: '0.8rem' }}>
-          <span style={{ color: '#94a3b8' }}>繰り返す項目 {digest.repeatCount}件</span>
+          <span style={{ color: '#94a3b8' }}>繰り返しの項目 {digest.repeatCount}件</span>
           <span
-            title="期間に重なる周期（毎日なら日、毎週なら週）の数と、そのうちチェックした数。今日・今週など、まだ途中の周期はチェック済みのときだけ数えます"
+            title="期間中にチェックする回数（毎日なら日数、毎週なら週の数）と、実際にチェックした回数。今日・今週のように途中の回は、チェック済みのときだけ数えます"
             style={{ color: rateTone, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}
           >
-            {digest.periods > 0 ? `実施 ${digest.checked}/${digest.periods}回（${percentText(digest.checked, digest.periods)}）` : digest.pending > 0 ? 'これから（今日・今週の分はまだ途中）' : '期間中の対象なし'}
+            {digest.periods > 0 ? `実施 ${digest.checked}/${digest.periods}回（${percentText(digest.checked, digest.periods)}）` : digest.pending > 0 ? 'まだ数える回がありません（今日・今週の分は途中）' : '期間中の対象なし'}
           </span>
         </div>
       )}
@@ -2110,7 +2110,7 @@ function ReportTaskCard({
 
   const saveSchedule = async (): Promise<void> => {
     if (startDraft && dueDraft && startDraft > dueDraft) {
-      actions.onShowToast('開始日は期限より前にしてください', 'error')
+      actions.onShowToast('開始日は期限以前にしてください', 'error')
       return
     }
     const data: UpdateTodoInput = {}
@@ -2230,7 +2230,7 @@ function ReportTaskCard({
         ) : todo.list_mode ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.8rem' }}>
             <span style={{ color: '#94a3b8' }}>開始 {formatShortDate(todo.start_date)}</span>
-            <span style={{ color: '#a5b4fc' }} title="ToDoリストは期限を持たず、終えるまで続きます">→ 期限なしで続く</span>
+            <span style={{ color: '#a5b4fc' }} title="ToDoリストに期限はありません。使い終えたら「リストを終える」を押します">→ 期限なし</span>
             <span style={{ color: '#c7d2fe', fontWeight: 700 }}>{checklistBadgeText(summarizeChecklist(subTasks))}</span>
           </div>
         ) : (

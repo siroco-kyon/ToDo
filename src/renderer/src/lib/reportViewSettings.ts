@@ -32,13 +32,13 @@ export const REPORT_STATUS_OPTIONS: Array<{ key: ReportStatusKey; label: string;
 export const REPORT_SCOPE_OPTIONS: Array<{ value: ReportScope; label: string; title: string }> = [
   { value: 'all', label: 'すべて', title: '状態とカテゴリの条件に合うタスクをすべて出します' },
   { value: 'scheduled', label: '日程が期間にかかるもの', title: '開始日〜期限が報告期間と重なるタスクだけ。期限を過ぎて完了していないものは今日まで続いているとみなします' },
-  { value: 'activity', label: '期間中に動きがあったもの', title: '期間中に、進捗ログ・メモの更新・進捗や期限の変更・完了・作成があったタスク、サブタスクの追加・完了・進捗や期限の変更があったタスク、要相談のタスクだけ（サブタスクの名前や担当の変更は数えません）' }
+  { value: 'activity', label: '期間中に動きがあったもの', title: '期間中に次のことがあったタスクだけ出します。進捗ログ、メモの更新、進捗や期限の変更、完了、作成、サブタスクの追加・完了・進捗や期限の変更、要相談。サブタスクの名前や担当の変更は数えません' }
 ]
 
 export const REPORT_SUBTASK_OPTIONS: Array<{ value: ReportSubTaskMode; label: string }> = [
-  { value: 'collapseOldDone', label: '期間前に完了したものは畳む' },
-  { value: 'openOnly', label: '完了済みは畳む' },
-  { value: 'hide', label: 'すべて畳む（件数だけ）' }
+  { value: 'collapseOldDone', label: '期間前に完了したものは折りたたむ' },
+  { value: 'openOnly', label: '完了済みは折りたたむ' },
+  { value: 'hide', label: 'すべて折りたたむ（件数だけ）' }
 ]
 
 export const DEFAULT_REPORT_VIEW_SETTINGS: ReportViewSettings = {

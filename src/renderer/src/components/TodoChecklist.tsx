@@ -284,7 +284,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
       <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {!compact && (
           <div style={{ fontSize: '0.74rem', color: '#94a3b8', lineHeight: 1.5 }}>
-            期限なしで続くタスクです。繰り返しの項目は周期が変わると未チェックに戻り、繰り返さない項目はチェックすると「済み」に移ります。項目名を押すと編集、⠿ をドラッグすると並べ替えられます。
+            繰り返しの項目は決めた日が来ると未チェックに戻り、繰り返さない項目はチェックすると「済み」に移ります。項目名か ✎ を押すと編集、⠿ をドラッグすると並べ替えられます。
           </div>
         )}
 
