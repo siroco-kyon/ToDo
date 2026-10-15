@@ -7,6 +7,8 @@ interface Props {
   runningTodoId: string | null
   onSelectTodo: (id: string) => void
   onOpenPlan: () => void
+  /** 予定の上に出すもの（ToDoリストを使う人の「今日のToDo」） */
+  topSlot?: React.ReactNode
 }
 
 interface TimedItem extends DailyPlanItem {
@@ -104,7 +106,8 @@ export function TodayFlowRail({
   planItems,
   runningTodoId,
   onSelectTodo,
-  onOpenPlan
+  onOpenPlan,
+  topSlot
 }: Props): React.JSX.Element {
   const timedItems = useMemo(() => buildTimedItems(planItems), [planItems])
   const unscheduledItems = useMemo(
@@ -147,6 +150,7 @@ export function TodayFlowRail({
       </div>
 
       <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
+        {topSlot}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
           <StatusCard
             label="いま"

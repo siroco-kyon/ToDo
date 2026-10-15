@@ -88,6 +88,7 @@ export function createSchema(db: Database.Database): void {
       created_by TEXT,
       recurrence TEXT DEFAULT NULL,
       recurrence_workdays INTEGER NOT NULL DEFAULT 0,
+      recurrence_day INTEGER DEFAULT NULL,
       FOREIGN KEY (todo_id) REFERENCES Todos(id),
       FOREIGN KEY (assignee_id) REFERENCES Users(id),
       FOREIGN KEY (created_by) REFERENCES Users(id)
@@ -376,6 +377,10 @@ export function runMigrations(db: Database.Database): void {
   }
   if (!subTaskColumns.some((c) => c.name === 'recurrence_workdays')) {
     db.prepare('ALTER TABLE SubTasks ADD COLUMN recurrence_workdays INTEGER NOT NULL DEFAULT 0').run()
+  }
+  // 戻る曜日（毎週: 0=日〜6=土）・日付（毎月: 1〜31）。NULL は既定（月曜・1日）
+  if (!subTaskColumns.some((c) => c.name === 'recurrence_day')) {
+    db.prepare('ALTER TABLE SubTasks ADD COLUMN recurrence_day INTEGER DEFAULT NULL').run()
   }
   db.prepare('CREATE INDEX IF NOT EXISTS idx_subtasks_assignee ON SubTasks(assignee_id)').run()
 

@@ -138,6 +138,8 @@ export interface SubTask {
   recurrence: 'daily' | 'weekly' | 'monthly' | null
   /** 1 のとき、毎日の項目を平日だけにする（土日・祝日は前の平日の分が続く） */
   recurrence_workdays: number
+  /** 戻る曜日（毎週: 0=日〜6=土）・日付（毎月: 1〜31、ない月は末日）。null は既定（月曜・1日） */
+  recurrence_day: number | null
   parent_due_date_extended_to?: string | null
 }
 
@@ -156,6 +158,7 @@ export interface CreateSubTaskInput {
   progress?: number
   recurrence?: 'daily' | 'weekly' | 'monthly' | null
   recurrence_workdays?: number
+  recurrence_day?: number | null
 }
 
 export interface UpdateSubTaskInput {
@@ -168,6 +171,7 @@ export interface UpdateSubTaskInput {
   progress?: number
   recurrence?: 'daily' | 'weekly' | 'monthly' | null
   recurrence_workdays?: number
+  recurrence_day?: number | null
   done?: boolean
 }
 
@@ -192,6 +196,10 @@ export interface SubTaskCheckSummary {
   checked: number
   /** 期間中にチェックした回数（「期間中に動きがあったもの」の判定用） */
   checked_in_range: number
+  /** 期間に重なる周期の始まりの日付（毎日の項目なら日ごと。報告タブの日ごとのマスに使う） */
+  period_keys: string[]
+  /** そのうちチェックした周期 */
+  checked_keys: string[]
 }
 
 export interface CreateTodoInput {

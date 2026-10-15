@@ -10,6 +10,8 @@ interface Props {
   defaultCategoryId?: string | null
   /** 開いた時点の担当（サーバー版は自分）。null は未割り当て */
   defaultAssigneeId?: string | null
+  /** ToDo タブの「ToDoリストを作る」から開いたときは、最初から ToDoリストを選んでおく */
+  defaultListMode?: boolean
   onAdd: (data: CreateTodoInput) => Promise<Todo>
   /** 追加がすべて終わったときに、作ったタスクを渡す */
   onAdded?: (created: Todo[]) => void
@@ -68,6 +70,7 @@ export function QuickAddModal({
   users = [],
   defaultCategoryId = null,
   defaultAssigneeId = null,
+  defaultListMode = false,
   onAdd,
   onAdded,
   onClose,
@@ -76,11 +79,11 @@ export function QuickAddModal({
   const templates = useMemo(() => {
     try {
       const parsed = JSON.parse(window.localStorage.getItem('todo-templates') ?? '[]') as unknown
-      return Array.isArray(parsed) ? parsed as Array<{ name: string; todo: CreateTodoInput; subTasks?: Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | null; recurrence_workdays?: number }> }> : []
+      return Array.isArray(parsed) ? parsed as Array<{ name: string; todo: CreateTodoInput; subTasks?: Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | null; recurrence_workdays?: number; recurrence_day?: number | null }> }> : []
     } catch { return [] }
   }, [])
   const [selectedTemplateName, setSelectedTemplateName] = useState('')
-  const [templateSubTasks, setTemplateSubTasks] = useState<Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | null; recurrence_workdays?: number }>>([])
+  const [templateSubTasks, setTemplateSubTasks] = useState<Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | null; recurrence_workdays?: number; recurrence_day?: number | null }>>([])
   const savedDraft = useMemo(() => {
     try {
       const parsed = JSON.parse(window.localStorage.getItem('quick-add-draft') ?? '{}') as unknown
@@ -102,7 +105,7 @@ export function QuickAddModal({
   const [startDate, setStartDate] = useState(() => toDateKey(new Date()))
   const [dueDate, setDueDate] = useState('')
   // ToDoリスト（期限なしで続き、中の項目を毎日・毎週などでチェックし直すタスク）として作る
-  const [listMode, setListMode] = useState(false)
+  const [listMode, setListMode] = useState(defaultListMode)
   const [submitting, setSubmitting] = useState(false)
   const [keepOpen, setKeepOpen] = useState(false)
   const [showDetails, setShowDetails] = useState(() => Boolean(savedDraft.description?.trim() || savedDraft.memo?.trim()))

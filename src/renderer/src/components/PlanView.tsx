@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AddDailyPlanItemOptions, DailyPlanItem, Todo, UpdateDailyPlanItemInput } from '../types'
+import { checklistBadgeText, hasRemainingToday, type ChecklistSummary } from '../lib/todoList'
 
 interface Props {
   date: string
@@ -17,6 +18,8 @@ interface Props {
   onCarryOver?: () => Promise<void>
   /** タスク一覧の絞り込みの表示（候補のタスクに効く）。日付の操作の横に出す */
   listFilters?: React.ReactNode
+  /** ToDoリストの項目の進み具合。今日の分が残っているリストを候補に出す（ToDoリストを使う人だけ） */
+  checklistSummaries?: Map<string, ChecklistSummary>
 }
 
 interface SuggestedGroup {
@@ -407,10 +410,13 @@ function CandidateCard({
   onAdd,
   onSchedule,
   onPrepareDrag,
-  placementActive
+  placementActive,
+  note
 }: {
   todo: Todo
   todayKey: string
+  /** タスク名の下に添える一言（ToDoリストの残りなど） */
+  note?: string
   plannedCount?: number
   onAdd: (todoId: string) => Promise<void>
   onSchedule: (draft: PlacementDraft) => void
@@ -444,6 +450,7 @@ function CandidateCard({
     >
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '0.86rem', color: '#e2e8f0', fontWeight: 600, lineHeight: 1.4 }}>{todo.title}</div>
+        {note && <div style={{ fontSize: '0.7rem', color: '#a5b4fc', marginTop: 3 }}>{note}</div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
           {todo.category_name && (
             <span
@@ -605,7 +612,8 @@ export function PlanView({
   onReorder,
   onDateChange,
   onCarryOver,
-  listFilters
+  listFilters,
+  checklistSummaries
 }: Props): React.JSX.Element {
   const timelineRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -652,7 +660,15 @@ export function PlanView({
 
   const suggestions = useMemo(() => {
     const staleLimit = Date.now() - 7 * 86400000
+    const todayListTodos = unplannedTodos.filter((todo) => {
+      const summary = todo.list_mode ? checklistSummaries?.get(todo.id) : undefined
+      return summary != null && hasRemainingToday(summary)
+    })
     const groups: SuggestedGroup[] = [
+      // ToDoリストは今日の計画の日だけ。ほかの日の計画では出さない
+      ...(date === getTodayKey() && todayListTodos.length > 0
+        ? [{ title: 'ToDoリスト（今日の分が残っている）', items: todayListTodos.slice(0, 4) }]
+        : []),
       { title: '期限が今日', items: unplannedTodos.filter((todo) => todo.due_date === date).slice(0, 4) },
       {
         title: '期限が近い',
@@ -665,7 +681,7 @@ export function PlanView({
     ]
 
     return groups.filter((group) => group.items.length > 0)
-  }, [date, unplannedTodos])
+  }, [checklistSummaries, date, unplannedTodos])
 
   const filteredBacklog = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -1450,6 +1466,7 @@ export function PlanView({
                         key={`${group.title}-${todo.id}`}
                         todo={todo}
                         todayKey={date}
+                        note={todo.list_mode && checklistSummaries?.get(todo.id) ? `ToDoリスト: ${checklistBadgeText(checklistSummaries.get(todo.id)!)}` : undefined}
                         onAdd={async (todoId) => { await onAddTodo(todoId) }}
                         onSchedule={(draft) => {
                           setPlacementDraft(draft)

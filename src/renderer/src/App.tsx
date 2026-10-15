@@ -26,10 +26,12 @@ import { NotificationPanel } from './components/NotificationPanel'
 import { OverviewDashboard } from './components/OverviewDashboard'
 import { ReportView } from './components/ReportView'
 import { ListFilterChips, type ListFilterChip } from './components/ListFilterChips'
-import { buildChecklistSummaries } from './lib/todoList'
+import { buildChecklistSummaries, buildTodayGroups, countRemaining, groupListItems, isActiveList, isMyList } from './lib/todoList'
+import { TodoListsView } from './components/TodoListsView'
+import { TodayTodoCard } from './components/TodayTodo'
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
-type CenterView = 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban'
+type CenterView = 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban' | 'todo'
 type ScopeLens = 'personal' | 'team'
 type GanttSidePanelMode = 'detail' | 'today'
 type PaneKey = 'category' | 'list' | 'side'
@@ -126,7 +128,7 @@ export function App(): React.JSX.Element {
   })
   const [showQuickAdd, setShowQuickAdd] = useState(false)
   // 追加画面の初期値（ガントの見出しの「＋」から開いたときなど）。null は左の選択状態から決める
-  const [quickAddDefaults, setQuickAddDefaults] = useState<{ categoryId?: string | null; assigneeId?: string | null } | null>(null)
+  const [quickAddDefaults, setQuickAddDefaults] = useState<{ categoryId?: string | null; assigneeId?: string | null; listMode?: boolean } | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const saved = window.localStorage.getItem('app-theme-mode')
@@ -591,6 +593,23 @@ export function App(): React.JSX.Element {
   const filteredTodos = lensTodos.filter((todo) => matchesListFilters(todo)).sort(compareTodos)
   // ToDoリスト（期限なしで続くタスク）の項目の進み具合。一覧・カンバンのバッジに使う
   const checklistSummaries = useMemo(() => buildChecklistSummaries(todos, allSubTasks), [allSubTasks, todos])
+  // ToDoリストの項目（リストごと・並び順どおり）と、自分の「今日やること」。ToDoリストを使う人だけに ToDo タブ・右の「今日のToDo」を出す
+  const listItemsByTodo = useMemo(
+    () => groupListItems(new Set(todos.filter((todo) => todo.list_mode).map((todo) => todo.id)), allSubTasks),
+    [allSubTasks, todos]
+  )
+  const listUserId = multiUser ? currentUser?.id ?? null : null
+  const myListTodos = useMemo(
+    () => lensTodos.filter((todo) => isActiveList(todo) && isMyList(todo, listItemsByTodo.get(todo.id) ?? [], listUserId)),
+    [lensTodos, listItemsByTodo, listUserId]
+  )
+  const todayKeyForLists = getTodayKey()
+  const myTodayGroups = useMemo(
+    () => buildTodayGroups(myListTodos, listItemsByTodo, listUserId, todayKeyForLists),
+    [listItemsByTodo, listUserId, myListTodos, todayKeyForLists]
+  )
+  const todoRemainingCount = countRemaining(myTodayGroups)
+  const usesTodoLists = myListTodos.length > 0
   const reportTodos = lensTodos.filter((todo) => matchesListFilters(todo, true)).sort(compareTodos)
 
   // タイマーの秒更新では変化せず、概要の集計元が実際に変わったときだけ更新されるキー。
@@ -735,7 +754,7 @@ export function App(): React.JSX.Element {
   // 新しいタスクの担当の初期値: 一覧を特定の人で絞っていればその人、未割り当てで絞っていれば未割り当て、それ以外は自分。
   // 追加した直後に一覧から消えたように見えないようにする
   const defaultNewTaskAssigneeId = selectedAssigneeId === null ? currentUser?.id ?? null : selectedAssigneeId === '' ? null : selectedAssigneeId
-  const openQuickAdd = (defaults?: { categoryId?: string | null; assigneeId?: string | null }): void => {
+  const openQuickAdd = (defaults?: { categoryId?: string | null; assigneeId?: string | null; listMode?: boolean }): void => {
     setQuickAddDefaults(defaults ?? null)
     setShowQuickAdd(true)
   }
@@ -751,6 +770,55 @@ export function App(): React.JSX.Element {
     try { await Promise.all([loadTodos(), loadSelectedPlan(planDate), syncTimer()]) }
     catch (error) { showToast(`変更は保存しましたが、表示を更新できませんでした: ${error instanceof Error ? error.message : '再読み込みしてください'}`, 'error') }
   }, [loadTodos, loadSelectedPlan, planDate, showToast, syncTimer])
+
+  // ToDoリストの項目のチェック（右パネル・一覧の展開・ToDo タブ）。すぐ画面に反映し、失敗したら戻す
+  const [pendingListItemIds, setPendingListItemIds] = useState<Set<string>>(() => new Set())
+  const handleToggleListItem = useCallback((item: SubTask): void => {
+    if (pendingListItemIds.has(item.id)) return
+    const nextDone = item.done ? 0 : 1
+    setPendingListItemIds((previous) => new Set(previous).add(item.id))
+    setAllSubTasks((previous) => previous.map((subTask) => subTask.id === item.id
+      ? { ...subTask, done: nextDone, progress: nextDone ? 100 : 0, completed_at: nextDone ? new Date().toISOString() : null }
+      : subTask))
+    void window.api.subtaskUpdate(item.id, { done: Boolean(nextDone), expected_values: { done: Boolean(item.done) } })
+      .then((updated) => setAllSubTasks((previous) => previous.map((subTask) => subTask.id === updated.id ? updated : subTask)))
+      .catch((error) => {
+        setAllSubTasks((previous) => previous.map((subTask) => subTask.id === item.id ? item : subTask))
+        showToast(error instanceof Error ? error.message : '項目を更新できませんでした', 'error')
+      })
+      .finally(() => setPendingListItemIds((previous) => {
+        const next = new Set(previous)
+        next.delete(item.id)
+        return next
+      }))
+  }, [pendingListItemIds, showToast])
+
+  // ToDo タブで名前だけで ToDoリストを作る。担当は自分、今日から使い始める
+  const handleCreateList = useCallback(async (title: string): Promise<boolean> => {
+    try {
+      const created = await window.api.todoCreate({
+        title,
+        list_mode: 1,
+        status: 'active',
+        assignee_id: multiUser ? currentUser?.id ?? null : null,
+        start_date: getTodayKey()
+      })
+      await loadTodos()
+      showToast(`ToDoリスト「${created.title}」を作りました。項目を追加してください`)
+      return true
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'ToDoリストを作れませんでした', 'error')
+      return false
+    }
+  }, [currentUser, loadTodos, multiUser, showToast])
+
+  // ToDo タブのチェックリストからの変更を、全体のサブタスクに反映する
+  const handleListItemsChange = useCallback((todoId: string, update: (previous: SubTask[]) => SubTask[]): void => {
+    setAllSubTasks((previous) => {
+      const mine = previous.filter((subTask) => subTask.todo_id === todoId).sort((a, b) => a.sort_order - b.sort_order)
+      return [...previous.filter((subTask) => subTask.todo_id !== todoId), ...update(mine)]
+    })
+  }, [])
 
   // サブタスクの期限は親タスクの期限を延長することがあるので、タスクも取り直す
   const handleUpdateSubTask = useCallback(async (id: string, data: UpdateSubTaskInput) => {
@@ -1078,7 +1146,18 @@ export function App(): React.JSX.Element {
   const listFilters = listFilterChips.length > 0 ? <ListFilterChips chips={listFilterChips} /> : null
 
   const isManualSort = sortField === 'sort_order'
-  const showRightPlanRail = showPlanRail && activeView !== 'plan' && activeView !== 'team' && activeView !== 'progress' && activeView !== 'report'
+  const showRightPlanRail = showPlanRail && activeView !== 'plan' && activeView !== 'team' && activeView !== 'progress' && activeView !== 'report' && activeView !== 'todo'
+  // 右の「今日の予定」の上に出す「今日のToDo」（ToDoリストを使う人だけ）
+  const todayTodoCard = usesTodoLists ? (
+    <TodayTodoCard
+      groups={myTodayGroups}
+      pendingIds={pendingListItemIds}
+      storageKey={`todayTodo.collapsed:${listUserId ?? 'local'}`}
+      onToggle={handleToggleListItem}
+      onOpenList={openTodoDetail}
+      onOpenTab={() => toggleCenterView('todo')}
+    />
+  ) : null
   const showGanttSidePanel = activeView === 'gantt' && (ganttSidePanelMode === 'detail' || showPlanRail)
   const showAuxiliaryPanel = activeView === 'gantt' ? showGanttSidePanel : showRightPlanRail
   const SORT_FIELDS: { key: SortField; label: string }[] = [
@@ -1112,6 +1191,8 @@ export function App(): React.JSX.Element {
         showTaskPane={showTaskPane}
         showTeamButton={multiUser}
         progressUnseenCount={progressUnseenCount}
+        todoRemainingCount={todoRemainingCount}
+        onToggleTodoView={() => toggleCenterView('todo')}
         currentUser={currentUser}
         notificationUnreadCount={notificationUnreadCount}
         onOpenNotifications={multiUser ? openNotifications : undefined}
@@ -1265,6 +1346,9 @@ export function App(): React.JSX.Element {
               onStartTimer={start}
               onStopTimer={stop}
               checklistSummaries={checklistSummaries}
+              listItemsByTodo={listItemsByTodo}
+              pendingItemIds={pendingListItemIds}
+              onToggleListItem={handleToggleListItem}
             />
           </div>
         </div>
@@ -1341,6 +1425,7 @@ export function App(): React.JSX.Element {
               onDateChange={setPlanDate}
               onCarryOver={handleCarryOverPlan}
               listFilters={listFilters}
+              checklistSummaries={usesTodoLists ? checklistSummaries : undefined}
             />
           ) : activeView === 'log' ? (
             <WorkLogSummary hiddenTodoIds={hiddenPrivateTodoIds} />
@@ -1367,6 +1452,20 @@ export function App(): React.JSX.Element {
               onUpdateTodo={handleUpdate}
               onUpdateSubTask={handleUpdateSubTask}
               onCreateSubTask={handleCreateSubTask}
+              onShowToast={showToast}
+            />
+          ) : activeView === 'todo' ? (
+            <TodoListsView
+              todos={lensTodos.slice().sort(compareTodos)}
+              itemsByTodo={listItemsByTodo}
+              users={users}
+              currentUser={currentUser}
+              pendingIds={pendingListItemIds}
+              onToggleItem={handleToggleListItem}
+              onItemsChange={handleListItemsChange}
+              onSelectTodo={openTodoDetail}
+              onCreateList={handleCreateList}
+              onCreateListWithDetails={() => openQuickAdd({ listMode: true })}
               onShowToast={showToast}
             />
           ) : activeView === 'team' ? (
@@ -1453,6 +1552,7 @@ export function App(): React.JSX.Element {
                         runningTodoId={runningTodoId}
                         onSelectTodo={openTodoDetail}
                         onOpenPlan={() => toggleCenterView('plan')}
+                        topSlot={todayTodoCard}
                       />
                     )}
                   </div>
@@ -1464,6 +1564,7 @@ export function App(): React.JSX.Element {
                   runningTodoId={runningTodoId}
                   onSelectTodo={openTodoDetail}
                   onOpenPlan={() => toggleCenterView('plan')}
+                  topSlot={todayTodoCard}
                 />
               )}
             </div>
@@ -1477,6 +1578,7 @@ export function App(): React.JSX.Element {
           users={users}
           defaultCategoryId={quickAddDefaults?.categoryId !== undefined ? quickAddDefaults.categoryId : selectedCategoryId}
           defaultAssigneeId={quickAddDefaults?.assigneeId !== undefined ? quickAddDefaults.assigneeId : defaultNewTaskAssigneeId}
+          defaultListMode={quickAddDefaults?.listMode ?? false}
           onAdd={handleAdd}
           onAdded={handleAdded}
           onClose={() => setShowQuickAdd(false)}

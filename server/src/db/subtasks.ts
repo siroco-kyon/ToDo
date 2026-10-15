@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import HolidayJp from '@holiday-jp/holiday_jp'
 import { getDb } from './connection'
 import { assertExpectedValues } from '../shared/todo-update-guard'
-import { isCheckStale, isItemRecurrence, periodStartOf, periodsOverlapping, toLocalDateKey, type ItemRecurrence } from '../shared/recurring-period'
+import { isCheckStale, isItemRecurrence, normalizeRecurrenceDay, periodStartOf, periodsOverlapping, toLocalDateKey, type ItemRecurrence } from '../shared/recurring-period'
 import { clampProgress, normalizeDateKey } from './helpers'
 import { syncTodoDueDateWithSubTasks } from './todos'
 import type { CalendarSubTask, CreateSubTaskInput, SubTask, SubTaskCheckSummary, UpdateSubTaskInput } from './types'
@@ -36,12 +36,12 @@ export function resetRecurringSubTasks(now: Date = new Date()): number {
   const db = getDb()
   const rows = db.prepare(
     // 終えた（完了・アーカイブ）ToDoリストの項目はそのままにしておく
-    `SELECT st.id, st.recurrence, st.recurrence_workdays, st.completed_at
+    `SELECT st.id, st.recurrence, st.recurrence_workdays, st.recurrence_day, st.completed_at
      FROM SubTasks st JOIN Todos t ON t.id = st.todo_id
      WHERE st.recurrence IS NOT NULL AND st.done = 1 AND t.list_mode = 1 AND t.status NOT IN ('done', 'archived')`
-  ).all() as Array<{ id: string; recurrence: string; recurrence_workdays: number; completed_at: string | null }>
+  ).all() as Array<{ id: string; recurrence: string; recurrence_workdays: number; recurrence_day: number | null; completed_at: string | null }>
   const stale = rows.filter((row) => isItemRecurrence(row.recurrence)
-    && isCheckStale(row.recurrence, Boolean(row.recurrence_workdays), row.completed_at, now, isHoliday))
+    && isCheckStale(row.recurrence, Boolean(row.recurrence_workdays), row.completed_at, now, isHoliday, row.recurrence_day))
   if (stale.length === 0) return 0
   const reset = db.prepare('UPDATE SubTasks SET done = 0, progress = 0, completed_at = NULL WHERE id = ?')
   db.transaction(() => { for (const row of stale) reset.run(row.id) })()
@@ -53,7 +53,7 @@ function recordRecurringCheck(subTask: SubTask, checked: boolean, userId: string
   const recurrence = normalizeItemRecurrence(subTask.recurrence)
   if (!recurrence) return
   const now = new Date()
-  const periodKey = periodStartOf(recurrence, Boolean(subTask.recurrence_workdays), toLocalDateKey(now), isHoliday)
+  const periodKey = periodStartOf(recurrence, Boolean(subTask.recurrence_workdays), toLocalDateKey(now), isHoliday, subTask.recurrence_day)
   const db = getDb()
   if (checked) {
     db.prepare(
@@ -64,6 +64,30 @@ function recordRecurringCheck(subTask: SubTask, checked: boolean, userId: string
   }
 }
 
+/**
+ * 繰り返しの周期（毎日/毎週/毎月・平日だけ・曜日/日付）を変えたとき、これまでのチェックを新しい周期に付け直す。
+ * 付け直さないと、前の周期で付けたチェックが報告で取りこぼしに見える（例: 月曜→水曜に変えると、月曜のチェックが数えられない）。
+ * チェックした日を含む新しい周期の記録にし、同じ周期に重なったものは最初の1件だけ残す。
+ */
+function rekeyRecurringChecks(subTask: SubTask): void {
+  const recurrence = normalizeItemRecurrence(subTask.recurrence)
+  if (!recurrence) return
+  const db = getDb()
+  const checks = db.prepare(
+    'SELECT id, subtask_id, todo_id, period_key, user_id, checked_at FROM SubTaskChecks WHERE subtask_id = ? ORDER BY checked_at ASC'
+  ).all(subTask.id) as Array<{ id: string; subtask_id: string; todo_id: string; period_key: string; user_id: string | null; checked_at: string }>
+  if (checks.length === 0) return
+  const kept = new Map<string, (typeof checks)[number]>()
+  for (const check of checks) {
+    const key = periodStartOf(recurrence, Boolean(subTask.recurrence_workdays), toLocalDateKey(new Date(check.checked_at)), isHoliday, subTask.recurrence_day)
+    if (!kept.has(key)) kept.set(key, { ...check, period_key: key })
+  }
+  // UNIQUE(subtask_id, period_key) にぶつからないよう、いったん消してから入れ直す
+  db.prepare('DELETE FROM SubTaskChecks WHERE subtask_id = ?').run(subTask.id)
+  const insert = db.prepare('INSERT INTO SubTaskChecks (id, subtask_id, todo_id, period_key, user_id, checked_at) VALUES (?, ?, ?, ?, ?, ?)')
+  for (const check of kept.values()) insert.run(check.id, check.subtask_id, check.todo_id, check.period_key, check.user_id, check.checked_at)
+}
+
 /** ToDoリストの繰り返しの項目ごとに、期間に重なる周期の数とチェックした数を返す（報告タブの実施状況） */
 export function getSubTaskCheckSummaries(from: string, to: string): SubTaskCheckSummary[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
@@ -71,10 +95,10 @@ export function getSubTaskCheckSummaries(from: string, to: string): SubTaskCheck
   }
   const db = getDb()
   const items = db.prepare(
-    `SELECT st.id, st.todo_id, st.recurrence, st.recurrence_workdays, st.created_at
+    `SELECT st.id, st.todo_id, st.recurrence, st.recurrence_workdays, st.recurrence_day, st.created_at
      FROM SubTasks st JOIN Todos t ON t.id = st.todo_id
      WHERE st.recurrence IS NOT NULL AND t.list_mode = 1`
-  ).all() as Array<{ id: string; todo_id: string; recurrence: string; recurrence_workdays: number; created_at: string }>
+  ).all() as Array<{ id: string; todo_id: string; recurrence: string; recurrence_workdays: number; recurrence_day: number | null; created_at: string }>
   if (items.length === 0) return []
   // 周期の始まりは期間の開始より前のこともある（毎月なら最大で約1か月前）
   const earliest = new Date(Number(from.slice(0, 4)), Number(from.slice(5, 7)) - 1, Number(from.slice(8, 10)) - 40)
@@ -93,17 +117,20 @@ export function getSubTaskCheckSummaries(from: string, to: string): SubTaskCheck
     const created = toLocalDateKey(new Date(item.created_at))
     const start = created > from ? created : from
     const end = today < to ? today : to
-    const periods = new Set(start <= end ? periodsOverlapping(item.recurrence, Boolean(item.recurrence_workdays), start, end, isHoliday) : [])
+    const periods = new Set(start <= end ? periodsOverlapping(item.recurrence, Boolean(item.recurrence_workdays), start, end, isHoliday, item.recurrence_day) : [])
     const itemChecks = checksByItem.get(item.id) ?? []
+    const checkedKeys = [...new Set(itemChecks.filter((check) => periods.has(check.period_key)).map((check) => check.period_key))].sort()
     return [{
       subtask_id: item.id,
       todo_id: item.todo_id,
       periods: periods.size,
-      checked: new Set(itemChecks.filter((check) => periods.has(check.period_key)).map((check) => check.period_key)).size,
+      checked: checkedKeys.length,
       checked_in_range: itemChecks.filter((check) => {
         const day = toLocalDateKey(new Date(check.checked_at))
         return from <= day && day <= to
-      }).length
+      }).length,
+      period_keys: [...periods].sort(),
+      checked_keys: checkedKeys
     }]
   })
 }
@@ -176,8 +203,8 @@ export function createSubTask(todoId: string, data: CreateSubTaskInput, createdB
     const done = progress >= 100 ? 1 : 0
     const recurrence = isListTodoId(todoId) ? normalizeItemRecurrence(data.recurrence) : null
     db.prepare(
-      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by, recurrence, recurrence_workdays) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now, createdByUserId, recurrence, recurrence && data.recurrence_workdays ? 1 : 0)
+      'INSERT INTO SubTasks (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by, recurrence, recurrence_workdays, recurrence_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, todoId, data.title, data.description ?? '', data.assignee_id ?? null, startDate, dueDate, progress, done, done ? now : null, maxOrder + 1, now, createdByUserId, recurrence, recurrence && data.recurrence_workdays ? 1 : 0, normalizeRecurrenceDay(recurrence, data.recurrence_day))
     const created = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
     if (done) recordRecurringCheck(created, true, createdByUserId)
     const extendedTo = syncTodoDueDateWithSubTasks(todoId, createdByUserId)
@@ -216,6 +243,14 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput, changedByUse
     if (data.recurrence_workdays !== undefined) {
       db.prepare('UPDATE SubTasks SET recurrence_workdays = ? WHERE id = ?').run(data.recurrence_workdays ? 1 : 0, id)
     }
+    // 戻る曜日・日付は、変更後の周期に合わせて整える（周期だけ変えたときは既定に戻す）
+    if (data.recurrence !== undefined || data.recurrence_day !== undefined) {
+      const recurrenceAfter = normalizeItemRecurrence((db.prepare('SELECT recurrence FROM SubTasks WHERE id = ?').get(id) as { recurrence: string | null }).recurrence)
+      const requestedDay = data.recurrence_day !== undefined
+        ? data.recurrence_day
+        : recurrenceAfter === (current.recurrence ?? null) ? current.recurrence_day : null
+      db.prepare('UPDATE SubTasks SET recurrence_day = ? WHERE id = ?').run(normalizeRecurrenceDay(recurrenceAfter, requestedDay), id)
+    }
     if ((data.done !== undefined || data.progress !== undefined) && current) {
       const progressFromInput = data.progress !== undefined
         ? clampProgress(Number(data.progress))
@@ -232,6 +267,10 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput, changedByUse
       db.prepare('UPDATE SubTasks SET progress = ?, done = ?, completed_at = ? WHERE id = ?').run(nextProgress, nextDone ? 1 : 0, nextCompletedAt, id)
     }
     const updated = db.prepare(`${SUBTASK_SELECT} WHERE st.id = ?`).get(id) as SubTask
+    // 周期を変えたら、これまでのチェックを新しい周期に付け直してから、今回のチェックを残す
+    if ((current.recurrence ?? null) !== (updated.recurrence ?? null)
+      || Boolean(current.recurrence_workdays) !== Boolean(updated.recurrence_workdays)
+      || (current.recurrence_day ?? null) !== (updated.recurrence_day ?? null)) rekeyRecurringChecks(updated)
     if (Boolean(current.done) !== Boolean(updated.done)) recordRecurringCheck(updated, Boolean(updated.done), changedByUserId)
     if (current) recordSubTaskChanges(current, updated, changedByUserId)
     const extendedTo = syncTodoDueDateWithSubTasks(updated.todo_id, changedByUserId)
