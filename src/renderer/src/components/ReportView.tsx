@@ -20,7 +20,7 @@ import {
   type ReportSubTaskMode,
   type ReportViewSettings
 } from '../lib/reportViewSettings'
-import { repeatLabel } from '../lib/todoList'
+import { itemPeriodText, repeatLabel } from '../lib/todoList'
 import {
   digestListReport,
   groupSummaryText,
@@ -784,7 +784,8 @@ function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, peri
             item.recurrence
               ? `${repeatLabel(item) ?? ''} ${itemStatusText(itemCheckStatus(item, row.checkSummaries.get(item.id))) ?? '期間中の対象なし'}`
               : item.done ? '済み' : 'まだ',
-            '', '', '',
+            '', '',
+            item.start_date?.slice(0, 10) ?? '',
             item.due_date?.slice(0, 10) ?? '',
             '', '', '', '', '', '',
             item.description.trim()
@@ -1990,7 +1991,7 @@ function ListItemsSummary({ row, period }: { row: ReportRow; period: DateRange }
             {items.open.map((item) => (
               <div key={item.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.76rem' }}>
                 <span style={{ flex: 1, minWidth: 0, color: '#cbd5e1', overflowWrap: 'anywhere' }}>☐ {item.title}</span>
-                {item.due_date && <span style={{ fontSize: '0.68rem', color: getDueDateColor(item.due_date) || '#64748b', flexShrink: 0 }}>{formatShortDate(item.due_date)}まで</span>}
+                {itemPeriodText(item) && <span style={{ fontSize: '0.68rem', color: getDueDateColor(item.due_date) || '#64748b', flexShrink: 0 }}>{itemPeriodText(item)}</span>}
               </div>
             ))}
             {items.doneInPeriod.map((item) => (
