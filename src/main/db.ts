@@ -1248,6 +1248,29 @@ function recordRecurringCheck(subTask: SubTask, checked: boolean): void {
   }
 }
 
+/**
+ * 繰り返しの周期（毎日/毎週/毎月・平日だけ・曜日/日付）を変えたとき、これまでのチェックを新しい周期に付け直す。
+ * 付け直さないと、前の周期で付けたチェックが報告で取りこぼしに見える（例: 月曜→水曜に変えると、月曜のチェックが数えられない）。
+ * チェックした日を含む新しい周期の記録にし、同じ周期に重なったものは最初の1件だけ残す。
+ */
+function rekeyRecurringChecks(subTask: SubTask): void {
+  const recurrence = normalizeItemRecurrence(subTask.recurrence)
+  if (!recurrence) return
+  const checks = db.prepare(
+    'SELECT id, subtask_id, todo_id, period_key, user_id, checked_at FROM SubTaskChecks WHERE subtask_id = ? ORDER BY checked_at ASC'
+  ).all(subTask.id) as Array<{ id: string; subtask_id: string; todo_id: string; period_key: string; user_id: string | null; checked_at: string }>
+  if (checks.length === 0) return
+  const kept = new Map<string, (typeof checks)[number]>()
+  for (const check of checks) {
+    const key = periodStartOf(recurrence, Boolean(subTask.recurrence_workdays), toLocalDateKey(new Date(check.checked_at)), isHoliday, subTask.recurrence_day)
+    if (!kept.has(key)) kept.set(key, { ...check, period_key: key })
+  }
+  // UNIQUE(subtask_id, period_key) にぶつからないよう、いったん消してから入れ直す
+  db.prepare('DELETE FROM SubTaskChecks WHERE subtask_id = ?').run(subTask.id)
+  const insert = db.prepare('INSERT INTO SubTaskChecks (id, subtask_id, todo_id, period_key, user_id, checked_at) VALUES (?, ?, ?, ?, ?, ?)')
+  for (const check of kept.values()) insert.run(check.id, check.subtask_id, check.todo_id, check.period_key, check.user_id, check.checked_at)
+}
+
 /** ToDoリストの繰り返しの項目ごとに、期間に重なる周期の数とチェックした数を返す（報告タブの実施状況） */
 export function getSubTaskCheckSummaries(from: string, to: string): SubTaskCheckSummary[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
@@ -1409,6 +1432,10 @@ export function updateSubTask(id: string, data: UpdateSubTaskInput): SubTask {
       db.prepare('UPDATE SubTasks SET progress = ?, done = ?, completed_at = ? WHERE id = ?').run(nextProgress, nextDone ? 1 : 0, nextCompletedAt, id)
     }
     const updated = db.prepare('SELECT st.*, NULL AS assignee_name, NULL AS assignee_color FROM SubTasks st WHERE st.id = ?').get(id) as SubTask
+    // 周期を変えたら、これまでのチェックを新しい周期に付け直してから、今回のチェックを残す
+    if ((current.recurrence ?? null) !== (updated.recurrence ?? null)
+      || Boolean(current.recurrence_workdays) !== Boolean(updated.recurrence_workdays)
+      || (current.recurrence_day ?? null) !== (updated.recurrence_day ?? null)) rekeyRecurringChecks(updated)
     if (Boolean(current.done) !== Boolean(updated.done)) recordRecurringCheck(updated, Boolean(updated.done))
     if (current) recordSubTaskChanges(current, updated)
     const extendedTo = syncTodoDueDateWithSubTasks(updated.todo_id)

@@ -79,11 +79,11 @@ export function QuickAddModal({
   const templates = useMemo(() => {
     try {
       const parsed = JSON.parse(window.localStorage.getItem('todo-templates') ?? '[]') as unknown
-      return Array.isArray(parsed) ? parsed as Array<{ name: string; todo: CreateTodoInput; subTasks?: Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | null; recurrence_workdays?: number }> }> : []
+      return Array.isArray(parsed) ? parsed as Array<{ name: string; todo: CreateTodoInput; subTasks?: Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | null; recurrence_workdays?: number; recurrence_day?: number | null }> }> : []
     } catch { return [] }
   }, [])
   const [selectedTemplateName, setSelectedTemplateName] = useState('')
-  const [templateSubTasks, setTemplateSubTasks] = useState<Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | null; recurrence_workdays?: number }>>([])
+  const [templateSubTasks, setTemplateSubTasks] = useState<Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | null; recurrence_workdays?: number; recurrence_day?: number | null }>>([])
   const savedDraft = useMemo(() => {
     try {
       const parsed = JSON.parse(window.localStorage.getItem('quick-add-draft') ?? '{}') as unknown

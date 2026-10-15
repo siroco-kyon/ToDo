@@ -153,4 +153,25 @@ module.exports = function checkTodoList(api) {
   assert.equal(api.updateSubTask(wednesday.id, { recurrence: 'monthly' }).recurrence_day, null)
   assert.equal(api.updateSubTask(wednesday.id, { recurrence_day: 25 }).recurrence_day, 25)
   assert.equal(api.updateSubTask(wednesday.id, { title: '名前だけ変える' }).recurrence_day, 25, 'ほかの変更では変えない')
+
+  // 周期を変えたら、これまでのチェックを新しい周期に付け直す（月曜→水曜で、月曜のチェックが取りこぼしにならない）
+  const moved = api.createSubTask(dayList.id, { title: '月曜から水曜へ', recurrence: 'weekly' })
+  db.prepare("UPDATE SubTasks SET created_at = '2026-09-01T00:00:00.000Z' WHERE id = ?").run(moved.id)
+  insertCheck.run('check-mon-1', moved.id, dayList.id, '2026-09-28', local(2026, 9, 28, 9).toISOString())
+  insertCheck.run('check-mon-2', moved.id, dayList.id, '2026-10-05', local(2026, 10, 5, 9).toISOString())
+  const keysOf = (id, from, to) => {
+    const row = api.getSubTaskCheckSummaries(from, to).find((item) => item.subtask_id === id)
+    return { periods: [...row.period_keys], checked: [...row.checked_keys] }
+  }
+  assert.deepEqual(keysOf(moved.id, '2026-09-28', '2026-10-11'), { periods: ['2026-09-28', '2026-10-05'], checked: ['2026-09-28', '2026-10-05'] })
+  api.updateSubTask(moved.id, { recurrence_day: 3 })
+  assert.deepEqual(keysOf(moved.id, '2026-09-28', '2026-10-11'), { periods: ['2026-09-23', '2026-09-30', '2026-10-07'], checked: ['2026-09-23', '2026-09-30'] },
+    'チェックした日を含む水曜始まりの週に付け直す')
+  api.updateSubTask(moved.id, { recurrence: 'daily' })
+  assert.deepEqual(keysOf(moved.id, '2026-09-28', '2026-10-05').checked, ['2026-09-28', '2026-10-05'], '毎日に変えるとチェックした日に戻る')
+  // 同じ周期に重なったチェックは1件にまとめる（毎日→毎週）
+  insertCheck.run('check-tue', moved.id, dayList.id, '2026-10-06', local(2026, 10, 6, 9).toISOString())
+  api.updateSubTask(moved.id, { recurrence: 'weekly' })
+  assert.deepEqual(keysOf(moved.id, '2026-09-28', '2026-10-11').checked, ['2026-09-28', '2026-10-05'])
+  assert.equal(countChecks(moved.id), 2, '10/5 と 10/6 のチェックは同じ週の1件になる')
 }

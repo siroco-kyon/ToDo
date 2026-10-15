@@ -379,7 +379,8 @@ export function TodoDetail({
           due_date: target.due_date,
           progress: target.progress,
           recurrence: target.recurrence,
-          recurrence_workdays: target.recurrence_workdays
+          recurrence_workdays: target.recurrence_workdays,
+          recurrence_day: target.recurrence_day
         }).then(async (created) => {
           if (target.done && !created.done) await window.api.subtaskUpdate(created.id, { done: true })
           const orderedIds = [...remainingIds]
@@ -729,7 +730,7 @@ export function TodoDetail({
       await window.api.subtaskCreate(created.id, {
         title: subTask.title, description: subTask.description, assignee_id: subTask.assignee_id,
         start_date: subTask.start_date, due_date: subTask.due_date, progress: 0,
-        recurrence: subTask.recurrence, recurrence_workdays: subTask.recurrence_workdays
+        recurrence: subTask.recurrence, recurrence_workdays: subTask.recurrence_workdays, recurrence_day: subTask.recurrence_day
       })
     }
     onShowToast(`「${created.title}」を作成しました`)
@@ -745,7 +746,7 @@ export function TodoDetail({
       if (Array.isArray(parsed)) templates = parsed as Array<{ name?: string }>
     } catch { templates = [] }
     templates = templates.filter((template) => template.name !== name)
-    templates.push({ name, todo: createEditData(todo), subTasks: subTasks.map((item) => ({ title: item.title, description: item.description, start_date: item.start_date, due_date: item.due_date, recurrence: item.recurrence, recurrence_workdays: item.recurrence_workdays })) } as { name: string })
+    templates.push({ name, todo: createEditData(todo), subTasks: subTasks.map((item) => ({ title: item.title, description: item.description, start_date: item.start_date, due_date: item.due_date, recurrence: item.recurrence, recurrence_workdays: item.recurrence_workdays, recurrence_day: item.recurrence_day })) } as { name: string })
     window.localStorage.setItem(key, JSON.stringify(templates))
     onShowToast(`テンプレート「${name}」を保存しました`)
   }
