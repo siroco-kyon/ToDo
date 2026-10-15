@@ -72,6 +72,20 @@ const sectionItems = [
 const sections = lib.buildTodaySections(lib.buildTodayGroups([sectionList], new Map([['list2', sectionItems]]), 'u1', '2026-10-14'))
 assert.deepEqual(Array.from(sections, (entry) => `${entry.section}:${Array.from(entry.entries, (e) => e.item.id).join(',')}`), ['today:daily,dueToday', 'week:weekly', 'month:monthly'])
 
+// 区分けの中は、リストごとにまとめる（小見出しにカテゴリとリスト名を出すため）
+{
+  const listA = { ...list, id: 'listA', title: '毎日のルーティン' }
+  const listB = { ...list, id: 'listB', title: '定常業務' }
+  const byList = new Map([
+    ['listA', [item('a1', { todo_id: 'listA', recurrence: 'daily' }), item('a2', { todo_id: 'listA', recurrence: 'daily', sort_order: 1 })]],
+    ['listB', [item('b1', { todo_id: 'listB', recurrence: 'daily' }), item('b2', { todo_id: 'listB', recurrence: 'weekly', sort_order: 1 })]]
+  ])
+  const today = lib.buildTodaySections(lib.buildTodayGroups([listA, listB], byList, 'u1', '2026-10-14'))
+  const headings = (section) => Array.from(lib.groupEntriesByList(section.entries), (group) => `${group.todo.title}:${Array.from(group.items, (entry) => entry.id).join(',')}`)
+  assert.deepEqual(headings(today[0]), ['毎日のルーティン:a1,a2', '定常業務:b1'])
+  assert.deepEqual(headings(today[1]), ['定常業務:b2'], 'リストが1つでも小見出しを付ける')
+}
+
 // ─── 報告タブの実施状況（lib/todoListReport.ts） ───
 const reportBundle = buildSync({
   entryPoints: [path.join(__dirname, '../src/renderer/src/lib/todoListReport.ts')],

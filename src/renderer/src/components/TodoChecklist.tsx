@@ -530,15 +530,12 @@ function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
  * ほかの画面（右の「今日のToDo」・タスク一覧の展開）で使う、チェックだけできる小さな行。
  * 名前を押すと、その ToDoリストの詳細を開く。
  */
-export function QuickCheckItem({ item, pending, todayKey, listTitle, listName, listColor, showAssignee = false, onToggle, onOpen }: {
+export function QuickCheckItem({ item, pending, todayKey, listTitle, showAssignee = false, onToggle, onOpen }: {
   item: SubTask
   pending: boolean
   todayKey: string
   /** どの ToDoリストの項目か（ツールチップ用） */
   listTitle?: string
-  /** 複数のリストを混ぜて並べるとき、項目の横に出すリスト名 */
-  listName?: string
-  listColor?: string | null
   showAssignee?: boolean
   onToggle: () => void
   onOpen: () => void
@@ -566,12 +563,6 @@ export function QuickCheckItem({ item, pending, todayKey, listTitle, listName, l
         {item.title}
       </button>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: '0.64rem' }}>
-        {listName && (
-          <span title={listName} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#64748b', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <span style={{ width: 6, height: 6, borderRadius: 2, background: listColor ?? '#475569', flexShrink: 0 }} />
-            {listName}
-          </span>
-        )}
         {showAssignee && item.assignee_name && <span style={{ color: item.assignee_color ?? '#94a3b8' }}>{item.assignee_name}</span>}
         {!item.recurrence && item.due_date && (
           <span style={{ color: dueColor || '#64748b', fontWeight: overdue ? 700 : 400 }}>{overdue ? '期限切れ' : `${formatShortDate(item.due_date)}まで`}</span>
