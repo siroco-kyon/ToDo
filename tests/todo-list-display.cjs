@@ -72,4 +72,133 @@ const sectionItems = [
 const sections = lib.buildTodaySections(lib.buildTodayGroups([sectionList], new Map([['list2', sectionItems]]), 'u1', '2026-10-14'))
 assert.deepEqual(Array.from(sections, (entry) => `${entry.section}:${Array.from(entry.entries, (e) => e.item.id).join(',')}`), ['today:daily,dueToday', 'week:weekly', 'month:monthly'])
 
+// ─── 報告タブの実施状況（lib/todoListReport.ts） ───
+const reportBundle = buildSync({
+  entryPoints: [path.join(__dirname, '../src/renderer/src/lib/todoListReport.ts')],
+  bundle: true, write: false, format: 'cjs', platform: 'node'
+}).outputFiles[0].text
+const reportSandbox = { module: { exports: {} }, Date }
+vm.runInNewContext(reportBundle, reportSandbox)
+const report = reportSandbox.module.exports
+// サンドボックスの配列・オブジェクトは別のプロトタイプなので、比べる前にふつうの値にする
+const plain = (value) => JSON.parse(JSON.stringify(value))
+// current_key（今日を含む回）は、省略すると最後の回（期間に今日が入るとき）にする
+const checks = (entries) => new Map(entries.map(([id, periodKeys, checkedKeys, currentKey = periodKeys.at(-1) ?? null]) => [id, {
+  subtask_id: id, todo_id: 'list', periods: periodKeys.length, checked: checkedKeys.length, checked_in_range: checkedKeys.length,
+  period_keys: periodKeys, checked_keys: checkedKeys, current_key: currentKey
+}]))
+const days = (from, to) => {
+  const keys = []
+  for (let date = new Date(`${from}T00:00:00`); ; date.setDate(date.getDate() + 1)) {
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    keys.push(key)
+    if (key === to) return keys
+  }
+}
+// 2026-10-15 は木曜。期間は直近7日（10/9〜10/15）
+const week = { from: '2026-10-09', to: '2026-10-15' }
+const todayKey = '2026-10-15'
+const dailyItems = ['a', 'b', 'c', 'd', 'e'].map((id) => item(id, { recurrence: 'daily' }))
+
+// 作ったばかりのリストで1件だけチェックしても、100% にしない（今日の分は途中なので別に出す）
+{
+  const digest = report.digestListReport(dailyItems, checks(dailyItems.map(({ id }) => [id, [todayKey], id === 'a' ? [todayKey] : []])), week, todayKey)
+  assert.equal(digest.groups.length, 1)
+  const [group] = digest.groups
+  assert.deepEqual(plain({ label: group.label, checked: group.checked, periods: group.periods, current: group.current }),
+    { label: '毎日', checked: 0, periods: 0, current: { label: '今日', checked: 1, total: 5 } })
+  assert.equal(report.groupSummaryText(group), '今日 1/5（明日から集計）')
+  assert.equal(digest.missed.length, 0, '今日の分はまだ取りこぼしにしない')
+}
+
+// 昨日までの分と今日の分を分ける。昨日まで全部済んでいても、今日は 1/5 と出す
+{
+  const past = days('2026-10-11', '2026-10-14')
+  const summaries = checks(dailyItems.map(({ id }) => [id, [...past, todayKey], [...(id === 'e' ? past.slice(2) : past), ...(id === 'a' ? [todayKey] : [])]]))
+  const digest = report.digestListReport(dailyItems, summaries, week, todayKey)
+  assert.equal(report.groupSummaryText(digest.groups[0]), '昨日まで 18/20回（90%）・今日 1/5')
+  assert.deepEqual(Array.from(digest.missed, (entry) => `${entry.item.id} ${entry.checked}/${entry.periods}`), ['e 2/4'])
+  assert.deepEqual(plain(digest.days.at(-1)), { day: todayKey, done: 1, total: 5, today: true })
+}
+
+// 終わった回が5回より少ないうちは率（%）を出さない
+assert.equal(report.rateText(2, 3), '2/3回')
+assert.equal(report.rateText(4, 5), '4/5回（80%）')
+{
+  const digest = report.digestListReport([item('a', { recurrence: 'daily' })], checks([['a', days('2026-10-13', todayKey), ['2026-10-13', todayKey]]]), week, todayKey)
+  assert.equal(report.groupSummaryText(digest.groups[0]), '昨日まで 1/2回・今日 1/1')
+}
+
+// 毎日・毎週・毎月は1つの率に混ぜない
+{
+  const mixed = [item('a', { recurrence: 'daily' }), item('w', { recurrence: 'weekly', recurrence_day: 3 }), item('m', { recurrence: 'monthly' })]
+  const digest = report.digestListReport(mixed, checks([
+    ['a', days('2026-10-09', todayKey), days('2026-10-09', todayKey)],
+    ['w', ['2026-10-07', '2026-10-14'], ['2026-10-07']],
+    ['m', ['2026-10-01'], ['2026-10-01']]
+  ]), week, todayKey)
+  assert.deepEqual(Array.from(digest.groups, (group) => `${group.label}: ${report.groupSummaryText(group)}`), [
+    '毎日: 昨日まで 6/6回（100%）・今日 1/1',
+    '毎週: 先週まで 1/1回・今週の分 0/1',
+    '毎月: 今月の分 1/1（来月から集計）'
+  ])
+}
+
+// 過去の期間（先週）は今の回がないので、全部を「期間中」で数える
+{
+  const lastWeek = { from: '2026-10-05', to: '2026-10-11' }
+  const digest = report.digestListReport([item('a', { recurrence: 'daily' })], checks([['a', days('2026-10-05', '2026-10-11'), days('2026-10-05', '2026-10-10'), null]]), lastWeek, todayKey)
+  assert.equal(report.groupSummaryText(digest.groups[0]), '期間中 6/7回（86%）')
+  assert.equal(digest.days.some((day) => day.today), false)
+  // 先週を選んでも、今月の分はまだ続いているので取りこぼしにしない
+  const monthly = report.digestListReport([item('m', { recurrence: 'monthly' })], checks([['m', ['2026-10-01'], [], '2026-10-01']]), lastWeek, todayKey)
+  assert.equal(report.groupSummaryText(monthly.groups[0]), '今月の分 0/1（来月から集計）')
+  assert.equal(monthly.missed.length, 0)
+  // 先週の終わりの金曜の回（平日だけの項目）は、土曜に見るとまだ続いている
+  const friday = report.digestListReport([item('w', { recurrence: 'daily', recurrence_workdays: 1 })],
+    checks([['w', days('2026-10-12', '2026-10-16'), days('2026-10-12', '2026-10-15'), '2026-10-16']]), { from: '2026-10-12', to: '2026-10-16' }, '2026-10-17')
+  assert.equal(report.groupSummaryText(friday.groups[0]), '期間中 4/4回・金曜の分 0/1')
+}
+
+// 平日だけの項目は、土曜に見ると金曜の回が続いている
+{
+  const saturday = '2026-10-17'
+  const thisWeek = { from: '2026-10-12', to: saturday }
+  const workdays = item('w', { recurrence: 'daily', recurrence_workdays: 1 })
+  const only = report.digestListReport([workdays], checks([['w', days('2026-10-12', '2026-10-16'), ['2026-10-12']]]), thisWeek, saturday)
+  assert.equal(report.groupSummaryText(only.groups[0]), 'これまで 1/4回・金曜の分 0/1')
+  assert.equal(only.groups[0].label, '平日')
+  const fresh = report.digestListReport([workdays], checks([['w', ['2026-10-16'], []]]), thisWeek, saturday)
+  assert.equal(report.groupSummaryText(fresh.groups[0]), '金曜の分 0/1（次の平日から集計）')
+  const both = report.digestListReport([workdays, item('d', { recurrence: 'daily' })], checks([
+    ['w', ['2026-10-16'], ['2026-10-16']],
+    ['d', [saturday], []]
+  ]), thisWeek, saturday)
+  assert.deepEqual(plain({ label: both.groups[0].label, current: both.groups[0].current }), { label: '毎日・平日', current: { label: '今の分', checked: 1, total: 2 } })
+}
+
+// 項目ごとの表記
+{
+  const daily = item('a', { recurrence: 'daily' })
+  const summaries = checks([['a', days('2026-10-10', todayKey), [...days('2026-10-10', '2026-10-13'), todayKey]]])
+  assert.equal(report.itemStatusText(report.itemCheckStatus(daily, summaries.get('a'), todayKey)), '4/5回・今日 済み')
+  assert.equal(report.itemStatusText(report.itemCheckStatus(daily, checks([['a', [todayKey], []]]).get('a'), todayKey)), '今日 まだ')
+  assert.equal(report.itemCheckStatus(item('x', {}), undefined, todayKey), null, '繰り返さない項目は数えない')
+}
+
+// やること（繰り返さない項目）は件数で数える
+{
+  const todoItems = [
+    item('open', { due_date: '2026-10-20' }),
+    item('late', { due_date: '2026-10-12' }),
+    item('doneIn', { done: 1, completed_at: new Date(2026, 9, 13, 10).toISOString() }),
+    item('doneBefore', { done: 1, completed_at: new Date(2026, 9, 1, 10).toISOString() })
+  ]
+  const digest = report.digestListReport(todoItems, new Map(), week, todayKey)
+  assert.equal(digest.groups.length, 0)
+  assert.deepEqual(Array.from(digest.open, (entry) => entry.id), ['open', 'late'])
+  assert.deepEqual(Array.from(digest.overdue, (entry) => entry.id), ['late'])
+  assert.deepEqual(Array.from(digest.doneInPeriod, (entry) => entry.id), ['doneIn'], '期間より前に済んだものは数えない')
+}
+
 console.log('ToDo list display checks passed')

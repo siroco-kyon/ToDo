@@ -20,7 +20,18 @@ import {
   type ReportSubTaskMode,
   type ReportViewSettings
 } from '../lib/reportViewSettings'
-import { checklistBadgeText, repeatLabel, summarizeChecklist } from '../lib/todoList'
+import { repeatLabel } from '../lib/todoList'
+import {
+  digestListReport,
+  groupSummaryText,
+  itemCheckStatus,
+  itemStatusText,
+  MIN_PERIODS_FOR_RATE,
+  rateText,
+  splitListItems,
+  type ListReportDigest,
+  type RepeatGroupDigest
+} from '../lib/todoListReport'
 import type {
   Category,
   CreateSubTaskInput,
@@ -478,94 +489,22 @@ function splitSubTasks(subTasks: SubTask[], mode: ReportSubTaskMode, periodFrom:
   }
 }
 
-/** ToDoリストの項目を、繰り返しの項目・まだのやること・期間中に済んだやることに分ける */
-function splitListItems(row: ReportRow, period: DateRange): { repeat: SubTask[]; open: SubTask[]; doneInPeriod: SubTask[] } {
-  return {
-    repeat: row.subTasks.filter((item) => item.recurrence),
-    open: row.subTasks.filter((item) => !item.recurrence && !item.done),
-    // 過去の期間を選んだときに、その後で済んだものを数えないよう、期間の終わりでも区切る
-    doneInPeriod: row.subTasks.filter((item) => !item.recurrence && item.done && item.completed_at != null && isInRange(isoToDateKey(item.completed_at), period))
-  }
-}
-
-interface ListDigest {
-  repeatCount: number
-  /** 繰り返しの項目の、期間に重なる周期の合計と、そのうちチェックした数 */
-  checked: number
-  periods: number
-  /** まだ途中で、まだチェックしていない周期の数（今日・今週の分など） */
-  pending: number
-  /** 取りこぼした繰り返しの項目（チェックが周期の数に届かなかったもの。実施率の低い順） */
-  missed: Array<{ item: SubTask; checked: number; periods: number }>
-  /** 毎日の項目の、日ごとの実施（日付順）。today は今日（まだ途中の日） */
-  days: Array<{ day: string; done: number; total: number; today: boolean }>
-  /** 期限が過ぎたまだのやること（期限の早い順） */
-  overdue: SubTask[]
-  open: SubTask[]
-  doneInPeriod: SubTask[]
-}
-
-/** 報告用に ToDoリストを要約する。繰り返しの項目は1行の実施率と取りこぼしだけ、日ごとはマスで見せる */
-function digestListItems(row: ReportRow, period: DateRange): ListDigest {
-  const items = splitListItems(row, period)
-  const todayKey = toDateKey(new Date())
-  // 期間に今日が入っていれば、いちばん新しい周期はまだ途中（今日・今週・今月の分）。
-  // 途中の周期は、チェック済みなら数え、まだなら数えない（定例の時点で「取りこぼし」と言うには早いため）
-  const includesToday = period.to >= todayKey
-  let checked = 0
-  let periods = 0
-  let pendingCount = 0
-  const missed: ListDigest['missed'] = []
-  const dayMap = new Map<string, { done: number; total: number }>()
-  for (const item of items.repeat) {
-    const summary = row.checkSummaries.get(item.id)
-    if (!summary) continue
-    const ongoing = includesToday ? summary.period_keys[summary.period_keys.length - 1] ?? null : null
-    const pending = ongoing != null && !summary.checked_keys.includes(ongoing)
-    const counted = summary.periods - (pending ? 1 : 0)
-    if (pending) pendingCount++
-    checked += summary.checked
-    periods += counted
-    if (counted > 0 && summary.checked < counted) missed.push({ item, checked: summary.checked, periods: counted })
-    if (item.recurrence === 'daily') {
-      const checkedKeys = new Set(summary.checked_keys)
-      for (const key of summary.period_keys) {
-        const entry = dayMap.get(key) ?? { done: 0, total: 0 }
-        entry.total++
-        if (checkedKeys.has(key)) entry.done++
-        dayMap.set(key, entry)
-      }
-    }
-  }
-  missed.sort((a, b) => a.checked / a.periods - b.checked / b.periods)
-  return {
-    repeatCount: items.repeat.length,
-    checked,
-    periods,
-    pending: pendingCount,
-    missed,
-    days: [...dayMap.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, value]) => ({ day, ...value, today: day === todayKey })),
-    overdue: items.open
-      .filter((item) => item.due_date != null && item.due_date.slice(0, 10) < todayKey)
-      .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? '')),
-    open: items.open,
-    doneInPeriod: items.doneInPeriod
-  }
-}
-
-function percentText(checked: number, periods: number): string {
-  return `${Math.round((checked / periods) * 100)}%`
-}
-
 /** 名前を数件だけ並べ、残りは件数にする */
 function namesText(names: string[], limit: number): string {
   return names.length <= limit ? names.join('、') : `${names.slice(0, limit).join('、')} ほか${names.length - limit}件`
 }
 
-/** 繰り返しの項目の実施回数の表記（例: 4/5回）。数える周期がなければ null */
-function checkCountText(summary: SubTaskCheckSummary | undefined): string | null {
-  if (!summary || summary.periods === 0) return null
-  return `${summary.checked}/${summary.periods}回`
+/** 報告用の ToDoリストの要約（数え方は lib/todoListReport.ts） */
+function digestRow(row: ReportRow, period: DateRange): ListReportDigest {
+  return digestListReport(row.subTasks, row.checkSummaries, period)
+}
+
+/** 取りこぼした繰り返しの項目の表記。終わった回がなければ null */
+function missedText(digest: ListReportDigest, limit: number): string | null {
+  if (!digest.groups.some((group) => group.periods > 0)) return null
+  return digest.missed.length > 0
+    ? `取りこぼし: ${namesText(digest.missed.map(({ item, checked, periods }) => `${item.title} ${checked}/${periods}回`), limit)}`
+    : '取りこぼしなし'
 }
 
 /** Markdown・CSV に出すサブタスク。「完了済みは畳む」では未完了だけ、「すべて畳む」では出さない */
@@ -609,7 +548,8 @@ function freshnessTone(freshness: Freshness): { color: string; background: strin
 /** 状態と鮮度をまとめた表記。完了・未着手は状態だけで意味が伝わるので重ねない */
 function statusSummary(row: ReportRow, separator: string): string {
   const status = STATUS_LABEL[row.todo.status]
-  if (row.freshness === 'list') return `ToDoリスト${separator}${checklistBadgeText(summarizeChecklist(row.subTasks))}`
+  // ToDoリストの実施状況は別の行に出す（一覧の「今回 3/5」は今の回だけの数で、期間の報告と紛らわしいため使わない）
+  if (row.freshness === 'list') return 'ToDoリスト'
   if (row.freshness === 'done' || row.freshness === 'notStarted') return status
   return `${status}${separator}${freshnessText(row)}`
 }
@@ -729,15 +669,11 @@ function rowToMarkdown(row: ReportRow, heading: string, options: MarkdownOptions
   }
   const subTasks = todo.list_mode ? [] : subTasksForExport(row.subTasks, options.subTaskMode)
   if (todo.list_mode) {
-    // 繰り返しの項目は1行にまとめ、取りこぼしたものだけ名前を出す（全部並べると長くなりすぎるため）
-    const digest = digestListItems(row, options.period)
-    if (digest.repeatCount > 0) {
-      const rate = digest.periods > 0 ? `実施 ${digest.checked}/${digest.periods}回（${percentText(digest.checked, digest.periods)}）` : digest.pending > 0 ? 'まだ数える回がありません（今日・今週の分は途中）' : '期間中の対象なし'
-      const missed = digest.missed.length > 0
-        ? `。取りこぼし: ${namesText(digest.missed.map(({ item, checked, periods }) => `${item.title} ${checked}/${periods}回`), 3)}`
-        : digest.periods > 0 ? '。取りこぼしなし' : ''
-      lines.push(`- 繰り返しの項目 ${digest.repeatCount}件: ${rate}${missed}`)
-    }
+    // 繰り返しの項目は周期ごとに1行にまとめ、取りこぼしたものだけ名前を出す（全部並べると長くなりすぎるため）
+    const digest = digestRow(row, options.period)
+    for (const group of digest.groups) lines.push(`- ${group.label}の項目 ${group.itemCount}件: ${groupSummaryText(group)}`)
+    const missed = missedText(digest, 3)
+    if (missed) lines.push(`- ${missed}`)
     if (digest.open.length > 0 || digest.doneInPeriod.length > 0) {
       const parts: string[] = []
       if (digest.overdue.length > 0) parts.push(`期限切れ ${digest.overdue.length}件（${namesText(digest.overdue.map((item) => item.title), 3)}）`)
@@ -808,6 +744,11 @@ function notesToPlainText(notes: ProgressNote[]): string {
     .join('\n\n')
 }
 
+/** CSV の「期間中の進捗」欄に入れる ToDoリストの実施状況（周期ごと） */
+function listProgressText(row: ReportRow, period: DateRange): string {
+  return digestRow(row, period).groups.map((group) => `${group.label}: ${groupSummaryText(group)}`).join(' / ')
+}
+
 function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, period: DateRange): string {
   const headers = ['担当', 'カテゴリ', 'タスク', 'サブタスク', '状態', '保留開始', '保留期間', '開始', '期限', '進捗(%)', '期間中の進捗', '期限の変更', '最終報告', '要相談', '期間内の進捗コメント', 'メモ']
   const rows: Array<Array<string | number | null>> = []
@@ -825,7 +766,7 @@ function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, peri
         todo.start_date?.slice(0, 10) ?? '',
         todo.due_date?.slice(0, 10) ?? '',
         todo.list_mode ? '' : todo.progress,
-        todo.list_mode ? '' : progressDeltaText(row, row.todo.progress) ?? '',
+        todo.list_mode ? listProgressText(row, period) : progressDeltaText(row, row.todo.progress) ?? '',
         todo.list_mode ? '' : dueChangeText(row, row.todo.due_date) ?? '',
         row.lastReportAt ? formatDateTime(row.lastReportAt) : '',
         row.discussions.length > 0 ? `${row.discussions.length}件` : '',
@@ -833,7 +774,7 @@ function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, peri
         todo.memo.trim()
       ])
       if (todo.list_mode) {
-        const items = splitListItems(row, period)
+        const items = splitListItems(row.subTasks, period)
         for (const item of [...items.repeat, ...items.open, ...items.doneInPeriod]) {
           rows.push([
             item.assignee_name ?? '',
@@ -841,7 +782,7 @@ function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, peri
             todo.title,
             item.title,
             item.recurrence
-              ? `${repeatLabel(item) ?? ''} ${checkCountText(row.checkSummaries.get(item.id)) ?? '対象の期間なし'}`
+              ? `${repeatLabel(item) ?? ''} ${itemStatusText(itemCheckStatus(item, row.checkSummaries.get(item.id))) ?? '期間中の対象なし'}`
               : item.done ? '済み' : 'まだ',
             '', '', '',
             item.due_date?.slice(0, 10) ?? '',
@@ -1950,51 +1891,76 @@ function dayTone(done: number, total: number): string {
   return done / total >= 0.5 ? '#eab308' : '#f97316'
 }
 
+/** 終わった回の実施の色。全部済みは緑、8割以上は黄、それより下は赤 */
+function rateTone(checked: number, periods: number): string {
+  if (periods === 0) return '#64748b'
+  if (checked >= periods) return '#86efac'
+  return checked / periods >= 0.8 ? '#fde68a' : '#fca5a5'
+}
+
+/** 周期（毎日・毎週・毎月）ごとの1行。終わった回の実施と、今の回の進み具合を分けて出す */
+function RepeatGroupLine({ group }: { group: RepeatGroupDigest }): React.JSX.Element {
+  const muted: React.CSSProperties = { fontSize: '0.7rem', color: '#64748b' }
+  const currentDone = group.current != null && group.current.checked >= group.current.total
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', fontSize: '0.8rem' }}>
+      <span style={{ color: '#94a3b8' }}>{group.label} {group.itemCount}件</span>
+      {group.periods > 0 && (
+        <span
+          title={`${group.doneLabel}の回のうち、チェックした回数。今日・今週・今月の分はまだ途中なので入れません。${MIN_PERIODS_FOR_RATE}回以上になると率（%）も出します`}
+          style={{ color: rateTone(group.checked, group.periods), fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}
+        >
+          {group.doneLabel} {rateText(group.checked, group.periods)}
+        </span>
+      )}
+      {group.current && (
+        <span
+          title="まだ途中の回です。チェックしても上の回数には入りません"
+          style={{ color: currentDone ? '#86efac' : '#c7d2fe', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
+        >
+          {group.current.label} {group.current.checked}/{group.current.total}
+        </span>
+      )}
+      {group.periods === 0 && <span style={muted}>{group.current ? `（${group.startsLabel}）` : '期間中の対象なし'}</span>}
+    </div>
+  )
+}
+
 /**
  * ToDoリストの、期間中の実施状況の要約。
- * 繰り返しの項目は1行の実施率・毎日の項目の日ごとのマス・取りこぼしたものの名前だけ。やることは件数（期限切れは名前も）。
- * 項目ごとの内訳は畳んでおき、必要なときだけ開く。
+ * 繰り返しの項目は周期ごとに1行（終わった回の実施・今の回）と、毎日の項目の日ごとのマス・取りこぼしたものの名前だけ。
+ * やることは件数（期限切れは名前も）。項目ごとの内訳は折りたたんでおき、必要なときだけ開く。
  */
 function ListItemsSummary({ row, period }: { row: ReportRow; period: DateRange }): React.JSX.Element {
-  const digest = digestListItems(row, period)
+  const digest = digestRow(row, period)
   const labelStyle: React.CSSProperties = { fontSize: '0.7rem', color: '#64748b' }
-  const items = splitListItems(row, period)
-  const rateTone = digest.periods === 0 ? '#64748b' : digest.checked >= digest.periods ? '#86efac' : digest.checked / digest.periods >= 0.8 ? '#fde68a' : '#fca5a5'
+  const items = splitListItems(row.subTasks, period)
+  const missed = missedText(digest, 3)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 2, paddingTop: 8, borderTop: '1px dashed #1e293b' }}>
       {row.subTasks.length === 0 && <div style={labelStyle}>まだ項目がありません</div>}
-      {digest.repeatCount > 0 && (
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', fontSize: '0.8rem' }}>
-          <span style={{ color: '#94a3b8' }}>繰り返しの項目 {digest.repeatCount}件</span>
-          <span
-            title="期間中にチェックする回数（毎日なら日数、毎週なら週の数）と、実際にチェックした回数。今日・今週のように途中の回は、チェック済みのときだけ数えます"
-            style={{ color: rateTone, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}
-          >
-            {digest.periods > 0 ? `実施 ${digest.checked}/${digest.periods}回（${percentText(digest.checked, digest.periods)}）` : digest.pending > 0 ? 'まだ数える回がありません（今日・今週の分は途中）' : '期間中の対象なし'}
-          </span>
-        </div>
-      )}
-      {digest.days.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <span style={labelStyle}>毎日の項目</span>
-          <span role="img" aria-label="毎日の項目の日ごとの実施" style={{ display: 'inline-flex', gap: 2, flexWrap: 'wrap' }}>
-            {digest.days.map(({ day, done, total, today }) => {
-              const [y, m, d] = day.split('-').map(Number)
-              const label = `${m}/${d}（${WEEKDAY_SHORT[new Date(y, m - 1, d).getDay()]}） ${done}/${total}${today ? '（今日・途中）' : ''}`
-              // 今日はまだ途中なので、済んでいなくても赤くせず、枠だけにする
-              const background = today && done < total ? (done > 0 ? '#eab30866' : 'transparent') : dayTone(done, total)
-              return <span key={day} title={label} style={{ width: 11, height: 11, borderRadius: 2, background, boxSizing: 'border-box', border: today ? '1px solid #94a3b8' : 'none' }} />
-            })}
-          </span>
-          <span style={{ ...labelStyle, fontSize: '0.66rem' }}>{formatShortDate(digest.days[0].day)}〜{formatShortDate(digest.days[digest.days.length - 1].day)}</span>
-        </div>
-      )}
-      {digest.repeatCount > 0 && digest.periods > 0 && (
-        <div style={{ fontSize: '0.74rem', color: digest.missed.length > 0 ? '#fde68a' : '#86efac' }}>
-          {digest.missed.length > 0
-            ? `取りこぼし: ${namesText(digest.missed.map(({ item, checked, periods }) => `${item.title} ${checked}/${periods}回`), 3)}`
-            : '取りこぼしなし'}
-        </div>
+      {digest.groups.map((group) => (
+        <React.Fragment key={group.kind}>
+          <RepeatGroupLine group={group} />
+          {group.kind === 'daily' && digest.days.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={labelStyle}>日ごと</span>
+              <span role="img" aria-label="毎日の項目の日ごとの実施" style={{ display: 'inline-flex', gap: 2, flexWrap: 'wrap' }}>
+                {digest.days.map(({ day, done, total, today }) => {
+                  const [y, m, d] = day.split('-').map(Number)
+                  const label = `${m}/${d}（${WEEKDAY_SHORT[new Date(y, m - 1, d).getDay()]}） ${done}/${total}${today ? '（今日・途中）' : ''}`
+                  // 今日はまだ途中なので、済んでいなくても赤くせず、枠だけにする
+                  const background = today && done < total ? (done > 0 ? '#eab30866' : 'transparent') : dayTone(done, total)
+                  return <span key={day} title={label} style={{ width: 11, height: 11, borderRadius: 2, background, boxSizing: 'border-box', border: today ? '1px solid #94a3b8' : 'none' }} />
+                })}
+              </span>
+              <span style={{ ...labelStyle, fontSize: '0.66rem' }}>{formatShortDate(digest.days[0].day)}〜{formatShortDate(digest.days[digest.days.length - 1].day)}</span>
+            </div>
+          )}
+        </React.Fragment>
+      ))}
+      {missed && (
+        <div style={{ fontSize: '0.74rem', color: digest.missed.length > 0 ? '#fde68a' : '#86efac' }}>{missed}</div>
       )}
       {(digest.open.length > 0 || digest.doneInPeriod.length > 0) && (
         <div style={{ fontSize: '0.74rem', color: '#94a3b8', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -2016,7 +1982,9 @@ function ListItemsSummary({ row, period }: { row: ReportRow; period: DateRange }
               <div key={item.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.76rem' }}>
                 <span style={{ flex: 1, minWidth: 0, color: '#cbd5e1', overflowWrap: 'anywhere' }}>{item.title}</span>
                 <span style={{ fontSize: '0.66rem', color: '#a5b4fc', flexShrink: 0 }}>{repeatLabel(item)}</span>
-                <span style={{ color: '#94a3b8', fontVariantNumeric: 'tabular-nums', flexShrink: 0, minWidth: 40, textAlign: 'right' }}>{checkCountText(row.checkSummaries.get(item.id)) ?? '—'}</span>
+                <span style={{ color: '#94a3b8', fontVariantNumeric: 'tabular-nums', flexShrink: 0, minWidth: 40, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {itemStatusText(itemCheckStatus(item, row.checkSummaries.get(item.id))) ?? '—'}
+                </span>
               </div>
             ))}
             {items.open.map((item) => (
@@ -2231,7 +2199,6 @@ function ReportTaskCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.8rem' }}>
             <span style={{ color: '#94a3b8' }}>開始 {formatShortDate(todo.start_date)}</span>
             <span style={{ color: '#a5b4fc' }} title="ToDoリストに期限はありません。使い終えたら「リストを終える」を押します">→ 期限なし</span>
-            <span style={{ color: '#c7d2fe', fontWeight: 700 }}>{checklistBadgeText(summarizeChecklist(subTasks))}</span>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.8rem' }}>
