@@ -14,7 +14,7 @@ const instances = []
 async function buildModules() {
   const result = await build({
     stdin: {
-      contents: "export { DesktopController } from './desktop-controller'; export * from './desktop-config'; export { parseLaunchAction } from './windows-branding'; export { badgeLabel, badgePixels, glyphPixels } from './desktop-glyphs'",
+      contents: "export { DesktopController } from './desktop-controller'; export * from './desktop-config'; export { parseLaunchAction, parseLaunchRequest } from './windows-branding'; export { badgeLabel, badgePixels, glyphPixels } from './desktop-glyphs'",
       resolveDir: path.join(root, 'src/main'), loader: 'ts'
     }, platform: 'node', format: 'cjs', bundle: true, packages: 'external', write: false,
     plugins: [{
@@ -50,7 +50,7 @@ function makeHarness(code, options = {}) {
     external: [], trays: [], localDbCalls: 0, localStarts: 0, localReveals: 0, quits: 0, relaunches: 0,
     dialogs: [], dialogResponses: [], deferredLoads: new Map(), timers: new Map(), nextTimer: 1,
     blockedShortcuts: new Set(), invalidShortcuts: new Set(), shortcutRegistrations: 0,
-    notifications: [], notificationsSupported: true, badgeCounts: [], userTasks: [],
+    notifications: [], notificationsSupported: true, badgeCounts: [], userTasks: [], jumpLists: [], removedJumpItems: [],
     workArea: options.workArea ?? { x: 0, y: 0, width: 1920, height: 1080 },
     response: options.health ?? { ok: true, desktopProtocol: 1, webReady: true }
   }
@@ -159,7 +159,9 @@ function makeHarness(code, options = {}) {
       getPath: () => userData, isQuitting: false, isPackaged: true, getAppPath: () => root, getVersion: () => '1.0.5',
       quit: () => harness.quits++, relaunch: () => harness.relaunches++,
       setBadgeCount: (count) => { harness.badgeCounts.push(count); return true },
-      setUserTasks: (tasks) => { harness.userTasks.push(tasks); return true }
+      setUserTasks: (tasks) => { harness.userTasks.push(tasks); return true },
+      setJumpList: (categories) => { harness.jumpLists.push(categories); return 'ok' },
+      getJumpListSettings: () => ({ minItems: 10, removedItems: harness.removedJumpItems })
     },
     BrowserWindow: Window, Tray: MockTray, Notification: MockNotification,
     ipcMain: { handle: (channel, handler) => harness.handlers.set(channel, handler) },
@@ -438,8 +440,18 @@ async function testNativeIntegration(code, profile) {
 
   const win = makeHarness(code, { platform: 'win32', saved })
   const winMain = await signIn(win, { recentTasks, unreadCount: 3 })
-  assert.deepEqual(plain(win.userTasks.at(-1)).map((task) => task.arguments), ['--hakobi-action=quick-add', '--hakobi-action=progress', '--hakobi-action=timer'])
-  assert.ok(win.userTasks.at(-1).every((task) => task.program === 'C:\\Program Files\\HAKOBI\\HAKOBI.exe' && task.title && task.description))
+  // タスクバーのアイコンの右クリック（ジャンプリスト）は、トレイのメニューと同じ操作を出す
+  const jumpTasks = () => plain(win.jumpLists.at(-1)).find((category) => category.type === 'tasks').items
+  const jumpTimer = () => plain(win.jumpLists.at(-1)).find((category) => category.name === '計測')?.items ?? []
+  assert.deepEqual(jumpTasks().map((item) => item.args), ['--hakobi-action=main', '--hakobi-action=notifications', '--hakobi-action=quick-add',
+    '--hakobi-action=progress', '--hakobi-action=timer', '--hakobi-action=connection', '--hakobi-action=quit'])
+  assert.ok(jumpTasks().every((item) => item.program === 'C:\\Program Files\\HAKOBI\\HAKOBI.exe' && item.title && item.description))
+  assert.equal(jumpTasks()[1].title, '通知を見る（未読 3件）')
+  assert.deepEqual(jumpTimer().map((item) => item.args), ['--hakobi-action=timer-start --hakobi-task=task-a', '--hakobi-action=timer-start --hakobi-task=task-b'])
+  assert.equal(jumpTimer()[0].title, '計測開始: 設計 & レビュー')
+  const jumpListCount = win.jumpLists.length
+  await win.invoke('hakobi:state', winMain, { ...signedInState, recentTasks, unreadCount: 3 })
+  assert.equal(win.jumpLists.length, jumpListCount, 'an unchanged jump list is not rebuilt')
   assert.equal(winMain.overlay.description, '未読の通知 3件')
   assert.ok(winMain.overlay.image)
   assert.deepEqual(win.badgeCounts, [], 'Windows uses the taskbar overlay instead of a dock badge')
@@ -457,12 +469,36 @@ async function testNativeIntegration(code, profile) {
   assert.equal(winProgress.overlay.description, '未読の通知 3件', 'a newly shown window gets the current badge')
   await win.invoke('hakobi:state', winMain, { ...signedInState, taskId: 'task-c', taskTitle: '実装', startTime: new Date().toISOString(), recentTasks, unreadCount: 12 })
   assert.equal(winMain.thumbar[0].tooltip, '計測を停止')
+  assert.deepEqual(jumpTimer().map((item) => item.title), ['計測を停止（実装）', '切り替え: 設計 & レビュー', '切り替え: 見積もり'])
+  win.controller.runLaunchAction('timer-stop')
+  assert.deepEqual(commandsOf(winMain).at(-1), { type: 'timer-stop' }, 'the jump list stops the timer')
+  win.controller.runLaunchAction({ action: 'timer-start', todoId: 'task-b' })
+  assert.deepEqual(commandsOf(winMain).at(-1), { type: 'timer-start', todoId: 'task-b' }, 'the jump list switches to a recent task')
+  win.controller.runLaunchAction('notifications')
+  await flush()
+  assert.deepEqual(commandsOf(winMain).at(-1), { type: 'open-notification' })
+  win.controller.runLaunchAction('connection')
+  await flush()
+  assert.ok(win.live('#hakobi-launcher'), 'the jump list opens the connection settings')
+  const quitsBefore = win.quits
+  win.controller.runLaunchAction('quit')
+  assert.equal(win.quits, quitsBefore + 1, 'the jump list quits HAKOBI like the tray menu')
   winMain.thumbar[0].click()
   assert.deepEqual(commandsOf(winMain).at(-1), { type: 'timer-stop' })
   assert.equal(winProgress.overlay.description, '未読の通知 12件')
   await win.invoke('hakobi:preferences', winMain, { hideTaskTitle: true })
   await win.invoke('hakobi:state', winMain, { ...signedInState, recentTasks, unreadCount: 12 })
   assert.equal(winMain.thumbar[0].tooltip, '直前のタスクで計測を開始', 'the taskbar tooltip respects the hidden task title setting')
+  await win.invoke('hakobi:state', winMain, { ...signedInState, taskId: 'task-c', taskTitle: '実装', startTime: new Date().toISOString(), recentTasks, unreadCount: 12 })
+  assert.equal(jumpTimer()[0].title, '計測を停止（作業中）', 'the running task title stays hidden in the jump list')
+  // ユーザーが消した項目は出し直さない（出し直すと Windows が「計測」の欄ごと出さなくなる）
+  win.removedJumpItems.push({ type: 'task', args: '--hakobi-action=timer-start --hakobi-task=task-a', title: '切り替え: 設計 & レビュー' })
+  await win.invoke('hakobi:state', winMain, { ...signedInState, recentTasks, unreadCount: 12 })
+  assert.deepEqual(jumpTimer().map((item) => item.args), ['--hakobi-action=timer-start --hakobi-task=task-b'], 'a shortcut the user removed is not re-added')
+  win.removedJumpItems.length = 0
+  await win.invoke('hakobi:state', winMain, { ...signedInState, taskId: 'task-c', taskTitle: '実装', startTime: new Date().toISOString(), recentTasks, unreadCount: 12 })
+  assert.deepEqual(jumpTimer().map((item) => item.args), ['--hakobi-action=timer-stop', '--hakobi-action=timer-start --hakobi-task=task-b'], 'a removed shortcut stays removed for this run')
+  await win.invoke('hakobi:state', winMain, { ...signedInState, recentTasks, unreadCount: 12 })
   await win.invoke('hakobi:state', winMain, { ...signedInState, recentTasks: [], unreadCount: 0 })
   assert.deepEqual(plain(winMain.thumbar[0].flags), ['disabled'])
   assert.deepEqual(plain(winMain.overlay), { image: null, description: '' })
@@ -491,12 +527,17 @@ async function testNativeIntegration(code, profile) {
 
   const personal = makeHarness(code, { platform: 'win32', legacy: true })
   personal.controller.start()
-  assert.deepEqual(plain(personal.userTasks), [[]], 'personal mode clears the team jump list')
+  assert.deepEqual(plain(personal.jumpLists), [null], 'personal mode clears the team jump list')
   personal.controller.runLaunchAction('quick-add')
   assert.equal(personal.localReveals, 1)
 
   const { parseLaunchAction, badgeLabel, badgePixels, glyphPixels } = win.api
   assert.equal(parseLaunchAction(['C:\\HAKOBI\\HAKOBI.exe', '--hakobi-action=quick-add']), 'quick-add')
+  const { parseLaunchRequest } = win.api
+  assert.deepEqual(plain(parseLaunchRequest(['--hakobi-action=timer-start', '--hakobi-task=task-1a2b'])), { action: 'timer-start', todoId: 'task-1a2b' })
+  assert.equal(parseLaunchRequest(['--hakobi-action=timer-start']), null, 'starting a timer needs a task')
+  assert.equal(parseLaunchRequest(['--hakobi-action=timer-start', '--hakobi-task=../../etc']), null, 'a task id must be a plain id')
+  assert.deepEqual(plain(parseLaunchRequest(['--hakobi-action=quit'])), { action: 'quit' })
   for (const argv of [['--hakobi-action=toString'], ['--hakobi-action=__proto__'], ['--hakobi-action=delete-all'], ['--hakobi-action'], []]) {
     assert.equal(parseLaunchAction(argv), null, `unexpected action accepted: ${argv}`)
   }

@@ -60,6 +60,8 @@ export function TimerWindow(): React.JSX.Element {
         <span className={`status-dot ${connected ? 'online' : ''}`} title={connected ? '接続中' : '再接続中'} />
         <strong className="elapsed">{elapsedTime(running?.start_time ?? null, now)}</strong>
         <button disabled={!running} onClick={() => void window.desktop?.openQuickProgress(running?.todo_id)}>進捗を書く</button>
+        {/* 小さくしていても、その場で計測を止められるようにする */}
+        <button className="stop" title="計測を停止" aria-label="計測を停止" disabled={!running || pending || !connected} onClick={() => void stop()}>{pending ? '停止中…' : '■ 停止'}</button>
       </div>
       {(actionError || error) && <div className="message error" role="alert">{actionError || error}</div>}
     </> : <>

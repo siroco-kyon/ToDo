@@ -250,6 +250,8 @@ async function run() {
   assert.equal(await timer.webContents.executeJavaScript("document.querySelector('.compact-task-title').textContent"), fixture.taskTitle)
   resizeTimerViewport(timer, 300, 150)
   await until(timer, "document.querySelector('.compact-row').getBoundingClientRect().bottom <= innerHeight && document.querySelector('[aria-label=展開]').getBoundingClientRect().right <= innerWidth", 'Compact task and controls do not fit the minimum native size')
+  // 小さくしていても停止ボタンが見えて押せる
+  await until(timer, "(() => { const button = document.querySelector('.compact-row button[aria-label=計測を停止]'); const rect = button?.getBoundingClientRect(); return Boolean(button) && !button.disabled && rect.right <= innerWidth && rect.bottom <= innerHeight })()", 'Compact timer has no usable stop button at the minimum native size')
   await capture(timer, 'timer-compact')
   await timer.webContents.executeJavaScript("window.desktop.setPreferences({hideTaskTitle:true})")
   await until(timer, "document.querySelector('.compact-task-title').textContent === '作業中のタスク'", 'Compact title ignored the privacy preference')
