@@ -4,7 +4,7 @@ import { toDateKey } from '../lib/dueDate'
 import { TODAY_SECTION_LABEL, buildTodaySections, countRemaining, groupEntriesByList, type TodayListGroup } from '../lib/todoList'
 import { QuickCheckItem } from './TodoChecklist'
 
-// 「今日やること」: 自分の ToDoリストの、繰り返しの項目と期限が今日までのやることを、リストごとに並べてその場でチェックする。
+// 「今日やること」: 自分の ToDoリストの、繰り返しの項目と、開始日が来たか期限が今日までのやることを、リストごとに並べてその場でチェックする。
 // 区分け（今日やる／今週の分／今月の分）の中は、どのリストの項目か分かるように、カテゴリとリスト名の小見出しでまとめる。
 // ToDo タブと、右の「今日の予定」パネルの両方で使う。ToDoリストを使っていない人には出さない。
 

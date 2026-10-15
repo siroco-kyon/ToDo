@@ -89,6 +89,33 @@ export function isDueByToday(item: Pick<SubTask, 'recurrence' | 'done' | 'due_da
   return !item.recurrence && !item.done && item.due_date != null && item.due_date.slice(0, 10) <= todayKey
 }
 
+type ScheduleFields = Pick<SubTask, 'recurrence' | 'start_date' | 'due_date'>
+
+/** 繰り返さない項目で、開始日が来たか、期限が今日か過ぎているもの（済んだかどうかは見ない） */
+function isScheduledByToday(item: ScheduleFields, todayKey: string): boolean {
+  if (item.recurrence) return false
+  return (item.start_date != null && item.start_date.slice(0, 10) <= todayKey)
+    || (item.due_date != null && item.due_date.slice(0, 10) <= todayKey)
+}
+
+/** 繰り返さない項目で、まだ済んでいない今日やるもの（開始日が来たか、期限が今日か過ぎている） */
+export function isTodayItem(item: ScheduleFields & Pick<SubTask, 'done'>, todayKey: string = toDateKey(new Date())): boolean {
+  return !item.done && isScheduledByToday(item, todayKey)
+}
+
+/** 繰り返さない項目の日付の表記（例: 10/20〜10/24・10/20から・10/24まで）。日付がなければ null */
+export function itemPeriodText(item: ScheduleFields): string | null {
+  if (item.recurrence) return null
+  const short = (dateKey: string): string => {
+    const [, m, d] = dateKey.slice(0, 10).split('-')
+    return `${Number(m)}/${Number(d)}`
+  }
+  if (item.start_date && item.due_date) return `${short(item.start_date)}〜${short(item.due_date)}`
+  if (item.start_date) return `${short(item.start_date)}から`
+  if (item.due_date) return `${short(item.due_date)}まで`
+  return null
+}
+
 /** 期限のよく使う選択肢（今日・明日・今週中／来週中の金曜） */
 export function duePresets(today: Date = new Date()): Array<{ label: string; value: string }> {
   const base = new Date(today.getFullYear(), today.getMonth(), today.getDate())
@@ -113,30 +140,30 @@ export interface ChecklistSummary {
   repeatDone: number
   /** 繰り返さない項目のうち、まだ済んでいないもの */
   openCount: number
-  /** そのうち期限が今日か過ぎているもの */
-  dueByTodayCount: number
+  /** そのうち今日やるもの（開始日が来たか、期限が今日か過ぎている） */
+  todayCount: number
 }
 
 export function summarizeChecklist(items: SubTask[], todayKey: string = toDateKey(new Date())): ChecklistSummary {
   let repeatTotal = 0
   let repeatDone = 0
   let openCount = 0
-  let dueByTodayCount = 0
+  let todayCount = 0
   for (const item of items) {
     if (item.recurrence) {
       repeatTotal++
       if (item.done) repeatDone++
     } else if (!item.done) {
       openCount++
-      if (isDueByToday(item, todayKey)) dueByTodayCount++
+      if (isTodayItem(item, todayKey)) todayCount++
     }
   }
-  return { repeatTotal, repeatDone, openCount, dueByTodayCount }
+  return { repeatTotal, repeatDone, openCount, todayCount }
 }
 
-/** 今日やる分が残っているか（繰り返しの項目の未チェック、または期限が今日までのやること） */
+/** 今日やる分が残っているか（繰り返しの項目の未チェック、または開始日が来たか期限が今日までのやること） */
 export function hasRemainingToday(summary: ChecklistSummary): boolean {
-  return summary.repeatDone < summary.repeatTotal || summary.dueByTodayCount > 0
+  return summary.repeatDone < summary.repeatTotal || summary.todayCount > 0
 }
 
 /** 一覧・カンバン・ガント用の短い表記（例: 「今回 3/5・残り2」） */
@@ -148,8 +175,8 @@ export function checklistBadgeText(summary: ChecklistSummary): string {
 }
 
 export function checklistBadgeTitle(summary: ChecklistSummary): string {
-  const due = summary.dueByTodayCount > 0 ? `（うち期限が今日まで ${summary.dueByTodayCount}件）` : ''
-  return `ToDoリスト: 繰り返しの項目 ${summary.repeatDone}/${summary.repeatTotal} 済み・まだの項目 ${summary.openCount}件${due}`
+  const today = summary.todayCount > 0 ? `（うち今日やる ${summary.todayCount}件）` : ''
+  return `ToDoリスト: 繰り返しの項目 ${summary.repeatDone}/${summary.repeatTotal} 済み・まだの項目 ${summary.openCount}件${today}`
 }
 
 /** タスクIDごとのまとめ。ToDoリストのタスクだけを対象にする */
@@ -174,18 +201,18 @@ export function groupListItems(listIds: Set<string>, subTasks: SubTask[]): Map<s
 }
 
 /**
- * 「今日やる」に出す項目の並び。繰り返しの項目（並び順どおり）→ 期限が今日までのやること（期限の早い順）。
+ * 「今日やる」に出す項目の並び。繰り返しの項目（並び順どおり）→ 開始日が来たか期限が今日までのやること
+ * （期限の早い順。期限のないものは後ろに並び順どおり）。
  * 済んだものも出す（チェックを外せるように）。繰り返さない項目は、今日済んだものだけ残す。
  */
 export function todayItemsOf(items: SubTask[], todayKey: string = toDateKey(new Date())): SubTask[] {
   const repeat = items.filter((item) => item.recurrence)
-  const due = items
-    .filter((item) => !item.recurrence && (isDueByToday(item, todayKey)
-      // 今日済ませたものも、期限が今日までだったものは残す（チェックを外せるように）
-      || (item.done && item.completed_at != null && toDateKey(new Date(item.completed_at)) === todayKey
-        && item.due_date != null && item.due_date.slice(0, 10) <= todayKey)))
-    .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
-  return [...repeat, ...due]
+  const scheduled = items
+    .filter((item) => isTodayItem(item, todayKey)
+      // 今日済ませたものも、今日やる分だったものは残す（チェックを外せるように）
+      || (item.done && item.completed_at != null && toDateKey(new Date(item.completed_at)) === todayKey && isScheduledByToday(item, todayKey)))
+    .sort((a, b) => (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999'))
+  return [...repeat, ...scheduled]
 }
 
 /** 使っている（完了・アーカイブでない）ToDoリスト */
@@ -213,7 +240,7 @@ export function isMyItem(item: Pick<SubTask, 'assignee_id'>, todo: Pick<Todo, 'a
 
 export interface TodayListGroup {
   todo: Todo
-  /** 今日やる項目（繰り返しの項目と、期限が今日までのやること） */
+  /** 今日やる項目（繰り返しの項目と、開始日が来たか期限が今日までのやること） */
   items: SubTask[]
 }
 
@@ -237,7 +264,7 @@ export function countRemaining(groups: TodayListGroup[]): number {
 export type TodaySection = 'today' | 'week' | 'month'
 
 export const TODAY_SECTION_LABEL: Record<TodaySection, { label: string; title: string }> = {
-  today: { label: '今日やる', title: '毎日・平日の項目と、期限が今日までのやること' },
+  today: { label: '今日やる', title: '毎日・平日の項目と、開始日が来たやること・期限が今日までのやること' },
   week: { label: '今週の分', title: '毎週の項目。戻る曜日の前日までにチェックすれば間に合います' },
   month: { label: '今月の分', title: '毎月の項目。戻る日の前日までにチェックすれば間に合います' }
 }

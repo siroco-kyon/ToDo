@@ -8,6 +8,7 @@ import {
   checklistBadgeText,
   duePresets,
   isDueByToday,
+  itemPeriodText,
   repeatChoiceOf,
   repeatDayOf,
   repeatFields,
@@ -44,11 +45,6 @@ function groupOf(item: SubTask): Group {
   return item.done ? 'done' : 'open'
 }
 
-function formatShortDate(dateKey: string): string {
-  const [, m, d] = dateKey.slice(0, 10).split('-')
-  return `${Number(m)}/${Number(d)}`
-}
-
 function formatCheckedAt(iso: string | null): string | null {
   if (!iso) return null
   const date = new Date(iso)
@@ -75,6 +71,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
   const [title, setTitle] = useState('')
   const [repeat, setRepeat] = useState<ItemRepeatChoice>('')
   const [repeatDay, setRepeatDay] = useState<number | null>(null)
+  const [startDate, setStartDate] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [assigneeId, setAssigneeId] = useState<string>(todo.assignee_id ?? '')
   const [adding, setAdding] = useState(false)
@@ -174,6 +171,10 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
   const add = async (): Promise<void> => {
     const titles = title.split(/\r?\n/).map((value) => value.trim()).filter(Boolean)
     if (titles.length === 0 || adding) return
+    if (repeat === '' && startDate && dueDate && startDate > dueDate) {
+      onShowToast('開始日は期限以前にしてください', 'error')
+      return
+    }
     setAdding(true)
     const created: SubTask[] = []
     try {
@@ -181,13 +182,15 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
         created.push(await window.api.subtaskCreate(todo.id, {
           title: itemTitle,
           assignee_id: users.length > 0 ? assigneeId || null : null,
-          // ToDoリストの項目は開始日を持たせない（ガントに毎日のバーが並ばないように）。期限は繰り返さない項目だけ
-          start_date: null,
+          // 開始日と期限は繰り返さない項目だけ（繰り返しの項目に持たせると、ガントに毎日のバーが並ぶ）。
+          // 開始日を入れると、その日から「今日やること」に出る
+          start_date: repeat === '' ? startDate || null : null,
           due_date: repeat === '' ? dueDate || null : null,
           ...repeatFields(repeat, repeatDay)
         }))
       }
       setTitle('')
+      setStartDate('')
       setDueDate('')
     } catch (error) {
       setTitle(titles.slice(created.length).join('\n'))
@@ -294,7 +297,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
           </ItemGroup>
         )}
         {openItems.length > 0 && (
-          <ItemGroup label="やること" note={`${openItems.length}件${summary.dueByTodayCount > 0 ? `（期限が今日まで ${summary.dueByTodayCount}件）` : ''}`}>
+          <ItemGroup label="やること" note={`${openItems.length}件${summary.todayCount > 0 ? `（今日やる ${summary.todayCount}件）` : ''}`}>
             {openItems.map((item, index) => renderItem(item, index, openItems))}
           </ItemGroup>
         )}
@@ -364,7 +367,10 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
               labelPrefix="追加する項目の"
             />
             {repeat === '' && (
-              <DuePicker value={dueDate} onChange={setDueDate} label="追加する項目の期限" />
+              <>
+                <StartPicker value={startDate} onChange={setStartDate} label="追加する項目の開始日" />
+                <DuePicker value={dueDate} onChange={setDueDate} label="追加する項目の期限" />
+              </>
             )}
             {users.length > 0 && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -455,6 +461,28 @@ function DuePicker({ value, onChange, label }: { value: string; onChange: (value
   )
 }
 
+/** 開始日の入力。入れると、その日から「今日やること」に出る */
+function StartPicker({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }): React.JSX.Element {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }} title="この日から「今日やること」に出ます">
+      開始日
+      {duePresets().slice(0, 2).map((preset) => (
+        <button
+          key={preset.label}
+          type="button"
+          onClick={() => onChange(value === preset.value ? '' : preset.value)}
+          aria-pressed={value === preset.value}
+          title={`${preset.value}（もう一度押すと開始日なし）`}
+          style={presetStyle(value === preset.value)}
+        >
+          {preset.label}
+        </button>
+      ))}
+      <input type="date" value={value} onChange={(event) => onChange(event.target.value)} aria-label={label} style={smallInputStyle} />
+    </span>
+  )
+}
+
 function ItemGroup({ label, note, children }: { label: string; note?: string; children: React.ReactNode }): React.JSX.Element {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -479,6 +507,8 @@ function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
   const repeat = repeatLabel(item)
   const dueColor = done ? '' : getDueDateColor(item.due_date)
   const overdue = !done && !item.recurrence && item.due_date != null && item.due_date.slice(0, 10) < todayKey
+  const period = itemPeriodText(item)
+  const notStarted = !done && item.start_date != null && item.start_date.slice(0, 10) > todayKey
   const checkedAt = done ? formatCheckedAt(item.completed_at) : null
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', borderRadius: 8, background: done ? 'transparent' : overdue ? '#450a0a66' : '#0f172a80' }}>
@@ -506,9 +536,9 @@ function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
       </button>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, fontSize: '0.7rem' }}>
         {item.assignee_name && <span style={{ color: item.assignee_color ?? '#94a3b8' }}>{item.assignee_name}</span>}
-        {!item.recurrence && item.due_date && (
-          <span style={{ color: dueColor || '#64748b', fontWeight: dueColor ? 700 : 400 }}>
-            {overdue ? `${formatShortDate(item.due_date)}まで（過ぎています）` : `${formatShortDate(item.due_date)}まで`}
+        {period && (
+          <span style={{ color: dueColor || (notStarted ? '#475569' : '#64748b'), fontWeight: dueColor ? 700 : 400 }} title={notStarted ? '開始日が来たら「今日やること」に出ます' : undefined}>
+            {overdue ? `${period}（過ぎています）` : period}
           </span>
         )}
         {checkedAt && <span style={{ color: '#4ade80' }} title="チェックした日時">✓ {checkedAt}</span>}
@@ -516,7 +546,7 @@ function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
         <button
           onClick={onEdit}
           aria-label={`${item.title}を編集`}
-          title="編集（名前・繰り返し・期限・担当・メモ・並べ替え・削除）"
+          title="編集（名前・繰り返し・開始日・期限・担当・メモ・並べ替え・削除）"
           style={{ background: 'none', border: 'none', padding: '0 2px', color: '#64748b', cursor: 'pointer', fontSize: '0.78rem' }}
         >
           ✎
@@ -544,6 +574,7 @@ export function QuickCheckItem({ item, pending, todayKey, listTitle, showAssigne
   const repeat = repeatLabel(item)
   const overdue = !done && isDueByToday(item, todayKey) && (item.due_date ?? '').slice(0, 10) < todayKey
   const dueColor = done ? '' : getDueDateColor(item.due_date)
+  const period = itemPeriodText(item)
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '3px 2px', minWidth: 0 }}>
       <input
@@ -564,8 +595,8 @@ export function QuickCheckItem({ item, pending, todayKey, listTitle, showAssigne
       </button>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: '0.64rem' }}>
         {showAssignee && item.assignee_name && <span style={{ color: item.assignee_color ?? '#94a3b8' }}>{item.assignee_name}</span>}
-        {!item.recurrence && item.due_date && (
-          <span style={{ color: dueColor || '#64748b', fontWeight: overdue ? 700 : 400 }}>{overdue ? '期限切れ' : `${formatShortDate(item.due_date)}まで`}</span>
+        {period && (
+          <span style={{ color: dueColor || '#64748b', fontWeight: overdue ? 700 : 400 }}>{overdue ? '期限切れ' : period}</span>
         )}
         {repeat && <span title={repeatTitle(item)} style={{ ...repeatChipStyle, padding: '0 5px' }}>{repeat}</span>}
       </span>
@@ -587,6 +618,7 @@ function ItemEditor({ item, users, canMoveUp, canMoveDown, onMove, onCancel, onS
   const [title, setTitle] = useState(item.title)
   const [repeat, setRepeat] = useState<ItemRepeatChoice>(repeatChoiceOf(item))
   const [repeatDay, setRepeatDay] = useState<number | null>(repeatDayOf(repeatChoiceOf(item), item.recurrence_day))
+  const [startDate, setStartDate] = useState(item.start_date?.slice(0, 10) ?? '')
   const [dueDate, setDueDate] = useState(item.due_date?.slice(0, 10) ?? '')
   const [assigneeId, setAssigneeId] = useState(item.assignee_id ?? '')
   const [description, setDescription] = useState(item.description ?? '')
@@ -598,6 +630,7 @@ function ItemEditor({ item, users, canMoveUp, canMoveDown, onMove, onCancel, onS
     recurrence: item.recurrence ?? null,
     recurrence_workdays: item.recurrence_workdays ? 1 : 0,
     recurrence_day: item.recurrence_day ?? null,
+    start_date: item.start_date?.slice(0, 10) ?? null,
     due_date: item.due_date?.slice(0, 10) ?? null,
     assignee_id: item.assignee_id ?? null
   }))
@@ -605,6 +638,10 @@ function ItemEditor({ item, users, canMoveUp, canMoveDown, onMove, onCancel, onS
   const save = async (): Promise<void> => {
     if (!title.trim()) {
       onShowToast('項目名を入力してください', 'error')
+      return
+    }
+    if (repeat === '' && startDate && dueDate && startDate > dueDate) {
+      onShowToast('開始日は期限以前にしてください', 'error')
       return
     }
     const nextRepeat = repeatFields(repeat, repeatDay)
@@ -623,7 +660,8 @@ function ItemEditor({ item, users, canMoveUp, canMoveDown, onMove, onCancel, onS
     if (nextRepeat.recurrence_day !== repeatDayOf(repeatChoiceOf(base), base.recurrence_day) || nextRepeat.recurrence !== base.recurrence) {
       change('recurrence_day', nextRepeat.recurrence_day)
     }
-    // 繰り返しの項目は期限を持たない
+    // 繰り返しの項目は開始日と期限を持たない
+    change('start_date', repeat === '' ? startDate || null : null)
     change('due_date', repeat === '' ? dueDate || null : null)
     if (users.length > 0) change('assignee_id', assigneeId || null)
     if (Object.keys(data).length === 0) {
@@ -650,7 +688,12 @@ function ItemEditor({ item, users, canMoveUp, canMoveDown, onMove, onCancel, onS
       />
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: '#94a3b8' }}>
         <RepeatPicker choice={repeat} day={repeatDay} onChange={(choice, day) => { setRepeat(choice); setRepeatDay(day) }} labelPrefix="項目の" />
-        {repeat === '' && <DuePicker value={dueDate} onChange={setDueDate} label="項目の期限" />}
+        {repeat === '' && (
+          <>
+            <StartPicker value={startDate} onChange={setStartDate} label="項目の開始日" />
+            <DuePicker value={dueDate} onChange={setDueDate} label="項目の期限" />
+          </>
+        )}
         {users.length > 0 && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             担当

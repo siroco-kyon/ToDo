@@ -57,9 +57,39 @@ assert.equal(lib.isMyList({ assignee_id: 'u9', co_assignees: [] }, [], null), tr
 
 // 今日の分が残っているか
 const summary = lib.summarizeChecklist(items, '2026-10-14')
-assert.equal(summary.dueByTodayCount, 2)
+assert.equal(summary.todayCount, 2)
 assert.equal(lib.hasRemainingToday(summary), true)
 assert.equal(lib.hasRemainingToday(lib.summarizeChecklist([item('done', { recurrence: 'daily', done: 1 })], '2026-10-14')), false)
+
+// 開始日: 開始日が来たやることは、期限がまだ先でも、期限がなくても今日やることに出す
+{
+  const started = [
+    item('startedNoDue', { start_date: '2026-10-13', sort_order: 0 }),
+    item('notYet', { start_date: '2026-10-15', due_date: '2026-10-20', sort_order: 1 }),
+    item('startedWithDue', { start_date: '2026-10-14', due_date: '2026-10-17', sort_order: 2 }),
+    item('dueToday', { due_date: '2026-10-14', sort_order: 3 }),
+    item('doneToday', { start_date: '2026-10-12', done: 1, completed_at: new Date(2026, 9, 14, 10).toISOString(), sort_order: 4 }),
+    item('doneBefore', { start_date: '2026-10-12', done: 1, completed_at: new Date(2026, 9, 13, 10).toISOString(), sort_order: 5 }),
+    item('repeatWithStart', { recurrence: 'daily', start_date: '2026-10-20', sort_order: 6 })
+  ]
+  assert.deepEqual(Array.from(lib.todayItemsOf(started, '2026-10-14'), (entry) => entry.id),
+    ['repeatWithStart', 'dueToday', 'startedWithDue', 'startedNoDue', 'doneToday'],
+    '期限の早い順、期限のないものは後ろ。開始日がまだのもの・前の日に済んだものは出さない。繰り返しの項目は開始日を見ない')
+  assert.equal(lib.isTodayItem(started[0], '2026-10-14'), true)
+  assert.equal(lib.isTodayItem(started[1], '2026-10-14'), false, '開始日の前日までは出さない')
+  assert.equal(lib.isTodayItem(started[1], '2026-10-15'), true, '開始日の当日から出す')
+  const startedSummary = lib.summarizeChecklist([started[0]], '2026-10-14')
+  assert.equal(startedSummary.todayCount, 1)
+  assert.equal(lib.hasRemainingToday(startedSummary), true, '開始日が来たやることがあれば、今日の分が残っている')
+  assert.equal(lib.hasRemainingToday(lib.summarizeChecklist([started[1]], '2026-10-14')), false)
+}
+
+// 日付の表記
+assert.equal(lib.itemPeriodText({ recurrence: null, start_date: '2026-10-20', due_date: '2026-10-24' }), '10/20〜10/24')
+assert.equal(lib.itemPeriodText({ recurrence: null, start_date: '2026-10-20', due_date: null }), '10/20から')
+assert.equal(lib.itemPeriodText({ recurrence: null, start_date: null, due_date: '2026-10-24' }), '10/24まで')
+assert.equal(lib.itemPeriodText({ recurrence: null, start_date: null, due_date: null }), null)
+assert.equal(lib.itemPeriodText({ recurrence: 'daily', start_date: '2026-10-20', due_date: null }), null, '繰り返しの項目には日付を出さない')
 
 // 今日やることの区分け（今日やる／今週の分／今月の分）
 const sectionList = { ...list, id: 'list2' }

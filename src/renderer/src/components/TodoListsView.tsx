@@ -135,7 +135,7 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
             <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.7 }}>
               ToDoリストは、毎日・毎週のチェックや細かいやることをまとめるリストです。期限がないので、延長しなくてもずっと使えます。
               <br />・毎日のメール確認や週1回の集計など、決まった作業は「毎日／平日／毎週〇曜／毎月〇日」を付けると、その日に未チェックに戻ります。
-              <br />・思いついたやることは、繰り返さずに追加すると、チェックしたときに「済み」へ移ります。期限を付けると、期限が来た日にここの「今日やること」に出ます。
+              <br />・思いついたやることは、繰り返さずに追加すると、チェックしたときに「済み」へ移ります。開始日を付けるとその日から、期限だけを付けると期限の日から、ここの「今日やること」に出ます。
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: '0.78rem', color: '#94a3b8' }}>
               上の欄に名前（例: 毎日のルーティン・今週のやること）を入れて「作る」を押すと始められます。
@@ -153,7 +153,7 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#e0e7ff' }}>今日やること</span>
             <span style={{ fontSize: '0.76rem', color: remaining > 0 ? '#c7d2fe' : '#4ade80' }}>{todayGroups.length === 0 ? '' : remaining > 0 ? `残り ${remaining}` : 'すべて済み'}</span>
-            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>繰り返しの項目と、期限が今日までのやること</span>
+            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>繰り返しの項目と、開始日が来たやること・期限が今日までのやること</span>
           </div>
           <TodayTodoItems
             groups={todayGroups}
