@@ -1933,8 +1933,9 @@ export function GanttView({
       return
     }
     event.stopPropagation()
-    const row = event.currentTarget.closest('.tarbo-gantt-row')
-    if (row) event.dataTransfer.setDragImage(row, 24, 12)
+    // ドラッグ中の見た目は左の表の部分（タスク名の欄）だけにする。行全体は時間軸まで続いて横に長すぎる
+    const leftCell = event.currentTarget.parentElement
+    if (leftCell) event.dataTransfer.setDragImage(leftCell, 10, 12)
     setReorderFeedback(null)
     setDraggingSubTaskId(subTaskId)
     setSubTaskDropTarget(null)
