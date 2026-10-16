@@ -81,7 +81,8 @@ import {
   countUnreadNotifications,
   createNotification,
   markNotificationRead,
-  markAllNotificationsRead
+  markAllNotificationsRead,
+  REPORT_MEETING_WEEKDAY_SETTING
 } from '../db/notifications'
 import type { ProgressNote, ProgressNoteComment, Todo } from '../db/types'
 
@@ -383,12 +384,24 @@ dataRouter.get('/settings/:key', (req, res) =>
     return { value: value ?? null }
   }))
 
-dataRouter.put('/settings/:key', (req, res) =>
+dataRouter.put('/settings/:key', (req, res) => {
+  const key = req.params.key
+  // 定例の曜日はチーム全員のリマインドを決めるので、管理者だけが変えられる
+  if (key === REPORT_MEETING_WEEKDAY_SETTING) {
+    if (req.user!.role !== 'admin') {
+      res.status(403).json({ error: '定例の曜日は管理者だけが変更できます' })
+      return
+    }
+    if (typeof req.body.value !== 'string' || !/^[0-6]?$/.test(req.body.value)) {
+      res.status(400).json({ error: '定例の曜日が不正です' })
+      return
+    }
+  }
   run(res, () => {
-    const key = req.params.key
     if (PER_USER_SETTING_KEYS.has(key)) setUserSetting(req.user!.id, key, req.body.value)
     else setSetting(key, req.body.value)
-  }))
+  })
+})
 
 // ─── Notifications (per-user) ─────────────────────────────────
 dataRouter.get('/notifications', (req, res) =>
@@ -412,7 +425,7 @@ dataRouter.get('/notification-preferences', (req, res) => run(res, () => {
 }))
 dataRouter.post('/notification-preferences', (req, res) => run(res, () => {
   const type = String(req.body.type ?? '')
-  if (!['progress_reply', 'task_assigned', 'progress_reaction', 'task_due', 'mention'].includes(type)) throw new Error('通知種別が不正です')
+  if (!['progress_reply', 'task_assigned', 'progress_reaction', 'task_due', 'mention', 'report_reminder'].includes(type)) throw new Error('通知種別が不正です')
   const enabled = Boolean(req.body.enabled)
   getDb().prepare('INSERT INTO NotificationPreferences (user_id, type, enabled) VALUES (?, ?, ?) ON CONFLICT(user_id, type) DO UPDATE SET enabled = excluded.enabled').run(req.user!.id, type, enabled ? 1 : 0)
   return { type, enabled }

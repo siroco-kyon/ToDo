@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict'
+import { createServer } from 'node:http'
+import { once } from 'node:events'
+import express from 'express'
+import cookieParser from 'cookie-parser'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -52,6 +56,43 @@ test('報告のリマインドは定例の前日の17時から、報告がまだ
     db.prepare("INSERT INTO NotificationPreferences (user_id, type, enabled) VALUES ('u1', 'report_reminder', 0)").run()
     assert.deepEqual(notifications.runReportReminders(thursday(18)), [], '通知設定で止められる')
     assert.ok(pending.id)
+
+    // REST: 定例の曜日は管理者だけが変えられ、報告のリマインドは通知設定で止められる
+    db.prepare("UPDATE Users SET role = 'admin' WHERE id = 'u2'").run()
+    const { dataRouter } = await import('../src/routes/data')
+    const { attachUser, createSession } = await import('../src/auth')
+    const { SESSION_COOKIE } = await import('../src/config')
+    const memberCookie = `${SESSION_COOKIE}=${createSession('u1')}`
+    const adminCookie = `${SESSION_COOKIE}=${createSession('u2')}`
+    const app = express()
+    app.use(express.json(), cookieParser(), attachUser)
+    app.use('/api', dataRouter)
+    const http = createServer(app)
+    http.listen(0, '127.0.0.1')
+    await once(http, 'listening')
+    try {
+      const address = http.address()
+      assert.ok(address && typeof address !== 'string')
+      const base = `http://127.0.0.1:${address.port}`
+      const putWeekday = (cookie: string, value: unknown): Promise<Response> => fetch(`${base}/api/settings/${notifications.REPORT_MEETING_WEEKDAY_SETTING}`, {
+        method: 'PUT', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ value })
+      })
+      assert.equal((await putWeekday(memberCookie, '1')).status, 403, 'メンバーは定例の曜日を変えられない')
+      assert.equal(settings.getSetting(notifications.REPORT_MEETING_WEEKDAY_SETTING), '5')
+      assert.equal((await putWeekday(adminCookie, '9')).status, 400, '曜日でない値は保存しない')
+      assert.equal((await putWeekday(adminCookie, '1')).status, 200)
+      assert.equal(settings.getSetting(notifications.REPORT_MEETING_WEEKDAY_SETTING), '1')
+      assert.equal((await putWeekday(adminCookie, '')).status, 200, '「決めない」に戻せる')
+
+      const preference = await fetch(`${base}/api/notification-preferences`, {
+        method: 'POST', headers: { Cookie: memberCookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'report_reminder', enabled: true })
+      })
+      assert.equal(preference.status, 200, '報告のリマインドの通知設定を受け付ける')
+      const enabled = db.prepare("SELECT enabled FROM NotificationPreferences WHERE user_id = 'u1' AND type = 'report_reminder'").get() as { enabled: number }
+      assert.equal(enabled.enabled, 1)
+    } finally {
+      http.close()
+    }
   } finally {
     connection.getDb().close()
     fs.rmSync(dir, { recursive: true, force: true })
