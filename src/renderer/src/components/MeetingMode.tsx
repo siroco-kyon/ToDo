@@ -14,6 +14,10 @@ export interface MeetingGroup {
 export interface MeetingState {
   startedAt: number
   index: number
+  /** 今話している人（まとまり）のキー。並びが変わったり、その人が一覧から外れたりしても時間を取り違えないため */
+  currentKey: string | null
+  /** 話した人の表示名。一覧から外れた人も議事録に残すため */
+  labels: Record<string, string>
   /** 今の人を表示し始めた時刻 */
   personStartedAt: number
   /** まとまりごとに使った秒数（前の人に戻ったときは足していく） */
@@ -28,8 +32,20 @@ export interface MeetingState {
   pausedAt: number | null
 }
 
-export function createMeetingState(now = Date.now()): MeetingState {
-  return { startedAt: now, index: 0, personStartedAt: now, spentSeconds: {}, notes: {}, createdTasks: {}, targetMinutes: 3, pausedMs: 0, pausedAt: null }
+export function createMeetingState(now = Date.now(), first?: { key: string; label: string }): MeetingState {
+  return {
+    startedAt: now,
+    index: 0,
+    currentKey: first?.key ?? null,
+    labels: first ? { [first.key]: first.label } : {},
+    personStartedAt: now,
+    spentSeconds: {},
+    notes: {},
+    createdTasks: {},
+    targetMinutes: 3,
+    pausedMs: 0,
+    pausedAt: null
+  }
 }
 
 /** 開き直すとき: 閉じていた時間を会議時間から外し、今の人の時間はここから数え直す */
@@ -82,16 +98,28 @@ function formatClock(time: number): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
-/** 今の人の経過時間を足した、まとまりごとの使った秒数 */
-function spentWithCurrent(state: MeetingState, groups: MeetingGroup[], now: number): Record<string, number> {
-  const current = groups[state.index]
-  if (!current) return state.spentSeconds
-  return { ...state.spentSeconds, [current.key]: (state.spentSeconds[current.key] ?? 0) + (now - state.personStartedAt) / 1000 }
+/** 今の人の経過時間を足した、まとまりごとの使った秒数（閉じているあいだは足さない） */
+function spentWithCurrent(state: MeetingState, now: number): Record<string, number> {
+  const key = state.currentKey
+  if (key == null || state.pausedAt != null) return state.spentSeconds
+  return { ...state.spentSeconds, [key]: (state.spentSeconds[key] ?? 0) + Math.max(0, now - state.personStartedAt) / 1000 }
+}
+
+/** 今の人を切り替える。それまでの時間は前の人に足す */
+function switchPerson(state: MeetingState, target: MeetingGroup, index: number, now: number): MeetingState {
+  return {
+    ...state,
+    spentSeconds: spentWithCurrent(state, now),
+    index,
+    currentKey: target.key,
+    labels: { ...state.labels, [target.key]: target.label },
+    personStartedAt: now
+  }
 }
 
 /** 議事録（Markdown）。話した人・メモ・その場で作ったタスクを残す */
 export function meetingMinutesMarkdown(groups: MeetingGroup[], state: MeetingState, periodLabel: string, now = Date.now()): string {
-  const spent = spentWithCurrent(state, groups, now)
+  const spent = spentWithCurrent(state, now)
   const started = new Date(state.startedAt)
   const lines = [
     `# 定例 ${started.getMonth() + 1}/${started.getDate()}（${['日', '月', '火', '水', '木', '金', '土'][started.getDay()]}）`,
@@ -99,7 +127,12 @@ export function meetingMinutesMarkdown(groups: MeetingGroup[], state: MeetingSta
     `- 報告の期間: ${periodLabel}`,
     `- 時間: ${formatClock(state.startedAt)}〜${formatClock(now)}（${formatMinutes(activeMeetingMs(state, now) / 1000)}${state.pausedMs > 0 || state.pausedAt != null ? '。中断した時間を除く' : ''}）`
   ]
-  for (const group of groups) {
+  // 途中で一覧から外れた人（報告して「報告なし」の絞り込みから外れたなど）も、話していれば最後に載せる
+  const shownKeys = new Set(groups.map((group) => group.key))
+  const leftGroups = [...new Set([...Object.keys(spent), ...Object.keys(state.notes), ...Object.keys(state.createdTasks)])]
+    .filter((key) => !shownKeys.has(key))
+    .map((key) => ({ key, label: state.labels[key] ?? '（一覧から外れた担当）' }))
+  for (const group of [...groups, ...leftGroups]) {
     const seconds = spent[group.key] ?? 0
     const note = (state.notes[group.key] ?? '').trim()
     const tasks = state.createdTasks[group.key] ?? []
@@ -123,8 +156,17 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
   const [now, setNow] = useState(() => Date.now())
   const [taskTitle, setTaskTitle] = useState('')
   const [creatingTask, setCreatingTask] = useState(false)
-  const index = Math.min(state.index, Math.max(groups.length - 1, 0))
+  // 今の人はキーで探す（並びが変わっても同じ人のまま）。一覧から外れていたら、同じ位置の人を見せる
+  const keyedIndex = state.currentKey == null ? -1 : groups.findIndex((item) => item.key === state.currentKey)
+  const index = keyedIndex >= 0 ? keyedIndex : Math.min(state.index, Math.max(groups.length - 1, 0))
   const group = groups[index]
+
+  // 見せている人と今の人が違う（今の人が一覧から外れた）ときは、そこまでの時間を前の人に足して切り替える
+  useEffect(() => {
+    if (!group || state.currentKey === group.key) return
+    const at = Date.now()
+    onStateChange((previous) => previous.currentKey === group.key ? previous : switchPerson(previous, group, index, at))
+  }, [group, index, onStateChange, state.currentKey])
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
@@ -134,12 +176,8 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
   const goTo = (nextIndex: number): void => {
     if (nextIndex < 0 || nextIndex >= groups.length || nextIndex === index) return
     const at = Date.now()
-    onStateChange((previous) => ({
-      ...previous,
-      spentSeconds: spentWithCurrent(previous, groups, at),
-      index: nextIndex,
-      personStartedAt: at
-    }))
+    const target = groups[nextIndex]
+    onStateChange((previous) => switchPerson(previous, target, nextIndex, at))
     setTaskTitle('')
   }
 
@@ -160,7 +198,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
   // 閉じている間は今の人の時間を止める（ここまでの時間を足しておき、開き直した時刻から数え直す）
   const close = (): void => {
     const at = Date.now()
-    onStateChange((previous) => ({ ...previous, spentSeconds: spentWithCurrent(previous, groups, at), personStartedAt: at, pausedAt: at }))
+    onStateChange((previous) => ({ ...previous, spentSeconds: spentWithCurrent(previous, at), personStartedAt: at, pausedAt: at }))
     onClose()
   }
 
@@ -184,7 +222,9 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
     onStateChange((previous) => ({ ...previous, createdTasks: { ...previous.createdTasks, [group.key]: [...(previous.createdTasks[group.key] ?? []), title] } }))
   }
 
-  const personSeconds = group ? (state.spentSeconds[group.key] ?? 0) + (now - state.personStartedAt) / 1000 : 0
+  const personSeconds = group
+    ? (state.spentSeconds[group.key] ?? 0) + (state.currentKey === group.key ? Math.max(0, now - state.personStartedAt) / 1000 : 0)
+    : 0
   const overTime = personSeconds > state.targetMinutes * 60
   const nearTime = !overTime && personSeconds > state.targetMinutes * 60 - 30
 
