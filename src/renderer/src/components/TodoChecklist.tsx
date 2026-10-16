@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import type { PublicUser, SubTask, Todo, UpdateSubTaskInput } from '../types'
 import { getDueDateColor, toDateKey } from '../lib/dueDate'
+import { dropPositionOf, moveIdTo, type DropPosition } from '../lib/reorder'
 import {
   ITEM_REPEAT_OPTIONS,
   MONTH_DAY_OPTIONS,
@@ -79,7 +80,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set())
   const [reordering, setReordering] = useState(false)
   const [dragging, setDragging] = useState<{ id: string; group: Group } | null>(null)
-  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ id: string; position: DropPosition } | null>(null)
   const [showOldDone, setShowOldDone] = useState(false)
   // ToDo タブではリストが並ぶので、項目を追加する欄は押したときだけ開く
   const [formOpen, setFormOpen] = useState(!compact)
@@ -160,12 +161,15 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
     void reorderGroup(group, ids)
   }
 
-  // ドラッグした項目を、落とした項目の位置へ（同じまとまりの中だけ）
-  const dropOn = (target: SubTask): void => {
-    if (!dragging || dragging.id === target.id || dragging.group !== groupOf(target)) return
-    const ids = displayedOf(dragging.group).map((item) => item.id).filter((id) => id !== dragging.id)
-    ids.splice(ids.indexOf(target.id), 0, dragging.id)
-    void reorderGroup(dragging.group, ids)
+  // ドラッグした項目を、落とした項目の前か後ろへ動かしたときの並び（同じまとまりの中だけ）。並びが変わらないときは null
+  const droppedIds = (target: SubTask, position: DropPosition): string[] | null => {
+    if (!dragging || dragging.group !== groupOf(target)) return null
+    return moveIdTo(displayedOf(dragging.group).map((item) => item.id), dragging.id, target.id, position)
+  }
+
+  const dropOn = (target: SubTask, position: DropPosition): void => {
+    const ids = droppedIds(target, position)
+    if (ids && dragging) void reorderGroup(dragging.group, ids)
   }
 
   const add = async (): Promise<void> => {
@@ -251,19 +255,36 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
           setDragging({ id: item.id, group })
         }}
         onDragOver={(event) => {
-          if (!dragging || dragging.group !== group || dragging.id === item.id) return
+          if (!dragging || dragging.group !== group) return
           event.preventDefault()
-          event.dataTransfer.dropEffect = 'move'
-          if (dragOverId !== item.id) setDragOverId(item.id)
+          const position = dropPositionOf(event.clientY, event.currentTarget.getBoundingClientRect())
+          const changes = droppedIds(item, position) != null
+          event.dataTransfer.dropEffect = changes ? 'move' : 'none'
+          if (!changes) {
+            if (dropTarget?.id === item.id) setDropTarget(null)
+            return
+          }
+          if (dropTarget?.id !== item.id || dropTarget.position !== position) setDropTarget({ id: item.id, position })
         }}
-        onDragLeave={() => { if (dragOverId === item.id) setDragOverId(null) }}
-        onDrop={(event) => { event.preventDefault(); dropOn(item); setDragOverId(null) }}
-        onDragEnd={() => { setDragging(null); setDragOverId(null) }}
+        onDragLeave={(event) => {
+          if (dropTarget?.id === item.id && !event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null)
+        }}
+        onDrop={(event) => {
+          event.preventDefault()
+          dropOn(item, dropPositionOf(event.clientY, event.currentTarget.getBoundingClientRect()))
+          setDropTarget(null)
+        }}
+        onDragEnd={() => { setDragging(null); setDropTarget(null) }}
         style={{
-          borderTop: `2px solid ${dragOverId === item.id ? '#6366f1' : 'transparent'}`,
+          position: 'relative',
+          paddingTop: 2,
           opacity: dragging?.id === item.id ? 0.4 : 1
         }}
       >
+        {dropTarget?.id === item.id && (
+          // 落とす位置の線（上半分なら前、下半分なら後ろ）
+          <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, [dropTarget.position === 'before' ? 'top' : 'bottom']: -1, height: 2, borderRadius: 2, background: '#6366f1', pointerEvents: 'none', zIndex: 1 }} />
+        )}
         <ItemRow
           item={item}
           todayKey={todayKey}

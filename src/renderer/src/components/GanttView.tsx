@@ -2,6 +2,7 @@
 import type { Category, CreateSubTaskInput, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, TodoStatus, UpdateSubTaskInput, UpdateTodoInput } from '../types'
 import { discussionBadgeStyle } from './ProgressNoteThread'
 import { buildChecklistSummaries, checklistBadgeText } from '../lib/todoList'
+import { autoScrollNearEdge, dropPositionOf, moveIdBy, moveIdTo, type DropPosition } from '../lib/reorder'
 
 interface Props {
   todos: Todo[]
@@ -1021,7 +1022,7 @@ export function GanttView({
   const [draggingTodoId, setDraggingTodoId] = useState<string | null>(null)
   const [dragOverTodoId, setDragOverTodoId] = useState<string | null>(null)
   const [draggingSubTaskId, setDraggingSubTaskId] = useState<string | null>(null)
-  const [dragOverSubTaskId, setDragOverSubTaskId] = useState<string | null>(null)
+  const [subTaskDropTarget, setSubTaskDropTarget] = useState<{ id: string; position: DropPosition } | null>(null)
   const [reorderPending, setReorderPending] = useState(false)
   const [reorderFeedback, setReorderFeedback] = useState<string | null>(null)
   const [dependencyLayoutVersion, setDependencyLayoutVersion] = useState(0)
@@ -1898,73 +1899,103 @@ export function GanttView({
     }
   }, [chartGroups, draggingTodoId, isReorderMode, onReorderTodos, reorderPending])
 
-  const handleSubTaskReorderDragStart = useCallback((subTaskId: string, event: React.DragEvent<HTMLDivElement>): void => {
-    if (!isReorderMode || reorderPending) return
-    event.stopPropagation()
-    setReorderFeedback(null)
-    setDraggingSubTaskId(subTaskId)
-    setDragOverSubTaskId(null)
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', subTaskId)
-  }, [isReorderMode, reorderPending])
+  // サブタスクは並べ替えモードに入らなくても、左の表のつかみで同じタスクの中を動かせる（親タスクの並べ替えはモードの中だけ）
+  const siblingSubTaskIdsOf = useCallback((todoId: string): string[] => subTasks
+    .filter((item) => item.todo_id === todoId)
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.created_at.localeCompare(b.created_at))
+    .map((item) => item.id), [subTasks])
 
-  const handleSubTaskReorderDragOver = useCallback((subTaskId: string, event: React.DragEvent<HTMLDivElement>): void => {
-    if (!isReorderMode || reorderPending || !draggingSubTaskId || draggingSubTaskId === subTaskId) return
-    const source = subTaskById.get(draggingSubTaskId)
-    const target = subTaskById.get(subTaskId)
-    if (!source || !target || source.todo_id !== target.todo_id) return
-    event.preventDefault()
-    event.stopPropagation()
-    event.dataTransfer.dropEffect = 'move'
-    setDragOverSubTaskId(subTaskId)
-  }, [draggingSubTaskId, isReorderMode, reorderPending, subTaskById])
-
-  const handleSubTaskReorderDrop = useCallback(async (targetSubTaskId: string, event: React.DragEvent<HTMLDivElement>): Promise<void> => {
-    event.preventDefault()
-    event.stopPropagation()
-    if (!isReorderMode || reorderPending || !draggingSubTaskId || draggingSubTaskId === targetSubTaskId) {
-      setDragOverSubTaskId(null)
-      return
-    }
-
-    const source = subTaskById.get(draggingSubTaskId)
-    const target = subTaskById.get(targetSubTaskId)
-    if (!source || !target || source.todo_id !== target.todo_id) {
-      setDraggingSubTaskId(null)
-      setDragOverSubTaskId(null)
-      return
-    }
-
-    const siblings = subTasks
-      .filter((item) => item.todo_id === source.todo_id)
-      .slice()
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.created_at.localeCompare(b.created_at))
-    const orderedIds = siblings.map((item) => item.id)
-    const fromIndex = orderedIds.indexOf(source.id)
-    const toIndex = orderedIds.indexOf(target.id)
-    if (fromIndex < 0 || toIndex < 0) return
-
-    const nextOrderedIds = [...orderedIds]
-    nextOrderedIds.splice(fromIndex, 1)
-    nextOrderedIds.splice(toIndex, 0, source.id)
+  // サブタスクの並びを変えて保存する。すぐ画面に反映し、失敗したら元に戻す
+  const applySubTaskSiblingOrder = useCallback(async (todoId: string, nextOrderedIds: string[]): Promise<void> => {
+    if (reorderPending) return
     const orderById = new Map(nextOrderedIds.map((id, index) => [id, index]))
     const previousSubTasks = subTasks
-    setSubTasks((previous) => previous.map((item) => item.todo_id === source.todo_id
+    setReorderFeedback(null)
+    setSubTasks((previous) => previous.map((item) => item.todo_id === todoId
       ? { ...item, sort_order: orderById.get(item.id) ?? item.sort_order }
       : item))
 
     setReorderPending(true)
     try {
-      await window.api.subtaskReorder(source.todo_id, nextOrderedIds)
+      await window.api.subtaskReorder(todoId, nextOrderedIds)
     } catch (error) {
       setSubTasks(previousSubTasks)
       setReorderFeedback(error instanceof Error ? error.message : 'サブタスクを並べ替えできませんでした')
     } finally {
       setReorderPending(false)
-      setDraggingSubTaskId(null)
-      setDragOverSubTaskId(null)
     }
-  }, [draggingSubTaskId, isReorderMode, reorderPending, subTaskById, subTasks])
+  }, [reorderPending, subTasks])
+
+  const handleSubTaskReorderDragStart = useCallback((subTaskId: string, event: React.DragEvent<HTMLDivElement>): void => {
+    if (reorderPending) {
+      event.preventDefault()
+      return
+    }
+    event.stopPropagation()
+    // ドラッグ中の見た目は左の表の部分（タスク名の欄）だけにする。行全体は時間軸まで続いて横に長すぎる
+    const leftCell = event.currentTarget.parentElement
+    if (leftCell) event.dataTransfer.setDragImage(leftCell, 10, 12)
+    setReorderFeedback(null)
+    setDraggingSubTaskId(subTaskId)
+    setSubTaskDropTarget(null)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', subTaskId)
+  }, [reorderPending])
+
+  // 落とす位置（相手の行の上半分なら前、下半分なら後ろ）。並びが変わらない位置では線を出さない
+  const subTaskDropOf = useCallback((targetSubTaskId: string, event: React.DragEvent<HTMLDivElement>): { todoId: string; orderedIds: string[]; position: DropPosition } | null => {
+    if (!draggingSubTaskId) return null
+    const source = subTaskById.get(draggingSubTaskId)
+    const target = subTaskById.get(targetSubTaskId)
+    if (!source || !target || source.todo_id !== target.todo_id) return null
+    const position = dropPositionOf(event.clientY, event.currentTarget.getBoundingClientRect())
+    const orderedIds = moveIdTo(siblingSubTaskIdsOf(source.todo_id), source.id, target.id, position)
+    return orderedIds ? { todoId: source.todo_id, orderedIds, position } : null
+  }, [draggingSubTaskId, siblingSubTaskIdsOf, subTaskById])
+
+  const handleSubTaskReorderDragOver = useCallback((subTaskId: string, event: React.DragEvent<HTMLDivElement>): void => {
+    if (reorderPending || !draggingSubTaskId) return
+    const source = subTaskById.get(draggingSubTaskId)
+    const target = subTaskById.get(subTaskId)
+    // ほかのタスクのサブタスクの上では落とせない（同じタスクの中だけで動かす）
+    if (!source || !target || source.todo_id !== target.todo_id) return
+    event.preventDefault()
+    event.stopPropagation()
+    const drop = subTaskDropOf(subTaskId, event)
+    event.dataTransfer.dropEffect = drop ? 'move' : 'none'
+    setSubTaskDropTarget((previous) => {
+      if (!drop) return previous?.id === subTaskId ? null : previous
+      return previous?.id === subTaskId && previous.position === drop.position ? previous : { id: subTaskId, position: drop.position }
+    })
+  }, [draggingSubTaskId, reorderPending, subTaskById, subTaskDropOf])
+
+  const handleSubTaskReorderDrop = useCallback(async (targetSubTaskId: string, event: React.DragEvent<HTMLDivElement>): Promise<void> => {
+    event.preventDefault()
+    event.stopPropagation()
+    const drop = reorderPending ? null : subTaskDropOf(targetSubTaskId, event)
+    setDraggingSubTaskId(null)
+    setSubTaskDropTarget(null)
+    if (drop) await applySubTaskSiblingOrder(drop.todoId, drop.orderedIds)
+  }, [applySubTaskSiblingOrder, reorderPending, subTaskDropOf])
+
+  // つかみにフォーカスして Alt+↑↓ で1つずつ動かす
+  const handleSubTaskReorderKeyDown = useCallback((subTask: SubTask, event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
+    event.preventDefault()
+    const next = moveIdBy(siblingSubTaskIdsOf(subTask.todo_id), subTask.id, event.key === 'ArrowUp' ? -1 : 1)
+    if (next) void applySubTaskSiblingOrder(subTask.todo_id, next)
+  }, [applySubTaskSiblingOrder, siblingSubTaskIdsOf])
+
+  // サブタスクをドラッグしている間は、ガントの上下の端に近づけるとスクロールする
+  useEffect(() => {
+    if (!draggingSubTaskId) return
+    const container = scrollRef.current
+    if (!container) return
+    const handleDragOver = (event: DragEvent): void => autoScrollNearEdge(container, event.clientY)
+    window.addEventListener('dragover', handleDragOver)
+    return () => window.removeEventListener('dragover', handleDragOver)
+  }, [draggingSubTaskId])
 
   const collectDependentTodoIds = useCallback((rootTodoIds: string[]): string[] => {
     const queue = [...rootTodoIds]
@@ -4036,8 +4067,9 @@ export function GanttView({
                       // ツリーの枝: 最後のサブタスク（追加欄が開いていないとき）は └、それ以外は ├
                       const isLastSubTask = subTaskIndex === group.datedSubTasks.length - 1 && addingSubTaskTodoId !== group.todo.id
                       const tone = subTaskTone(subTask, todayKey)
-                      const isSubTaskReorderSource = isReorderMode && draggingSubTaskId === subTask.id
-                      const isSubTaskReorderTarget = isReorderMode && dragOverSubTaskId === subTask.id && draggingSubTaskId !== subTask.id
+                      const isSubTaskReorderSource = draggingSubTaskId === subTask.id
+                      const subTaskDropPosition = subTaskDropTarget?.id === subTask.id && !isSubTaskReorderSource ? subTaskDropTarget.position : null
+                      const canReorderSubTask = group.datedSubTasks.length > 1
                       const subTaskProgress = clamp(Boolean(subTask.done) ? 100 : subTask.progress ?? 0, 0, 100)
                       const baselineBar = showBaseline ? baselineSnapshot?.subTasks[subTask.id] ?? null : null
                       const subTaskActiveState = interaction?.targetType === 'subtask' && interaction.targetId === subTask.id ? interaction : null
@@ -4074,29 +4106,40 @@ export function GanttView({
                           onDrop={(event) => void handleSubTaskReorderDrop(subTask.id, event)}
                           onDragEnd={() => {
                             setDraggingSubTaskId(null)
-                            setDragOverSubTaskId(null)
+                            setSubTaskDropTarget(null)
                           }}
                           style={{
                             display: 'flex',
                             minHeight: SUBTASK_ROW_HEIGHT,
-                            borderTop: isSubTaskReorderTarget ? '2px solid #38bdf8' : `1px solid ${SUBTASK_DIVIDER_COLOR}`,
-                            opacity: isSubTaskReorderSource ? 0.65 : 1,
-                            boxShadow: isSubTaskReorderTarget ? '0 0 0 2px rgba(56, 189, 248, 0.22) inset' : undefined
+                            borderTop: `1px solid ${SUBTASK_DIVIDER_COLOR}`,
+                            opacity: isSubTaskReorderSource ? 0.5 : 1
                           }}
                         >
+                          {subTaskDropPosition && <div aria-hidden="true" style={subTaskDropLineStyle(subTaskDropPosition)} />}
                           <div style={{ position: 'sticky', left: 0, zIndex: 3, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0b1220', borderRight: '1px solid #1e293b', borderLeft: `3px solid ${sectionStripeColor}`, padding: '0 8px 0 21px' }}>
+                            {canReorderSubTask && (
+                              // 左の余白に置き、行にマウスを乗せたときだけ出す（タスク名の位置は動かさない）。並べ替えモード中は常に出す
+                              <div
+                                className="tarbo-gantt-subtask-grip"
+                                role="button"
+                                tabIndex={reorderPending ? -1 : 0}
+                                aria-disabled={reorderPending}
+                                aria-label={`「${subTask.title}」を並べ替え`}
+                                aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+                                title="ドラッグして同じタスクの中で並べ替え（Alt+↑↓ でも動かせます）"
+                                draggable={!reorderPending}
+                                onDragStart={(event) => handleSubTaskReorderDragStart(subTask.id, event)}
+                                onKeyDown={(event) => { if (!reorderPending) handleSubTaskReorderKeyDown(subTask, event) }}
+                                style={{
+                                  ...subTaskGripStyle(reorderPending, isSubTaskReorderSource),
+                                  ...(isReorderMode || isSubTaskReorderSource ? { opacity: 1 } : {})
+                                }}
+                              >
+                                ⠿
+                              </div>
+                            )}
                             <div style={{ ...leftSubRowGridStyle, gridTemplateColumns: leftGridTemplate }}>
                               <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
-                                {isReorderMode && (
-                                  <div
-                                    draggable={!reorderPending}
-                                    onDragStart={(event) => handleSubTaskReorderDragStart(subTask.id, event)}
-                                    style={{ ...reorderHandleStyle(reorderPending, isSubTaskReorderSource), width: 16, minWidth: 16, fontSize: '0.68rem' }}
-                                    title="同じタスク内でドラッグして並べ替え"
-                                  >
-                                    ⋮⋮
-                                  </div>
-                                )}
                                 {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'title' ? (
                                   <input
                                     autoFocus
@@ -4913,6 +4956,43 @@ function expandToggleButtonStyle(active: boolean, expanded: boolean): React.CSSP
     justifyContent: 'center',
     flexShrink: 0,
     fontSize: '0.66rem'
+  }
+}
+
+// サブタスクのつかみ。行の左の余白（21px）に重ねる
+function subTaskGripStyle(disabled: boolean, dragging: boolean): React.CSSProperties {
+  return {
+    position: 'absolute',
+    left: 2,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: 16,
+    height: 20,
+    borderRadius: 4,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // ふだんの色とマウスを乗せたときの色は CSS（.tarbo-gantt-subtask-grip）で決める
+    ...(dragging ? { background: '#082f49', color: '#e0f2fe' } : {}),
+    fontSize: '0.8rem',
+    lineHeight: 1,
+    userSelect: 'none',
+    cursor: disabled ? 'not-allowed' : 'grab'
+  }
+}
+
+// サブタスクを落とす位置を示す線（相手の行の上端か下端）
+function subTaskDropLineStyle(position: DropPosition): React.CSSProperties {
+  return {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    [position === 'before' ? 'top' : 'bottom']: -1,
+    height: 2,
+    background: '#38bdf8',
+    boxShadow: '0 0 0 1px rgba(56, 189, 248, 0.3)',
+    pointerEvents: 'none',
+    zIndex: 5
   }
 }
 

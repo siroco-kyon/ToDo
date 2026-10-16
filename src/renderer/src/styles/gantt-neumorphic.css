@@ -125,3 +125,20 @@ body.theme-light .tarbo-gantt {
 .tarbo-gantt .tarbo-gantt-hold-toggle:focus-visible {
   opacity: 1;
 }
+
+/* サブタスクを並べ替えるつかみ（⠿）。保留ボタンと同じく、行にマウスを乗せたとき・キーボードで選んだときだけ出す */
+.tarbo-gantt .tarbo-gantt-subtask-grip {
+  color: #94a3b8;
+  opacity: 0;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+.tarbo-gantt .tarbo-gantt-row:hover .tarbo-gantt-subtask-grip,
+.tarbo-gantt .tarbo-gantt-subtask-grip:focus-visible {
+  opacity: 1;
+}
+
+.tarbo-gantt .tarbo-gantt-subtask-grip:hover {
+  background: #1e293b;
+  color: #e2e8f0;
+}

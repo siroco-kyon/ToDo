@@ -11,6 +11,7 @@ import { NoteMenu, ProgressNoteThread } from './ProgressNoteThread'
 import { MentionTextarea } from './MentionTextarea'
 import { TodoChecklist } from './TodoChecklist'
 import { isListTodo } from '../lib/todoList'
+import { autoScrollNearEdge, dropTargetAt, moveIdBy, moveIdTo, scrollParentOf, type DropPosition } from '../lib/reorder'
 
 interface Props {
   todo: Todo | null
@@ -98,6 +99,10 @@ export function TodoDetail({
   const [editData, setEditData] = useState<UpdateTodoInput>({})
   const [editableSubTasks, setEditableSubTasks] = useState<EditableSubTask[]>([])
   const [subTaskReorderPending, setSubTaskReorderPending] = useState(false)
+  // サブタスクをドラッグで並べ替えている間の、動かしている項目と落とす位置
+  const [draggingSubTaskId, setDraggingSubTaskId] = useState<string | null>(null)
+  const [subTaskDropTarget, setSubTaskDropTarget] = useState<{ id: string; position: DropPosition } | null>(null)
+  const subTaskListRef = useRef<HTMLDivElement>(null)
   const [subscribed, setSubscribed] = useState(false)
   const [subscriptionPending, setSubscriptionPending] = useState(false)
   const subscriptionPendingRef = useRef(false)
@@ -393,22 +398,16 @@ export function TodoDetail({
     })
   }
 
-  const handleMoveSubTask = async (subTaskId: string, direction: -1 | 1): Promise<void> => {
+  // サブタスクの並びを変えて保存する。すぐ画面に反映し、失敗したら元の並びに戻す
+  const applySubTaskOrder = async (orderedIds: string[]): Promise<void> => {
     if (!todo || subTaskReorderPending) return
-
-    const fromIndex = subTasks.findIndex((item) => item.id === subTaskId)
-    const toIndex = fromIndex + direction
-    if (fromIndex < 0 || toIndex < 0 || toIndex >= subTasks.length) return
 
     const previousSubTasks = subTasks
     const previousEditableSubTasks = editableSubTasks
-    const nextSubTasks = [...subTasks]
-    const [moved] = nextSubTasks.splice(fromIndex, 1)
-    nextSubTasks.splice(toIndex, 0, moved)
-    const orderedIds = nextSubTasks.map((item) => item.id)
+    const subTaskById = new Map(subTasks.map((item) => [item.id, item]))
     const editableById = new Map(editableSubTasks.map((item) => [item.id, item]))
 
-    setSubTasks(nextSubTasks)
+    setSubTasks(orderedIds.map((id) => subTaskById.get(id)).filter((item): item is SubTask => Boolean(item)))
     setEditableSubTasks(orderedIds.map((id) => editableById.get(id)).filter((item): item is EditableSubTask => Boolean(item)))
     setSubTaskReorderPending(true)
     try {
@@ -421,6 +420,81 @@ export function TodoDetail({
       setSubTaskReorderPending(false)
     }
   }
+
+  // つかみにフォーカスして Alt+↑↓ で1つずつ動かす
+  const handleMoveSubTask = (subTaskId: string, direction: -1 | 1): void => {
+    const next = moveIdBy(subTasks.map((item) => item.id), subTaskId, direction)
+    if (next) void applySubTaskOrder(next)
+  }
+
+  // ポインターの位置から、落とす行と前後を決める（行のすき間や最後の行より下でも置ける）
+  const subTaskDropAt = (clientY: number): { orderedIds: string[]; target: { id: string; position: DropPosition } } | null => {
+    if (!draggingSubTaskId) return null
+    const rows = Array.from(subTaskListRef.current?.querySelectorAll<HTMLElement>('[data-subtask-row]') ?? []).map((row) => {
+      const rect = row.getBoundingClientRect()
+      return { id: row.dataset.subtaskRow ?? '', top: rect.top, height: rect.height }
+    })
+    const target = dropTargetAt(clientY, rows)
+    const orderedIds = target ? moveIdTo(subTasks.map((item) => item.id), draggingSubTaskId, target.id, target.position) : null
+    return target && orderedIds ? { orderedIds, target } : null
+  }
+
+  const handleSubTaskListDragOver = (event: React.DragEvent<HTMLDivElement>): void => {
+    if (!draggingSubTaskId) return
+    event.preventDefault()
+    const drop = subTaskDropAt(event.clientY)
+    event.dataTransfer.dropEffect = drop ? 'move' : 'none'
+    setSubTaskDropTarget((previous) => {
+      if (!drop) return null
+      return previous?.id === drop.target.id && previous.position === drop.target.position ? previous : drop.target
+    })
+  }
+
+  const handleSubTaskListDrop = (event: React.DragEvent<HTMLDivElement>): void => {
+    if (!draggingSubTaskId) return
+    event.preventDefault()
+    const drop = subTaskDropAt(event.clientY)
+    setDraggingSubTaskId(null)
+    setSubTaskDropTarget(null)
+    if (drop) void applySubTaskOrder(drop.orderedIds)
+  }
+
+  // ドラッグ中は、詳細の上下の端に近づけるとスクロールする
+  useEffect(() => {
+    if (!draggingSubTaskId) return
+    const container = scrollParentOf(subTaskListRef.current)
+    if (!container) return
+    const handleDragOver = (event: DragEvent): void => autoScrollNearEdge(container, event.clientY)
+    window.addEventListener('dragover', handleDragOver)
+    return () => window.removeEventListener('dragover', handleDragOver)
+  }, [draggingSubTaskId])
+
+  const renderSubTaskRow = (subTask: { id: string; title: string }, content: React.ReactNode): React.JSX.Element => (
+    <div
+      key={subTask.id}
+      data-subtask-row={subTask.id}
+      style={{ position: 'relative', display: 'flex', alignItems: 'stretch', gap: 6, opacity: draggingSubTaskId === subTask.id ? 0.45 : 1 }}
+    >
+      {subTaskDropTarget?.id === subTask.id && <div aria-hidden="true" style={subTaskDropLineStyle(subTaskDropTarget.position)} />}
+      <SubTaskDragHandle
+        title={subTask.title}
+        disabled={subTaskReorderPending || saving}
+        onDragStart={(event) => {
+          const row = event.currentTarget.closest('[data-subtask-row]')
+          if (row) event.dataTransfer.setDragImage(row, 16, 20)
+          event.dataTransfer.effectAllowed = 'move'
+          event.dataTransfer.setData('text/plain', subTask.id)
+          setDraggingSubTaskId(subTask.id)
+        }}
+        onDragEnd={() => {
+          setDraggingSubTaskId(null)
+          setSubTaskDropTarget(null)
+        }}
+        onMove={(direction) => handleMoveSubTask(subTask.id, direction)}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>{content}</div>
+    </div>
+  )
 
   const handleSave = async (): Promise<void> => {
     if (!todo || savingRef.current) return
@@ -1132,35 +1206,25 @@ export function TodoDetail({
       {!listMode && (
       <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div style={sectionTitleStyle}>サブタスク {subTasks.length > 0 && `(${doneCount}/${subTasks.length})`}</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+        <div
+          ref={subTaskListRef}
+          onDragOver={handleSubTaskListDragOver}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setSubTaskDropTarget(null)
+          }}
+          onDrop={handleSubTaskListDrop}
+          style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}
+        >
           {editing
-            ? editableSubTasks.map((subTask, index) => (
-              <div key={subTask.id} style={{ display: 'flex', alignItems: 'stretch', gap: 6 }}>
-                <SubTaskOrderControls
-                  index={index}
-                  count={editableSubTasks.length}
-                  disabled={subTaskReorderPending}
-                  onMove={(direction) => void handleMoveSubTask(subTask.id, direction)}
-                />
-                <div style={{ flex: 1, minWidth: 0 }}>
+            ? editableSubTasks.map((subTask) => renderSubTaskRow(subTask, (
                   <EditableSubTaskItem
                     subTask={subTask}
                     users={users}
                     onChange={(data) => setEditableSubTasks((previous) => previous.map((item) => item.id === subTask.id ? { ...item, ...data } : item))}
                     onDelete={() => void handleDeleteSubTask(subTask.id)}
                   />
-                </div>
-              </div>
-            ))
-            : subTasks.map((subTask, index) => (
-              <div key={subTask.id} style={{ display: 'flex', alignItems: 'stretch', gap: 6 }}>
-                <SubTaskOrderControls
-                  index={index}
-                  count={subTasks.length}
-                  disabled={subTaskReorderPending}
-                  onMove={(direction) => void handleMoveSubTask(subTask.id, direction)}
-                />
-                <div style={{ flex: 1, minWidth: 0 }}>
+            )))
+            : subTasks.map((subTask) => renderSubTaskRow(subTask, (
                   <ReadonlySubTaskItem
                     subTask={subTask}
                     users={users}
@@ -1174,9 +1238,7 @@ export function TodoDetail({
                     onShowToast={onShowToast}
                     onDirtyChange={(dirty) => handleChildDirty(subTask.id, dirty)}
                   />
-                </div>
-              </div>
-            ))}
+            )))}
         </div>
         <form onSubmit={(event) => void handleAddSubTask(event)} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 10, border: '1px dashed #334155' }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
@@ -1316,30 +1378,73 @@ function DependencyList({ title, items, getTodoId, getTitle, reload }: { title: 
   )
 }
 
-function SubTaskOrderControls({ index, count, disabled, onMove }: {
-  index: number
-  count: number
+// サブタスクを並べ替えるつかみ。ドラッグで好きな位置へ、フォーカスして Alt+↑↓ で1つずつ動かす。
+// 行の中には進捗バーのドラッグや入力欄があるので、行全体ではなくつかみだけをドラッグできるようにする
+function SubTaskDragHandle({ title, disabled, onDragStart, onDragEnd, onMove }: {
+  title: string
   disabled: boolean
+  onDragStart: (event: React.DragEvent<HTMLDivElement>) => void
+  onDragEnd: () => void
   onMove: (direction: -1 | 1) => void
 }): React.JSX.Element {
-  const button = (isDisabled: boolean): React.CSSProperties => ({
-    width: 24,
-    flex: 1,
-    minHeight: 24,
-    border: '1px solid #334155',
-    borderRadius: 5,
-    background: '#0f172a',
-    color: isDisabled ? '#475569' : '#94a3b8',
-    cursor: isDisabled ? 'not-allowed' : 'pointer',
-    padding: 0
-  })
-
+  const [hovered, setHovered] = useState(false)
   return (
-    <div style={{ width: 24, display: 'flex', flexDirection: 'column', gap: 4 }} aria-label="サブタスクの並べ替え">
-      <button type="button" onClick={() => onMove(-1)} disabled={disabled || index === 0} title="上へ移動" aria-label="上へ移動" style={button(disabled || index === 0)}>▲</button>
-      <button type="button" onClick={() => onMove(1)} disabled={disabled || index >= count - 1} title="下へ移動" aria-label="下へ移動" style={button(disabled || index >= count - 1)}>▼</button>
+    <div
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled}
+      aria-label={`「${title}」を並べ替え`}
+      aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+      title="ドラッグして並べ替え（Alt+↑↓ でも動かせます）"
+      draggable={!disabled}
+      onDragStart={(event) => {
+        if (disabled) {
+          event.preventDefault()
+          return
+        }
+        onDragStart(event)
+      }}
+      onDragEnd={onDragEnd}
+      onKeyDown={(event) => {
+        if (disabled || !event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
+        event.preventDefault()
+        onMove(event.key === 'ArrowUp' ? -1 : 1)
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        width: 20,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 6,
+        background: hovered && !disabled ? '#1e293b' : 'transparent',
+        color: disabled ? '#334155' : hovered ? '#cbd5e1' : '#64748b',
+        cursor: disabled ? 'default' : 'grab',
+        fontSize: '0.95rem',
+        userSelect: 'none'
+      }}
+    >
+      ⠿
     </div>
   )
+}
+
+// 落とす位置を示す線。行のすき間（6px）の真ん中に引く
+function subTaskDropLineStyle(position: DropPosition): React.CSSProperties {
+  return {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    [position === 'before' ? 'top' : 'bottom']: -4,
+    height: 2,
+    borderRadius: 2,
+    background: '#38bdf8',
+    boxShadow: '0 0 0 1px rgba(56, 189, 248, 0.25)',
+    pointerEvents: 'none',
+    zIndex: 2
+  }
 }
 
 function SubTaskAssigneeSelect({ users, value, onChange, disabled = false }: { users: PublicUser[]; value: string | null; onChange: (value: string | null) => void; disabled?: boolean }): React.JSX.Element {
