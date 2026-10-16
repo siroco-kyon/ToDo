@@ -1,5 +1,21 @@
 # HAKOBI 利用案内
 
+## 社内レポート版（2026年10月）
+
+作った目的、チームで使うと変わること、導入の進め方を社内レポートの形でまとめた、全12ページの資料です。
+
+- [配布用PDF](HAKOBI_社内レポート.pdf)
+- [編集用Word](HAKOBI_社内レポート.docx)
+- [本文原稿](report-internal.md)
+
+```powershell
+python docs/hakobi-introduction/build_internal.py
+```
+
+`report-internal.md` から `HAKOBI_社内レポート.docx` と図（`assets-current/` の `record-hub.png` など）を生成します。PDFはWordから出力します（下の「Wordの再生成」と同じパッケージとフォントを使います）。
+
+## 利用案内（16ページ版）
+
 他の係やグループへHAKOBIを紹介するときに使う、全16ページの資料です。
 
 - [配布用PDF](HAKOBI_利用案内_推敲版.pdf)
