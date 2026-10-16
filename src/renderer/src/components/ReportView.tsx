@@ -1363,7 +1363,8 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     return `カテゴリ: ${groupKey ? label : 'なし'}・担当: 自分`
   }
   const openMeeting = (): void => {
-    setMeetingState((previous) => previous ? resumeMeetingState(previous) : createMeetingState())
+    const first = meetingGroups[0]
+    setMeetingState((previous) => previous ? resumeMeetingState(previous) : createMeetingState(Date.now(), first ? { key: first.key, label: first.label } : undefined))
     setMeetingOpen(true)
   }
 
