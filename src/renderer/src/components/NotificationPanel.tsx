@@ -69,10 +69,10 @@ export function NotificationPanel({
           <button onClick={() => setTab('unread')} style={buttonStyle(tab === 'unread')}>未読 {unreadCount}</button>
           <button onClick={() => setTab('all')} style={buttonStyle(tab === 'all')}>すべて</button>
         </div>
-        {showSettings && <div style={{ margin: '8px 10px 0', padding: 10, borderRadius: 8, border: '1px solid #334155', display: 'grid', gap: 6 }}>
+        {showSettings && <div style={{ margin: '8px 10px 0', padding: 10, borderRadius: 8, border: '1px solid var(--slate-700)', display: 'grid', gap: 6 }}>
           {([['task_assigned', '担当への追加'], ['progress_reply', '返信・購読更新'], ['progress_reaction', 'いいね'], ['mention', 'メンション'], ['task_due', '期限通知'], ['report_reminder', '報告のリマインド']] as const).map(([type, label]) => {
             const enabled = preferences[type] !== false
-            return <label key={type} style={{ display: 'flex', gap: 7, alignItems: 'center', color: '#cbd5e1', fontSize: '0.76rem' }}><input type="checkbox" checked={enabled} onChange={(event) => { void updatePreference(type, event.target.checked) }} />{label}</label>
+            return <label key={type} style={{ display: 'flex', gap: 7, alignItems: 'center', color: 'var(--slate-300)', fontSize: '0.76rem' }}><input type="checkbox" checked={enabled} onChange={(event) => { void updatePreference(type, event.target.checked) }} />{label}</label>
           })}
         </div>}
 
@@ -122,7 +122,7 @@ const backdropStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
   zIndex: 40,
-  background: 'rgba(2, 6, 23, 0.52)',
+  background: 'color-mix(in srgb, var(--slate-950) 52%, transparent)',
   display: 'flex',
   justifyContent: 'flex-end',
   alignItems: 'flex-start',
@@ -132,8 +132,8 @@ const backdropStyle: React.CSSProperties = {
 const panelStyle: React.CSSProperties = {
   width: 'min(420px, calc(100vw - 36px))',
   maxHeight: 'min(620px, calc(100vh - 76px))',
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 8,
   boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
   display: 'flex',
@@ -147,20 +147,20 @@ const headerStyle: React.CSSProperties = {
   justifyContent: 'space-between',
   gap: 12,
   padding: '14px 16px',
-  borderBottom: '1px solid #1e293b'
+  borderBottom: '1px solid var(--slate-800)'
 }
 
 const titleStyle: React.CSSProperties = {
   margin: 0,
   fontSize: '1rem',
-  color: '#e2e8f0',
+  color: 'var(--slate-200)',
   lineHeight: 1.2
 }
 
 const subtitleStyle: React.CSSProperties = {
   marginTop: 3,
   fontSize: '0.74rem',
-  color: '#94a3b8'
+  color: 'var(--slate-400)'
 }
 
 const listStyle: React.CSSProperties = {
@@ -173,7 +173,7 @@ const listStyle: React.CSSProperties = {
 
 const emptyStyle: React.CSSProperties = {
   padding: '28px 12px',
-  color: '#64748b',
+  color: 'var(--slate-500)',
   textAlign: 'center',
   fontSize: '0.86rem'
 }
@@ -183,9 +183,9 @@ function itemStyle(unread: boolean): React.CSSProperties {
     display: 'block',
     width: '100%',
     textAlign: 'left',
-    border: `1px solid ${unread ? '#2563eb' : '#1e293b'}`,
-    background: unread ? '#172554' : '#111827',
-    color: '#cbd5e1',
+    border: `1px solid ${unread ? 'var(--blue-600)' : 'var(--slate-800)'}`,
+    background: unread ? 'var(--blue-950)' : 'var(--gray-900)',
+    color: 'var(--slate-300)',
     borderRadius: 8,
     padding: '10px 12px',
     cursor: 'pointer'
@@ -200,7 +200,7 @@ const itemHeaderStyle: React.CSSProperties = {
 }
 
 const itemTitleStyle: React.CSSProperties = {
-  color: '#e2e8f0',
+  color: 'var(--slate-200)',
   fontSize: '0.84rem',
   fontWeight: 700,
   overflow: 'hidden',
@@ -212,7 +212,7 @@ const unreadDotStyle: React.CSSProperties = {
   width: 8,
   height: 8,
   borderRadius: '50%',
-  background: '#38bdf8',
+  background: 'var(--sky-400)',
   flexShrink: 0,
   marginLeft: 'auto'
 }
@@ -220,7 +220,7 @@ const unreadDotStyle: React.CSSProperties = {
 const itemBodyStyle: React.CSSProperties = {
   marginTop: 5,
   fontSize: '0.8rem',
-  color: '#94a3b8',
+  color: 'var(--slate-400)',
   lineHeight: 1.45
 }
 
@@ -229,7 +229,7 @@ const metaStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   gap: 8,
-  color: '#64748b',
+  color: 'var(--slate-500)',
   fontSize: '0.72rem'
 }
 
@@ -237,9 +237,9 @@ function buttonStyle(enabled: boolean): React.CSSProperties {
   return {
     padding: '6px 10px',
     borderRadius: 7,
-    border: `1px solid ${enabled ? '#2563eb' : '#334155'}`,
-    background: enabled ? '#1d4ed8' : '#1e293b',
-    color: enabled ? '#eff6ff' : '#64748b',
+    border: `1px solid ${enabled ? 'var(--blue-600)' : 'var(--slate-700)'}`,
+    background: enabled ? 'var(--blue-700)' : 'var(--slate-800)',
+    color: enabled ? 'var(--on-fill-blue-50)' : 'var(--slate-500)',
     cursor: enabled ? 'pointer' : 'default',
     fontSize: '0.76rem',
     fontWeight: 700
@@ -249,9 +249,9 @@ function buttonStyle(enabled: boolean): React.CSSProperties {
 const closeButtonStyle: React.CSSProperties = {
   padding: '6px 10px',
   borderRadius: 7,
-  border: '1px solid #334155',
-  background: '#111827',
-  color: '#cbd5e1',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--gray-900)',
+  color: 'var(--slate-300)',
   cursor: 'pointer',
   fontSize: '0.76rem',
   fontWeight: 700

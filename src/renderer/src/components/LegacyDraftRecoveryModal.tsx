@@ -89,7 +89,7 @@ export function LegacyDraftRecoveryModal({ onClose, onShowToast }: Props): React
         <button type="button" aria-label="閉じる" disabled={restoring} onClick={onClose} style={button}>閉じる</button>
       </header>
       <p style={text}>更新前にこのPCで保存された、未投稿の進捗やコメントを確認できます。誰が書いたものか判別できないため、自分の下書きだけを選んで復元してください。</p>
-      {user && <p style={text}>復元先のアカウント: <strong style={{ color: '#e2e8f0' }}>{user.display_name || user.username}</strong></p>}
+      {user && <p style={text}>復元先のアカウント: <strong style={{ color: 'var(--slate-200)' }}>{user.display_name || user.username}</strong></p>}
       {loading ? <p style={text}>下書きを確認しています…</p> : <>
         {drafts.length === 0 ? <p role="status" style={text}>{restoredCount ? '選択した下書きを復元しました。残っている旧版の下書きはありません。' : 'このPCには旧版の下書きがありません。'}</p> : <>
           {!reviewing ? <button type="button" onClick={() => setReviewing(true)} style={primary}>下書きの内容を確認する（{drafts.length}件）</button> : <>
@@ -100,14 +100,14 @@ export function LegacyDraftRecoveryModal({ onClose, onShowToast }: Props): React
                 const missingTask = Boolean(draft.todoId && !(draft.todoId in titles))
                 const disabled = availability !== 'available' || missingTask || !user || restoring
                 const label = draft.kind === 'detail' ? 'タスク詳細の進捗' : draft.kind === 'timeline-note' ? 'タイムラインの進捗' : draft.entryKey?.startsWith('reply:') ? 'コメントへの返信' : '進捗へのコメント'
-                return <article key={draft.id} style={{ padding: 14, border: '1px solid #334155', borderRadius: 8, background: '#0f172a' }}>
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, color: '#e2e8f0', fontSize: '0.85rem' }}>
+                return <article key={draft.id} style={{ padding: 14, border: '1px solid var(--slate-700)', borderRadius: 8, background: 'var(--slate-900)' }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, color: 'var(--slate-200)', fontSize: '0.85rem' }}>
                     <input type="checkbox" aria-label={`${label}を復元する`} checked={selectedIds.has(draft.id)} disabled={disabled} onChange={(event) => {
                       setSelectedIds((ids) => { const next = new Set(ids); if (event.target.checked) next.add(draft.id); else next.delete(draft.id); return next })
                     }} />
                     <span>{label}{draft.todoId && <><br/><strong>{titles[draft.todoId] ?? '削除された、またはアクセスできないタスク'}</strong></>}</span>
                   </label>
-                  <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: '12px 0', fontFamily: 'inherit', fontSize: '0.85rem', color: '#cbd5e1' }}>{draft.body}</pre>
+                  <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: '12px 0', fontFamily: 'inherit', fontSize: '0.85rem', color: 'var(--slate-300)' }}>{draft.body}</pre>
                   {availability === 'same' && <p style={text}>同じ内容の下書きがあります。重複して復元しません。</p>}
                   {availability === 'conflict' && <p style={text}>現在の下書きがあります。内容をコピーして、必要な部分を手動で追記できます。</p>}
                   {missingTask && <p style={text}>このタスクは現在開けないため、内容のコピーだけ利用できます。</p>}
@@ -123,13 +123,13 @@ export function LegacyDraftRecoveryModal({ onClose, onShowToast }: Props): React
           </>}
         </>}
       </>}
-      {error && <p role="alert" style={{ ...text, color: '#fca5a5' }}>{error}</p>}
+      {error && <p role="alert" style={{ ...text, color: 'var(--red-300)' }}>{error}</p>}
     </div>
   </div>
 }
 
 const backdrop: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18, boxSizing: 'border-box' }
-const panel: React.CSSProperties = { width: 620, maxWidth: '100%', maxHeight: '85vh', overflowY: 'auto', background: '#1e293b', color: '#e2e8f0', padding: 24, borderRadius: 14, border: '1px solid #475569', display: 'flex', flexDirection: 'column', gap: 14, boxSizing: 'border-box' }
-const text: React.CSSProperties = { margin: 0, color: '#94a3b8', fontSize: '0.8rem', lineHeight: 1.6 }
-const button: React.CSSProperties = { padding: '7px 12px', color: '#cbd5e1', background: '#334155', border: 0, borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }
-const primary: React.CSSProperties = { ...button, color: '#fff', background: '#0f766e', padding: '10px 14px', alignSelf: 'flex-start' }
+const panel: React.CSSProperties = { width: 620, maxWidth: '100%', maxHeight: '85vh', overflowY: 'auto', background: 'var(--slate-800)', color: 'var(--slate-200)', padding: 24, borderRadius: 14, border: '1px solid var(--slate-600)', display: 'flex', flexDirection: 'column', gap: 14, boxSizing: 'border-box' }
+const text: React.CSSProperties = { margin: 0, color: 'var(--slate-400)', fontSize: '0.8rem', lineHeight: 1.6 }
+const button: React.CSSProperties = { padding: '7px 12px', color: 'var(--slate-300)', background: 'var(--slate-700)', border: 0, borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }
+const primary: React.CSSProperties = { ...button, color: 'var(--on-fill-white)', background: 'var(--teal-700)', padding: '10px 14px', alignSelf: 'flex-start' }

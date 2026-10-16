@@ -86,7 +86,7 @@ export function AuthGate({ children }: { children: React.ReactNode }): React.JSX
   if (phase.kind === 'error') {
     return (
       <Splash>
-        <div style={{ color: '#fecaca', marginBottom: 16 }}>{phase.message}</div>
+        <div style={{ color: 'var(--red-200)', marginBottom: 16 }}>{phase.message}</div>
         <button onClick={() => void check()} style={retryButton}>
           再試行
         </button>
@@ -115,8 +115,8 @@ function Splash({ children }: { children: React.ReactNode }): React.JSX.Element 
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#0f172a',
-        color: '#94a3b8',
+        background: 'var(--slate-900)',
+        color: 'var(--slate-400)',
         fontSize: '0.95rem',
         gap: 8
       }}
@@ -129,9 +129,9 @@ function Splash({ children }: { children: React.ReactNode }): React.JSX.Element 
 const retryButton: React.CSSProperties = {
   padding: '9px 18px',
   borderRadius: 10,
-  border: '1px solid #334155',
-  background: '#1e293b',
-  color: '#e2e8f0',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--slate-800)',
+  color: 'var(--slate-200)',
   fontSize: '0.9rem',
   cursor: 'pointer'
 }

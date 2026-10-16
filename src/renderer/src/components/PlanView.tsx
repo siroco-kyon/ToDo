@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AddDailyPlanItemOptions, DailyPlanItem, Todo, UpdateDailyPlanItemInput } from '../types'
 import { checklistBadgeText, hasRemainingToday, type ChecklistSummary } from '../lib/todoList'
+import { dataInk } from '../lib/theme'
 
 interface Props {
   date: string
@@ -311,12 +312,12 @@ function SummaryCard({
   tone: string
 }): React.JSX.Element {
   return (
-    <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '12px 14px' }}>
-      <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+    <div style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 14px' }}>
+      <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
       <div style={{ fontSize: '1.08rem', color: tone, fontWeight: 700, marginTop: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {value}
       </div>
-      <div style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: 6 }}>{detail}</div>
+      <div style={{ fontSize: '0.76rem', color: 'var(--slate-400)', marginTop: 6 }}>{detail}</div>
     </div>
   )
 }
@@ -333,16 +334,16 @@ function Section({
   return (
     <section
       style={{
-        background: '#111827',
-        border: '1px solid #1f2937',
+        background: 'var(--gray-900)',
+        border: '1px solid var(--gray-800)',
         borderRadius: 16,
         padding: 16,
         minWidth: 0
       }}
     >
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: '0.95rem', color: '#f8fafc', fontWeight: 700 }}>{title}</div>
-        {subtitle && <div style={{ fontSize: '0.76rem', color: '#64748b' }}>{subtitle}</div>}
+        <div style={{ fontSize: '0.95rem', color: 'var(--slate-50)', fontWeight: 700 }}>{title}</div>
+        {subtitle && <div style={{ fontSize: '0.76rem', color: 'var(--slate-500)' }}>{subtitle}</div>}
       </div>
       {children}
     </section>
@@ -350,16 +351,16 @@ function Section({
 }
 
 function EmptyState({ label }: { label: string }): React.JSX.Element {
-  return <div style={{ color: '#64748b', fontSize: '0.82rem', padding: '4px 2px', lineHeight: 1.6 }}>{label}</div>
+  return <div style={{ color: 'var(--slate-500)', fontSize: '0.82rem', padding: '4px 2px', lineHeight: 1.6 }}>{label}</div>
 }
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 10px',
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 8,
-  color: '#e2e8f0',
+  color: 'var(--slate-200)',
   fontSize: '0.84rem',
   outline: 'none',
   boxSizing: 'border-box'
@@ -395,9 +396,9 @@ function miniActionBtn(background: string, color: string): React.CSSProperties {
 const laneHeaderStyle: React.CSSProperties = {
   textAlign: 'center',
   fontSize: '0.74rem',
-  color: '#94a3b8',
-  background: '#0f172a',
-  border: '1px solid #1e293b',
+  color: 'var(--slate-400)',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-800)',
   borderRadius: 10,
   padding: '6px 8px',
   fontWeight: 700
@@ -436,28 +437,28 @@ function CandidateCard({
         }))
       }}
       style={{
-        background: '#0f172a',
-        border: placementActive ? '1px solid #3b82f6' : '1px solid #1e293b',
+        background: 'var(--slate-900)',
+        border: placementActive ? '1px solid var(--blue-500)' : '1px solid var(--slate-800)',
         borderRadius: 12,
         padding: '10px 12px',
         display: 'flex',
         alignItems: 'flex-start',
         gap: 10,
         cursor: 'grab',
-        boxShadow: placementActive ? '0 0 0 1px #1d4ed8 inset' : 'none'
+        boxShadow: placementActive ? '0 0 0 1px var(--blue-700) inset' : 'none'
       }}
       title="ドラッグで時間割へ置けます。クリックで置くときは「時間に置く」を押してください。"
     >
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '0.86rem', color: '#e2e8f0', fontWeight: 600, lineHeight: 1.4 }}>{todo.title}</div>
-        {note && <div style={{ fontSize: '0.7rem', color: '#a5b4fc', marginTop: 3 }}>{note}</div>}
+        <div style={{ fontSize: '0.86rem', color: 'var(--slate-200)', fontWeight: 600, lineHeight: 1.4 }}>{todo.title}</div>
+        {note && <div style={{ fontSize: '0.7rem', color: 'var(--indigo-300)', marginTop: 3 }}>{note}</div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
           {todo.category_name && (
             <span
               style={{
                 fontSize: '0.68rem',
-                color: todo.category_color ?? '#a5b4fc',
-                background: `${todo.category_color ?? '#6366f1'}20`,
+                color: dataInk(todo.category_color ?? 'var(--indigo-300)'),
+                background: `color-mix(in srgb, ${todo.category_color ?? 'var(--indigo-500)'} 12.5%, transparent)`,
                 borderRadius: 999,
                 padding: '2px 8px'
               }}
@@ -465,10 +466,10 @@ function CandidateCard({
               {todo.category_name}
             </span>
           )}
-          <span style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>{formatDueLabel(todo.due_date, todayKey)}</span>
-          <span style={{ fontSize: '0.72rem', color: '#fbbf24' }}>P{todo.priority}</span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--slate-300)' }}>{formatDueLabel(todo.due_date, todayKey)}</span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--amber-400)' }}>P{todo.priority}</span>
           {plannedCount > 0 && (
-            <span style={{ fontSize: '0.68rem', color: '#93c5fd', background: '#1e3a8a40', borderRadius: 999, padding: '2px 8px' }}>
+            <span style={{ fontSize: '0.68rem', color: 'var(--blue-300)', background: 'color-mix(in srgb, var(--blue-900) 25.1%, transparent)', borderRadius: 999, padding: '2px 8px' }}>
               配置済み ×{plannedCount}
             </span>
           )}
@@ -485,7 +486,7 @@ function CandidateCard({
               durationMinutes: DEFAULT_DURATION
             })
           }}
-          style={actionBtn(placementActive ? '#1d4ed8' : '#1e293b', '#dbeafe', placementActive ? '#60a5fa' : '#334155')}
+          style={actionBtn(placementActive ? 'var(--blue-700)' : 'var(--slate-800)', 'var(--blue-100)', placementActive ? 'var(--blue-400)' : 'var(--slate-700)')}
         >
           {placementActive ? '配置中' : '時間に置く'}
         </button>
@@ -494,7 +495,7 @@ function CandidateCard({
             event.stopPropagation()
             void onAdd(todo.id)
           }}
-          style={actionBtn('#172554', '#bfdbfe', '#2563eb')}
+          style={actionBtn('var(--blue-950)', 'var(--blue-200)', 'var(--blue-600)')}
         >
           今日に入れる
         </button>
@@ -533,32 +534,32 @@ function UnscheduledCard({
         }))
       }}
       style={{
-        background: '#0f172a',
-        border: placementActive ? '1px solid #3b82f6' : '1px dashed #334155',
+        background: 'var(--slate-900)',
+        border: placementActive ? '1px solid var(--blue-500)' : '1px dashed var(--slate-700)',
         borderRadius: 12,
         padding: '10px 12px',
         display: 'flex',
         alignItems: 'flex-start',
         gap: 10,
         cursor: 'grab',
-        boxShadow: placementActive ? '0 0 0 1px #1d4ed8 inset' : 'none'
+        boxShadow: placementActive ? '0 0 0 1px var(--blue-700) inset' : 'none'
       }}
       title="ドラッグかクリックで時間割に置けます。"
     >
       <div style={{ flex: 1, minWidth: 0 }}>
         <button
           onClick={() => onSelect(item.todo_id)}
-          style={{ background: 'transparent', border: 'none', padding: 0, color: '#e2e8f0', cursor: 'pointer', fontSize: '0.86rem', fontWeight: 600, textAlign: 'left', lineHeight: 1.4 }}
+          style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.86rem', fontWeight: 600, textAlign: 'left', lineHeight: 1.4 }}
         >
-          {item.status === 'on_hold' && <span style={{ color: '#d8b4fe' }}>保留中 · </span>}{item.title}
+          {item.status === 'on_hold' && <span style={{ color: 'var(--purple-300)' }}>保留中 · </span>}{item.title}
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
           {item.category_name && (
             <span
               style={{
                 fontSize: '0.68rem',
-                color: item.category_color ?? '#a5b4fc',
-                background: `${item.category_color ?? '#6366f1'}20`,
+                color: dataInk(item.category_color ?? 'var(--indigo-300)'),
+                background: `color-mix(in srgb, ${item.category_color ?? 'var(--indigo-500)'} 12.5%, transparent)`,
                 borderRadius: 999,
                 padding: '2px 8px'
               }}
@@ -566,8 +567,8 @@ function UnscheduledCard({
               {item.category_name}
             </span>
           )}
-          <span style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>{formatDueLabel(item.due_date, todayKey)}</span>
-          <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{formatMinutes(normalizeDuration(item.estimated_minutes))}</span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--slate-300)' }}>{formatDueLabel(item.due_date, todayKey)}</span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>{formatMinutes(normalizeDuration(item.estimated_minutes))}</span>
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
@@ -581,7 +582,7 @@ function UnscheduledCard({
               durationMinutes: normalizeDuration(item.estimated_minutes)
             })
           }}
-          style={actionBtn(placementActive ? '#1d4ed8' : '#1e293b', '#dbeafe', placementActive ? '#60a5fa' : '#334155')}
+          style={actionBtn(placementActive ? 'var(--blue-700)' : 'var(--slate-800)', 'var(--blue-100)', placementActive ? 'var(--blue-400)' : 'var(--slate-700)')}
         >
           {placementActive ? '配置中' : '時間に置く'}
         </button>
@@ -590,7 +591,7 @@ function UnscheduledCard({
             event.stopPropagation()
             void onRemove(item.id)
           }}
-          style={actionBtn('#3f1d1d', '#fca5a5', '#7f1d1d')}
+          style={actionBtn('var(--c-3f1d1d)', 'var(--red-300)', 'var(--red-900)')}
         >
           外す
         </button>
@@ -976,11 +977,11 @@ export function PlanView({
     <div style={{ height: '100%', overflowY: 'auto', padding: 20 }}>
       {onDateChange && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          <button onClick={() => onDateChange(shiftDateKey(date, -1))} style={miniActionBtn('#1e293b', '#cbd5e1')}>← 前日</button>
-          <input type="date" value={date} onChange={(event) => onDateChange(event.target.value)} style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }} />
-          <button onClick={() => onDateChange(shiftDateKey(date, 1))} style={miniActionBtn('#1e293b', '#cbd5e1')}>翌日 →</button>
-          <button onClick={() => onDateChange(getTodayKey())} style={miniActionBtn('#172554', '#dbeafe')}>今日</button>
-          {onCarryOver && <button onClick={() => void onCarryOver()} style={miniActionBtn('#14532d', '#dcfce7')}>前日の未完了を繰り越す</button>}
+          <button onClick={() => onDateChange(shiftDateKey(date, -1))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}>← 前日</button>
+          <input type="date" value={date} onChange={(event) => onDateChange(event.target.value)} style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)' }} />
+          <button onClick={() => onDateChange(shiftDateKey(date, 1))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}>翌日 →</button>
+          <button onClick={() => onDateChange(getTodayKey())} style={miniActionBtn('var(--blue-950)', 'var(--blue-100)')}>今日</button>
+          {onCarryOver && <button onClick={() => void onCarryOver()} style={miniActionBtn('var(--green-900)', 'var(--green-100)')}>前日の未完了を繰り越す</button>}
           {listFilters && <span style={{ marginLeft: 'auto' }}>{listFilters}</span>}
         </div>
       )}
@@ -991,20 +992,20 @@ export function PlanView({
                 display: 'grid',
                 gridTemplateColumns: 'minmax(160px, 1.3fr) repeat(3, minmax(120px, 0.7fr))',
               gap: 10,
-              background: '#111827',
-              border: '1px solid #1f2937',
+              background: 'var(--gray-900)',
+              border: '1px solid var(--gray-800)',
               borderRadius: 14,
               padding: 12
             }}
             >
               <div>
-              <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>日付</div>
-              <div style={{ marginTop: 6, fontSize: '1rem', color: '#f8fafc', fontWeight: 700 }}>{date}</div>
-              <div style={{ marginTop: 4, fontSize: '0.76rem', color: '#94a3b8' }}>今日の時間割をまとめて調整できます</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>日付</div>
+              <div style={{ marginTop: 6, fontSize: '1rem', color: 'var(--slate-50)', fontWeight: 700 }}>{date}</div>
+              <div style={{ marginTop: 4, fontSize: '0.76rem', color: 'var(--slate-400)' }}>今日の時間割をまとめて調整できます</div>
             </div>
-            <SummaryCard label="予定" value={`${timedCount}件`} detail="時間あり" tone="#60a5fa" />
-            <SummaryCard label="未定" value={`${unscheduledItems.length}件`} detail="まだ時刻なし" tone="#fbbf24" />
-            <SummaryCard label="合計" value={formatMinutes(totalPlannedMinutes)} detail="見積もり時間" tone="#4ade80" />
+            <SummaryCard label="予定" value={`${timedCount}件`} detail="時間あり" tone="var(--blue-400)" />
+            <SummaryCard label="未定" value={`${unscheduledItems.length}件`} detail="まだ時刻なし" tone="var(--amber-400)" />
+            <SummaryCard label="合計" value={formatMinutes(totalPlannedMinutes)} detail="見積もり時間" tone="var(--green-400)" />
           </div>
 
           <Section
@@ -1015,11 +1016,11 @@ export function PlanView({
               <div
                 style={{
                   marginBottom: 12,
-                  background: '#172554',
-                  border: '1px solid #2563eb',
+                  background: 'var(--blue-950)',
+                  border: '1px solid var(--blue-600)',
                   borderRadius: 12,
                   padding: '10px 12px',
-                  color: '#dbeafe',
+                  color: 'var(--blue-100)',
                   fontSize: '0.8rem',
                   lineHeight: 1.6
                 }}
@@ -1045,8 +1046,8 @@ export function PlanView({
                 height: '70vh',
                 overflowY: 'auto',
                 borderRadius: 14,
-                border: '1px solid #1f2937',
-                background: '#0b1220'
+                border: '1px solid var(--gray-800)',
+                background: 'var(--c-0b1220)'
               }}
             >
               <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 12 }}>
@@ -1063,7 +1064,7 @@ export function PlanView({
                           right: 0,
                           textAlign: 'right',
                           fontSize: '0.72rem',
-                          color: '#64748b'
+                          color: 'var(--slate-500)'
                         }}
                       >
                         {String(hour).padStart(2, '0')}:00
@@ -1136,8 +1137,8 @@ export function PlanView({
                         left: 0,
                         right: 0,
                         height: HOUR_HEIGHT,
-                        borderTop: '1px solid #1f2937',
-                        background: index % 2 === 0 ? '#0b1220' : '#0d1525'
+                        borderTop: '1px solid var(--gray-800)',
+                        background: index % 2 === 0 ? 'var(--c-0b1220)' : 'var(--c-0d1525)'
                       }}
                     />
                   ))}
@@ -1150,7 +1151,7 @@ export function PlanView({
                         top: index * SNAP_MINUTES * PIXELS_PER_MINUTE,
                         left: 0,
                         right: 0,
-                        borderTop: index % 4 === 0 ? 'none' : '1px dashed #132033'
+                        borderTop: index % 4 === 0 ? 'none' : '1px dashed var(--c-132033)'
                       }}
                     />
                   ))}
@@ -1162,7 +1163,7 @@ export function PlanView({
                         top: currentOffset * PIXELS_PER_MINUTE,
                         left: 0,
                         right: 0,
-                        borderTop: '2px solid #f97316',
+                        borderTop: '2px solid var(--orange-500)',
                         zIndex: 3
                       }}
                     >
@@ -1172,8 +1173,8 @@ export function PlanView({
                           top: -10,
                           left: 10,
                           fontSize: '0.68rem',
-                          color: '#fed7aa',
-                          background: '#7c2d12',
+                          color: 'var(--orange-200)',
+                          background: 'var(--orange-900)',
                           borderRadius: 999,
                           padding: '2px 8px'
                         }}
@@ -1189,7 +1190,7 @@ export function PlanView({
                         top: dragOverMinutes * PIXELS_PER_MINUTE,
                         left: 0,
                         right: 0,
-                        borderTop: '2px dashed #60a5fa',
+                        borderTop: '2px dashed var(--blue-400)',
                         zIndex: 4
                       }}
                     >
@@ -1199,8 +1200,8 @@ export function PlanView({
                           top: -10,
                           left: 10,
                           fontSize: '0.68rem',
-                          color: '#bfdbfe',
-                          background: '#172554',
+                          color: 'var(--blue-200)',
+                          background: 'var(--blue-950)',
                           borderRadius: 999,
                           padding: '2px 8px'
                         }}
@@ -1217,9 +1218,9 @@ export function PlanView({
                         top: 0,
                         bottom: 0,
                         ...getLaneLayout(dragOverLane),
-                        background: '#60a5fa12',
-                        borderLeft: '1px dashed #60a5fa55',
-                        borderRight: '1px dashed #60a5fa55',
+                        background: 'color-mix(in srgb, var(--blue-400) 7.1%, transparent)',
+                        borderLeft: '1px dashed color-mix(in srgb, var(--blue-400) 33.3%, transparent)',
+                        borderRight: '1px dashed color-mix(in srgb, var(--blue-400) 33.3%, transparent)',
                         zIndex: 1
                       }}
                     />
@@ -1238,12 +1239,12 @@ export function PlanView({
                             height: previewHeight,
                             minHeight: compactPreview ? 34 : 44,
                             ...getLaneLayout(previewTarget.lane),
-                            background: '#2563eb22',
-                            border: '1px dashed #60a5fa',
+                            background: 'color-mix(in srgb, var(--blue-600) 13.3%, transparent)',
+                            border: '1px dashed var(--blue-400)',
                             borderRadius: 12,
                             boxSizing: 'border-box',
                             padding: compactPreview ? '7px 10px' : '10px 10px 8px',
-                            color: '#dbeafe',
+                            color: 'var(--blue-100)',
                             zIndex: 4,
                             pointerEvents: 'none',
                             overflow: 'hidden'
@@ -1251,7 +1252,7 @@ export function PlanView({
                         >
                           {compactPreview ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.74rem', fontWeight: 700 }}>
-                              <span style={{ color: '#bfdbfe', whiteSpace: 'nowrap' }}>{offsetToClock(previewTarget.minutes)}</span>
+                              <span style={{ color: 'var(--blue-200)', whiteSpace: 'nowrap' }}>{offsetToClock(previewTarget.minutes)}</span>
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activePreview.title}</span>
                             </div>
                           ) : (
@@ -1260,7 +1261,7 @@ export function PlanView({
                                 <span>
                                   {offsetToClock(previewTarget.minutes)} - {offsetToClock(Math.min(previewTarget.minutes + activePreview.durationMinutes, TIMELINE_TOTAL_MINUTES))}
                                 </span>
-                                <span style={{ fontWeight: 500, color: '#bfdbfe' }}>{formatMinutes(activePreview.durationMinutes)}</span>
+                                <span style={{ fontWeight: 500, color: 'var(--blue-200)' }}>{formatMinutes(activePreview.durationMinutes)}</span>
                               </div>
                               <div style={{ marginTop: 6, fontSize: '0.8rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {activePreview.title}
@@ -1274,7 +1275,7 @@ export function PlanView({
 
                   {timelineBlocks.map((item) => {
                     const placement = columnMap.get(item.id) ?? { col: 0, cols: 1 }
-                    const categoryColor = item.category_color ?? '#6366f1'
+                    const categoryColor = item.category_color ?? 'var(--indigo-500)'
                     const dueLabel = formatDueLabel(item.due_date, date)
                     const blockHeight = item.durationMinutes * PIXELS_PER_MINUTE
                     const compactBlock = blockHeight < COMPACT_BLOCK_THRESHOLD
@@ -1289,14 +1290,14 @@ export function PlanView({
                           ...getColumnLayout(placement),
                           height: blockHeight,
                           minHeight: compactBlock ? 34 : 44,
-                          background: `${categoryColor}20`,
-                          border: `1px solid ${runningTodoId === item.todo_id ? '#22c55e' : `${categoryColor}70`}`,
+                          background: `color-mix(in srgb, ${categoryColor} 12.5%, transparent)`,
+                          border: `1px solid ${runningTodoId === item.todo_id ? 'var(--green-500)' : `color-mix(in srgb, ${categoryColor} 43.9%, transparent)`}`,
                           borderRadius: 12,
                           boxSizing: 'border-box',
                           overflow: 'hidden',
                           zIndex: interaction?.itemId === item.id ? 5 : 2,
                           transition: interaction?.itemId === item.id ? 'none' : 'top 120ms ease, left 120ms ease, height 120ms ease, box-shadow 120ms ease',
-                          boxShadow: interaction?.itemId === item.id ? '0 16px 32px rgba(15, 23, 42, 0.28)' : 'none'
+                          boxShadow: interaction?.itemId === item.id ? '0 16px 32px color-mix(in srgb, var(--slate-900) 28%, transparent)' : 'none'
                         }}
                         onDoubleClick={() => onSelectTodo(item.todo_id)}
                       >
@@ -1316,27 +1317,27 @@ export function PlanView({
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                            <span style={{ fontSize: '0.7rem', color: '#dbeafe', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--blue-100)', fontWeight: 700, whiteSpace: 'nowrap' }}>
                               {offsetToClock(item.startMinutes)} - {offsetToClock(item.endMinutes)}
                             </span>
                             {!compactBlock && item.status === 'done' && (
-                              <span style={{ fontSize: '0.62rem', color: '#86efac', background: '#052e16', borderRadius: 999, padding: '1px 6px' }}>
+                              <span style={{ fontSize: '0.62rem', color: 'var(--green-300)', background: 'var(--green-950)', borderRadius: 999, padding: '1px 6px' }}>
                                 完了
                               </span>
                             )}
                             {!compactBlock && runningTodoId === item.todo_id && (
-                              <span style={{ fontSize: '0.62rem', color: '#86efac', background: '#052e16', borderRadius: 999, padding: '1px 6px' }}>
+                              <span style={{ fontSize: '0.62rem', color: 'var(--green-300)', background: 'var(--green-950)', borderRadius: 999, padding: '1px 6px' }}>
                                 計測中
                               </span>
                             )}
                             {!compactBlock && <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void onShiftItem(item.id, -15)} style={miniActionBtn('#1e293b', '#cbd5e1')} title="15分早める">−15</button>
-                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void onShiftItem(item.id, 15)} style={miniActionBtn('#1e293b', '#cbd5e1')} title="15分遅らせる">+15</button>
+                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void onShiftItem(item.id, -15)} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分早める">−15</button>
+                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void onShiftItem(item.id, 15)} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分遅らせる">+15</button>
                               {onShiftFollowing && (
                                 <button
                                   onPointerDown={(event) => event.stopPropagation()}
                                   onClick={() => void onShiftFollowing(item.id, 15)}
-                                  style={miniActionBtn('#172554', '#bfdbfe')}
+                                  style={miniActionBtn('var(--blue-950)', 'var(--blue-200)')}
                                   title="この予定と、これ以降の予定を15分遅らせる"
                                 >
                                   以降+15
@@ -1345,7 +1346,7 @@ export function PlanView({
                               <button
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={() => void duplicateBlock(item)}
-                                style={miniActionBtn('#1e293b', '#cbd5e1')}
+                                style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
                                 title="同じタスクをこの直後にもう1つ置く"
                               >
                                 複製
@@ -1359,7 +1360,7 @@ export function PlanView({
                                   })
                                   void onUpdateItem(item.id, { scheduled_start: null }).then(() => onReorder(reorderIdsByTime(nextItems)))
                                 }}
-                                style={miniActionBtn('#1e293b', '#cbd5e1')}
+                                style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
                                 title="未定に戻す"
                               >
                                 未定
@@ -1367,7 +1368,7 @@ export function PlanView({
                               <button
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={() => void onRemoveItem(item.id)}
-                                style={miniActionBtn('#3f1d1d', '#fca5a5')}
+                                style={miniActionBtn('var(--c-3f1d1d)', 'var(--red-300)')}
                                 title="今日の計画から外す"
                               >
                                 外す
@@ -1382,7 +1383,7 @@ export function PlanView({
                               background: 'transparent',
                               border: 'none',
                               padding: 0,
-                              color: '#f8fafc',
+                              color: 'var(--slate-50)',
                               cursor: 'pointer',
                               fontSize: '0.84rem',
                               fontWeight: 700,
@@ -1392,11 +1393,11 @@ export function PlanView({
                               whiteSpace: 'nowrap'
                             }}
                           >
-                            {item.status === 'on_hold' && <span style={{ color: '#d8b4fe' }}>保留中 · </span>}{item.title}
+                            {item.status === 'on_hold' && <span style={{ color: 'var(--purple-300)' }}>保留中 · </span>}{item.title}
                           </button>
 
                           {!compactBlock && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: '#cbd5e1' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: 'var(--slate-300)' }}>
                               {item.category_name && <span>{item.category_name}</span>}
                               <span>{dueLabel}</span>
                               <span>{formatMinutes(item.durationMinutes)}</span>
@@ -1417,7 +1418,7 @@ export function PlanView({
                             bottom: 0,
                             height: 10,
                             cursor: 'ns-resize',
-                            background: `${categoryColor}55`
+                            background: `color-mix(in srgb, ${categoryColor} 33.3%, transparent)`
                           }}
                         />
                       </div>
@@ -1460,7 +1461,7 @@ export function PlanView({
               ) : (
                 suggestions.map((group) => (
                   <div key={group.title} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 700 }}>{group.title}</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--slate-400)', fontWeight: 700 }}>{group.title}</div>
                     {group.items.map((todo) => (
                       <CandidateCard
                         key={`${group.title}-${todo.id}`}
@@ -1513,7 +1514,7 @@ export function PlanView({
           </Section>
 
           <Section title="使い方">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, color: '#94a3b8', fontSize: '0.8rem', lineHeight: 1.6 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, color: 'var(--slate-400)', fontSize: '0.8rem', lineHeight: 1.6 }}>
               <div>候補や未割り当てのカードは、ドラッグして時間割へ落とすか、「時間に置く」を押してから空き時間をクリックすると配置できます。</div>
               <div>時間割のブロックは、ドラッグで開始時刻、下端ドラッグで長さを調整できます。</div>
               <div>同じタスクは1日に何個でも置けます。ブロックの「複製」を押すか、「タスクを探す」から同じタスクをもう一度ドラッグしてください。</div>

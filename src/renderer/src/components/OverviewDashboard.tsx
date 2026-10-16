@@ -13,6 +13,7 @@ import type {
   Todo,
   TodoCoAssignee
 } from '../types'
+import { dataInk } from '../lib/theme'
 
 interface Props {
   todos: Todo[]
@@ -95,11 +96,11 @@ function reasonLabel(reason: OverviewTaskItem['reason']): string {
 }
 
 function reasonTone(reason: OverviewTaskItem['reason']): { color: string; background: string; border: string } {
-  if (reason === 'overdue') return { color: '#fecaca', background: '#7f1d1d', border: '#b91c1c' }
-  if (reason === 'dueSoon' || reason === 'dueToday') return { color: '#fed7aa', background: '#7c2d12', border: '#ea580c' }
-  if (reason === 'highPriority') return { color: '#fde68a', background: '#78350f', border: '#d97706' }
-  if (reason === 'stale') return { color: '#cbd5e1', background: '#1e293b', border: '#475569' }
-  return { color: '#bfdbfe', background: '#172554', border: '#2563eb' }
+  if (reason === 'overdue') return { color: 'var(--red-200)', background: 'var(--red-900)', border: 'var(--red-700)' }
+  if (reason === 'dueSoon' || reason === 'dueToday') return { color: 'var(--orange-200)', background: 'var(--orange-900)', border: 'var(--orange-600)' }
+  if (reason === 'highPriority') return { color: 'var(--amber-200)', background: 'var(--amber-900)', border: 'var(--amber-600)' }
+  if (reason === 'stale') return { color: 'var(--slate-300)', background: 'var(--slate-800)', border: 'var(--slate-600)' }
+  return { color: 'var(--blue-200)', background: 'var(--blue-950)', border: 'var(--blue-600)' }
 }
 
 function SummaryCard({
@@ -116,20 +117,20 @@ function SummaryCard({
   return (
     <div
       style={{
-        background: '#111827',
-        border: '1px solid #1f2937',
+        background: 'var(--gray-900)',
+        border: '1px solid var(--gray-800)',
         borderRadius: 14,
         padding: '14px 16px',
         minWidth: 0
       }}
     >
-      <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         {label}
       </div>
       <div style={{ fontSize: '1.5rem', color: tone, fontWeight: 700, marginTop: 8 }}>
         {value}
       </div>
-      <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: 6 }}>
+      <div style={{ fontSize: '0.78rem', color: 'var(--slate-400)', marginTop: 6 }}>
         {detail}
       </div>
     </div>
@@ -148,19 +149,19 @@ function Section({
   return (
     <section
       style={{
-        background: '#111827',
-        border: '1px solid #1f2937',
+        background: 'var(--gray-900)',
+        border: '1px solid var(--gray-800)',
         borderRadius: 16,
         padding: 16,
         minWidth: 0
       }}
     >
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: '0.95rem', color: '#e5e7eb', fontWeight: 700 }}>
+        <div style={{ fontSize: '0.95rem', color: 'var(--gray-200)', fontWeight: 700 }}>
           {title}
         </div>
         {subtitle && (
-          <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
+          <div style={{ fontSize: '0.76rem', color: 'var(--slate-500)' }}>
             {subtitle}
           </div>
         )}
@@ -171,13 +172,13 @@ function Section({
 }
 
 function CategoryRow({ category }: { category: OverviewCategoryStat }): React.JSX.Element {
-  const tone = category.categoryColor ?? '#6366f1'
+  const tone = category.categoryColor ?? 'var(--indigo-500)'
 
   return (
     <div
       style={{
-        background: '#0f172a',
-        border: '1px solid #1e293b',
+        background: 'var(--slate-900)',
+        border: '1px solid var(--slate-800)',
         borderRadius: 12,
         padding: '12px 14px'
       }}
@@ -193,10 +194,10 @@ function CategoryRow({ category }: { category: OverviewCategoryStat }): React.JS
           }}
         />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '0.88rem', color: '#e5e7eb', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: '0.88rem', color: 'var(--gray-200)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {category.categoryName}
           </div>
-          <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: 2 }}>
+          <div style={{ fontSize: '0.74rem', color: 'var(--slate-500)', marginTop: 2 }}>
             {category.doneTasks}/{category.totalTasks}件 完了
             {'  ・  '}
             {category.activeTasks}件 進行中
@@ -204,20 +205,20 @@ function CategoryRow({ category }: { category: OverviewCategoryStat }): React.JS
           </div>
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={{ fontSize: '0.92rem', color: '#f8fafc', fontWeight: 700 }}>
+          <div style={{ fontSize: '0.92rem', color: 'var(--slate-50)', fontWeight: 700 }}>
             {category.completionScore}%
           </div>
-          <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
+          <div style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>
             平均 {category.avgActiveProgress}%
           </div>
         </div>
       </div>
-      <div style={{ marginTop: 10, height: 8, background: '#020617', borderRadius: 999 }}>
+      <div style={{ marginTop: 10, height: 8, background: 'var(--slate-950)', borderRadius: 999 }}>
         <div
           style={{
             height: '100%',
             width: `${category.completionScore}%`,
-            background: `linear-gradient(90deg, ${tone}, #22c55e)`,
+            background: `linear-gradient(90deg, ${tone}, var(--green-500))`,
             borderRadius: 999
           }}
         />
@@ -239,27 +240,27 @@ function AssigneeLabels({
 }): React.JSX.Element {
   const names = [assigneeName, ...coAssignees.map((item) => item.display_name)].filter((name): name is string => Boolean(name))
   if (names.length === 0) {
-    return <span style={{ fontSize: '0.72rem', color: '#64748b' }}>{label ? `${label}: ` : ''}未割り当て</span>
+    return <span style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{label ? `${label}: ` : ''}未割り当て</span>
   }
 
   const visibleCoAssignees = coAssignees.slice(0, assigneeName ? 1 : 2)
   const hiddenCount = coAssignees.length - visibleCoAssignees.length
   return (
     <span title={names.join('、')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', minWidth: 0 }}>
-      {label && <span style={{ fontSize: '0.68rem', color: '#64748b' }}>{label}:</span>}
+      {label && <span style={{ fontSize: '0.68rem', color: 'var(--slate-500)' }}>{label}:</span>}
       {assigneeName && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: '#cbd5e1' }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: assigneeColor ?? '#64748b' }} />
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: 'var(--slate-300)' }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: assigneeColor ?? 'var(--slate-500)' }} />
           {assigneeName}
         </span>
       )}
       {visibleCoAssignees.map((item) => (
-        <span key={item.user_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', color: '#94a3b8', background: '#1e293b', borderRadius: 999, padding: '1px 6px' }}>
+        <span key={item.user_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', color: 'var(--slate-400)', background: 'var(--slate-800)', borderRadius: 999, padding: '1px 6px' }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: item.color }} />
           {item.display_name}
         </span>
       ))}
-      {hiddenCount > 0 && <span style={{ fontSize: '0.68rem', color: '#64748b' }}>+{hiddenCount}</span>}
+      {hiddenCount > 0 && <span style={{ fontSize: '0.68rem', color: 'var(--slate-500)' }}>+{hiddenCount}</span>}
     </span>
   )
 }
@@ -321,48 +322,48 @@ function MemberActivityCard({
   ]
 
   return (
-    <article style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: 14, minWidth: 0 }}>
+    <article style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: 14, minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
-        <strong style={{ color: '#e2e8f0', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.display_name}</strong>
-        <span style={{ marginLeft: 'auto', color: activityCount > 0 ? '#86efac' : '#64748b', fontSize: '0.7rem' }}>
+        <strong style={{ color: 'var(--slate-200)', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.display_name}</strong>
+        <span style={{ marginLeft: 'auto', color: activityCount > 0 ? 'var(--green-300)' : 'var(--slate-500)', fontSize: '0.7rem' }}>
           {activityCount > 0 ? '活動あり' : '活動なし'}
         </span>
       </div>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 10 }}>
-        {badges.map((badge) => <span key={badge} style={{ background: '#1e293b', color: '#94a3b8', borderRadius: 999, padding: '2px 7px', fontSize: '0.66rem' }}>{badge}</span>)}
+        {badges.map((badge) => <span key={badge} style={{ background: 'var(--slate-800)', color: 'var(--slate-400)', borderRadius: 999, padding: '2px 7px', fontSize: '0.66rem' }}>{badge}</span>)}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-        <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>進捗ログ（{notes.length}件）</div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)', fontWeight: 700 }}>進捗ログ（{notes.length}件）</div>
         {notes.length === 0 ? (
-          <span style={{ color: '#64748b', fontSize: '0.74rem' }}>この期間の進捗ログはありません。</span>
+          <span style={{ color: 'var(--slate-500)', fontSize: '0.74rem' }}>この期間の進捗ログはありません。</span>
         ) : notes.map((item) => {
           const note = notesById.get(item.id)
           return note ? (
             <ProgressNoteThread key={item.id} note={note} showTask onSelectTodo={onSelectTodo} />
           ) : (
-            <div key={item.id} style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 10, padding: '9px 11px', fontSize: '0.8rem' }}>
-              <div style={{ color: '#64748b', fontSize: '0.72rem' }}>{formatShortDateTime(item.created_at)} ・ {item.todo_title}</div>
-              <div style={{ marginTop: 4, color: '#e2e8f0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{item.body}</div>
+            <div key={item.id} style={{ background: 'var(--gray-900)', border: '1px solid var(--gray-800)', borderRadius: 10, padding: '9px 11px', fontSize: '0.8rem' }}>
+              <div style={{ color: 'var(--slate-500)', fontSize: '0.72rem' }}>{formatShortDateTime(item.created_at)} ・ {item.todo_title}</div>
+              <div style={{ marginTop: 4, color: 'var(--slate-200)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{item.body}</div>
             </div>
           )
         })}
       </div>
       {orphanComments.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
-          <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>ほかの進捗ログへの返信（{orphanComments.length}件）</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)', fontWeight: 700 }}>ほかの進捗ログへの返信（{orphanComments.length}件）</div>
           {orphanComments.map((comment) => (
-            <div key={comment.id} style={{ borderLeft: '2px solid #a78bfa66', paddingLeft: 9 }}>
+            <div key={comment.id} style={{ borderLeft: '2px solid color-mix(in srgb, var(--violet-400) 40%, transparent)', paddingLeft: 9 }}>
               <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', fontSize: '0.72rem' }}>
-                <span style={{ color: '#64748b' }}>{formatShortDateTime(comment.created_at)}</span>
+                <span style={{ color: 'var(--slate-500)' }}>{formatShortDateTime(comment.created_at)}</span>
                 <button
                   onClick={() => onSelectTodo(comment.todo_id)}
-                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#93c5fd', fontSize: '0.72rem', fontWeight: 700 }}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--blue-300)', fontSize: '0.72rem', fontWeight: 700 }}
                 >
                   {comment.todo_title}
                 </button>
               </div>
-              <div style={{ marginTop: 2, fontSize: '0.8rem', color: '#cbd5e1', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
+              <div style={{ marginTop: 2, fontSize: '0.8rem', color: 'var(--slate-300)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
                 <LinkedText text={comment.body} />
               </div>
             </div>
@@ -370,15 +371,15 @@ function MemberActivityCard({
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 12 }}>
-        <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>その他の活動（直近）</div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)', fontWeight: 700 }}>その他の活動（直近）</div>
         {recent.length === 0 ? (
-          <span style={{ color: '#64748b', fontSize: '0.74rem' }}>この期間のその他の活動はありません。</span>
+          <span style={{ color: 'var(--slate-500)', fontSize: '0.74rem' }}>この期間のその他の活動はありません。</span>
         ) : recent.map((item) => (
           <div key={item.id} style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '2px 8px', fontSize: '0.72rem' }}>
-            <span style={{ color: '#a78bfa' }}>{item.kind}</span>
-            <span style={{ color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.todoTitle}</span>
-            <span style={{ color: '#475569' }}>{formatDateTime(item.at)}</span>
-            {item.detail ? <span title={item.detail} style={{ color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.detail}</span> : <span />}
+            <span style={{ color: 'var(--violet-400)' }}>{item.kind}</span>
+            <span style={{ color: 'var(--slate-300)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.todoTitle}</span>
+            <span style={{ color: 'var(--slate-600)' }}>{formatDateTime(item.at)}</span>
+            {item.detail ? <span title={item.detail} style={{ color: 'var(--slate-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.detail}</span> : <span />}
           </div>
         ))}
       </div>
@@ -400,8 +401,8 @@ function TaskRow({
       onClick={() => onSelect(item.todoId)}
       style={{
         width: '100%',
-        background: '#0f172a',
-        border: '1px solid #1e293b',
+        background: 'var(--slate-900)',
+        border: '1px solid var(--slate-800)',
         borderRadius: 12,
         padding: '12px 14px',
         cursor: 'pointer',
@@ -426,8 +427,8 @@ function TaskRow({
           <span
             style={{
               fontSize: '0.68rem',
-              color: item.categoryColor ?? '#a5b4fc',
-              background: `${item.categoryColor ?? '#6366f1'}20`,
+              color: dataInk(item.categoryColor ?? 'var(--indigo-300)'),
+              background: `color-mix(in srgb, ${item.categoryColor ?? 'var(--indigo-500)'} 12.5%, transparent)`,
               borderRadius: 999,
               padding: '2px 8px',
               flexShrink: 0
@@ -436,12 +437,12 @@ function TaskRow({
             {item.categoryName}
           </span>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: '#fbbf24' }}>
+        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--amber-400)' }}>
           優先度 {item.priority}
         </span>
       </div>
 
-      <div style={{ marginTop: 10, fontSize: '0.9rem', color: '#e5e7eb', fontWeight: 600, lineHeight: 1.45 }}>
+      <div style={{ marginTop: 10, fontSize: '0.9rem', color: 'var(--gray-200)', fontWeight: 600, lineHeight: 1.45 }}>
         {item.title}
       </div>
 
@@ -450,18 +451,18 @@ function TaskRow({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
-        <span style={{ fontSize: '0.75rem', color: '#93c5fd' }}>
+        <span style={{ fontSize: '0.75rem', color: 'var(--blue-300)' }}>
           {formatDueLabel(item.dueDate)}
         </span>
-        <span style={{ fontSize: '0.75rem', color: '#86efac' }}>
+        <span style={{ fontSize: '0.75rem', color: 'var(--green-300)' }}>
           進捗 {item.progress}%
         </span>
         {item.subTaskTotal > 0 && (
-          <span style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--slate-300)' }}>
             サブタスク {item.subTaskDone}/{item.subTaskTotal}
           </span>
         )}
-        <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: 'auto' }}>
+        <span style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginLeft: 'auto' }}>
           {formatIdleLabel(item.updatedAt)}
         </span>
       </div>
@@ -486,7 +487,7 @@ function TaskList({
     <Section title={title} subtitle={subtitle}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {items.length === 0 ? (
-          <div style={{ color: '#64748b', fontSize: '0.82rem', padding: '8px 2px' }}>
+          <div style={{ color: 'var(--slate-500)', fontSize: '0.82rem', padding: '8px 2px' }}>
             {emptyLabel}
           </div>
         ) : (
@@ -511,8 +512,8 @@ function CompletedSubTaskRow({
       onClick={() => onSelect(item.todo_id)}
       style={{
         width: '100%',
-        background: '#0f172a',
-        border: '1px solid #1e293b',
+        background: 'var(--slate-900)',
+        border: '1px solid var(--slate-800)',
         borderRadius: 12,
         padding: '12px 14px',
         cursor: 'pointer',
@@ -523,9 +524,9 @@ function CompletedSubTaskRow({
         <span
           style={{
             fontSize: '0.68rem',
-            color: '#86efac',
-            background: '#052e16',
-            border: '1px solid #166534',
+            color: 'var(--green-300)',
+            background: 'var(--green-950)',
+            border: '1px solid var(--green-800)',
             borderRadius: 999,
             padding: '2px 8px'
           }}
@@ -536,8 +537,8 @@ function CompletedSubTaskRow({
           <span
             style={{
               fontSize: '0.68rem',
-              color: item.category_color ?? '#a5b4fc',
-              background: `${item.category_color ?? '#6366f1'}20`,
+              color: dataInk(item.category_color ?? 'var(--indigo-300)'),
+              background: `color-mix(in srgb, ${item.category_color ?? 'var(--indigo-500)'} 12.5%, transparent)`,
               borderRadius: 999,
               padding: '2px 8px'
             }}
@@ -545,15 +546,15 @@ function CompletedSubTaskRow({
             {item.category_name}
           </span>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: '#64748b' }}>
+        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--slate-500)' }}>
           {formatDateTime(item.completed_at)}
         </span>
       </div>
 
-      <div style={{ marginTop: 10, fontSize: '0.9rem', color: '#e5e7eb', fontWeight: 600, lineHeight: 1.45 }}>
+      <div style={{ marginTop: 10, fontSize: '0.9rem', color: 'var(--gray-200)', fontWeight: 600, lineHeight: 1.45 }}>
         {item.title}
       </div>
-      <div style={{ marginTop: 6, fontSize: '0.74rem', color: '#94a3b8' }}>
+      <div style={{ marginTop: 6, fontSize: '0.74rem', color: 'var(--slate-400)' }}>
         親タスク: {item.todo_title}
       </div>
       <div style={{ marginTop: 7, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -651,34 +652,34 @@ export function OverviewDashboard({
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 18, flexWrap: 'wrap' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: '1.2rem', color: '#f8fafc', fontWeight: 700 }}>
+            <div style={{ fontSize: '1.2rem', color: 'var(--slate-50)', fontWeight: 700 }}>
               ダッシュボード
             </div>
             {listFilters}
           </div>
-          <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: 4 }}>
+          <div style={{ fontSize: '0.82rem', color: 'var(--slate-500)', marginTop: 4 }}>
             {data?.categories.length ?? 0}カテゴリを1画面で俯瞰
           </div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, border: '1px solid #334155', background: '#111827', borderRadius: 999, padding: '3px 9px', fontSize: '0.74rem', color: '#cbd5e1' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, border: '1px solid var(--slate-700)', background: 'var(--gray-900)', borderRadius: 999, padding: '3px 9px', fontSize: '0.74rem', color: 'var(--slate-300)' }}>
             {selectedUser && <span style={{ width: 7, height: 7, borderRadius: '50%', background: selectedUser.color }} />}
             対象: {scopeLabel}
           </div>
         </div>
         {data && (
-          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+          <div style={{ fontSize: '0.78rem', color: 'var(--slate-500)' }}>
             進行中 {data.summary.activeTasks}件 / 完了 {data.summary.doneTasks}件
           </div>
         )}
       </div>
 
       {loading && !data ? (
-        <div style={{ color: '#64748b', fontSize: '0.9rem', paddingTop: 24 }}>
+        <div style={{ color: 'var(--slate-500)', fontSize: '0.9rem', paddingTop: 24 }}>
           ダッシュボードを読み込み中...
         </div>
       ) : null}
 
       {!loading && !data ? (
-        <div style={{ color: '#fca5a5', fontSize: '0.9rem', paddingTop: 24 }}>
+        <div style={{ color: 'var(--red-300)', fontSize: '0.9rem', paddingTop: 24 }}>
           ダッシュボードの読み込みに失敗しました。
         </div>
       ) : null}
@@ -690,47 +691,47 @@ export function OverviewDashboard({
               label="完了率"
               value={`${data.summary.completionRate}%`}
               detail={`${data.summary.doneTasks}/${data.summary.totalTasks}件 完了`}
-              tone="#4ade80"
+              tone="var(--green-400)"
             />
             <SummaryCard
               label="進捗スコア"
               value={`${data.summary.completionScore}%`}
               detail={`進行中平均 ${data.summary.avgActiveProgress}%`}
-              tone="#60a5fa"
+              tone="var(--blue-400)"
             />
             <SummaryCard
               label="進行中"
               value={`${data.summary.activeTasks}`}
               detail="現在動いているタスク"
-              tone="#f8fafc"
+              tone="var(--slate-50)"
             />
             <SummaryCard
               label="要注意"
               value={`${atRiskCount}`}
               detail={`期限超過 ${data.summary.overdueTasks}件 / 直近 ${data.summary.dueSoonTasks}件`}
-              tone={atRiskCount > 0 ? '#fb7185' : '#4ade80'}
+              tone={atRiskCount > 0 ? 'var(--rose-400)' : 'var(--green-400)'}
             />
             <SummaryCard
               label="今日の作業"
               value={formatMinutes(data.summary.todayMinutes)}
               detail="今日の記録時間"
-              tone="#fbbf24"
+              tone="var(--amber-400)"
             />
             <SummaryCard
               label="今週完了サブタスク"
               value={`${data.summary.completedSubTasksThisWeek}件`}
               detail="今週完了したサブタスク数"
-              tone="#34d399"
+              tone="var(--emerald-400)"
             />
           </div>
 
           <Section title={selectedAssigneeId === null ? 'メンバーそれぞれの活動' : `${scopeLabel}の活動`} subtitle={`${data.activityFrom}〜${data.activityTo}・作業 ${formatMinutes(activityWorkMinutes)} / ${activityLogCount}回 記録`}>
             {selectedAssigneeId === '' ? (
-              <div style={{ color: '#64748b', fontSize: '0.82rem', padding: '8px 2px' }}>
+              <div style={{ color: 'var(--slate-500)', fontSize: '0.82rem', padding: '8px 2px' }}>
                 未割り当てタスクには、メンバーに紐づく活動集計はありません。
               </div>
             ) : data.memberActivity.length === 0 ? (
-              <div style={{ color: '#64748b', fontSize: '0.82rem', padding: '8px 2px' }}>
+              <div style={{ color: 'var(--slate-500)', fontSize: '0.82rem', padding: '8px 2px' }}>
                 この期間に表示できるメンバー活動はありません。
               </div>
             ) : (
@@ -751,7 +752,7 @@ export function OverviewDashboard({
           <Section title="今週完了したサブタスク" subtitle={`${data.completedSubTasks.length}件を表示`}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {data.completedSubTasks.length === 0 ? (
-                <div style={{ color: '#64748b', fontSize: '0.82rem', padding: '8px 2px' }}>
+                <div style={{ color: 'var(--slate-500)', fontSize: '0.82rem', padding: '8px 2px' }}>
                   今週完了したサブタスクはありません。
                 </div>
               ) : (
@@ -797,8 +798,8 @@ export function OverviewDashboard({
                     onClick={() => onSelectTodo(runningTodo.id)}
                     style={{
                       width: '100%',
-                      background: '#0f172a',
-                      border: '1px solid #1e293b',
+                      background: 'var(--slate-900)',
+                      border: '1px solid var(--slate-800)',
                       borderRadius: 14,
                       padding: '14px 16px',
                       cursor: 'pointer',
@@ -806,15 +807,15 @@ export function OverviewDashboard({
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: '0.72rem', color: '#4ade80', background: '#052e16', borderRadius: 999, padding: '2px 8px' }}>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--green-400)', background: 'var(--green-950)', borderRadius: 999, padding: '2px 8px' }}>
                         計測中
                       </span>
                       {runningTodo.category_name && (
                         <span
                           style={{
                             fontSize: '0.68rem',
-                            color: runningTodo.category_color ?? '#a5b4fc',
-                            background: `${runningTodo.category_color ?? '#6366f1'}20`,
+                            color: dataInk(runningTodo.category_color ?? 'var(--indigo-300)'),
+                            background: `color-mix(in srgb, ${runningTodo.category_color ?? 'var(--indigo-500)'} 12.5%, transparent)`,
                             borderRadius: 999,
                             padding: '2px 8px'
                           }}
@@ -823,15 +824,15 @@ export function OverviewDashboard({
                         </span>
                       )}
                     </div>
-                    <div style={{ marginTop: 10, fontSize: '0.92rem', color: '#f8fafc', fontWeight: 600 }}>
+                    <div style={{ marginTop: 10, fontSize: '0.92rem', color: 'var(--slate-50)', fontWeight: 600 }}>
                       {runningTodo.title}
                     </div>
-                    <div style={{ marginTop: 10, fontSize: '1.3rem', color: '#4ade80', fontWeight: 700 }}>
+                    <div style={{ marginTop: 10, fontSize: '1.3rem', color: 'var(--green-400)', fontWeight: 700 }}>
                       <RunningElapsed startTime={timerStartTime} />
                     </div>
                   </button>
                 ) : (
-                  <div style={{ color: '#64748b', fontSize: '0.82rem', padding: '8px 2px' }}>
+                  <div style={{ color: 'var(--slate-500)', fontSize: '0.82rem', padding: '8px 2px' }}>
                     どれかのタスクでタイマーを始めると、ここに表示されます。
                   </div>
                 )}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import type { Todo, WorkLogSummaryRow, CalendarSubTask } from '../types'
+import { dataInk } from '../lib/theme'
 
 interface Props {
   todos: Todo[]
@@ -44,9 +45,9 @@ function getTodayKey(): string {
 
 function getDueDateColor(dateStr: string): string {
   const diffDays = (parseDateKey(dateStr).getTime() - parseDateKey(getTodayKey()).getTime()) / 86400000
-  if (diffDays < 0) return '#ef4444'
-  if (diffDays < 1) return '#f97316'
-  if (diffDays <= 3) return '#f59e0b'
+  if (diffDays < 0) return 'var(--red-500)'
+  if (diffDays < 1) return 'var(--orange-500)'
+  if (diffDays <= 3) return 'var(--amber-500)'
   return ''
 }
 
@@ -66,17 +67,17 @@ function compareDueItems(a: CalendarDueItem, b: CalendarDueItem): number {
 function getItemTone(item: CalendarDueItem): { background: string; border: string; color: string } {
   const isDone = item.kind === 'todo' ? item.status === 'done' : item.done
   const dueColor = getDueDateColor(item.dueDate)
-  const baseColor = item.categoryColor ?? '#6366f1'
+  const baseColor = item.categoryColor ?? 'var(--indigo-500)'
 
   if (isDone) {
-    return { background: '#16a34a20', border: '#16a34a50', color: '#4ade80' }
+    return { background: 'color-mix(in srgb, var(--green-600) 12.5%, transparent)', border: 'color-mix(in srgb, var(--green-600) 31.4%, transparent)', color: 'var(--green-400)' }
   }
 
   if (dueColor) {
-    return { background: `${dueColor}20`, border: `${dueColor}60`, color: '#e2e8f0' }
+    return { background: `color-mix(in srgb, ${dueColor} 12.5%, transparent)`, border: `color-mix(in srgb, ${dueColor} 37.6%, transparent)`, color: 'var(--slate-200)' }
   }
 
-  return { background: `${baseColor}20`, border: `${baseColor}50`, color: '#e2e8f0' }
+  return { background: `color-mix(in srgb, ${baseColor} 12.5%, transparent)`, border: `color-mix(in srgb, ${baseColor} 31.4%, transparent)`, color: 'var(--slate-200)' }
 }
 
 function buildDueItems(todos: Todo[], subTasks: CalendarSubTask[]): Map<string, CalendarDueItem[]> {
@@ -203,7 +204,7 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
       <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={prevMonth} style={navBtn}>‹</button>
-          <h2 style={{ flex: 1, textAlign: 'center', fontSize: '1rem', color: '#e2e8f0' }}>
+          <h2 style={{ flex: 1, textAlign: 'center', fontSize: '1rem', color: 'var(--slate-200)' }}>
             {year}年{month + 1}月
           </h2>
           <button onClick={nextMonth} style={navBtn}>›</button>
@@ -219,7 +220,7 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
                 fontSize: '0.72rem',
                 fontWeight: 'bold',
                 padding: '4px 0',
-                color: i === 0 ? '#ef4444' : i === 6 ? '#60a5fa' : '#64748b'
+                color: i === 0 ? 'var(--red-500)' : i === 6 ? 'var(--blue-400)' : 'var(--slate-500)'
               }}
             >
               {d}
@@ -247,8 +248,8 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
                 onClick={() => handleDayClick(dateStr)}
                 style={{
                   minHeight: 84,
-                  background: isSelected ? '#1e3a5f' : isToday ? '#1e293b' : '#0d1525',
-                  border: `1px solid ${isSelected ? '#6366f1' : isToday ? '#475569' : '#1e293b'}`,
+                  background: isSelected ? 'var(--c-1e3a5f)' : isToday ? 'var(--slate-800)' : 'var(--c-0d1525)',
+                  border: `1px solid ${isSelected ? 'var(--indigo-500)' : isToday ? 'var(--slate-600)' : 'var(--slate-800)'}`,
                   borderRadius: 6,
                   padding: '4px 5px',
                   display: 'flex',
@@ -263,7 +264,7 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
                     fontSize: '0.72rem',
                     textAlign: 'right',
                     marginBottom: 1,
-                    color: isSelected ? '#818cf8' : isToday ? '#818cf8' : dayOfWeek === 0 ? '#ef4444' : dayOfWeek === 6 ? '#60a5fa' : '#475569',
+                    color: isSelected ? 'var(--indigo-400)' : isToday ? 'var(--indigo-400)' : dayOfWeek === 0 ? 'var(--red-500)' : dayOfWeek === 6 ? 'var(--blue-400)' : 'var(--slate-600)',
                     fontWeight: isToday || isSelected ? 'bold' : 'normal'
                   }}
                 >
@@ -305,7 +306,7 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
                 })}
 
                 {hiddenCount > 0 && (
-                  <div style={{ fontSize: '0.62rem', color: '#64748b', padding: '0 2px' }}>
+                  <div style={{ fontSize: '0.62rem', color: 'var(--slate-500)', padding: '0 2px' }}>
                     +{hiddenCount} 件
                   </div>
                 )}
@@ -314,14 +315,14 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
           })}
         </div>
 
-        <div style={{ display: 'flex', gap: 14, fontSize: '0.68rem', color: '#475569', paddingTop: 4, flexWrap: 'wrap' }}>
-          <span style={{ color: '#ef4444' }}>■ 期限切れ</span>
-          <span style={{ color: '#f97316' }}>■ 今日まで</span>
-          <span style={{ color: '#f59e0b' }}>■ 3日以内</span>
-          <span style={{ color: '#4ade80' }}>■ 完了</span>
-          <span style={{ color: '#94a3b8' }}>□ タスク</span>
-          <span style={{ color: '#94a3b8' }}>▧ サブタスク</span>
-          <span style={{ marginLeft: 'auto', color: '#6366f1' }}>日付をクリック → 期限と作業ログ表示</span>
+        <div style={{ display: 'flex', gap: 14, fontSize: '0.68rem', color: 'var(--slate-600)', paddingTop: 4, flexWrap: 'wrap' }}>
+          <span style={{ color: 'var(--red-500)' }}>■ 期限切れ</span>
+          <span style={{ color: 'var(--orange-500)' }}>■ 今日まで</span>
+          <span style={{ color: 'var(--amber-500)' }}>■ 3日以内</span>
+          <span style={{ color: 'var(--green-400)' }}>■ 完了</span>
+          <span style={{ color: 'var(--slate-400)' }}>□ タスク</span>
+          <span style={{ color: 'var(--slate-400)' }}>▧ サブタスク</span>
+          <span style={{ marginLeft: 'auto', color: 'var(--indigo-500)' }}>日付をクリック → 期限と作業ログ表示</span>
         </div>
       </div>
 
@@ -330,8 +331,8 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
           style={{
             width: 300,
             flexShrink: 0,
-            borderLeft: '1px solid #1e293b',
-            background: '#0a0f1a',
+            borderLeft: '1px solid var(--slate-800)',
+            background: 'var(--c-0a0f1a)',
             overflowY: 'auto',
             padding: 14,
             display: 'flex',
@@ -340,21 +341,21 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: '0.82rem', color: '#e2e8f0', fontWeight: 'bold' }}>{selectedDate}</span>
+            <span style={{ fontSize: '0.82rem', color: 'var(--slate-200)', fontWeight: 'bold' }}>{selectedDate}</span>
             <button
               onClick={() => setSelectedDate(null)}
-              style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: '1rem', padding: '0 2px' }}
+              style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--slate-600)', cursor: 'pointer', fontSize: '1rem', padding: '0 2px' }}
             >
               ×
             </button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               期限アイテム
             </div>
             {selectedDueItems.length === 0 ? (
-              <div style={{ color: '#475569', fontSize: '0.82rem' }}>この日の期限アイテムはありません</div>
+              <div style={{ color: 'var(--slate-600)', fontSize: '0.82rem' }}>この日の期限アイテムはありません</div>
             ) : (
               selectedDueItems.map((item) => {
                 const tone = getItemTone(item)
@@ -363,7 +364,7 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
                     key={`${item.kind}-${item.id}-panel`}
                     onClick={() => onSelectTodo(item.todoId)}
                     style={{
-                      background: '#1e293b',
+                      background: 'var(--slate-800)',
                       borderRadius: 8,
                       padding: '8px 10px',
                       border: `1px ${item.kind === 'subtask' ? 'dashed' : 'solid'} ${tone.border}`,
@@ -372,7 +373,7 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                      <span style={{ fontSize: '0.65rem', color: item.kind === 'subtask' ? '#94a3b8' : '#cbd5e1' }}>
+                      <span style={{ fontSize: '0.65rem', color: item.kind === 'subtask' ? 'var(--slate-400)' : 'var(--slate-300)' }}>
                         {item.kind === 'todo' ? 'TASK' : 'SUB'}
                       </span>
                       <span style={{ fontSize: '0.7rem', color: tone.color, marginLeft: 'auto' }}>
@@ -384,7 +385,7 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
                     <div
                       style={{
                         fontSize: '0.8rem',
-                        color: '#e2e8f0',
+                        color: 'var(--slate-200)',
                         textDecoration: item.kind === 'todo'
                           ? item.status === 'done' ? 'line-through' : 'none'
                           : item.done ? 'line-through' : 'none'
@@ -393,7 +394,7 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
                       {item.kind === 'todo' ? item.title : item.title}
                     </div>
                     {item.kind === 'subtask' && (
-                      <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: 3 }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--slate-500)', marginTop: 3 }}>
                         親タスク: {item.parentTitle}
                       </div>
                     )}
@@ -403,18 +404,18 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
             )}
           </div>
 
-          <div style={{ borderTop: '1px solid #1e293b', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div style={{ borderTop: '1px solid var(--slate-800)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               作業ログ
             </div>
 
             {loadingLogs ? (
-              <div style={{ color: '#475569', fontSize: '0.82rem' }}>読み込み中…</div>
+              <div style={{ color: 'var(--slate-600)', fontSize: '0.82rem' }}>読み込み中…</div>
             ) : logs.length === 0 ? (
-              <div style={{ color: '#475569', fontSize: '0.82rem' }}>この日の作業ログはありません</div>
+              <div style={{ color: 'var(--slate-600)', fontSize: '0.82rem' }}>この日の作業ログはありません</div>
             ) : (
               <>
-                <div style={{ fontSize: '0.72rem', color: '#4ade80', background: '#4ade8015', borderRadius: 6, padding: '4px 10px', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--green-400)', background: 'color-mix(in srgb, var(--green-400) 8.2%, transparent)', borderRadius: 6, padding: '4px 10px', textAlign: 'center' }}>
                   合計 {totalMins}分
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -422,30 +423,30 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
                     <div
                       key={log.id}
                       style={{
-                        background: '#1e293b',
+                        background: 'var(--slate-800)',
                         borderRadius: 8,
                         padding: '8px 10px',
-                        borderLeft: `3px solid ${log.category_color ?? '#6366f1'}`
+                        borderLeft: `3px solid ${log.category_color ?? 'var(--indigo-500)'}`
                       }}
                     >
-                      <div style={{ fontSize: '0.78rem', color: '#e2e8f0', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--slate-200)', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {log.title}
                       </div>
                       {log.category_name && (
-                        <div style={{ fontSize: '0.65rem', color: log.category_color ?? '#6366f1', marginBottom: 3 }}>
+                        <div style={{ fontSize: '0.65rem', color: dataInk(log.category_color ?? 'var(--indigo-500)'), marginBottom: 3 }}>
                           {log.category_name}
                         </div>
                       )}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--slate-400)' }}>
                           {fmt(log.start_time)} ～ {fmt(log.end_time)}
                         </span>
-                        <span style={{ fontSize: '0.7rem', color: '#4ade80', marginLeft: 'auto' }}>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--green-400)', marginLeft: 'auto' }}>
                           {Math.round(log.duration_seconds / 60)}分
                         </span>
                       </div>
                       {log.note && (
-                        <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--slate-500)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           — {log.note}
                         </div>
                       )}
@@ -462,10 +463,10 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
 }
 
 const navBtn: React.CSSProperties = {
-  background: '#1e293b',
-  border: '1px solid #334155',
+  background: 'var(--slate-800)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 6,
-  color: '#94a3b8',
+  color: 'var(--slate-400)',
   cursor: 'pointer',
   fontSize: '1.1rem',
   padding: '4px 12px',

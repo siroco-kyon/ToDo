@@ -8,6 +8,7 @@ import { isAddressedToUser, isUnseen, noteHasUnseen, readProgressSeenAt, writePr
 import { serverNow } from '../lib/serverClock'
 import { NoteMenu, discussionBadgeStyle } from './ProgressNoteThread'
 import { subscribeProgressDraftChanges } from '../lib/legacyProgressDrafts'
+import { dataInk } from '../lib/theme'
 
 export interface ProgressTimelineFocusTarget {
   date?: string | null
@@ -528,14 +529,14 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
     }
   }
   const filterChips: Array<{ value: TimelineFilter; label: string; title: string; color: string }> = [
-    { value: 'all', label: 'すべて', title: '絞り込まずに表示', color: '#cbd5e1' },
+    { value: 'all', label: 'すべて', title: '絞り込まずに表示', color: 'var(--slate-300)' },
     ...(userId ? [
-      { value: 'unseen' as const, label: '新着', title: '前回このタブを見たあとに、ほかの人が書いた投稿・返信があるもの', color: '#93c5fd' },
-      { value: 'mine' as const, label: '自分宛て', title: '自分の投稿・返信への返信、または「@自分」でメンションされたもの', color: '#f9a8d4' },
-      { value: 'myTasks' as const, label: '自分の担当タスク', title: '自分が主担当・サブ担当のタスクへの投稿', color: '#86efac' }
+      { value: 'unseen' as const, label: '新着', title: '前回このタブを見たあとに、ほかの人が書いた投稿・返信があるもの', color: 'var(--blue-300)' },
+      { value: 'mine' as const, label: '自分宛て', title: '自分の投稿・返信への返信、または「@自分」でメンションされたもの', color: 'var(--pink-300)' },
+      { value: 'myTasks' as const, label: '自分の担当タスク', title: '自分が主担当・サブ担当のタスクへの投稿', color: 'var(--green-300)' }
     ] : []),
-    { value: 'discussion', label: '要相談', title: '「要相談」が付いた投稿', color: '#d6b38a' },
-    ...(userId ? [{ value: 'noReaction' as const, label: 'まだ反応なし', title: 'ほかの人の投稿で、まだ返信もリアクションもないもの。ひとこと反応してみましょう', color: '#fde68a' }] : [])
+    { value: 'discussion', label: '要相談', title: '「要相談」が付いた投稿', color: 'var(--c-d6b38a)' },
+    ...(userId ? [{ value: 'noReaction' as const, label: 'まだ反応なし', title: 'ほかの人の投稿で、まだ返信もリアクションもないもの。ひとこと反応してみましょう', color: 'var(--amber-200)' }] : [])
   ]
   const effectiveFilter: TimelineFilter = filterChips.some((chip) => chip.value === timelineFilter) ? timelineFilter : 'all'
   const shownNotes = visibleNotes.filter((note) => matchesTimelineFilter(note, effectiveFilter))
@@ -554,7 +555,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   // 「@」の候補（自分を呼んでも通知は届かないので外す）
   const mentionCandidates = useMemo(() => users.filter((user) => user.id !== userId), [userId, users])
   const currentAuthorName = currentUser?.display_name ?? '自分'
-  const currentAuthorColor = currentUser?.color ?? '#6366f1'
+  const currentAuthorColor = currentUser?.color ?? 'var(--indigo-500)'
 
   const renderComposer = (noteId: string, parentComment: ProgressNoteComment | null, onCancel?: () => void): React.JSX.Element => {
     const key = draftKey(noteId, parentComment?.id ?? null)
@@ -602,7 +603,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
 
   const renderComment = (note: ProgressNote, comment: ProgressNoteComment, depth = 0): React.JSX.Element => {
     const authorName = getAuthorName(comment.author_name)
-    const authorColor = comment.author_color ?? '#64748b'
+    const authorColor = comment.author_color ?? 'var(--slate-500)'
     const editingThisComment = editingCommentId === comment.id
     const displayDepth = depth > 0 ? 1 : 0
     const replies = comment.replies ?? []
@@ -620,8 +621,8 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
         </div>
         <div style={{ flex: 1, minWidth: 0, paddingBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-            <span style={{ color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 800 }}>{authorName}</span>
-            <span style={{ color: '#64748b', fontSize: '0.72rem' }}>{formatDateTime(comment.created_at)}</span>
+            <span style={{ color: 'var(--slate-200)', fontSize: '0.82rem', fontWeight: 800 }}>{authorName}</span>
+            <span style={{ color: 'var(--slate-500)', fontSize: '0.72rem' }}>{formatDateTime(comment.created_at)}</span>
             {comment.updated_at !== comment.created_at && <span style={editedStyle}>編集済み</span>}
             {userId && isUnseen(comment, userId, seenBefore) && <span style={newBadgeStyle}>新着</span>}
           </div>
@@ -670,13 +671,13 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   }
 
   return (
-    <div style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#0f172a' }}>
+    <div style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--slate-900)' }}>
       <div style={headerStyle}>
         <div>
-          <div style={{ fontSize: '1rem', color: '#f8fafc', fontWeight: 800 }}>進捗タイムライン</div>
-          <div style={{ marginTop: 3, color: '#64748b', fontSize: '0.78rem' }}>
+          <div style={{ fontSize: '1rem', color: 'var(--slate-50)', fontWeight: 800 }}>進捗タイムライン</div>
+          <div style={{ marginTop: 3, color: 'var(--slate-500)', fontSize: '0.78rem' }}>
             {range.from === range.to ? range.from : `${range.from} ～ ${range.to}`} ・ 投稿 {visibleNotes.length}件 / コメント {totalComments}件
-            {unseenCount > 0 && <span style={{ color: '#93c5fd', fontWeight: 700 }}> ・ 新着 {unseenCount}件</span>}
+            {unseenCount > 0 && <span style={{ color: 'var(--blue-300)', fontWeight: 700 }}> ・ 新着 {unseenCount}件</span>}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -693,7 +694,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
             }}
             style={inputStyle}
           />
-          <span style={{ color: '#64748b', fontSize: '0.8rem' }}>～</span>
+          <span style={{ color: 'var(--slate-500)', fontSize: '0.8rem' }}>～</span>
           <input
             type="date"
             aria-label="表示期間の終了日"
@@ -755,7 +756,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                 onChange={(event) => setSelectedTodoId(event.target.value)}
                 disabled={taskOptions.length === 0}
                 aria-label="進捗を書くタスク"
-                style={{ ...inputStyle, width: '100%', marginBottom: 8, color: selectedTodoId ? '#e2e8f0' : '#94a3b8' }}
+                style={{ ...inputStyle, width: '100%', marginBottom: 8, color: selectedTodoId ? 'var(--slate-200)' : 'var(--slate-400)' }}
               >
                 {taskOptions.length === 0 ? (
                   <option value="">タスクがありません</option>
@@ -795,7 +796,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                     onInsertTemplate={() => setNoteDraft(withProgressNoteTemplate(noteDraft))}
                     onPostOnTrack={() => void handleCreateNote(ON_TRACK_NOTE)}
                   />
-                  <span style={{ color: '#94a3b8', fontSize: '0.74rem' }}>{noteDraft.length}文字</span>
+                  <span style={{ color: 'var(--slate-400)', fontSize: '0.74rem' }}>{noteDraft.length}文字</span>
                 </span>
                 <button onClick={() => void handleCreateNote()} disabled={!selectedTodoId || !noteDraft.trim() || savingNote} style={primaryPostButtonStyle(Boolean(selectedTodoId && noteDraft.trim() && !savingNote))}>
                   {savingNote ? '投稿中' : '投稿'}
@@ -815,7 +816,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
 
           {!loading && shownNotes.map((note, index) => {
             const authorName = getAuthorName(note.author_name)
-            const authorColor = note.author_color ?? '#64748b'
+            const authorColor = note.author_color ?? 'var(--slate-500)'
             const editingNote = editingNoteId === note.id
             const comments = note.comments ?? []
             const commentCount = countComments(comments)
@@ -827,17 +828,17 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
             return (
               <React.Fragment key={note.id}>
               {showHeading && <div style={groupHeadingStyle}>{heading}</div>}
-              <article id={noteElementId(note.id)} style={{ ...postStyle, boxShadow: noteIsNew || hasNewReply ? 'inset 3px 0 0 #3b82f6' : undefined }}>
+              <article id={noteElementId(note.id)} style={{ ...postStyle, boxShadow: noteIsNew || hasNewReply ? 'inset 3px 0 0 var(--blue-500)' : undefined }}>
                 <div style={{ position: 'relative', width: 52, display: 'flex', justifyContent: 'center' }}>
                   {comments.length > 0 && <div style={{ ...verticalLineStyle, top: 48 }} />}
                   <Avatar name={authorName} color={authorColor} size={42} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ color: '#f8fafc', fontSize: '0.9rem', fontWeight: 800 }}>{authorName}</span>
-                    <span style={{ color: '#64748b', fontSize: '0.74rem' }}>{formatDateTime(note.created_at)}</span>
+                    <span style={{ color: 'var(--slate-50)', fontSize: '0.9rem', fontWeight: 800 }}>{authorName}</span>
+                    <span style={{ color: 'var(--slate-500)', fontSize: '0.74rem' }}>{formatDateTime(note.created_at)}</span>
                     {note.last_reply_at && (
-                      <span style={{ color: '#94a3b8', fontSize: '0.74rem' }}>最終返信：{formatDateTime(note.last_reply_at)}</span>
+                      <span style={{ color: 'var(--slate-400)', fontSize: '0.74rem' }}>最終返信：{formatDateTime(note.last_reply_at)}</span>
                     )}
                     {note.updated_at !== note.created_at && <span style={editedStyle}>編集済み</span>}
                     {note.needs_discussion === 1 && (
@@ -845,11 +846,11 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                     )}
                     {noteIsNew && <span style={newBadgeStyle}>新着</span>}
                     {hasNewReply && <span style={newBadgeStyle}>新しい返信</span>}
-                    <button onClick={() => onSelectTodo(note.todo_id)} style={{ ...taskLinkStyle, color: note.category_color ?? '#93c5fd' }}>{note.todo_title}</button>
+                    <button onClick={() => onSelectTodo(note.todo_id)} style={{ ...taskLinkStyle, color: dataInk(note.category_color ?? 'var(--blue-300)') }}>{note.todo_title}</button>
                   </div>
                   {note.category_name && (
                     <div style={{ marginTop: 5 }}>
-                      <span style={{ ...categoryPillStyle, color: note.category_color ?? '#a5b4fc' }}>{note.category_name}</span>
+                      <span style={{ ...categoryPillStyle, color: dataInk(note.category_color ?? 'var(--indigo-300)') }}>{note.category_name}</span>
                     </div>
                   )}
 
@@ -911,14 +912,14 @@ function Avatar({ name, color, size }: { name: string; color: string; size: numb
         height: size,
         borderRadius: '50%',
         background: color,
-        color: '#fff',
+        color: 'var(--white)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         fontSize: `${Math.max(size * 0.38, 12)}px`,
         fontWeight: 900,
         flexShrink: 0,
-        boxShadow: '0 0 0 3px #0f172a',
+        boxShadow: '0 0 0 3px var(--slate-900)',
         zIndex: 1
       }}
     >
@@ -930,9 +931,9 @@ function Avatar({ name, color, size }: { name: string; color: string; size: numb
 const newBadgeStyle: React.CSSProperties = {
   fontSize: '0.66rem',
   fontWeight: 800,
-  color: '#bfdbfe',
-  background: '#1e3a8a',
-  border: '1px solid #3b82f6',
+  color: 'var(--blue-200)',
+  background: 'var(--blue-900)',
+  border: '1px solid var(--blue-500)',
   borderRadius: 999,
   padding: '0 7px',
   whiteSpace: 'nowrap'
@@ -944,9 +945,9 @@ const groupHeadingStyle: React.CSSProperties = {
   top: 0,
   zIndex: 2,
   padding: '6px 16px',
-  background: '#0f172a',
-  borderBottom: '1px solid #1e293b',
-  color: '#94a3b8',
+  background: 'var(--slate-900)',
+  borderBottom: '1px solid var(--slate-800)',
+  color: 'var(--slate-400)',
   fontSize: '0.74rem',
   fontWeight: 800,
   letterSpacing: '0.02em'
@@ -955,9 +956,9 @@ const groupHeadingStyle: React.CSSProperties = {
 function filterChipStyle(color: string, active: boolean, muted: boolean): React.CSSProperties {
   return {
     fontSize: '0.74rem',
-    color: muted ? '#475569' : active ? '#0f172a' : color,
-    background: active ? color : '#111827',
-    border: `1px solid ${active ? color : muted ? '#1f2937' : `${color}55`}`,
+    color: muted ? 'var(--slate-600)' : active ? 'var(--slate-900)' : color,
+    background: active ? color : 'var(--gray-900)',
+    border: `1px solid ${active ? color : muted ? 'var(--gray-800)' : `color-mix(in srgb, ${color} 33.3%, transparent)`}`,
     borderRadius: 999,
     padding: '3px 10px',
     fontWeight: 700,
@@ -968,8 +969,8 @@ function filterChipStyle(color: string, active: boolean, muted: boolean): React.
 
 const headerStyle: React.CSSProperties = {
   padding: '14px 18px 12px',
-  borderBottom: '1px solid #1e293b',
-  background: '#0b1220',
+  borderBottom: '1px solid var(--slate-800)',
+  background: 'var(--c-0b1220)',
   display: 'flex',
   alignItems: 'flex-start',
   justifyContent: 'space-between',
@@ -981,34 +982,34 @@ const headerStyle: React.CSSProperties = {
 const feedStyle: React.CSSProperties = {
   width: 'min(820px, 100%)',
   margin: '0 auto',
-  borderLeft: '1px solid #1e293b',
-  borderRight: '1px solid #1e293b',
+  borderLeft: '1px solid var(--slate-800)',
+  borderRight: '1px solid var(--slate-800)',
   minHeight: '100%',
-  background: '#0b1220'
+  background: 'var(--c-0b1220)'
 }
 
 const newPostStyle: React.CSSProperties = {
   display: 'flex',
   gap: 12,
   padding: 16,
-  borderBottom: '1px solid #1e293b',
-  background: '#0f172a'
+  borderBottom: '1px solid var(--slate-800)',
+  background: 'var(--slate-900)'
 }
 
 const postStyle: React.CSSProperties = {
   display: 'flex',
   gap: 12,
   padding: '14px 16px',
-  borderBottom: '1px solid #1e293b',
-  background: '#0b1220'
+  borderBottom: '1px solid var(--slate-800)',
+  background: 'var(--c-0b1220)'
 }
 
 const inputStyle: React.CSSProperties = {
   padding: '8px 10px',
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 8,
-  color: '#e2e8f0',
+  color: 'var(--slate-200)',
   fontSize: '0.84rem',
   outline: 'none',
   boxSizing: 'border-box'
@@ -1018,7 +1019,7 @@ const postInputStyle: React.CSSProperties = {
   ...inputStyle,
   width: '100%',
   border: '1px solid transparent',
-  background: '#0b1220',
+  background: 'var(--c-0b1220)',
   resize: 'vertical',
   lineHeight: 1.55,
   fontSize: '0.95rem'
@@ -1028,9 +1029,9 @@ function chipStyle(active: boolean): React.CSSProperties {
   return {
     padding: '8px 11px',
     borderRadius: 999,
-    border: `1px solid ${active ? '#3b82f6' : '#334155'}`,
-    background: active ? '#172554' : '#111827',
-    color: active ? '#dbeafe' : '#94a3b8',
+    border: `1px solid ${active ? 'var(--blue-500)' : 'var(--slate-700)'}`,
+    background: active ? 'var(--blue-950)' : 'var(--gray-900)',
+    color: active ? 'var(--blue-100)' : 'var(--slate-400)',
     cursor: 'pointer',
     fontSize: '0.8rem',
     fontWeight: 800
@@ -1040,9 +1041,9 @@ function chipStyle(active: boolean): React.CSSProperties {
 const secondaryButtonStyle: React.CSSProperties = {
   padding: '8px 11px',
   borderRadius: 999,
-  border: '1px solid #334155',
-  background: '#111827',
-  color: '#cbd5e1',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--gray-900)',
+  color: 'var(--slate-300)',
   cursor: 'pointer',
   fontSize: '0.8rem',
   fontWeight: 800
@@ -1052,9 +1053,9 @@ function primaryPostButtonStyle(active: boolean): React.CSSProperties {
   return {
     padding: '8px 18px',
     borderRadius: 999,
-    border: `1px solid ${active ? '#2563eb' : '#334155'}`,
-    background: active ? '#2563eb' : '#1e293b',
-    color: active ? '#eff6ff' : '#64748b',
+    border: `1px solid ${active ? 'var(--blue-600)' : 'var(--slate-700)'}`,
+    background: active ? 'var(--blue-600)' : 'var(--slate-800)',
+    color: active ? 'var(--on-fill-blue-50)' : 'var(--slate-500)',
     cursor: active ? 'pointer' : 'not-allowed',
     fontSize: '0.84rem',
     fontWeight: 900
@@ -1065,9 +1066,9 @@ function pillButtonStyle(active: boolean): React.CSSProperties {
   return {
     padding: '6px 12px',
     borderRadius: 999,
-    border: `1px solid ${active ? '#2563eb' : '#334155'}`,
-    background: active ? '#172554' : '#1e293b',
-    color: active ? '#dbeafe' : '#64748b',
+    border: `1px solid ${active ? 'var(--blue-600)' : 'var(--slate-700)'}`,
+    background: active ? 'var(--blue-950)' : 'var(--slate-800)',
+    color: active ? 'var(--blue-100)' : 'var(--slate-500)',
     cursor: active ? 'pointer' : 'not-allowed',
     fontSize: '0.76rem',
     fontWeight: 900
@@ -1077,9 +1078,9 @@ function pillButtonStyle(active: boolean): React.CSSProperties {
 const ghostButtonStyle: React.CSSProperties = {
   padding: '6px 10px',
   borderRadius: 999,
-  border: '1px solid #334155',
-  background: '#0f172a',
-  color: '#94a3b8',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--slate-900)',
+  color: 'var(--slate-400)',
   cursor: 'pointer',
   fontSize: '0.76rem',
   fontWeight: 800
@@ -1089,14 +1090,14 @@ const postBodyStyle: React.CSSProperties = {
   marginTop: 10,
   whiteSpace: 'pre-wrap',
   lineHeight: 1.65,
-  color: '#dbeafe',
+  color: 'var(--blue-100)',
   fontSize: '0.94rem',
   wordBreak: 'break-word'
 }
 
 const commentBodyStyle: React.CSSProperties = {
   marginTop: 5,
-  color: '#cbd5e1',
+  color: 'var(--slate-300)',
   fontSize: '0.84rem',
   lineHeight: 1.55,
   whiteSpace: 'pre-wrap',
@@ -1122,7 +1123,7 @@ const commentActionRowStyle: React.CSSProperties = {
 const inlineActionStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
-  color: '#94a3b8',
+  color: 'var(--slate-400)',
   cursor: 'pointer',
   fontSize: '0.72rem',
   fontWeight: 800,
@@ -1130,7 +1131,7 @@ const inlineActionStyle: React.CSSProperties = {
 }
 
 const actionMetaStyle: React.CSSProperties = {
-  color: '#64748b',
+  color: 'var(--slate-500)',
   fontSize: '0.72rem',
   fontWeight: 800
 }
@@ -1149,14 +1150,14 @@ const categoryPillStyle: React.CSSProperties = {
   display: 'inline-flex',
   padding: '2px 8px',
   borderRadius: 999,
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
   fontSize: '0.68rem',
   fontWeight: 800
 }
 
 const editedStyle: React.CSSProperties = {
-  color: '#64748b',
+  color: 'var(--slate-500)',
   fontSize: '0.68rem',
   fontWeight: 700
 }
@@ -1182,14 +1183,14 @@ const verticalLineStyle: React.CSSProperties = {
   top: 34,
   bottom: -8,
   width: 2,
-  background: '#1e293b',
+  background: 'var(--slate-800)',
   borderRadius: 99
 }
 
 const emptyStyle: React.CSSProperties = {
   padding: 32,
-  color: '#64748b',
+  color: 'var(--slate-500)',
   fontSize: '0.9rem',
   textAlign: 'center',
-  borderBottom: '1px solid #1e293b'
+  borderBottom: '1px solid var(--slate-800)'
 }

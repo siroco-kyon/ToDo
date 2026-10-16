@@ -229,31 +229,31 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
   const nearTime = !overTime && personSeconds > state.targetMinutes * 60 - 30
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="定例モード" style={{ position: 'fixed', inset: 0, zIndex: 950, background: '#0b1220', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 20px', borderBottom: '1px solid #1e293b', background: '#0f172a' }}>
-        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#a5b4fc' }}>定例モード</span>
+    <div role="dialog" aria-modal="true" aria-label="定例モード" style={{ position: 'fixed', inset: 0, zIndex: 950, background: 'var(--c-0b1220)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 20px', borderBottom: '1px solid var(--slate-800)', background: 'var(--slate-900)' }}>
+        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--indigo-300)' }}>定例モード</span>
         {group && (
           <>
-            <span style={{ width: 12, height: 12, borderRadius: '50%', background: group.color ?? '#475569', flexShrink: 0 }} />
-            <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc' }}>{group.label}</span>
-            <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{group.summary}</span>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: group.color ?? 'var(--slate-600)', flexShrink: 0 }} />
+            <span style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--slate-50)' }}>{group.label}</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--slate-400)' }}>{group.summary}</span>
           </>
         )}
-        <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{groups.length > 0 ? `${index + 1} / ${groups.length}` : ''}</span>
+        <span style={{ fontSize: '0.8rem', color: 'var(--slate-400)' }}>{groups.length > 0 ? `${index + 1} / ${groups.length}` : ''}</span>
 
         <span
           role="timer"
           aria-label={`この人の時間 ${formatDuration(personSeconds)}`}
-          style={{ marginLeft: 'auto', fontSize: '1.3rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: overTime ? '#f87171' : nearTime ? '#fbbf24' : '#e2e8f0' }}
+          style={{ marginLeft: 'auto', fontSize: '1.3rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: overTime ? 'var(--red-400)' : nearTime ? 'var(--amber-400)' : 'var(--slate-200)' }}
         >
           {formatDuration(personSeconds)}
         </span>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#94a3b8' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: 'var(--slate-400)' }}>
           持ち時間
           <select
             value={state.targetMinutes}
             onChange={(event) => onStateChange((previous) => ({ ...previous, targetMinutes: Number(event.target.value) }))}
-            style={{ padding: '4px 6px', borderRadius: 6, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}
+            style={{ padding: '4px 6px', borderRadius: 6, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)' }}
           >
             {TARGET_MINUTE_OPTIONS.map((minutes) => <option key={minutes} value={minutes}>{minutes}分</option>)}
           </select>
@@ -271,11 +271,11 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
               {renderBody(group.key)}
             </div>
           </div>
-          <aside style={{ borderLeft: '1px solid #1e293b', background: '#0f172a', padding: 16, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
+          <aside style={{ borderLeft: '1px solid var(--slate-800)', background: 'var(--slate-900)', padding: 16, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
             {onCreateTask && (
               <section style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0' }}>決まったことをタスクにする</div>
-                <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{createTaskHint(group.key)}・開始日は今日</div>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--slate-200)' }}>決まったことをタスクにする</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>{createTaskHint(group.key)}・開始日は今日</div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <input
                     value={taskTitle}
@@ -283,21 +283,21 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
                     onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); void createTask() } }}
                     aria-label="決まったこと（タスク名）"
                     placeholder="例: 見積書を再提出する"
-                    style={{ flex: 1, minWidth: 0, padding: '7px 9px', borderRadius: 7, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0', fontSize: '0.82rem' }}
+                    style={{ flex: 1, minWidth: 0, padding: '7px 9px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--c-0b1220)', color: 'var(--slate-200)', fontSize: '0.82rem' }}
                   />
                   <button onClick={() => void createTask()} disabled={!taskTitle.trim() || creatingTask} style={navButtonStyle(!taskTitle.trim() || creatingTask, true)}>
                     {creatingTask ? '追加中…' : '追加'}
                   </button>
                 </div>
                 {(state.createdTasks[group.key] ?? []).length > 0 && (
-                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.8rem', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.8rem', color: 'var(--slate-300)', display: 'flex', flexDirection: 'column', gap: 2 }}>
                     {(state.createdTasks[group.key] ?? []).map((title, taskIndex) => <li key={`${title}-${taskIndex}`}>{title}</li>)}
                   </ul>
                 )}
               </section>
             )}
             <section style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0' }}>メモ（議事録に入ります）</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--slate-200)' }}>メモ（議事録に入ります）</div>
               <textarea
                 value={state.notes[group.key] ?? ''}
                 onChange={(event) => {
@@ -307,11 +307,11 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
                 aria-label={`${group.label}のメモ`}
                 rows={8}
                 placeholder="話したこと・決まったこと"
-                style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0', fontSize: '0.82rem', lineHeight: 1.6, resize: 'vertical' }}
+                style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--c-0b1220)', color: 'var(--slate-200)', fontSize: '0.82rem', lineHeight: 1.6, resize: 'vertical' }}
               />
             </section>
             <section style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0' }}>順番</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--slate-200)' }}>順番</div>
               {groups.map((item, itemIndex) => {
                 const seconds = itemIndex === index ? personSeconds : state.spentSeconds[item.key] ?? 0
                 return (
@@ -319,11 +319,11 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
                     key={item.key}
                     onClick={() => goTo(itemIndex)}
                     aria-current={itemIndex === index ? 'true' : undefined}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, border: 'none', background: itemIndex === index ? '#1e293b' : 'transparent', color: '#e2e8f0', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'left' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, border: 'none', background: itemIndex === index ? 'var(--slate-800)' : 'transparent', color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'left' }}
                   >
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.color ?? '#475569', flexShrink: 0 }} />
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.color ?? 'var(--slate-600)', flexShrink: 0 }} />
                     <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</span>
-                    <span style={{ color: '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>{seconds >= 1 ? formatDuration(seconds) : ''}</span>
+                    <span style={{ color: 'var(--slate-400)', fontVariantNumeric: 'tabular-nums' }}>{seconds >= 1 ? formatDuration(seconds) : ''}</span>
                   </button>
                 )
               })}
@@ -331,7 +331,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
           </aside>
         </div>
       ) : (
-        <div style={{ padding: 40, color: '#94a3b8' }}>表示できる担当者がいません。報告タブの絞り込みを確かめてください。</div>
+        <div style={{ padding: 40, color: 'var(--slate-400)' }}>表示できる担当者がいません。報告タブの絞り込みを確かめてください。</div>
       )}
     </div>
   )
@@ -341,9 +341,9 @@ function navButtonStyle(disabled: boolean, primary = false): React.CSSProperties
   return {
     padding: '7px 12px',
     borderRadius: 8,
-    border: `1px solid ${primary && !disabled ? '#2563eb' : '#334155'}`,
-    background: primary && !disabled ? '#1d4ed8' : 'transparent',
-    color: disabled ? '#64748b' : '#e2e8f0',
+    border: `1px solid ${primary && !disabled ? 'var(--blue-600)' : 'var(--slate-700)'}`,
+    background: primary && !disabled ? 'var(--blue-700)' : 'transparent',
+    color: disabled ? 'var(--slate-500)' : 'var(--slate-200)',
     cursor: disabled ? 'default' : 'pointer',
     fontSize: '0.8rem',
     fontWeight: 700,

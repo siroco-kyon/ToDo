@@ -3,6 +3,7 @@ import type { Category, CreateSubTaskInput, ProgressNote, PublicUser, SubTask, T
 import { discussionBadgeStyle } from './ProgressNoteThread'
 import { buildChecklistSummaries, checklistBadgeText } from '../lib/todoList'
 import { autoScrollNearEdge, dropPositionOf, moveIdBy, moveIdTo, type DropPosition } from '../lib/reorder'
+import { dataInk } from '../lib/theme'
 
 interface Props {
   todos: Todo[]
@@ -222,39 +223,39 @@ const RANGE_PRESETS: Array<{ key: Exclude<RangePreset, null>; label: string; sta
   { key: '30d', label: '30日', startOffset: -15, endOffset: 15 },
   { key: '90d', label: '90日', startOffset: -45, endOffset: 45 }
 ]
-const GANTT_SURFACE = '#2a2d3e'
-const GANTT_SURFACE_RAISED = '#303449'
-const GANTT_SURFACE_PRESSED = '#242839'
-const GANTT_SURFACE_DARK = '#1d2030'
-const GANTT_LINE = 'rgba(163, 177, 198, 0.22)'
-const GANTT_TEXT = '#edf2f7'
-const GANTT_MUTED = '#bac5d8'
+const GANTT_SURFACE = 'var(--c-2a2d3e)'
+const GANTT_SURFACE_RAISED = 'var(--c-303449)'
+const GANTT_SURFACE_PRESSED = 'var(--c-242839)'
+const GANTT_SURFACE_DARK = 'var(--c-1d2030)'
+const GANTT_LINE = 'color-mix(in srgb, var(--c-a3b1c6) 22%, transparent)'
+const GANTT_TEXT = 'var(--c-edf2f7)'
+const GANTT_MUTED = 'var(--c-bac5d8)'
 const STATUS_TONE: Record<TodoStatus, { background: string; border: string; text: string; fill: string; label: string }> = {
-  not_started: { background: '#343b46', border: '#cbd5e1', text: '#ffffff', fill: '#647181', label: '未着手' },
-  on_hold: { background: '#6b21a8', border: '#d8b4fe', text: '#faf5ff', fill: '#c084fc', label: '保留中' },
-  active: { background: '#4338ca', border: '#a5b4fc', text: '#ffffff', fill: '#818cf8', label: '進行中' },
-  done: { background: '#047857', border: '#6ee7b7', text: '#ffffff', fill: '#34d399', label: '完了' },
-  archived: { background: '#475569', border: '#94a3b8', text: '#e2e8f0', fill: '#94a3b8', label: 'アーカイブ' }
+  not_started: { background: 'var(--gantt-bar-idle)', border: 'var(--slate-300)', text: 'var(--white)', fill: 'var(--c-647181)', label: '未着手' },
+  on_hold: { background: 'var(--purple-800)', border: 'var(--purple-300)', text: 'var(--purple-50)', fill: 'var(--purple-400)', label: '保留中' },
+  active: { background: 'var(--indigo-700)', border: 'var(--indigo-300)', text: 'var(--white)', fill: 'var(--indigo-400)', label: '進行中' },
+  done: { background: 'var(--emerald-700)', border: 'var(--emerald-300)', text: 'var(--white)', fill: 'var(--emerald-400)', label: '完了' },
+  archived: { background: 'var(--slate-600)', border: 'var(--slate-400)', text: 'var(--slate-200)', fill: 'var(--slate-400)', label: 'アーカイブ' }
 }
 /** 進捗シグナルごとのバーの色（順調=青、遅れ=橙、期限超過=赤、完了=緑、開始前=灰） */
 const HEALTH_BAR_TONE: Record<ScheduleHealthStatus, { fill: string; track: string; border: string; text: string }> = {
-  onTrack: { fill: '#2563eb', track: '#1e3a8a80', border: '#60a5fa', text: '#eff6ff' },
-  ahead: { fill: '#2563eb', track: '#1e3a8a80', border: '#60a5fa', text: '#eff6ff' },
-  behind: { fill: '#d97706', track: '#78350f80', border: '#fbbf24', text: '#fffbeb' },
-  overdue: { fill: '#dc2626', track: '#7f1d1d80', border: '#f87171', text: '#fef2f2' },
-  done: { fill: '#15803d', track: '#14532d80', border: '#4ade80', text: '#f0fdf4' },
-  future: { fill: '#475569', track: '#33415580', border: '#94a3b8', text: '#f8fafc' }
+  onTrack: { fill: 'var(--blue-600)', track: 'color-mix(in srgb, var(--blue-900) 50.2%, transparent)', border: 'var(--blue-400)', text: 'var(--blue-50)' },
+  ahead: { fill: 'var(--blue-600)', track: 'color-mix(in srgb, var(--blue-900) 50.2%, transparent)', border: 'var(--blue-400)', text: 'var(--blue-50)' },
+  behind: { fill: 'var(--amber-600)', track: 'color-mix(in srgb, var(--amber-900) 50.2%, transparent)', border: 'var(--amber-400)', text: 'var(--amber-50)' },
+  overdue: { fill: 'var(--red-600)', track: 'color-mix(in srgb, var(--red-900) 50.2%, transparent)', border: 'var(--red-400)', text: 'var(--red-50)' },
+  done: { fill: 'var(--green-700)', track: 'color-mix(in srgb, var(--green-900) 50.2%, transparent)', border: 'var(--green-400)', text: 'var(--green-50)' },
+  future: { fill: 'var(--slate-600)', track: 'color-mix(in srgb, var(--slate-700) 50.2%, transparent)', border: 'var(--slate-400)', text: 'var(--slate-50)' }
 }
-const OVERDUE_HATCH = 'repeating-linear-gradient(135deg, rgba(239, 68, 68, 0.45) 0 4px, transparent 4px 8px)'
-const TODAY_LINE_COLOR = '#f43f5e'
+const OVERDUE_HATCH = 'repeating-linear-gradient(135deg, color-mix(in srgb, var(--red-500) 45%, transparent) 0 4px, transparent 4px 8px)'
+const TODAY_LINE_COLOR = 'var(--rose-500)'
 /** 「遅れ」と判定する日数の選択肢（予定より何日分以上遅れていたら遅れにするか） */
 const BEHIND_THRESHOLD_OPTIONS = [1, 2, 3, 5, 7]
 const DEFAULT_BEHIND_THRESHOLD_DAYS = 2
 /** 親タスクの行の上に引く区切り線（タスクのまとまりが分かるように、サブタスク間より濃くする） */
-const TASK_DIVIDER_COLOR = '#3b4258'
-const SUBTASK_DIVIDER_COLOR = '#23283a'
+const TASK_DIVIDER_COLOR = 'var(--c-3b4258)'
+const SUBTASK_DIVIDER_COLOR = 'var(--c-23283a)'
 /** サブタスク行の背景（親タスクより少し暗くして、配下だと分かるようにする） */
-const GANTT_SUBTASK_SURFACE = '#23263a'
+const GANTT_SUBTASK_SURFACE = 'var(--c-23263a)'
 
 function getTodayKey(): string {
   const now = new Date()
@@ -644,9 +645,9 @@ function isCurrentUnit(unitStart: string, todayKey: string, scale: TimeScale): b
 }
 
 function getUnitBackground(unitStart: string, todayKey: string, scale: TimeScale, dayKind: DayKind): string {
-  if (isCurrentUnit(unitStart, todayKey, scale)) return scale === 'day' ? '#4c0519' : '#172554'
-  if (dayKind === 'sunday' || dayKind === 'holiday') return '#3f1d1d80'
-  if (dayKind === 'saturday') return '#0c2a4480'
+  if (isCurrentUnit(unitStart, todayKey, scale)) return scale === 'day' ? 'var(--rose-950)' : 'var(--blue-950)'
+  if (dayKind === 'sunday' || dayKind === 'holiday') return 'color-mix(in srgb, var(--c-3f1d1d) 50.2%, transparent)'
+  if (dayKind === 'saturday') return 'color-mix(in srgb, var(--c-0c2a44) 50.2%, transparent)'
   return 'transparent'
 }
 
@@ -766,26 +767,26 @@ function getScheduleHealth(todo: Todo, todoBar: TodoBar | null, todayKey: string
     : diffCalendarDays(todayKey, todoBar.endDate)
 
   if (todo.status === 'done') {
-    return { status: 'done', expectedProgress: 100, delta: 0, behindDays: 0, label: '完了', accent: '#22c55e', background: '#052e16', text: '#dcfce7' }
+    return { status: 'done', expectedProgress: 100, delta: 0, behindDays: 0, label: '完了', accent: 'var(--green-500)', background: 'var(--green-950)', text: 'var(--green-100)' }
   }
 
   if (daysOverdue > 0 && progress < 100) {
-    return { status: 'overdue', expectedProgress, delta, behindDays, label: `期限を${daysOverdue}日超過`, accent: '#ef4444', background: '#450a0a', text: '#fecaca' }
+    return { status: 'overdue', expectedProgress, delta, behindDays, label: `期限を${daysOverdue}日超過`, accent: 'var(--red-500)', background: 'var(--red-950)', text: 'var(--red-200)' }
   }
 
   if (todayKey < todoBar.startDate && progress === 0) {
-    return { status: 'future', expectedProgress, delta, behindDays, label: '開始前', accent: '#64748b', background: '#0f172a', text: '#cbd5e1' }
+    return { status: 'future', expectedProgress, delta, behindDays, label: '開始前', accent: 'var(--slate-500)', background: 'var(--slate-900)', text: 'var(--slate-300)' }
   }
 
   if (behindDays >= options.behindThresholdDays) {
-    return { status: 'behind', expectedProgress, delta, behindDays, label: `約${Math.max(1, Math.round(behindDays))}日遅れ`, accent: '#f59e0b', background: '#451a03', text: '#fde68a' }
+    return { status: 'behind', expectedProgress, delta, behindDays, label: `約${Math.max(1, Math.round(behindDays))}日遅れ`, accent: 'var(--amber-500)', background: 'var(--amber-950)', text: 'var(--amber-200)' }
   }
 
   if (-behindDays >= options.behindThresholdDays) {
-    return { status: 'ahead', expectedProgress, delta, behindDays, label: `約${Math.round(-behindDays)}日先行`, accent: '#22c55e', background: '#052e16', text: '#dcfce7' }
+    return { status: 'ahead', expectedProgress, delta, behindDays, label: `約${Math.round(-behindDays)}日先行`, accent: 'var(--green-500)', background: 'var(--green-950)', text: 'var(--green-100)' }
   }
 
-  return { status: 'onTrack', expectedProgress, delta, behindDays, label: '順調', accent: '#38bdf8', background: '#082f49', text: '#e0f2fe' }
+  return { status: 'onTrack', expectedProgress, delta, behindDays, label: '順調', accent: 'var(--sky-400)', background: 'var(--sky-950)', text: 'var(--sky-100)' }
 }
 
 function isDateKeyFormat(value: string): boolean {
@@ -849,13 +850,13 @@ function subTaskTone(subTask: SubTask, todayKey: string): {
 } {
   if (Boolean(subTask.done)) {
     return {
-      background: 'linear-gradient(90deg, #166534, #15803d)',
-      border: '#86efac',
-      text: '#f0fdf4',
-      rowBackground: '#102016',
-      metaText: '#bbf7d0',
-      statusBackground: '#14532d',
-      statusText: '#dcfce7',
+      background: 'linear-gradient(90deg, var(--green-800), var(--green-700))',
+      border: 'var(--green-300)',
+      text: 'var(--green-50)',
+      rowBackground: 'var(--c-102016)',
+      metaText: 'var(--green-200)',
+      statusBackground: 'var(--green-900)',
+      statusText: 'var(--green-100)',
       statusLabel: '完了',
       borderStyle: 'solid'
     }
@@ -866,24 +867,24 @@ function subTaskTone(subTask: SubTask, todayKey: string): {
 
   return overdue
     ? {
-      background: '#3f1d1d',
-      border: '#fca5a5',
-      text: '#fef2f2',
-      rowBackground: '#1f1315',
-      metaText: '#fecaca',
-      statusBackground: '#450a0a',
-      statusText: '#fecaca',
+      background: 'var(--c-3f1d1d)',
+      border: 'var(--red-300)',
+      text: 'var(--red-50)',
+      rowBackground: 'var(--c-1f1315)',
+      metaText: 'var(--red-200)',
+      statusBackground: 'var(--red-950)',
+      statusText: 'var(--red-200)',
       statusLabel: '期限超過',
       borderStyle: 'solid'
     }
     : {
-      background: '#334155',
-      border: '#34d399',
-      text: '#ecfdf5',
-      rowBackground: '#182a2a',
-      metaText: '#a7f3d0',
-      statusBackground: '#064e3b',
-      statusText: '#bbf7d0',
+      background: 'var(--slate-700)',
+      border: 'var(--emerald-400)',
+      text: 'var(--emerald-50)',
+      rowBackground: 'var(--c-182a2a)',
+      metaText: 'var(--emerald-200)',
+      statusBackground: 'var(--emerald-900)',
+      statusText: 'var(--green-200)',
       statusLabel: '進行中',
       borderStyle: 'solid'
     }
@@ -1447,7 +1448,7 @@ function GanttViewContent({
       }))
 
     if (todos.some((todo) => !todo.category_id)) {
-      next.push({ key: NO_CATEGORY_KEY, label: '未分類', color: '#64748b' })
+      next.push({ key: NO_CATEGORY_KEY, label: '未分類', color: 'var(--slate-500)' })
     }
 
     return next
@@ -1862,7 +1863,7 @@ function GanttViewContent({
     })
 
     if (sectionGrouping === 'none') {
-      return [makeSection('__all__' as CategoryFilterKey, 'すべて', '#6366f1', displayedRangeGroups)]
+      return [makeSection('__all__' as CategoryFilterKey, 'すべて', 'var(--indigo-500)', displayedRangeGroups)]
     }
 
     if (sectionGrouping === 'assignee') {
@@ -1880,7 +1881,7 @@ function GanttViewContent({
           const userId = key.slice(ASSIGNEE_SECTION_PREFIX.length)
           const entry = userId ? userOrder.get(userId) : undefined
           const label = userId ? entry?.user.display_name ?? groups[0].todo.assignee_name ?? '不明なユーザー' : '未割り当て'
-          const color = userId ? entry?.user.color ?? groups[0].todo.assignee_color ?? '#64748b' : '#64748b'
+          const color = userId ? entry?.user.color ?? groups[0].todo.assignee_color ?? 'var(--slate-500)' : 'var(--slate-500)'
           return { section: makeSection(key as CategoryFilterKey, label, color, groups), rank: userId ? entry?.index ?? users.length : Number.MAX_SAFE_INTEGER }
         })
         .sort((a, b) => a.rank - b.rank)
@@ -1898,13 +1899,13 @@ function GanttViewContent({
     const orderedSections = categoryOptions
       .map((option) => {
         const groups = groupsByKey.get(option.key) ?? []
-        return groups.length > 0 ? makeSection(option.key, option.label, option.color ?? '#64748b', groups) : null
+        return groups.length > 0 ? makeSection(option.key, option.label, option.color ?? 'var(--slate-500)', groups) : null
       })
       .filter((section): section is ChartCategorySection => Boolean(section))
 
     for (const [key, groups] of groupsByKey.entries()) {
       if (orderedSections.some((section) => section.key === key)) continue
-      orderedSections.push(makeSection(key, key === NO_CATEGORY_KEY ? '未分類' : 'その他', '#64748b', groups))
+      orderedSections.push(makeSection(key, key === NO_CATEGORY_KEY ? '未分類' : 'その他', 'var(--slate-500)', groups))
     }
 
     return orderedSections
@@ -2283,7 +2284,7 @@ function GanttViewContent({
   const nonWorkingBackground = useMemo(() => {
     const rects = timelineUnits
       .map((unit, index) => unit.dayKind
-        ? `<rect x='${index * unitWidth}' y='0' width='${unitWidth}' height='10' fill='${unit.dayKind === 'saturday' ? '#38bdf8' : '#f87171'}' fill-opacity='0.08'/>`
+        ? `<rect x='${index * unitWidth}' y='0' width='${unitWidth}' height='10' fill='${unit.dayKind === 'saturday' ? 'var(--sky-400)' : 'var(--red-400)'}' fill-opacity='0.08'/>`
         : '')
       .join('')
     if (!rects) return null
@@ -3097,7 +3098,7 @@ function GanttViewContent({
       {/* 見出しは1段の道具バー。期間・単位・ズームの操作をここに出し、件数や凡例は表示設定の中へ */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginRight: 4 }}>
-          <div style={{ fontSize: '0.95rem', color: '#f8fafc', fontWeight: 700, whiteSpace: 'nowrap' }}>ガントチャート</div>
+          <div style={{ fontSize: '0.95rem', color: 'var(--slate-50)', fontWeight: 700, whiteSpace: 'nowrap' }}>ガントチャート</div>
           {listFilters}
         </div>
 
@@ -3133,7 +3134,7 @@ function GanttViewContent({
             onClick={() => setHealthFilter((previous) => previous === 'overdue' ? null : 'overdue')}
             aria-pressed={healthFilter === 'overdue'}
             title={healthFilter === 'overdue' ? '押すと絞り込みを外します' : '期限を過ぎたタスクだけを表示します'}
-            style={healthFilterChipStyle('#450a0a', '#ef4444', '#fecaca', healthFilter === 'overdue')}
+            style={healthFilterChipStyle('var(--red-950)', 'var(--red-500)', 'var(--red-200)', healthFilter === 'overdue')}
           >
             期限超過 {healthChipCounts.overdue}{healthFilter === 'overdue' ? ' ×' : ''}
           </button>
@@ -3143,7 +3144,7 @@ function GanttViewContent({
             onClick={() => setHealthFilter((previous) => previous === 'behind' ? null : 'behind')}
             aria-pressed={healthFilter === 'behind'}
             title={healthFilter === 'behind' ? '押すと絞り込みを外します' : `予定より${behindThresholdDays}日分以上遅れているタスクだけを表示します（日数は表示設定で変えられます）`}
-            style={healthFilterChipStyle('#451a03', '#f59e0b', '#fde68a', healthFilter === 'behind')}
+            style={healthFilterChipStyle('var(--amber-950)', 'var(--amber-500)', 'var(--amber-200)', healthFilter === 'behind')}
           >
             遅れ {healthChipCounts.behind}{healthFilter === 'behind' ? ' ×' : ''}
           </button>
@@ -3156,7 +3157,7 @@ function GanttViewContent({
               window.requestAnimationFrame(() => unscheduledSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
             }}
             title="開始日・期限のないタスク。押すとチャートの下の一覧へ移動します"
-            style={{ ...healthSummaryChipStyle('#422006', '#f59e0b', '#fde68a'), cursor: 'pointer' }}
+            style={{ ...healthSummaryChipStyle('var(--yellow-950)', 'var(--amber-500)', 'var(--amber-200)'), cursor: 'pointer' }}
           >
             日付なし {unscheduledGroups.length}件 ↓
           </button>
@@ -3169,9 +3170,9 @@ function GanttViewContent({
             title={lastUndoEntry ? `戻す: ${lastUndoEntry.label}（Ctrl+Z）` : '直前の変更を元に戻す'}
             style={{
               ...headerActionButtonStyle,
-              border: `1px solid ${lastUndoEntry && !undoPending ? '#16a34a' : '#334155'}`,
-              background: lastUndoEntry && !undoPending ? '#14532d' : '#0f172a',
-              color: lastUndoEntry && !undoPending ? '#dcfce7' : '#64748b',
+              border: `1px solid ${lastUndoEntry && !undoPending ? 'var(--green-600)' : 'var(--slate-700)'}`,
+              background: lastUndoEntry && !undoPending ? 'var(--green-900)' : 'var(--slate-900)',
+              color: lastUndoEntry && !undoPending ? 'var(--green-100)' : 'var(--slate-500)',
               cursor: lastUndoEntry && !undoPending ? 'pointer' : 'not-allowed'
             }}
           >
@@ -3182,9 +3183,9 @@ function GanttViewContent({
             disabled={reorderPending || (!isReorderMode && !canStartReorderMode)}
             style={{
               ...headerActionButtonStyle,
-              border: `1px solid ${isReorderMode ? '#16a34a' : '#2563eb'}`,
-              background: isReorderMode ? '#14532d' : '#172554',
-              color: isReorderMode ? '#dcfce7' : '#dbeafe',
+              border: `1px solid ${isReorderMode ? 'var(--green-600)' : 'var(--blue-600)'}`,
+              background: isReorderMode ? 'var(--green-900)' : 'var(--blue-950)',
+              color: isReorderMode ? 'var(--green-100)' : 'var(--blue-100)',
               cursor: reorderPending || (!isReorderMode && !canStartReorderMode) ? 'not-allowed' : 'pointer',
               opacity: reorderPending || (!isReorderMode && !canStartReorderMode) ? 0.55 : 1
             }}
@@ -3203,12 +3204,12 @@ function GanttViewContent({
           {standalone && <div style={standaloneBadgeStyle}>別ウィンドウ表示</div>}
         </div>
       </div>
-      {reorderFeedback && <div role="alert" style={{ fontSize: '0.72rem', color: '#fca5a5' }}>{reorderFeedback}</div>}
+      {reorderFeedback && <div role="alert" style={{ fontSize: '0.72rem', color: 'var(--red-300)' }}>{reorderFeedback}</div>}
 
       {!controlsCollapsed && (
         <div style={settingsPanelStyle}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <div style={{ fontSize: '0.86rem', color: '#f8fafc', fontWeight: 700 }}>表示設定</div>
+            <div style={{ fontSize: '0.86rem', color: 'var(--slate-50)', fontWeight: 700 }}>表示設定</div>
             <button onClick={() => setControlsCollapsed(true)} style={floatingCloseButtonStyle}>閉じる</button>
           </div>
 
@@ -3224,21 +3225,21 @@ function GanttViewContent({
                 <span style={collapsedSummaryChipStyle}>サブタスク {visibleSubTaskCount}/{datedSubTaskCount}</span>
                 {expandableTodoIds.length > 0 && <span style={collapsedSummaryChipStyle}>展開 {expandedTodoCount}/{expandableTodoIds.length}</span>}
                 {showBaseline && baselineCapturedLabel && <span style={collapsedSummaryChipStyle}>基準線 {baselineCapturedLabel}</span>}
-                {showScheduleSignals && scheduleHealthSummary.healthy > 0 && <span style={healthSummaryChipStyle('#082f49', '#38bdf8', '#e0f2fe')}>順調 {scheduleHealthSummary.healthy}</span>}
-                {showScheduleSignals && scheduleHealthSummary.future > 0 && <span style={healthSummaryChipStyle('#0f172a', '#64748b', '#cbd5e1')}>開始前 {scheduleHealthSummary.future}</span>}
+                {showScheduleSignals && scheduleHealthSummary.healthy > 0 && <span style={healthSummaryChipStyle('var(--sky-950)', 'var(--sky-400)', 'var(--sky-100)')}>順調 {scheduleHealthSummary.healthy}</span>}
+                {showScheduleSignals && scheduleHealthSummary.future > 0 && <span style={healthSummaryChipStyle('var(--slate-900)', 'var(--slate-500)', 'var(--slate-300)')}>開始前 {scheduleHealthSummary.future}</span>}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }} aria-label="凡例">
                 <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: STATUS_TONE.on_hold.background, border: `1px solid ${STATUS_TONE.on_hold.border}` }} />保留中</span>
-                <span style={legendItemStyle()}><span style={{ width: 10, height: 12, border: `2px solid ${TODAY_LINE_COLOR}`, borderTop: 'none', borderBottom: 'none', background: 'rgba(244, 63, 94, 0.15)' }} />今日</span>
+                <span style={legendItemStyle()}><span style={{ width: 10, height: 12, border: `2px solid ${TODAY_LINE_COLOR}`, borderTop: 'none', borderBottom: 'none', background: 'color-mix(in srgb, var(--rose-500) 15%, transparent)' }} />今日</span>
                 {timeScale === 'day' && (
-                  <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: '#f8717140', border: '1px solid #f8717166' }} />土日祝</span>
+                  <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: 'color-mix(in srgb, var(--red-400) 25.1%, transparent)', border: '1px solid color-mix(in srgb, var(--red-400) 40%, transparent)' }} />土日祝</span>
                 )}
                 {showScheduleSignals && (
                   <>
                     <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: HEALTH_BAR_TONE.onTrack.fill }} />順調</span>
                     <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: HEALTH_BAR_TONE.behind.fill }} />遅れ</span>
                     <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: HEALTH_BAR_TONE.overdue.fill }} />期限超過</span>
-                    <span style={legendItemStyle()}><span style={{ width: 14, height: 8, background: OVERDUE_HATCH, border: '1px dashed #ef4444' }} />超過している日数</span>
+                    <span style={legendItemStyle()}><span style={{ width: 14, height: 8, background: OVERDUE_HATCH, border: '1px dashed var(--red-500)' }} />超過している日数</span>
                   </>
                 )}
               </div>
@@ -3262,7 +3263,7 @@ function GanttViewContent({
                   </label>
                 ))}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>タスク名はいつも出します。バーの上にも担当と進捗が出ます。</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>タスク名はいつも出します。バーの上にも担当と進捗が出ます。</div>
             </div>
 
             <div style={settingsSectionStyle}>
@@ -3389,23 +3390,23 @@ function GanttViewContent({
 
             <div style={settingsSectionStyle}>
               <label style={controlLabelStyle}>遅れの判定</label>
-              <div style={{ fontSize: '0.74rem', color: '#94a3b8', lineHeight: 1.6 }}>
+              <div style={{ fontSize: '0.74rem', color: 'var(--slate-400)', lineHeight: 1.6 }}>
                 期間のうち今日までに過ぎた日数の割合を「予定の進捗」とし、実際の進捗が予定より何日分遅れているかで判定します。
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.76rem', color: '#cbd5e1' }}>予定より</span>
+                <span style={{ fontSize: '0.76rem', color: 'var(--slate-300)' }}>予定より</span>
                 {BEHIND_THRESHOLD_OPTIONS.map((days) => (
                   <button key={days} onClick={() => setBehindThresholdDays(days)} style={chipStyle(behindThresholdDays === days)}>
                     {days}日
                   </button>
                 ))}
-                <span style={{ fontSize: '0.76rem', color: '#cbd5e1' }}>以上遅れていたら「遅れ」</span>
+                <span style={{ fontSize: '0.76rem', color: 'var(--slate-300)' }}>以上遅れていたら「遅れ」</span>
               </div>
               <label style={toggleLabelStyle}>
                 <input type="checkbox" checked={workingDaysOnly} onChange={(event) => setWorkingDaysOnly(event.target.checked)} />
                 <span>土日・祝日を除いて数える</span>
               </label>
-              <div style={{ fontSize: '0.7rem', color: '#64748b', lineHeight: 1.6 }}>
+              <div style={{ fontSize: '0.7rem', color: 'var(--slate-500)', lineHeight: 1.6 }}>
                 例: 10日間のタスクの5日目なら予定は45%。実際が20%なら約2.5日分の遅れです。
                 期限を過ぎて100%未満は「期限超過」、開始日前で0%は「開始前」になります。
               </div>
@@ -3420,7 +3421,7 @@ function GanttViewContent({
                     <button
                       key={option.key}
                       onClick={() => toggleCategory(option.key)}
-                      style={tagStyle(selectedCategoryKeys.includes(option.key), option.color ?? '#64748b')}
+                      style={tagStyle(selectedCategoryKeys.includes(option.key), option.color ?? 'var(--slate-500)')}
                     >
                       {option.label}
                     </button>
@@ -3432,7 +3433,7 @@ function GanttViewContent({
             <div style={settingsSectionStyle}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                 <label style={controlLabelStyle}>表示タスク</label>
-                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{taskSelectionSummary}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{taskSelectionSummary}</div>
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button onClick={() => setSelectedTodoIds([])} style={chipStyle(selectedTodoIds.length === 0)}>すべて</button>
@@ -3459,7 +3460,7 @@ function GanttViewContent({
 
             <div style={settingsSectionStyle}>
               <label style={controlLabelStyle}>依存関係</label>
-              <div style={{ fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.5 }}>
+              <div style={{ fontSize: '0.76rem', color: 'var(--slate-400)', lineHeight: 1.5 }}>
                 前タスクの完了後に後タスクを開始する関係です。待機日数を入れると、その分だけ開始を後ろへずらします。
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
@@ -3496,20 +3497,20 @@ function GanttViewContent({
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button onClick={() => void createDependency()} style={chipStyle(false)}>依存関係を追加</button>
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>タスクバー右端の丸をドラッグしても依存関係を追加できます。</div>
-              {dependencyFeedback && <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{dependencyFeedback}</div>}
+              <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>タスクバー右端の丸をドラッグしても依存関係を追加できます。</div>
+              {dependencyFeedback && <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>{dependencyFeedback}</div>}
               {dependencyList.length === 0 ? (
-                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>依存関係はまだありません。</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>依存関係はまだありません。</div>
               ) : (
                 <div style={dependencyListStyle}>
                   {dependencyList.map((dependency) => (
                     <div key={dependency.id} style={dependencyRowStyle}>
                       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 700 }}>
+                        <span style={{ color: 'var(--slate-200)', fontSize: '0.78rem', fontWeight: 700 }}>
                           {todoById.get(dependency.predecessor_todo_id)?.title ?? '不明なタスク'}
                         </span>
-                        <span style={{ color: '#64748b', fontSize: '0.72rem' }}>-&gt;</span>
-                        <span style={{ color: '#cbd5e1', fontSize: '0.76rem' }}>
+                        <span style={{ color: 'var(--slate-500)', fontSize: '0.72rem' }}>-&gt;</span>
+                        <span style={{ color: 'var(--slate-300)', fontSize: '0.76rem' }}>
                           {todoById.get(dependency.successor_todo_id)?.title ?? '不明なタスク'}
                         </span>
                         <span style={dependencyLagBadgeStyle}>
@@ -3529,7 +3530,7 @@ function GanttViewContent({
 
             <div style={settingsSectionStyle}>
               <label style={controlLabelStyle}>基準線</label>
-              <div style={{ fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.5 }}>
+              <div style={{ fontSize: '0.76rem', color: 'var(--slate-400)', lineHeight: 1.5 }}>
                 現在の予定を保存し、あとから実際の計画と見比べられます。
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -3545,7 +3546,7 @@ function GanttViewContent({
                   </button>
                 )}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>
                 {baselineSnapshot
                   ? `保存日時 ${baselineSnapshot.capturedAt.slice(0, 10)} ${baselineSnapshot.capturedAt.slice(11, 16)}`
                   : '保存済みの基準線はありません。'}
@@ -3555,28 +3556,28 @@ function GanttViewContent({
         </div>
       )}
 
-      <div style={{ flex: '0 0 auto', minHeight: controlsCollapsed ? 540 : 460, height: controlsCollapsed ? '74vh' : '60vh', border: '1px solid #1e293b', borderRadius: 8, background: '#0b1220', overflow: 'hidden' }}>
+      <div style={{ flex: '0 0 auto', minHeight: controlsCollapsed ? 540 : 460, height: controlsCollapsed ? '74vh' : '60vh', border: '1px solid var(--slate-800)', borderRadius: 8, background: 'var(--c-0b1220)', overflow: 'hidden' }}>
         {loading ? (
           <div style={centerEmptyStyle}>タスクを読み込み中...</div>
         ) : !hasAnyTodos ? (
           <div style={{ ...centerEmptyStyle, flexDirection: 'column' }}>
-            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#e2e8f0' }}>まだタスクがありません</div>
-            <div style={{ marginTop: 6, fontSize: '0.8rem', color: '#94a3b8' }}>
+            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--slate-200)' }}>まだタスクがありません</div>
+            <div style={{ marginTop: 6, fontSize: '0.8rem', color: 'var(--slate-400)' }}>
               タスクを追加すると、開始日から期限までが横棒で表示されます。バーをドラッグすると日程を変えられます。
             </div>
             {onAddTodo && (
-              <button onClick={() => onAddTodo()} style={{ ...headerActionButtonStyle, marginTop: 12, background: '#1d4ed8', borderColor: '#2563eb', color: '#eff6ff' }}>＋ 最初のタスクを追加</button>
+              <button onClick={() => onAddTodo()} style={{ ...headerActionButtonStyle, marginTop: 12, background: 'var(--blue-700)', borderColor: 'var(--blue-600)', color: 'var(--on-fill-blue-50)' }}>＋ 最初のタスクを追加</button>
             )}
           </div>
         ) : displayedRangeGroups.length === 0 ? (
           <div style={{ ...centerEmptyStyle, flexDirection: 'column' }}>
             <div>この条件で表示できる予定タスクはありません。</div>
-            <div style={{ marginTop: 6, fontSize: '0.74rem', color: '#64748b' }}>
+            <div style={{ marginTop: 6, fontSize: '0.74rem', color: 'var(--slate-500)' }}>
               {unscheduledGroups.length > 0 ? `日付のないタスクが${unscheduledGroups.length}件あります（下の「未配置タスク」）。` : ''}
               画面上部に「タスク一覧の絞り込み」が出ているときは、そこでも解除できます。
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
-              {onAddTodo && <button onClick={() => onAddTodo()} style={{ ...headerActionButtonStyle, background: '#1d4ed8', borderColor: '#2563eb', color: '#eff6ff' }}>＋ タスクを追加</button>}
+              {onAddTodo && <button onClick={() => onAddTodo()} style={{ ...headerActionButtonStyle, background: 'var(--blue-700)', borderColor: 'var(--blue-600)', color: 'var(--on-fill-blue-50)' }}>＋ タスクを追加</button>}
               <button onClick={() => { setTaskQuery(''); setStatusFilter('all'); setShowOutOfRange(true); setShowUnscheduled(true); setHealthFilter(null) }} style={headerActionButtonStyle}>ガントの絞り込みを解除</button>
               <button onClick={() => setRangeMode('auto')} style={headerActionButtonStyle}>期間を自動に戻す</button>
             </div>
@@ -3585,7 +3586,7 @@ function GanttViewContent({
           <div ref={scrollRef} style={{ height: '100%', overflow: 'auto' }}>
             <div style={{ minWidth: leftTableWidth + timelineWidth }}>
               <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 6 }}>
-                <div style={{ position: 'sticky', left: 0, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0f172a', borderRight: '1px solid #1e293b', borderBottom: '1px solid #1e293b', padding: '6px 8px' }}>
+                <div style={{ position: 'sticky', left: 0, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: 'var(--slate-900)', borderRight: '1px solid var(--slate-800)', borderBottom: '1px solid var(--slate-800)', padding: '6px 8px' }}>
                   <div style={{ ...leftHeaderGridStyle, gridTemplateColumns: leftGridTemplate }}>
                     {visibleLeftColumnDefs.map((column) => (
                       <div key={column.key} style={leftHeaderCellStyle}>
@@ -3603,7 +3604,7 @@ function GanttViewContent({
                   </div>
                 </div>
 
-                <div style={{ width: timelineWidth, display: 'flex', background: '#0f172a', borderBottom: '1px solid #1e293b' }}>
+                <div style={{ width: timelineWidth, display: 'flex', background: 'var(--slate-900)', borderBottom: '1px solid var(--slate-800)' }}>
                   {timelineUnits.map((unit) => (
                     <div
                       key={unit.key}
@@ -3614,15 +3615,15 @@ function GanttViewContent({
                         padding: '5px 0 6px',
                         textAlign: 'center',
                         background: unit.background,
-                        borderRight: '1px solid #1e293b',
+                        borderRight: '1px solid var(--slate-800)',
                         // 日表示では、下の今日の列の枠とつながるように上と左右を囲む
                         boxShadow: unit.isCurrent && timeScale === 'day'
                           ? `inset 2px 0 0 ${TODAY_LINE_COLOR}, inset -2px 0 0 ${TODAY_LINE_COLOR}, inset 0 2px 0 ${TODAY_LINE_COLOR}`
                           : undefined
                       }}
                     >
-                      <div style={{ fontSize: '0.62rem', color: unit.isCurrent ? (timeScale === 'day' ? '#fecdd3' : '#bfdbfe') : unit.dayKind === 'saturday' ? '#7dd3fc' : unit.dayKind ? '#fca5a5' : '#64748b' }}>{unit.primaryLabel}</div>
-                      <div style={{ marginTop: 2, fontSize: '0.68rem', color: unit.isCurrent ? '#dbeafe' : '#cbd5e1', fontWeight: unit.isCurrent ? 700 : 500 }}>{unit.secondaryLabel}</div>
+                      <div style={{ fontSize: '0.62rem', color: unit.isCurrent ? (timeScale === 'day' ? 'var(--rose-200)' : 'var(--blue-200)') : unit.dayKind === 'saturday' ? 'var(--sky-300)' : unit.dayKind ? 'var(--red-300)' : 'var(--slate-500)' }}>{unit.primaryLabel}</div>
+                      <div style={{ marginTop: 2, fontSize: '0.68rem', color: unit.isCurrent ? 'var(--blue-100)' : 'var(--slate-300)', fontWeight: unit.isCurrent ? 700 : 500 }}>{unit.secondaryLabel}</div>
                     </div>
                   ))}
                 </div>
@@ -3638,10 +3639,10 @@ function GanttViewContent({
                   >
                     <defs>
                       <marker id="ganttDependencyArrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
-                        <path d="M 0 0 L 8 4 L 0 8 z" fill="#f59e0b" />
+                        <path d="M 0 0 L 8 4 L 0 8 z" style={{ fill: 'var(--amber-500)' }} />
                       </marker>
                       <marker id="ganttDependencyPreviewArrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
-                        <path d="M 0 0 L 8 4 L 0 8 z" fill="#38bdf8" />
+                        <path d="M 0 0 L 8 4 L 0 8 z" style={{ fill: 'var(--sky-400)' }} />
                       </marker>
                     </defs>
                     {dependencyPaths.map((dependency) => (
@@ -3649,7 +3650,8 @@ function GanttViewContent({
                         key={dependency.id}
                         d={dependency.path}
                         fill="none"
-                        stroke="#f59e0b"
+                        // SVG の属性では var() が効かないので、色は style で渡す
+                        style={{ stroke: 'var(--amber-500)' }}
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -3661,7 +3663,7 @@ function GanttViewContent({
                       <path
                         d={dependencyPreviewPath}
                         fill="none"
-                        stroke={dependencyDrag?.hoverSuccessorTodoId ? '#38bdf8' : '#94a3b8'}
+                        style={{ stroke: dependencyDrag?.hoverSuccessorTodoId ? 'var(--sky-400)' : 'var(--slate-400)' }}
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -3684,7 +3686,7 @@ function GanttViewContent({
                       width: todayBox.width,
                       borderLeft: `2px solid ${TODAY_LINE_COLOR}`,
                       borderRight: `2px solid ${TODAY_LINE_COLOR}`,
-                      background: 'rgba(244, 63, 94, 0.08)',
+                      background: 'color-mix(in srgb, var(--rose-500) 8%, transparent)',
                       boxSizing: 'border-box',
                       pointerEvents: 'none',
                       // 左の一覧（z-index 3 以上）より下、バーの文字（同じ 2 で後から描かれる）より下
@@ -3700,7 +3702,7 @@ function GanttViewContent({
                         style={{
                           display: 'flex',
                           minHeight: CATEGORY_HEADER_HEIGHT,
-                          background: `${section.color}14`
+                          background: `color-mix(in srgb, ${section.color} 7.8%, transparent)`
                         }}
                       >
                         <div
@@ -3711,8 +3713,8 @@ function GanttViewContent({
                             width: leftTableWidth,
                             minWidth: leftTableWidth,
                             boxSizing: 'border-box',
-                            backgroundColor: '#161b2c',
-                            backgroundImage: `linear-gradient(90deg, ${section.color}55, ${section.color}14 80%)`,
+                            backgroundColor: 'var(--c-161b2c)',
+                            backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${section.color} 33.3%, transparent), color-mix(in srgb, ${section.color} 7.8%, transparent) 80%)`,
                             borderRight: `1px solid ${GANTT_LINE}`,
                             borderLeft: `3px solid ${section.color}`,
                             // 上端にカテゴリ色の線を引いて、ここから新しいまとまりだと分かるようにする
@@ -3808,8 +3810,8 @@ function GanttViewContent({
                     ? 4
                     : displayStartIndex * unitWidth + 4
                 const trackBackground = group.todo.status === 'not_started'
-                  ? `linear-gradient(90deg, ${tone.fill}, #596474)`
-                  : `linear-gradient(90deg, ${tone.fill}66, ${tone.border}66)`
+                  ? `linear-gradient(90deg, ${tone.fill}, var(--c-596474))`
+                  : `linear-gradient(90deg, color-mix(in srgb, ${tone.fill} 40%, transparent), color-mix(in srgb, ${tone.border} 40%, transparent))`
                 const baselineVisible = baselineBar
                   ? intersectsRange(baselineBar.startDate, baselineBar.endDate, normalizedRange.start, normalizedRange.end)
                   : false
@@ -3848,7 +3850,7 @@ function GanttViewContent({
                     style={{
                       marginBottom: groupIndex === section.groups.length - 1 ? CATEGORY_GROUP_GAP : TASK_GROUP_GAP,
                       background: GANTT_SURFACE_PRESSED,
-                      boxShadow: isReorderDragTarget ? '0 0 0 2px rgba(56, 189, 248, 0.34) inset' : undefined
+                      boxShadow: isReorderDragTarget ? '0 0 0 2px color-mix(in srgb, var(--sky-400) 34%, transparent) inset' : undefined
                     }}
                   >
                     <div
@@ -3862,11 +3864,11 @@ function GanttViewContent({
                       style={{
                         display: 'flex',
                         minHeight: PARENT_ROW_HEIGHT,
-                        borderTop: isReorderDragTarget ? '2px solid #38bdf8' : `1px solid ${TASK_DIVIDER_COLOR}`,
+                        borderTop: isReorderDragTarget ? '2px solid var(--sky-400)' : `1px solid ${TASK_DIVIDER_COLOR}`,
                         opacity: isReorderDragSource ? 0.7 : 1
                       }}
                     >
-                      <div style={{ position: 'sticky', left: 0, zIndex: 4, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0f172a', borderRight: '1px solid #1e293b', padding: '0 8px', borderLeft: `3px solid ${sectionStripeColor}` }}>
+                      <div style={{ position: 'sticky', left: 0, zIndex: 4, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: 'var(--slate-900)', borderRight: '1px solid var(--slate-800)', padding: '0 8px', borderLeft: `3px solid ${sectionStripeColor}` }}>
                         <div {...leftGridAttributes} style={{ ...leftRowGridStyle, gridTemplateColumns: leftGridTemplate }}>
                           <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                           {isReorderMode && (
@@ -3897,7 +3899,7 @@ function GanttViewContent({
                               height: 9,
                               borderRadius: '50%',
                               background: tone.fill,
-                              boxShadow: `0 0 0 3px ${tone.border}33`,
+                              boxShadow: `0 0 0 3px color-mix(in srgb, ${tone.border} 20%, transparent)`,
                               flexShrink: 0
                             }}
                           />
@@ -3922,7 +3924,7 @@ function GanttViewContent({
                                 onClick={() => void onUpdateTodo(group.todo.id, { status: group.todo.status === 'on_hold' ? 'active' : 'on_hold' }).catch(() => window.alert('状態を変更できませんでした'))}
                                 title={group.todo.status === 'on_hold' ? '保留中です。押すと進行中に戻します' : 'タスクを保留する'}
                                 aria-label={group.todo.status === 'on_hold' ? '進行中に戻す' : 'タスクを保留する'}
-                                style={{ ...subTaskAddButtonStyle(false), color: group.todo.status === 'on_hold' ? '#d8b4fe' : '#94a3b8' }}
+                                style={{ ...subTaskAddButtonStyle(false), color: group.todo.status === 'on_hold' ? 'var(--purple-300)' : 'var(--slate-400)' }}
                               >{group.todo.status === 'on_hold' ? '▶' : 'Ⅱ'}</button>
                             )}
                             <button
@@ -3964,7 +3966,7 @@ function GanttViewContent({
                             />
                           ) : (
                             listMode ? (
-                              <button onClick={() => beginTodoCellEdit(group.todo, 'due_date')} title="ToDoリストの期限（空にすると期限なし）" style={{ ...tableCellButtonStyle, color: group.todo.due_date ? undefined : '#a5b4fc' }}>
+                              <button onClick={() => beginTodoCellEdit(group.todo, 'due_date')} title="ToDoリストの期限（空にすると期限なし）" style={{ ...tableCellButtonStyle, color: group.todo.due_date ? undefined : 'var(--indigo-300)' }}>
                                 {group.todo.due_date ? shortDateLabel(group.todo.due_date.slice(0, 10)) : 'なし'}
                               </button>
                             ) : (
@@ -3987,7 +3989,7 @@ function GanttViewContent({
                             />
                           ) : (
                             listMode ? (
-                              <span title={`ToDoリストの項目: ${checklistText ?? ''}（詳細か ToDo タブでチェックします）`} style={{ ...tableCellButtonStyle, cursor: 'default', color: '#a5b4fc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{checklistText}</span>
+                              <span title={`ToDoリストの項目: ${checklistText ?? ''}（詳細か ToDo タブでチェックします）`} style={{ ...tableCellButtonStyle, cursor: 'default', color: 'var(--indigo-300)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{checklistText}</span>
                             ) : (
                             <button
                               onClick={() => beginTodoCellEdit(group.todo, 'progress')}
@@ -4064,8 +4066,8 @@ function GanttViewContent({
                               width: Math.max((baselineEndIndex - baselineStartIndex + 1) * unitWidth - 16, 12),
                               height: 4,
                               borderRadius: 3,
-                              background: '#94a3b81f',
-                              border: '1px dashed #94a3b8',
+                              background: 'color-mix(in srgb, var(--slate-400) 12.2%, transparent)',
+                              border: '1px dashed var(--slate-400)',
                               boxSizing: 'border-box',
                               pointerEvents: 'none'
                             }}
@@ -4081,7 +4083,7 @@ function GanttViewContent({
                               width: overdueTail.width,
                               height: PARENT_BAR_HEIGHT - 6,
                               borderRadius: '0 4px 4px 0',
-                              border: '1px dashed #ef4444',
+                              border: '1px dashed var(--red-500)',
                               borderLeft: 'none',
                               background: OVERDUE_HATCH,
                               boxSizing: 'border-box'
@@ -4093,7 +4095,7 @@ function GanttViewContent({
                             ref={(node) => setDependencyTargetBarRef(group.todo.id, todoOutsideRange ? null : node)}
                             onClick={() => handleChartItemSelect(group.todo.id)}
                             title={barTooltip}
-                            style={{ position: 'absolute', left: barLeft, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 4, background: barTone.track, border: `1px ${todoOutsideRange || listMode ? 'dashed' : 'solid'} ${barTone.border}`, boxSizing: 'border-box', opacity: group.todo.status === 'done' ? 0.75 : 1, boxShadow: activeState ? '0 0 0 2px rgba(59, 130, 246, 0.28)' : isDependencySource || isDependencyTarget ? '0 0 0 2px rgba(56, 189, 248, 0.42)' : 'inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 3px 8px rgba(10, 12, 22, 0.28)', cursor: todoOutsideRange || !barEditable ? 'pointer' : 'grab' }}
+                            style={{ position: 'absolute', left: barLeft, top: (PARENT_ROW_HEIGHT - PARENT_BAR_HEIGHT) / 2, width: barWidth, height: PARENT_BAR_HEIGHT, borderRadius: 4, background: barTone.track, border: `1px ${todoOutsideRange || listMode ? 'dashed' : 'solid'} ${barTone.border}`, boxSizing: 'border-box', opacity: group.todo.status === 'done' ? 0.75 : 1, boxShadow: activeState ? '0 0 0 2px color-mix(in srgb, var(--blue-500) 28%, transparent)' : isDependencySource || isDependencyTarget ? '0 0 0 2px color-mix(in srgb, var(--sky-400) 42%, transparent)' : 'inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 3px 8px color-mix(in srgb, var(--c-0a0c16) 28%, transparent)', cursor: todoOutsideRange || !barEditable ? 'pointer' : 'grab' }}
                           >
                             {/* 塗りは内側で切り取る。バー自体は overflow を切らない（タスク名を sticky で左端に留めるため） */}
                             <div style={{ position: 'absolute', inset: 0, borderRadius: 3, overflow: 'hidden', pointerEvents: 'none' }}>
@@ -4113,7 +4115,7 @@ function GanttViewContent({
                                 <span style={{ fontSize: '0.64rem', fontWeight: 800, whiteSpace: 'nowrap' }}>{todoOutsideRange === 'before' ? '← 期間前' : '期間後 →'}</span>
                               ) : barWidth > 56 && (
                                 // 開始日が画面の左外にあっても、見えている範囲の左端にタスク名を出し続ける
-                                <span style={{ position: 'sticky', left: leftTableWidth + 10, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0, 0, 0, 0.6)' }}>
+                                <span style={{ position: 'sticky', left: leftTableWidth + 10, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)' }}>
                                   <span style={{ fontSize: '0.7rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{listMode ? '☑ ' : group.todo.status === 'on_hold' ? '保留中 · ' : ''}{group.todo.title}</span>
                                   {barWidth > 170 && (
                                     <span style={{ fontSize: '0.64rem', fontWeight: 600, opacity: 0.85, flexShrink: 0 }}>
@@ -4134,7 +4136,7 @@ function GanttViewContent({
                         {discussionCount > 0 && displayedTodoBar && todoVisible && !todoOutsideRange && (
                           <span
                             title={`要相談 ${discussionCount}件（報告タブの担当者ごとの先頭にまとめて表示されます）`}
-                            style={{ ...discussionBadgeStyle, position: 'absolute', left: discussionMarkerLeft, top: (PARENT_ROW_HEIGHT - 16) / 2, lineHeight: '14px', background: '#0b1220', zIndex: 2 }}
+                            style={{ ...discussionBadgeStyle, position: 'absolute', left: discussionMarkerLeft, top: (PARENT_ROW_HEIGHT - 16) / 2, lineHeight: '14px', background: 'var(--c-0b1220)', zIndex: 2 }}
                           >
                             要相談{discussionCount > 1 ? ` ${discussionCount}` : ''}
                           </span>
@@ -4150,9 +4152,9 @@ function GanttViewContent({
                                   width: DEPENDENCY_TARGET_HANDLE_SIZE,
                                   height: DEPENDENCY_TARGET_HANDLE_SIZE,
                                   borderRadius: 999,
-                                  border: `2px solid ${isDependencyTarget ? '#38bdf8' : '#334155'}`,
-                                  background: isDependencyTarget ? '#38bdf8' : '#0b1220',
-                                  boxShadow: isDependencyTarget ? '0 0 0 4px rgba(56, 189, 248, 0.18)' : 'none',
+                                  border: `2px solid ${isDependencyTarget ? 'var(--sky-400)' : 'var(--slate-700)'}`,
+                                  background: isDependencyTarget ? 'var(--sky-400)' : 'var(--c-0b1220)',
+                                  boxShadow: isDependencyTarget ? '0 0 0 4px color-mix(in srgb, var(--sky-400) 18%, transparent)' : 'none',
                                   opacity: isDependencyTarget ? 1 : 0.35,
                                   pointerEvents: 'none',
                                   zIndex: 4
@@ -4171,9 +4173,9 @@ function GanttViewContent({
                                 width: DEPENDENCY_HANDLE_SIZE,
                                 height: DEPENDENCY_HANDLE_SIZE,
                                 borderRadius: 999,
-                                border: `2px solid ${isDependencySource ? '#bae6fd' : '#0f172a'}`,
-                                background: isDependencySource ? '#38bdf8' : '#f59e0b',
-                                boxShadow: isDependencySource ? '0 0 0 4px rgba(56, 189, 248, 0.18)' : 'none',
+                                border: `2px solid ${isDependencySource ? 'var(--sky-200)' : 'var(--slate-900)'}`,
+                                background: isDependencySource ? 'var(--sky-400)' : 'var(--amber-500)',
+                                boxShadow: isDependencySource ? '0 0 0 4px color-mix(in srgb, var(--sky-400) 18%, transparent)' : 'none',
                                 opacity: isDependencySource ? 1 : 0.5,
                                 cursor: isTimelineEditable ? 'crosshair' : 'default',
                                 zIndex: 4
@@ -4237,7 +4239,7 @@ function GanttViewContent({
                           }}
                         >
                           {subTaskDropPosition && <div aria-hidden="true" style={subTaskDropLineStyle(subTaskDropPosition)} />}
-                          <div style={{ position: 'sticky', left: 0, zIndex: 3, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0b1220', borderRight: '1px solid #1e293b', borderLeft: `3px solid ${sectionStripeColor}`, padding: '0 8px 0 21px' }}>
+                          <div style={{ position: 'sticky', left: 0, zIndex: 3, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: 'var(--c-0b1220)', borderRight: '1px solid var(--slate-800)', borderLeft: `3px solid ${sectionStripeColor}`, padding: '0 8px 0 21px' }}>
                             {canReorderSubTask && (
                               // 左の余白に置き、行にマウスを乗せたときだけ出す（タスク名の位置は動かさない）。並べ替えモード中は常に出す
                               <div
@@ -4272,7 +4274,7 @@ function GanttViewContent({
                                   />
                                 ) : (
                                 <>
-                                <span aria-hidden="true" style={{ color: '#64748b', fontSize: '0.74rem', flexShrink: 0, width: 12, textAlign: 'center' }}>
+                                <span aria-hidden="true" style={{ color: 'var(--slate-500)', fontSize: '0.74rem', flexShrink: 0, width: 12, textAlign: 'center' }}>
                                   {isLastSubTask ? '└' : '├'}
                                 </span>
                                 <button
@@ -4336,7 +4338,7 @@ function GanttViewContent({
                                 />
                               ) : (
                                 <button onClick={() => beginSubTaskCellEdit(subTask, 'progress')} style={{ ...tableCellButtonStyle, ...subTableCellStyle }} title={`${tone.statusLabel}: ${subTaskProgress}%`}>
-                                  <span style={{ ...statusDotStyle, background: subTaskProgress >= 100 ? '#86efac' : tone.border }} />
+                                  <span style={{ ...statusDotStyle, background: subTaskProgress >= 100 ? 'var(--green-300)' : tone.border }} />
                                   {subTaskProgress}%
                                 </button>
                               )}
@@ -4397,14 +4399,14 @@ function GanttViewContent({
                                   width: Math.max((baselineEndIndex - baselineStartIndex + 1) * unitWidth - 18, 10),
                                   height: 3,
                                   borderRadius: 3,
-                                  background: '#94a3b81a',
-                                  border: '1px dashed #94a3b8',
+                                  background: 'color-mix(in srgb, var(--slate-400) 10.2%, transparent)',
+                                  border: '1px dashed var(--slate-400)',
                                   boxSizing: 'border-box',
                                   pointerEvents: 'none'
                                 }}
                               />
                             )}
-                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTaskOutsideRange ? `${subTaskOutsideRange === 'before' ? '期間前' : '期間後'}: ` : ''}${subTask.title} ${subTaskProgress}% (${displayedBar.startDate}${displayedBar.startDate === displayedBar.endDate ? '' : ` - ${displayedBar.endDate}`})`} style={{ position: 'absolute', left: subTaskBarLeft, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: subTaskBarWidth, height: SUBTASK_BAR_HEIGHT, borderRadius: 3, background: tone.background, border: `1px ${subTaskOutsideRange ? 'dashed' : tone.borderStyle} ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: subTaskOutsideRange || !isTimelineEditable ? 'pointer' : 'grab', boxShadow: subTaskActiveState ? '0 0 0 2px rgba(59, 130, 246, 0.22)' : Boolean(subTask.done) ? '0 0 0 1px rgba(134, 239, 172, 0.18) inset' : 'none' }}>
+                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTaskOutsideRange ? `${subTaskOutsideRange === 'before' ? '期間前' : '期間後'}: ` : ''}${subTask.title} ${subTaskProgress}% (${displayedBar.startDate}${displayedBar.startDate === displayedBar.endDate ? '' : ` - ${displayedBar.endDate}`})`} style={{ position: 'absolute', left: subTaskBarLeft, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: subTaskBarWidth, height: SUBTASK_BAR_HEIGHT, borderRadius: 3, background: tone.background, border: `1px ${subTaskOutsideRange ? 'dashed' : tone.borderStyle} ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: subTaskOutsideRange || !isTimelineEditable ? 'pointer' : 'grab', boxShadow: subTaskActiveState ? '0 0 0 2px color-mix(in srgb, var(--blue-500) 22%, transparent)' : Boolean(subTask.done) ? '0 0 0 1px color-mix(in srgb, var(--green-300) 18%, transparent) inset' : 'none' }}>
                               {/* 塗りは内側で切り取る。バー自体は overflow を切らない（名前を sticky で左端に留めるため） */}
                               <div style={{ position: 'absolute', inset: 0, borderRadius: 2, overflow: 'hidden', pointerEvents: 'none' }}>
                                 <div
@@ -4415,8 +4417,8 @@ function GanttViewContent({
                                     left: 0,
                                     width: `${subTaskProgress}%`,
                                     background: Boolean(subTask.done)
-                                      ? 'linear-gradient(90deg, #166534, #15803d)'
-                                      : 'linear-gradient(90deg, #22c55e, #10b981)'
+                                      ? 'linear-gradient(90deg, var(--green-800), var(--green-700))'
+                                      : 'linear-gradient(90deg, var(--green-500), var(--emerald-500))'
                                   }}
                                 />
                               </div>
@@ -4427,7 +4429,7 @@ function GanttViewContent({
                                 }}
                                 style={{ position: 'absolute', left: 4, right: 4, top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: subTaskOutsideRange ? 'center' : 'flex-start', cursor: subTaskOutsideRange || !isTimelineEditable ? 'pointer' : 'grab', zIndex: 2 }}
                               >
-                                <span style={{ position: subTaskOutsideRange ? undefined : 'sticky', left: leftTableWidth + 10, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.6rem', fontWeight: 700, padding: '0 2px', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0, 0, 0, 0.6)', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
+                                <span style={{ position: subTaskOutsideRange ? undefined : 'sticky', left: leftTableWidth + 10, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.6rem', fontWeight: 700, padding: '0 2px', whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
                                   {subTaskOutsideRange
                                     ? subTaskOutsideRange === 'before' ? '← 期間前' : '期間後 →'
                                     : <>{Boolean(subTask.done) && unitWidth >= UNIT_WIDTH[timeScale].normal ? '完了 ' : ''}{unitWidth >= UNIT_WIDTH[timeScale].normal ? `${subTaskProgress}% ${subTask.title}` : barStartLabel(displayedBar.startDate, timeScale)}</>}
@@ -4523,9 +4525,9 @@ function GanttViewContent({
                                   width: Math.max((draftEndIndex - draftStartIndex + 1) * unitWidth - 12, 14),
                                   height: SUBTASK_BAR_HEIGHT,
                                   borderRadius: 999,
-                                  background: 'linear-gradient(90deg, #22c55e, #10b981)',
-                                  border: '1px solid #34d399',
-                                  color: '#ecfdf5',
+                                  background: 'linear-gradient(90deg, var(--green-500), var(--emerald-500))',
+                                  border: '1px solid var(--emerald-400)',
+                                  color: 'var(--on-fill-emerald-50)',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
@@ -4554,35 +4556,35 @@ function GanttViewContent({
       </div>
 
       {showUnscheduled && (
-        <div ref={unscheduledSectionRef} style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 16, padding: 16, scrollMarginTop: 8 }}>
+        <div ref={unscheduledSectionRef} style={{ background: 'var(--gray-900)', border: '1px solid var(--gray-800)', borderRadius: 16, padding: 16, scrollMarginTop: 8 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: '0.92rem', color: '#f8fafc', fontWeight: 700 }}>未配置タスク（日付なし）{unscheduledGroups.length > 0 ? ` ${unscheduledGroups.length}件` : ''}</div>
-            <div style={{ fontSize: '0.76rem', color: '#64748b' }}>開始日も期限もないタスクです。「今日に配置」を押すか、詳細で日程を入れるとチャートに出ます。</div>
+            <div style={{ fontSize: '0.92rem', color: 'var(--slate-50)', fontWeight: 700 }}>未配置タスク（日付なし）{unscheduledGroups.length > 0 ? ` ${unscheduledGroups.length}件` : ''}</div>
+            <div style={{ fontSize: '0.76rem', color: 'var(--slate-500)' }}>開始日も期限もないタスクです。「今日に配置」を押すか、詳細で日程を入れるとチャートに出ます。</div>
           </div>
 
           {unscheduledGroups.length === 0 ? (
-            <div style={{ marginTop: 12, fontSize: '0.82rem', color: '#64748b' }}>未配置タスクはありません。</div>
+            <div style={{ marginTop: 12, fontSize: '0.82rem', color: 'var(--slate-500)' }}>未配置タスクはありません。</div>
           ) : (
             <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
               {unscheduledGroups.map((group) => (
-                <div key={group.todo.id} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '12px 13px' }}>
-                  <button onClick={() => onSelectTodo(group.todo.id)} style={{ background: 'transparent', border: 'none', padding: 0, color: '#e2e8f0', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700, textAlign: 'left' }}>{group.todo.title}</button>
-                  <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.72rem', color: '#94a3b8' }}>
+                <div key={group.todo.id} style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 13px' }}>
+                  <button onClick={() => onSelectTodo(group.todo.id)} style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700, textAlign: 'left' }}>{group.todo.title}</button>
+                  <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--slate-400)' }}>
                     {group.todo.priority >= 4 && (
-                      <span style={{ color: group.todo.priority === 5 ? '#ef4444' : '#f59e0b', fontWeight: 700 }}>優先度 {group.todo.priority === 5 ? '最高' : '高'}</span>
+                      <span style={{ color: group.todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)', fontWeight: 700 }}>優先度 {group.todo.priority === 5 ? '最高' : '高'}</span>
                     )}
-                    {group.todo.status === 'on_hold' && <span style={{ color: '#d8b4fe' }}>保留中</span>}
+                    {group.todo.status === 'on_hold' && <span style={{ color: 'var(--purple-300)' }}>保留中</span>}
                     <span>進捗 {group.todo.progress}%</span>
                     {group.subTaskCount > 0 && <span>サブタスク {group.subTaskCount}件</span>}
-                    {group.todo.category_name && <span style={{ color: group.todo.category_color ?? '#a5b4fc' }}>{group.todo.category_name}</span>}
+                    {group.todo.category_name && <span style={{ color: dataInk(group.todo.category_color ?? 'var(--indigo-300)') }}>{group.todo.category_name}</span>}
                     {group.todo.assignee_name && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: group.todo.assignee_color ?? '#94a3b8' }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.todo.assignee_color ?? '#64748b' }} />
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: dataInk(group.todo.assignee_color ?? 'var(--slate-400)') }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.todo.assignee_color ?? 'var(--slate-500)' }} />
                         {group.todo.assignee_name}
                       </span>
                     )}
                   </div>
-                  <button onClick={() => void onUpdateTodo(group.todo.id, { start_date: todayKey, due_date: todayKey })} style={{ marginTop: 10, padding: '6px 10px', borderRadius: 8, border: '1px solid #2563eb', background: '#172554', color: '#dbeafe', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700 }}>今日に配置</button>
+                  <button onClick={() => void onUpdateTodo(group.todo.id, { start_date: todayKey, due_date: todayKey })} style={{ marginTop: 10, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--blue-600)', background: 'var(--blue-950)', color: 'var(--blue-100)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700 }}>今日に配置</button>
                 </div>
               ))}
             </div>
@@ -4595,17 +4597,17 @@ function GanttViewContent({
 
 const inputStyle: React.CSSProperties = {
   padding: '8px 10px',
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 8,
-  color: '#e2e8f0',
+  color: 'var(--slate-200)',
   fontSize: '0.82rem',
   outline: 'none'
 }
 
 const controlLabelStyle: React.CSSProperties = {
   fontSize: '0.72rem',
-  color: '#94a3b8'
+  color: 'var(--slate-400)'
 }
 
 const toggleLabelStyle: React.CSSProperties = {
@@ -4614,9 +4616,9 @@ const toggleLabelStyle: React.CSSProperties = {
   gap: 8,
   padding: '8px 10px',
   borderRadius: 10,
-  background: '#0f172a',
-  border: '1px solid #334155',
-  color: '#cbd5e1',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
+  color: 'var(--slate-300)',
   fontSize: '0.8rem'
 }
 
@@ -4625,7 +4627,7 @@ const leftHeaderGridStyle: React.CSSProperties = {
   display: 'grid',
   alignItems: 'center',
   gap: 8,
-  color: '#94a3b8',
+  color: 'var(--slate-400)',
   fontSize: '0.66rem',
   fontWeight: 700,
   textTransform: 'uppercase'
@@ -4670,9 +4672,9 @@ function leftColumnResizeHandleStyle(active: boolean): React.CSSProperties {
     height: 27,
     cursor: 'col-resize',
     borderRadius: 4,
-    background: active ? '#38bdf8' : '#334155',
+    background: active ? 'var(--sky-400)' : 'var(--slate-700)',
     opacity: active ? 1 : 0.62,
-    boxShadow: active ? '0 0 0 1px rgba(56, 189, 248, 0.35)' : 'none',
+    boxShadow: active ? '0 0 0 1px color-mix(in srgb, var(--sky-400) 35%, transparent)' : 'none',
     zIndex: 2
   }
 }
@@ -4687,8 +4689,8 @@ function assigneeInitialStyle(color: string | null | undefined, size: number): R
     width: size,
     height: size,
     borderRadius: '50%',
-    background: color ?? '#64748b',
-    color: '#f8fafc',
+    background: color ?? 'var(--slate-500)',
+    color: 'var(--slate-50)',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -4704,7 +4706,7 @@ const tableTitleButtonStyle: React.CSSProperties = {
   border: 'none',
   padding: 0,
   cursor: 'pointer',
-  color: '#f8fafc',
+  color: 'var(--slate-50)',
   fontSize: '0.75rem',
   fontWeight: 700,
   textAlign: 'left',
@@ -4721,7 +4723,7 @@ const tableCellStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 4,
   overflow: 'hidden',
-  color: '#cbd5e1',
+  color: 'var(--slate-300)',
   fontSize: '0.68rem',
   fontVariantNumeric: 'tabular-nums',
   whiteSpace: 'nowrap'
@@ -4741,10 +4743,10 @@ const tableCellButtonStyle: React.CSSProperties = {
 const tableInputStyle: React.CSSProperties = {
   height: 24,
   minWidth: 0,
-  border: '1px solid #3b82f6',
+  border: '1px solid var(--blue-500)',
   borderRadius: 4,
-  background: '#020617',
-  color: '#e2e8f0',
+  background: 'var(--slate-950)',
+  color: 'var(--slate-200)',
   padding: '2px 5px',
   fontSize: '0.68rem',
   fontVariantNumeric: 'tabular-nums',
@@ -4759,7 +4761,7 @@ const tableSelectStyle: React.CSSProperties = {
 
 const subTableCellStyle: React.CSSProperties = {
   ...tableCellStyle,
-  color: '#94a3b8',
+  color: 'var(--slate-400)',
   fontSize: '0.64rem'
 }
 
@@ -4809,9 +4811,9 @@ function subTaskAddButtonStyle(disabled: boolean): React.CSSProperties {
     width: 22,
     height: 22,
     borderRadius: 6,
-    border: `1px solid ${disabled ? '#475569' : GANTT_LINE}`,
+    border: `1px solid ${disabled ? 'var(--slate-600)' : GANTT_LINE}`,
     background: disabled ? GANTT_SURFACE_PRESSED : GANTT_SURFACE_RAISED,
-    color: disabled ? '#64748b' : '#c7d2fe',
+    color: disabled ? 'var(--slate-500)' : 'var(--indigo-200)',
     cursor: disabled ? 'not-allowed' : 'pointer',
     display: 'inline-flex',
     alignItems: 'center',
@@ -4819,7 +4821,7 @@ function subTaskAddButtonStyle(disabled: boolean): React.CSSProperties {
     flexShrink: 0,
     fontSize: '0.9rem',
     fontWeight: 800,
-    boxShadow: disabled ? 'none' : '3px 3px 8px rgba(16, 19, 31, 0.42), -2px -2px 6px rgba(78, 83, 112, 0.45)'
+    boxShadow: disabled ? 'none' : '3px 3px 8px color-mix(in srgb, var(--c-10131f) 42%, transparent), -2px -2px 6px color-mix(in srgb, var(--c-4e5370) 45%, transparent)'
   }
 }
 
@@ -4828,9 +4830,9 @@ function inlineConfirmButtonStyle(disabled: boolean): React.CSSProperties {
     height: 32,
     padding: '0 11px',
     borderRadius: 8,
-    border: '1px solid #22c55e',
-    background: disabled ? '#064e3b' : '#047857',
-    color: '#dcfce7',
+    border: '1px solid var(--green-500)',
+    background: disabled ? 'var(--emerald-900)' : 'var(--emerald-700)',
+    color: 'var(--on-fill-green-100)',
     cursor: disabled ? 'not-allowed' : 'pointer',
     fontSize: '0.72rem',
     fontWeight: 800,
@@ -4845,7 +4847,7 @@ function inlineCancelButtonStyle(disabled: boolean): React.CSSProperties {
     borderRadius: 8,
     border: `1px solid ${GANTT_LINE}`,
     background: GANTT_SURFACE_PRESSED,
-    color: disabled ? '#64748b' : GANTT_MUTED,
+    color: disabled ? 'var(--slate-500)' : GANTT_MUTED,
     cursor: disabled ? 'not-allowed' : 'pointer',
     fontSize: '0.72rem',
     fontWeight: 800,
@@ -4856,9 +4858,9 @@ function inlineCancelButtonStyle(disabled: boolean): React.CSSProperties {
 const headerActionButtonStyle: React.CSSProperties = {
   padding: '6px 10px',
   borderRadius: 6,
-  border: '1px solid #2563eb',
-  background: '#172554',
-  color: '#dbeafe',
+  border: '1px solid var(--blue-600)',
+  background: 'var(--blue-950)',
+  color: 'var(--blue-100)',
   cursor: 'pointer',
   fontSize: '0.74rem',
   fontWeight: 700
@@ -4867,9 +4869,9 @@ const headerActionButtonStyle: React.CSSProperties = {
 const standaloneBadgeStyle: React.CSSProperties = {
   padding: '6px 10px',
   borderRadius: 6,
-  border: '1px solid #334155',
-  background: '#111827',
-  color: '#cbd5e1',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--gray-900)',
+  color: 'var(--slate-300)',
   fontSize: '0.74rem',
   fontWeight: 700
 }
@@ -4882,8 +4884,8 @@ const taskSelectionPanelStyle: React.CSSProperties = {
   overflow: 'auto',
   padding: 10,
   borderRadius: 12,
-  border: '1px solid #1f2937',
-  background: '#0f172a'
+  border: '1px solid var(--gray-800)',
+  background: 'var(--slate-900)'
 }
 
 const dependencyListStyle: React.CSSProperties = {
@@ -4894,8 +4896,8 @@ const dependencyListStyle: React.CSSProperties = {
   overflow: 'auto',
   padding: 10,
   borderRadius: 12,
-  border: '1px solid #1f2937',
-  background: '#0f172a'
+  border: '1px solid var(--gray-800)',
+  background: 'var(--slate-900)'
 }
 
 const dependencyRowStyle: React.CSSProperties = {
@@ -4905,16 +4907,16 @@ const dependencyRowStyle: React.CSSProperties = {
   gap: 10,
   padding: '8px 10px',
   borderRadius: 10,
-  background: '#111827',
-  border: '1px solid #1e293b'
+  background: 'var(--gray-900)',
+  border: '1px solid var(--slate-800)'
 }
 
 const dependencyDeleteButtonStyle: React.CSSProperties = {
   padding: '5px 8px',
   borderRadius: 8,
-  border: '1px solid #7f1d1d',
-  background: '#450a0a',
-  color: '#fecaca',
+  border: '1px solid var(--red-900)',
+  background: 'var(--red-950)',
+  color: 'var(--red-200)',
   cursor: 'pointer',
   fontSize: '0.72rem',
   fontWeight: 700,
@@ -4924,9 +4926,9 @@ const dependencyDeleteButtonStyle: React.CSSProperties = {
 const dependencyLagBadgeStyle: React.CSSProperties = {
   padding: '2px 8px',
   borderRadius: 999,
-  border: '1px solid #334155',
-  background: '#0b1220',
-  color: '#cbd5e1',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--c-0b1220)',
+  color: 'var(--slate-300)',
   fontSize: '0.72rem',
   fontWeight: 700
 }
@@ -4934,9 +4936,9 @@ const dependencyLagBadgeStyle: React.CSSProperties = {
 const dependencyLagButtonStyle: React.CSSProperties = {
   padding: '5px 8px',
   borderRadius: 8,
-  border: '1px solid #334155',
-  background: '#111827',
-  color: '#cbd5e1',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--gray-900)',
+  color: 'var(--slate-300)',
   cursor: 'pointer',
   fontSize: '0.72rem',
   fontWeight: 700,
@@ -4945,15 +4947,15 @@ const dependencyLagButtonStyle: React.CSSProperties = {
 
 const selectionEmptyStyle: React.CSSProperties = {
   fontSize: '0.78rem',
-  color: '#64748b'
+  color: 'var(--slate-500)'
 }
 
 const collapsedSummaryChipStyle: React.CSSProperties = {
   padding: '4px 8px',
   borderRadius: 5,
-  background: '#0f172a',
-  border: '1px solid #334155',
-  color: '#cbd5e1',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
+  color: 'var(--slate-300)',
   fontSize: '0.7rem',
   fontWeight: 600
 }
@@ -4965,8 +4967,8 @@ const toolGroupStyle: React.CSSProperties = {
   gap: 2,
   padding: 2,
   borderRadius: 8,
-  background: '#0b1220',
-  border: '1px solid #1f2937'
+  background: 'var(--c-0b1220)',
+  border: '1px solid var(--gray-800)'
 }
 
 function toolButtonStyle(active: boolean, disabled = false): React.CSSProperties {
@@ -4975,8 +4977,8 @@ function toolButtonStyle(active: boolean, disabled = false): React.CSSProperties
     padding: '4px 8px',
     borderRadius: 6,
     border: 'none',
-    background: active ? '#2563eb' : 'transparent',
-    color: disabled ? '#475569' : active ? '#eff6ff' : '#cbd5e1',
+    background: active ? 'var(--blue-600)' : 'transparent',
+    color: disabled ? 'var(--slate-600)' : active ? 'var(--on-fill-blue-50)' : 'var(--slate-300)',
     cursor: disabled ? 'not-allowed' : 'pointer',
     fontSize: '0.76rem',
     fontWeight: 700,
@@ -5011,10 +5013,10 @@ const settingsPanelStyle: React.CSSProperties = {
   overflow: 'auto',
   padding: 14,
   borderRadius: 16,
-  border: '1px solid #334155',
-  background: '#0b1220f2',
+  border: '1px solid var(--slate-700)',
+  background: 'color-mix(in srgb, var(--c-0b1220) 94.9%, transparent)',
   backdropFilter: 'blur(10px)',
-  boxShadow: '0 20px 48px rgba(15, 23, 42, 0.42)',
+  boxShadow: '0 20px 48px color-mix(in srgb, var(--slate-900) 42%, transparent)',
   zIndex: 12
 }
 
@@ -5024,16 +5026,16 @@ const settingsSectionStyle: React.CSSProperties = {
   gap: 8,
   padding: 12,
   borderRadius: 12,
-  border: '1px solid #1f2937',
-  background: '#111827'
+  border: '1px solid var(--gray-800)',
+  background: 'var(--gray-900)'
 }
 
 const floatingCloseButtonStyle: React.CSSProperties = {
   padding: '6px 10px',
   borderRadius: 8,
-  border: '1px solid #334155',
-  background: '#111827',
-  color: '#cbd5e1',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--gray-900)',
+  color: 'var(--slate-300)',
   cursor: 'pointer',
   fontSize: '0.74rem',
   fontWeight: 700
@@ -5044,7 +5046,7 @@ const centerEmptyStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: '#64748b',
+  color: 'var(--slate-500)',
   padding: 24,
   textAlign: 'center'
 }
@@ -5052,9 +5054,9 @@ const centerEmptyStyle: React.CSSProperties = {
 const secondaryActionChipStyle: React.CSSProperties = {
   padding: '7px 10px',
   borderRadius: 999,
-  border: '1px solid #475569',
-  background: '#0f172a',
-  color: '#cbd5e1',
+  border: '1px solid var(--slate-600)',
+  background: 'var(--slate-900)',
+  color: 'var(--slate-300)',
   cursor: 'pointer',
   fontSize: '0.76rem',
   fontWeight: 700
@@ -5066,7 +5068,7 @@ function legendItemStyle(): React.CSSProperties {
     alignItems: 'center',
     gap: 5,
     fontSize: '0.68rem',
-    color: '#94a3b8',
+    color: 'var(--slate-400)',
     whiteSpace: 'nowrap'
   }
 }
@@ -5075,9 +5077,9 @@ function chipStyle(active: boolean): React.CSSProperties {
   return {
     padding: '7px 10px',
     borderRadius: 999,
-    border: `1px solid ${active ? '#3b82f6' : '#334155'}`,
-    background: active ? '#1d4ed8' : '#111827',
-    color: active ? '#eff6ff' : '#94a3b8',
+    border: `1px solid ${active ? 'var(--blue-500)' : 'var(--slate-700)'}`,
+    background: active ? 'var(--blue-700)' : 'var(--gray-900)',
+    color: active ? 'var(--on-fill-blue-50)' : 'var(--slate-400)',
     cursor: 'pointer',
     fontSize: '0.76rem',
     fontWeight: 700
@@ -5089,9 +5091,9 @@ function expandToggleButtonStyle(active: boolean, expanded: boolean): React.CSSP
     width: 18,
     height: 18,
     borderRadius: 4,
-    border: `1px solid ${active ? '#334155' : '#1f2937'}`,
-    background: active ? '#111827' : 'transparent',
-    color: active ? (expanded ? '#bfdbfe' : '#94a3b8') : '#334155',
+    border: `1px solid ${active ? 'var(--slate-700)' : 'var(--gray-800)'}`,
+    background: active ? 'var(--gray-900)' : 'transparent',
+    color: active ? (expanded ? 'var(--blue-200)' : 'var(--slate-400)') : 'var(--slate-700)',
     cursor: active ? 'pointer' : 'default',
     display: 'inline-flex',
     alignItems: 'center',
@@ -5115,7 +5117,7 @@ function subTaskGripStyle(disabled: boolean, dragging: boolean): React.CSSProper
     alignItems: 'center',
     justifyContent: 'center',
     // ふだんの色とマウスを乗せたときの色は CSS（.tarbo-gantt-subtask-grip）で決める
-    ...(dragging ? { background: '#082f49', color: '#e0f2fe' } : {}),
+    ...(dragging ? { background: 'var(--sky-950)', color: 'var(--sky-100)' } : {}),
     fontSize: '0.8rem',
     lineHeight: 1,
     userSelect: 'none',
@@ -5131,8 +5133,8 @@ function subTaskDropLineStyle(position: DropPosition): React.CSSProperties {
     right: 0,
     [position === 'before' ? 'top' : 'bottom']: -1,
     height: 2,
-    background: '#38bdf8',
-    boxShadow: '0 0 0 1px rgba(56, 189, 248, 0.3)',
+    background: 'var(--sky-400)',
+    boxShadow: '0 0 0 1px color-mix(in srgb, var(--sky-400) 30%, transparent)',
     pointerEvents: 'none',
     zIndex: 5
   }
@@ -5143,9 +5145,9 @@ function reorderHandleStyle(disabled: boolean, dragging: boolean): React.CSSProp
     width: 18,
     height: 18,
     borderRadius: 4,
-    border: `1px solid ${dragging ? '#38bdf8' : '#334155'}`,
-    background: dragging ? '#082f49' : '#111827',
-    color: dragging ? '#e0f2fe' : '#94a3b8',
+    border: `1px solid ${dragging ? 'var(--sky-400)' : 'var(--slate-700)'}`,
+    background: dragging ? 'var(--sky-950)' : 'var(--gray-900)',
+    color: dragging ? 'var(--sky-100)' : 'var(--slate-400)',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -5163,9 +5165,9 @@ function tagStyle(active: boolean, accent: string): React.CSSProperties {
   return {
     padding: '7px 10px',
     borderRadius: 999,
-    border: `1px solid ${active ? accent : '#334155'}`,
-    background: active ? `${accent}33` : '#111827',
-    color: active ? '#e2e8f0' : '#94a3b8',
+    border: `1px solid ${active ? accent : 'var(--slate-700)'}`,
+    background: active ? `color-mix(in srgb, ${accent} 20%, transparent)` : 'var(--gray-900)',
+    color: active ? 'var(--slate-200)' : 'var(--slate-400)',
     cursor: 'pointer',
     fontSize: '0.76rem',
     fontWeight: 700
@@ -5173,13 +5175,13 @@ function tagStyle(active: boolean, accent: string): React.CSSProperties {
 }
 
 function taskToggleStyle(active: boolean, accent?: string | null): React.CSSProperties {
-  const color = accent ?? '#6366f1'
+  const color = accent ?? 'var(--indigo-500)'
   return {
     padding: '6px 10px',
     borderRadius: 999,
-    border: `1px solid ${active ? color : '#334155'}`,
-    background: active ? `${color}26` : '#111827',
-    color: active ? '#e2e8f0' : '#94a3b8',
+    border: `1px solid ${active ? color : 'var(--slate-700)'}`,
+    background: active ? `color-mix(in srgb, ${color} 14.9%, transparent)` : 'var(--gray-900)',
+    color: active ? 'var(--slate-200)' : 'var(--slate-400)',
     cursor: 'pointer',
     fontSize: '0.75rem',
     fontWeight: 700,

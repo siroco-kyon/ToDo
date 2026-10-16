@@ -16,6 +16,7 @@ import { isListTodo } from '../lib/todoList'
 import { autoScrollNearEdge, dropTargetAt, moveIdBy, moveIdTo, scrollParentOf, type DropPosition } from '../lib/reorder'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { taskLinkFor } from '../lib/urlState'
+import { dataInk } from '../lib/theme'
 
 interface Props {
   todo: Todo | null
@@ -49,10 +50,10 @@ interface EditableSubTask {
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 10px',
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 6,
-  color: '#e2e8f0',
+  color: 'var(--slate-200)',
   fontSize: '0.9rem',
   outline: 'none',
   boxSizing: 'border-box'
@@ -65,7 +66,7 @@ const TWO_COLUMN_MIN_WIDTH = 880
 
 const sectionTitleStyle: React.CSSProperties = {
   fontSize: '0.75rem',
-  color: '#94a3b8',
+  color: 'var(--slate-400)',
   marginBottom: 8,
   textTransform: 'uppercase',
   letterSpacing: '0.05em'
@@ -77,7 +78,7 @@ function SectionHeading({ title, summary, detail }: { title: React.ReactNode; su
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
       <span style={{ ...sectionTitleStyle, marginBottom: 0 }}>{title}</span>
-      {summary && <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{summary}</span>}
+      {summary && <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>{summary}</span>}
       {detail && <InfoTip text={detail} />}
     </div>
   )
@@ -98,7 +99,7 @@ function InfoTip({ text }: { text: string }): React.JSX.Element {
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
         onKeyDown={(event) => { if (event.key === 'Escape') setOpen(false) }}
-        style={{ fontSize: '0.8rem', color: open ? '#e2e8f0' : '#94a3b8', cursor: 'help', lineHeight: 1 }}
+        style={{ fontSize: '0.8rem', color: open ? 'var(--slate-200)' : 'var(--slate-400)', cursor: 'help', lineHeight: 1 }}
       >
         ⓘ
       </span>
@@ -106,7 +107,7 @@ function InfoTip({ text }: { text: string }): React.JSX.Element {
         id={tipId}
         role="tooltip"
         hidden={!open}
-        style={{ position: 'absolute', top: 'calc(100% + 6px)', left: -8, zIndex: 20, width: 280, padding: '8px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', fontSize: '0.78rem', lineHeight: 1.6, boxShadow: '0 10px 24px rgba(2, 6, 23, 0.5)', textTransform: 'none', letterSpacing: 0 }}
+        style={{ position: 'absolute', top: 'calc(100% + 6px)', left: -8, zIndex: 20, width: 280, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)', fontSize: '0.78rem', lineHeight: 1.6, boxShadow: '0 10px 24px color-mix(in srgb, var(--slate-950) 50%, transparent)', textTransform: 'none', letterSpacing: 0 }}
       >
         {text}
       </span>
@@ -117,7 +118,7 @@ function InfoTip({ text }: { text: string }): React.JSX.Element {
 const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: '0.75rem',
-  color: '#64748b',
+  color: 'var(--slate-500)',
   marginBottom: 4
 }
 
@@ -838,7 +839,7 @@ export function TodoDetail({
 
   if (!todo) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#475569' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--slate-600)' }}>
         タスクを選択してください
       </div>
     )
@@ -971,11 +972,11 @@ export function TodoDetail({
 
   const timerSection = (
     <>
-          <div style={{ background: '#1e293b', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 4 }}>計測時間</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginBottom: 4 }}>計測時間</div>
               {isRunning ? <RunningTimerDisplay startTime={timerStartTime} /> : <TimerDisplay elapsedSeconds={0} isRunning={false} />}
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>合計 <TotalMinutes loggedSeconds={loggedSeconds} startTime={isRunning ? timerStartTime : null} />分</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginTop: 2 }}>合計 <TotalMinutes loggedSeconds={loggedSeconds} startTime={isRunning ? timerStartTime : null} />分</div>
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
               {isRunning ? (
@@ -991,10 +992,10 @@ export function TodoDetail({
                       timerStoppingRef.current = false
                       if (mountedRef.current) setTimerStopping(false)
                     })
-                  }} style={buttonStyle('#ef4444')}>{timerStopping ? '停止中…' : '停止'}</button>
+                  }} style={buttonStyle('var(--red-500)')}>{timerStopping ? '停止中…' : '停止'}</button>
                 </>
               ) : (
-                <button onClick={() => void onStartTimer(todo.id)} style={buttonStyle('#4ade80', '#000')}>開始</button>
+                <button onClick={() => void onStartTimer(todo.id)} style={buttonStyle('var(--green-400)', 'var(--black)')}>開始</button>
               )}
             </div>
           </div>
@@ -1004,7 +1005,7 @@ export function TodoDetail({
   const editSection = (
     <>
           {editing && (
-            <fieldset disabled={saving} style={{ border: 0, margin: 0, minWidth: 0, background: '#1e293b', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <fieldset disabled={saving} style={{ border: 0, margin: 0, minWidth: 0, background: 'var(--slate-800)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div>
                 <label style={labelStyle}>種類</label>
                 <select
@@ -1021,12 +1022,12 @@ export function TodoDetail({
                   <option value="list">ToDoリスト（毎日・毎週のチェックや細かいやることをまとめる）</option>
                 </select>
                 {editingListMode && !listMode && (
-                  <div style={{ marginTop: 4, fontSize: '0.72rem', color: '#a5b4fc', lineHeight: 1.5 }}>
+                  <div style={{ marginTop: 4, fontSize: '0.72rem', color: 'var(--indigo-300)', lineHeight: 1.5 }}>
                     保存すると繰り返し（次回分の作成）を外します。期限はそのままです（期限なしにするときは期限を空にします）。今のサブタスクはそのまま項目になります（繰り返しは項目ごとに設定できます）。
                   </div>
                 )}
                 {!editingListMode && listMode && (
-                  <div style={{ marginTop: 4, fontSize: '0.72rem', color: '#fde68a', lineHeight: 1.5 }}>
+                  <div style={{ marginTop: 4, fontSize: '0.72rem', color: 'var(--amber-200)', lineHeight: 1.5 }}>
                     保存すると、項目の繰り返し（毎日・毎週など）を外し、サブタスクに戻します。
                   </div>
                 )}
@@ -1036,34 +1037,34 @@ export function TodoDetail({
               <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最低</option><option value={2}>低</option><option value={3}>中</option><option value={4}>高</option><option value={5}>最高</option></select></div></div>
               {!editingListMode && <div><label style={labelStyle}>繰り返し（完了にすると次回分を自動で作ります）</label><select value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as 'daily' | 'weekly' | 'monthly' | null }))} style={inputStyle}><option value="">なし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option></select></div>}
               {!editingListMode && editData.recurrence && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'var(--slate-300)', cursor: 'pointer' }}>
                   <input
                     type="checkbox"
                     checked={(editData.recurrence_copy_subtasks ?? 0) === 1}
                     onChange={(event) => setEditData((previous) => ({ ...previous, recurrence_copy_subtasks: event.target.checked ? 1 : 0 }))}
-                    style={{ accentColor: '#6366f1' }}
+                    style={{ accentColor: 'var(--indigo-500)' }}
                   />
                   サブタスクも次回分に引き継ぐ（未完了状態で複製）
                 </label>
               )}
               {!editingListMode && editData.recurrence && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'var(--slate-300)', cursor: 'pointer' }}>
                   <input
                     type="checkbox"
                     checked={(editData.recurrence_skip_weekends ?? 0) === 1}
                     onChange={(event) => setEditData((previous) => ({ ...previous, recurrence_skip_weekends: event.target.checked ? 1 : 0 }))}
-                    style={{ accentColor: '#6366f1' }}
+                    style={{ accentColor: 'var(--indigo-500)' }}
                   />
                   土日をスキップする
                 </label>
               )}
               {!editingListMode && editData.recurrence && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'var(--slate-300)', cursor: 'pointer' }}>
                   <input
                     type="checkbox"
                     checked={(editData.recurrence_skip_holidays ?? 0) === 1}
                     onChange={(event) => setEditData((previous) => ({ ...previous, recurrence_skip_holidays: event.target.checked ? 1 : 0 }))}
-                    style={{ accentColor: '#6366f1' }}
+                    style={{ accentColor: 'var(--indigo-500)' }}
                   />
                   日本の祝日をスキップする
                 </label>
@@ -1091,9 +1092,9 @@ export function TodoDetail({
                           style={{
                             display: 'inline-flex', alignItems: 'center', gap: 6,
                             padding: '4px 10px', borderRadius: 99, cursor: 'pointer',
-                            border: `1px solid ${selected ? user.color : '#334155'}`,
-                            background: selected ? `${user.color}26` : '#0f172a',
-                            color: selected ? '#e2e8f0' : '#64748b', fontSize: '0.78rem'
+                            border: `1px solid ${selected ? user.color : 'var(--slate-700)'}`,
+                            background: selected ? `color-mix(in srgb, ${user.color} 14.9%, transparent)` : 'var(--slate-900)',
+                            color: selected ? 'var(--slate-200)' : 'var(--slate-500)', fontSize: '0.78rem'
                           }}
                         >
                           <span style={{ width: 8, height: 8, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
@@ -1104,8 +1105,8 @@ export function TodoDetail({
                   </div>
                 </div>
               )}
-              {!editingListMode && <div><label style={labelStyle}>進捗 {editData.progress ?? 0}%</label><input type="range" min={0} max={100} step={5} value={editData.progress ?? 0} onChange={(event) => setEditData((previous) => ({ ...previous, progress: Number(event.target.value) }))} style={{ width: '100%', accentColor: '#6366f1' }} /></div>}
-              <button onClick={() => void handleSave()} disabled={saving} style={{ ...buttonStyle('#6366f1'), alignSelf: 'flex-end' }}>{saving ? '保存中…' : '保存'}</button>
+              {!editingListMode && <div><label style={labelStyle}>進捗 {editData.progress ?? 0}%</label><input type="range" min={0} max={100} step={5} value={editData.progress ?? 0} onChange={(event) => setEditData((previous) => ({ ...previous, progress: Number(event.target.value) }))} style={{ width: '100%', accentColor: 'var(--indigo-500)' }} /></div>}
+              <button onClick={() => void handleSave()} disabled={saving} style={{ ...buttonStyle('var(--indigo-500)'), alignSelf: 'flex-end' }}>{saving ? '保存中…' : '保存'}</button>
             </fieldset>
           )}
     </>
@@ -1114,9 +1115,9 @@ export function TodoDetail({
   const progressSection = (
     <>
           {!editing && !listMode && (
-            <div style={{ background: '#1e293b', borderRadius: 10, padding: '12px 16px' }}>
+            <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: '12px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>進捗 <span style={{ color: '#64748b', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span></span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>進捗 <span style={{ color: 'var(--slate-500)', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span></span>
               </div>
               <ProgressSlider
                 value={todo.progress ?? 0}
@@ -1125,10 +1126,10 @@ export function TodoDetail({
                 onCommit={handleProgressCommit}
               />
               {subTaskProgress !== null && (
-                <div style={{ marginTop: 8, fontSize: '0.72rem', color: '#64748b' }}>
+                <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--slate-500)' }}>
                   サブタスク: {doneCount}/{subTasks.length} 完了
-                  <div style={{ height: 4, background: '#0f172a', borderRadius: 99, marginTop: 4 }}>
-                    <div style={{ height: '100%', width: `${subTaskProgress}%`, background: '#6366f1', borderRadius: 99 }} />
+                  <div style={{ height: 4, background: 'var(--slate-900)', borderRadius: 99, marginTop: 4 }}>
+                    <div style={{ height: '100%', width: `${subTaskProgress}%`, background: 'var(--indigo-500)', borderRadius: 99 }} />
                   </div>
                 </div>
               )}
@@ -1142,7 +1143,7 @@ export function TodoDetail({
           {!editing && (
             <section>
               <SectionHeading title="説明" summary="目的・やること（あまり変わらない内容）" />
-              <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <textarea
                   value={descriptionDraft}
                   onChange={(event) => setDescriptionDraft(event.target.value)}
@@ -1177,7 +1178,7 @@ export function TodoDetail({
           {!editing && (
             <section>
               <SectionHeading title="メモ" summary="今の状況・次にやること（上書き。履歴は残りません）" detail="引き継ぎにも使えます。日付つきで残したい報告は、下の進捗ログに書きます。" />
-              <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <textarea
                   value={memoDraft}
                   onChange={(event) => setMemoDraft(event.target.value)}
@@ -1211,7 +1212,7 @@ export function TodoDetail({
                 summary="日付つきで積み上がる報告"
                 detail={`報告タブ・進捗タブに表示され、返信やリアクションが付きます。${users.length > 0 ? '「@名前」で呼ぶと相手に通知が届きます。' : ''}Ctrl+Enter でも投稿できます。`}
               />
-              <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <MentionTextarea
                   value={noteDraft}
                   users={mentionUsers}
@@ -1246,11 +1247,11 @@ export function TodoDetail({
                       onPostOnTrack={() => void handleAddProgressNote(ON_TRACK_NOTE)}
                     />
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{noteDraft.length}文字</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>{noteDraft.length}文字</div>
                   <button
                     onClick={() => void handleAddProgressNote()}
                     disabled={!noteDraft.trim() || noteSaving}
-                    style={buttonStyle(!noteDraft.trim() || noteSaving ? '#1e293b' : '#6366f1', !noteDraft.trim() || noteSaving ? '#64748b' : '#fff')}
+                    style={buttonStyle(!noteDraft.trim() || noteSaving ? 'var(--slate-800)' : 'var(--indigo-500)', !noteDraft.trim() || noteSaving ? 'var(--slate-500)' : 'var(--white)')}
                   >
                     {noteSaving ? '投稿中...' : '投稿'}
                   </button>
@@ -1318,7 +1319,7 @@ export function TodoDetail({
                       />
                 )))}
             </div>
-            <form onSubmit={(event) => void handleAddSubTask(event)} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 10, border: '1px dashed #334155' }}>
+            <form onSubmit={(event) => void handleAddSubTask(event)} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 10, border: '1px dashed var(--slate-700)' }}>
               <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
                 <textarea
                   value={newSubTask.title}
@@ -1335,9 +1336,9 @@ export function TodoDetail({
                   rows={newSubTask.title.includes('\n') ? Math.min(6, newSubTask.title.split('\n').length + 1) : 1}
                   style={{ ...inputStyle, fontSize: '0.84rem', padding: '7px 9px', resize: 'vertical', flex: 1 }}
                 />
-                <button type="submit" disabled={!newSubTask.title.trim()} style={buttonStyle(newSubTask.title.trim() ? '#2563eb' : '#1e293b', newSubTask.title.trim() ? '#fff' : '#64748b')}>追加</button>
+                <button type="submit" disabled={!newSubTask.title.trim()} style={buttonStyle(newSubTask.title.trim() ? 'var(--blue-600)' : 'var(--slate-800)', newSubTask.title.trim() ? 'var(--white)' : 'var(--slate-500)')}>追加</button>
               </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: '#94a3b8' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--slate-400)' }}>
                 {users.length > 0 && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     担当
@@ -1358,7 +1359,7 @@ export function TodoDetail({
                   期限
                   <input type="date" value={newSubTask.due_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, due_date: event.target.value || null }))} aria-label="追加するサブタスクの期限" style={{ ...inputStyle, width: 'auto', fontSize: '0.76rem', padding: '3px 6px' }} />
                 </label>
-                <button type="button" onClick={() => setShowSubTaskDetails((previous) => !previous)} aria-expanded={showSubTaskDetails} style={{ background: 'none', border: 'none', padding: 0, color: '#93c5fd', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>
+                <button type="button" onClick={() => setShowSubTaskDetails((previous) => !previous)} aria-expanded={showSubTaskDetails} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--blue-300)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>
                   {showSubTaskDetails ? '▾ 閉じる' : '▸ 開始日・メモ・進捗'}
                 </button>
               </div>
@@ -1366,7 +1367,7 @@ export function TodoDetail({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={labelStyle}>開始日<input type="date" value={newSubTask.start_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} /></label>
                   <textarea value={newSubTask.description ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, description: event.target.value }))} placeholder="メモ..." aria-label="追加するサブタスクのメモ" rows={2} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: '#94a3b8' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: 'var(--slate-400)' }}>
                     <span>進捗 {clampProgress(newSubTask.progress ?? 0)}%</span>
                     <input
                       type="range"
@@ -1392,7 +1393,7 @@ export function TodoDetail({
           {(!listMode || dependencies.length > 0) && (
           <section>
             <SectionHeading title="依存関係" summary="前後のタスク" detail="先行タスクが終わってから、このタスクを始めます。待機日数を増やすと、先行タスクの完了後に間を空けられます。" />
-            <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* 右の列（狭いとき）は2段に折り返す */}<div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 <select value={dependencyDraft.mode} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, mode: event.target.value as 'predecessor' | 'successor', relatedTodoId: '' }))} style={{ ...inputStyle, flex: '1 1 130px', width: 'auto', minWidth: 0 }}>
                   <option value="predecessor">先行タスクを追加</option>
@@ -1403,7 +1404,7 @@ export function TodoDetail({
                   {dependencyCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title}</option>)}
                 </select>
                 <input type="number" min={0} max={60} value={dependencyDraft.lagDays} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, lagDays: event.target.value }))} placeholder="待機日数" aria-label="待機日数" title="先行タスクの完了から、何日空けて始めるか" style={{ ...inputStyle, flex: '0 0 88px', width: 88 }} />
-                <button onClick={() => void handleCreateDependency()} style={buttonStyle('#2563eb')}>追加</button>
+                <button onClick={() => void handleCreateDependency()} style={buttonStyle('var(--blue-600)')}>追加</button>
               </div>
               <DependencyList title="先行タスク" items={predecessorDependencies} getTodoId={(item) => item.predecessor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.predecessor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} />
               <DependencyList title="後続タスク" items={successorDependencies} getTodoId={(item) => item.successor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.successor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} />
@@ -1418,13 +1419,13 @@ export function TodoDetail({
           <section>
             <div style={sectionTitleStyle}>作業ログ</div>
             {logs.length === 0 ? (
-              <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>ログはまだありません</div>
+              <div style={{ color: 'var(--slate-400)', fontSize: '0.85rem' }}>ログはまだありません</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {logs.map((log) => (
-                  <div key={log.id} style={{ background: '#1e293b', borderRadius: 6, padding: '8px 12px', fontSize: '0.82rem', color: '#94a3b8' }}>
-                    <span style={{ color: '#e2e8f0' }}>{formatTime(new Date(log.start_time))} - {formatTime(new Date(log.end_time))}</span>
-                    <span style={{ marginLeft: 8, color: '#4ade80' }}>{Math.round(log.duration_seconds / 60)}分</span>
+                  <div key={log.id} style={{ background: 'var(--slate-800)', borderRadius: 6, padding: '8px 12px', fontSize: '0.82rem', color: 'var(--slate-400)' }}>
+                    <span style={{ color: 'var(--slate-200)' }}>{formatTime(new Date(log.start_time))} - {formatTime(new Date(log.end_time))}</span>
+                    <span style={{ marginLeft: 8, color: 'var(--green-400)' }}>{Math.round(log.duration_seconds / 60)}分</span>
                     {log.note && <span style={{ marginLeft: 8 }}>メモ: {log.note}</span>}
                   </div>
                 ))}
@@ -1452,15 +1453,15 @@ export function TodoDetail({
           display: 'flex',
           flexDirection: 'column',
           gap: 10,
-          borderBottom: '1px solid #1e293b',
-          background: '#0b1220'
+          borderBottom: '1px solid var(--slate-800)',
+          background: 'var(--c-0b1220)'
         }}
       >
         <div style={{ width: '100%', minWidth: 0 }}>
           {editing ? (
             <input disabled={saving} value={editData.title ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, title: event.target.value }))} style={inputStyle} />
           ) : (
-            <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0', lineHeight: 1.4, margin: 0, overflowWrap: 'anywhere' }}>{todo.title}</h2>
+            <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)', lineHeight: 1.4, margin: 0, overflowWrap: 'anywhere' }}>{todo.title}</h2>
           )}
         </div>
         <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1468,27 +1469,27 @@ export function TodoDetail({
             <button
               onClick={() => void toggleDone()}
               title={isDone ? '完了を取り消して、未完了に戻します' : listMode ? 'このToDoリストを使い終えたときに押します（中の項目のチェックとは別です）' : 'このタスクを完了にします'}
-              style={isDone ? buttonStyle('#334155', '#cbd5e1') : listMode ? buttonStyle('#334155', '#cbd5e1') : buttonStyle('#15803d', '#f0fdf4')}
+              style={isDone ? buttonStyle('var(--slate-700)', 'var(--slate-300)') : listMode ? buttonStyle('var(--slate-700)', 'var(--slate-300)') : buttonStyle('var(--green-700)', 'var(--green-50)')}
             >
               {isDone ? '完了を取り消す' : listMode ? 'リストを終える' : '✓ 完了にする'}
             </button>
           )}
-          {!editing && todo.status === 'on_hold' && <Badge color="#c084fc">保留中</Badge>}
+          {!editing && todo.status === 'on_hold' && <Badge color="var(--purple-400)">保留中</Badge>}
           {!editing && !isDone && !isArchived && (
             <button
               onClick={() => void onUpdate(todo.id, { status: todo.status === 'on_hold' ? 'active' : 'on_hold' }).then(() => onShowToast(todo.status === 'on_hold' ? '進行中に戻しました' : 'タスクを保留しました')).catch(() => onShowToast('状態を変更できませんでした', 'error'))}
               title={todo.status === 'on_hold' ? '保留をやめて、進行中に戻します' : '待ち状態などで作業を止めるときに使います。保留中は報告タブでも分かるように表示されます'}
-              style={buttonStyle('#6b21a8')}
+              style={buttonStyle('var(--purple-800)')}
             >
               {todo.status === 'on_hold' ? '進行中に戻す' : '保留する'}
             </button>
           )}
           {!editing && !isDone && !isArchived && (
-            <button onClick={() => void onAddToTodayPlan(todo.id)} disabled={isInTodayPlan} title="「計画」タブの今日の予定に入れます" style={buttonStyle(isInTodayPlan ? '#1e293b' : '#1e3a8a', isInTodayPlan ? '#64748b' : '#dbeafe')}>
+            <button onClick={() => void onAddToTodayPlan(todo.id)} disabled={isInTodayPlan} title="「計画」タブの今日の予定に入れます" style={buttonStyle(isInTodayPlan ? 'var(--slate-800)' : 'var(--blue-900)', isInTodayPlan ? 'var(--slate-500)' : 'var(--blue-100)')}>
               {isInTodayPlan ? '今日の計画に追加済み' : '今日の計画に追加'}
             </button>
           )}
-          <button onClick={editing ? cancelEditing : startEditing} disabled={saving} title={editing ? undefined : 'タスク名・説明・繰り返し・サブ担当などをまとめて編集します'} style={buttonStyle('#334155')}>
+          <button onClick={editing ? cancelEditing : startEditing} disabled={saving} title={editing ? undefined : 'タスク名・説明・繰り返し・サブ担当などをまとめて編集します'} style={buttonStyle('var(--slate-700)')}>
             {editing ? '編集をやめる' : '編集'}
           </button>
           {!editing && currentUser && (
@@ -1497,7 +1498,7 @@ export function TodoDetail({
               onClick={() => void toggleSubscription()}
               title={subscribed ? 'このタスクに進捗ログや返信が付くと通知が届きます。押すとオフにします' : 'このタスクに進捗ログや返信が付いたら通知を受け取ります'}
               aria-pressed={subscribed}
-              style={buttonStyle(subscribed ? '#14532d' : '#334155')}
+              style={buttonStyle(subscribed ? 'var(--green-900)' : 'var(--slate-700)')}
             >
               {subscribed ? '🔔 更新通知: オン' : '🔕 更新通知: オフ'}
             </button>
@@ -1516,8 +1517,8 @@ export function TodoDetail({
       </div>
 
       <div ref={detailBodyRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {saveError && <div role="alert" style={{ padding: 10, color: '#fecaca', border: '1px solid #ef4444', borderRadius: 8 }}>{saveError}</div>}
-      {sectionLoadError && <div role="alert" style={{ padding: 10, borderRadius: 8, border: '1px solid #ef4444', background: '#450a0a', color: '#fecaca', fontSize: '0.8rem' }}>{sectionLoadError}<button onClick={() => { setSectionLoadError(null); void Promise.all([loadWorkLogs(todo.id), loadSubTasks(todo.id), loadDependencies(todo.id), loadProgressNotes(todo.id)]) }} style={{ marginLeft: 10, padding: '4px 8px', borderRadius: 6, border: '1px solid #ef4444', background: '#7f1d1d', color: '#fff' }}>再試行</button></div>}
+      {saveError && <div role="alert" style={{ padding: 10, color: 'var(--red-200)', border: '1px solid var(--red-500)', borderRadius: 8 }}>{saveError}</div>}
+      {sectionLoadError && <div role="alert" style={{ padding: 10, borderRadius: 8, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', fontSize: '0.8rem' }}>{sectionLoadError}<button onClick={() => { setSectionLoadError(null); void Promise.all([loadWorkLogs(todo.id), loadSubTasks(todo.id), loadDependencies(todo.id), loadProgressNotes(todo.id)]) }} style={{ marginLeft: 10, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-900)', color: 'var(--white)' }}>再試行</button></div>}
       {twoColumns ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 360px)', gap: 20, alignItems: 'start' }}>
           <div style={detailColumnStyle}>
@@ -1563,13 +1564,13 @@ const detailColumnStyle: React.CSSProperties = { display: 'flex', flexDirection:
 function AutosaveStatus({ saving, dirty, failed, length, onRetry }: { saving: boolean; dirty: boolean; failed: boolean; length: number; onRetry: () => void }): React.JSX.Element {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-      <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: failed ? '#fca5a5' : dirty || saving ? '#93c5fd' : '#94a3b8' }}>
+      <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: failed ? 'var(--red-300)' : dirty || saving ? 'var(--blue-300)' : 'var(--slate-400)' }}>
         {saving ? '保存中…' : failed ? '保存できませんでした' : dirty ? '入力が止まると保存します' : '保存済み'}
         {failed && !saving && (
-          <button type="button" onClick={onRetry} style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid #ef4444', background: '#450a0a', color: '#fecaca', cursor: 'pointer', fontSize: '0.75rem' }}>再試行</button>
+          <button type="button" onClick={onRetry} style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', cursor: 'pointer', fontSize: '0.75rem' }}>再試行</button>
         )}
       </div>
-      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{length}文字</div>
+      <div style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>{length}文字</div>
     </div>
   )
 }
@@ -1652,22 +1653,22 @@ function TodoHistory({ todoId, refreshKey }: { todoId: string; refreshKey: strin
     <section>
       <SectionHeading title="変更履歴" summary="いつ・誰が変えたか" />
       {error ? (
-        <div role="alert" style={{ fontSize: '0.8rem', color: '#fca5a5' }}>
+        <div role="alert" style={{ fontSize: '0.8rem', color: 'var(--red-300)' }}>
           {error}
-          <button type="button" onClick={() => void load(0)} style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 6, border: '1px solid #ef4444', background: '#450a0a', color: '#fecaca', cursor: 'pointer', fontSize: '0.75rem' }}>再試行</button>
+          <button type="button" onClick={() => void load(0)} style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', cursor: 'pointer', fontSize: '0.75rem' }}>再試行</button>
         </div>
       ) : entries.length === 0 ? (
-        <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{loading ? '読み込み中…' : '変更はまだありません'}</div>
+        <div style={{ color: 'var(--slate-400)', fontSize: '0.85rem' }}>{loading ? '読み込み中…' : '変更はまだありません'}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {entries.map((entry) => (
-            <div key={entry.id} style={{ background: '#1e293b', borderRadius: 6, padding: '6px 10px', fontSize: '0.8rem', color: '#e2e8f0', lineHeight: 1.5 }}>
-              <span style={{ color: '#94a3b8', marginRight: 8, whiteSpace: 'nowrap' }}>{formatHistoryTime(entry.created_at)}{entry.user_name ? `　${entry.user_name}` : ''}</span>
+            <div key={entry.id} style={{ background: 'var(--slate-800)', borderRadius: 6, padding: '6px 10px', fontSize: '0.8rem', color: 'var(--slate-200)', lineHeight: 1.5 }}>
+              <span style={{ color: 'var(--slate-400)', marginRight: 8, whiteSpace: 'nowrap' }}>{formatHistoryTime(entry.created_at)}{entry.user_name ? `　${entry.user_name}` : ''}</span>
               <span style={{ overflowWrap: 'anywhere' }}>{historyText(entry)}</span>
             </div>
           ))}
           {hasMore && (
-            <button type="button" disabled={loading} onClick={() => void load(entries.length)} style={{ alignSelf: 'flex-start', marginTop: 2, padding: '4px 10px', borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', cursor: loading ? 'default' : 'pointer', fontSize: '0.78rem' }}>
+            <button type="button" disabled={loading} onClick={() => void load(entries.length)} style={{ alignSelf: 'flex-start', marginTop: 2, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--slate-700)', background: 'transparent', color: 'var(--slate-300)', cursor: loading ? 'default' : 'pointer', fontSize: '0.78rem' }}>
               {loading ? '読み込み中…' : 'もっと見る'}
             </button>
           )}
@@ -1680,19 +1681,19 @@ function TodoHistory({ todoId, refreshKey }: { todoId: string; refreshKey: strin
 function DependencyList({ title, items, getTodoId, getTitle, reload }: { title: string; items: TodoDependency[]; getTodoId: (item: TodoDependency) => string; getTitle: (item: TodoDependency) => string; reload: () => Promise<void> }): React.JSX.Element {
   return (
     <div>
-      <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)', marginBottom: 6 }}>{title}</div>
       {items.length === 0 ? (
-        <div style={{ fontSize: '0.8rem', color: '#475569' }}>設定されていません</div>
+        <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)' }}>設定されていません</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {items.map((item) => (
-            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: '#0f172a', flexWrap: 'wrap' }}>
-              <button onClick={() => void window.api.windowOpenTodo(getTodoId(item))} style={{ background: 'none', border: 'none', padding: 0, color: '#e2e8f0', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>{getTitle(item)}</button>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>待機 {item.lag_days}日</span>
+            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--slate-900)', flexWrap: 'wrap' }}>
+              <button onClick={() => void window.api.windowOpenTodo(getTodoId(item))} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>{getTitle(item)}</button>
+              <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>待機 {item.lag_days}日</span>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <button onClick={() => void window.api.todoDependencyUpdate(item.id, clampLag(item.lag_days - 1)).then(() => reload())} style={buttonStyle('#334155')}>-1日</button>
-                <button onClick={() => void window.api.todoDependencyUpdate(item.id, clampLag(item.lag_days + 1)).then(() => reload())} style={buttonStyle('#334155')}>+1日</button>
-                <button onClick={() => void window.api.todoDependencyDelete(item.id).then(() => reload())} style={buttonStyle('#7f1d1d')}>削除</button>
+                <button onClick={() => void window.api.todoDependencyUpdate(item.id, clampLag(item.lag_days - 1)).then(() => reload())} style={buttonStyle('var(--slate-700)')}>-1日</button>
+                <button onClick={() => void window.api.todoDependencyUpdate(item.id, clampLag(item.lag_days + 1)).then(() => reload())} style={buttonStyle('var(--slate-700)')}>+1日</button>
+                <button onClick={() => void window.api.todoDependencyDelete(item.id).then(() => reload())} style={buttonStyle('var(--red-900)')}>削除</button>
               </div>
             </div>
           ))}
@@ -1743,8 +1744,8 @@ function SubTaskDragHandle({ title, disabled, onDragStart, onDragEnd, onMove }: 
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 6,
-        background: hovered && !disabled ? '#1e293b' : 'transparent',
-        color: disabled ? '#334155' : hovered ? '#cbd5e1' : '#64748b',
+        background: hovered && !disabled ? 'var(--slate-800)' : 'transparent',
+        color: disabled ? 'var(--slate-700)' : hovered ? 'var(--slate-300)' : 'var(--slate-500)',
         cursor: disabled ? 'default' : 'grab',
         fontSize: '0.95rem',
         userSelect: 'none'
@@ -1764,8 +1765,8 @@ function subTaskDropLineStyle(position: DropPosition): React.CSSProperties {
     [position === 'before' ? 'top' : 'bottom']: -4,
     height: 2,
     borderRadius: 2,
-    background: '#38bdf8',
-    boxShadow: '0 0 0 1px rgba(56, 189, 248, 0.25)',
+    background: 'var(--sky-400)',
+    boxShadow: '0 0 0 1px color-mix(in srgb, var(--sky-400) 25%, transparent)',
     pointerEvents: 'none',
     zIndex: 2
   }
@@ -1792,8 +1793,8 @@ function EditableSubTaskItem({ subTask, users, onChange, onDelete }: { subTask: 
   const progress = clampProgress(subTask.done ? 100 : subTask.progress)
 
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, background: '#1e293b' }}>
-      <button onClick={() => onChange({ done: !subTask.done, progress: subTask.done ? Math.min(progress, 99) : 100 })} style={{ width: 16, height: 16, borderRadius: 3, marginTop: 8, border: `2px solid ${subTask.done ? '#4ade80' : '#475569'}`, background: subTask.done ? '#4ade80' : 'transparent', cursor: 'pointer' }} />
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--slate-800)' }}>
+      <button onClick={() => onChange({ done: !subTask.done, progress: subTask.done ? Math.min(progress, 99) : 100 })} style={{ width: 16, height: 16, borderRadius: 3, marginTop: 8, border: `2px solid ${subTask.done ? 'var(--green-400)' : 'var(--slate-600)'}`, background: subTask.done ? 'var(--green-400)' : 'transparent', cursor: 'pointer' }} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <input value={subTask.title} onChange={(event) => onChange({ title: event.target.value })} placeholder="サブタスク名" style={{ ...inputStyle, fontSize: '0.82rem', padding: '6px 8px' }} />
         <textarea value={subTask.description} onChange={(event) => onChange({ description: event.target.value })} placeholder="メモ..." rows={2} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
@@ -1802,7 +1803,7 @@ function EditableSubTaskItem({ subTask, users, onChange, onDelete }: { subTask: 
           <input type="date" aria-label="開始日" title="開始日" value={subTask.start_date ?? ''} onChange={(event) => onChange({ start_date: event.target.value || null })} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
           <input type="date" aria-label="期限" title="期限" value={subTask.due_date ?? ''} onChange={(event) => onChange({ due_date: event.target.value || null })} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
         </div>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: '#94a3b8' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: 'var(--slate-400)' }}>
           <span>進捗 {progress}%</span>
           <input
             type="range"
@@ -1818,7 +1819,7 @@ function EditableSubTaskItem({ subTask, users, onChange, onDelete }: { subTask: 
           />
         </label>
       </div>
-      <button onClick={onDelete} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>削除</button>
+      <button onClick={onDelete} style={{ background: 'none', border: 'none', color: 'var(--slate-400)', cursor: 'pointer' }}>削除</button>
     </div>
   )
 }
@@ -1916,8 +1917,8 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
 
   if (editing) {
     return (
-      <fieldset disabled={saving} style={{ margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', borderRadius: 8, background: '#1e293b', border: '1px solid #6366f1' }}>
-        {saveError && <div role="alert" style={{ color: '#fecaca', fontSize: '0.8rem' }}>{saveError}</div>}
+      <fieldset disabled={saving} style={{ margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', borderRadius: 8, background: 'var(--slate-800)', border: '1px solid var(--indigo-500)' }}>
+        {saveError && <div role="alert" style={{ color: 'var(--red-200)', fontSize: '0.8rem' }}>{saveError}</div>}
         <input
           value={draft.title}
           onChange={(event) => setDraft((previous) => ({ ...previous, title: event.target.value }))}
@@ -1932,7 +1933,7 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
           <label style={{ ...labelStyle, marginBottom: 0 }}>開始日<input type="date" value={draft.start_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} /></label>
           <label style={{ ...labelStyle, marginBottom: 0 }}>期限<input type="date" value={draft.due_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, due_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} /></label>
         </div>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: '#94a3b8' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: 'var(--slate-400)' }}>
           <span>進捗 {draft.progress}%</span>
           <input
             type="range"
@@ -1945,34 +1946,34 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
           />
         </label>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-          <button onClick={() => setEditing(false)} style={buttonStyle('#334155')}>キャンセル</button>
-          <button onClick={() => void handleSave()} disabled={saving} style={buttonStyle('#6366f1')}>{saving ? '保存中...' : '保存'}</button>
+          <button onClick={() => setEditing(false)} style={buttonStyle('var(--slate-700)')}>キャンセル</button>
+          <button onClick={() => void handleSave()} disabled={saving} style={buttonStyle('var(--indigo-500)')}>{saving ? '保存中...' : '保存'}</button>
         </div>
       </fieldset>
     )
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', borderRadius: 6, background: '#1e293b' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', borderRadius: 6, background: 'var(--slate-800)' }}>
       <button
         onClick={onToggle}
         title={subTask.done ? '未完了に戻す' : '完了にする'}
         aria-label={subTask.done ? `${subTask.title}を未完了に戻す` : `${subTask.title}を完了にする`}
-        style={{ width: 16, height: 16, borderRadius: 3, marginTop: 2, flexShrink: 0, border: `2px solid ${subTask.done ? '#4ade80' : '#475569'}`, background: subTask.done ? '#4ade80' : 'transparent', cursor: 'pointer', padding: 0 }}
+        style={{ width: 16, height: 16, borderRadius: 3, marginTop: 2, flexShrink: 0, border: `2px solid ${subTask.done ? 'var(--green-400)' : 'var(--slate-600)'}`, background: subTask.done ? 'var(--green-400)' : 'transparent', cursor: 'pointer', padding: 0 }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '0.85rem', color: subTask.done ? '#475569' : '#cbd5e1', textDecoration: subTask.done ? 'line-through' : 'none', wordBreak: 'break-word' }}>{subTask.title}</div>
+        <div style={{ fontSize: '0.85rem', color: subTask.done ? 'var(--slate-600)' : 'var(--slate-300)', textDecoration: subTask.done ? 'line-through' : 'none', wordBreak: 'break-word' }}>{subTask.title}</div>
         {(assigneeName || subTask.start_date || subTask.due_date) && (
-          <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: '#94a3b8' }}>
+          <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: 'var(--slate-400)' }}>
             {assigneeName && <AssigneeChip name={assigneeName} color={subTask.assignee_color ?? null} fontSize={0.66} />}
             {(subTask.start_date || subTask.due_date) && (
-              <span style={{ color: subTask.done ? '#94a3b8' : getDueDateColor(subTask.due_date) || '#94a3b8' }}>
+              <span style={{ color: subTask.done ? 'var(--slate-400)' : getDueDateColor(subTask.due_date) || 'var(--slate-400)' }}>
                 {subTask.start_date ? formatShortDate(subTask.start_date) : ''}{subTask.start_date && subTask.due_date ? ' → ' : ''}{subTask.due_date ? `期限 ${formatShortDate(subTask.due_date)}` : ''}
               </span>
             )}
           </div>
         )}
-        {subTask.description && <div style={{ marginTop: 2, fontSize: '0.75rem', color: subTask.done ? '#334155' : '#64748b', whiteSpace: 'pre-wrap' }}><LinkedText text={subTask.description} /></div>}
+        {subTask.description && <div style={{ marginTop: 2, fontSize: '0.75rem', color: subTask.done ? 'var(--slate-700)' : 'var(--slate-500)', whiteSpace: 'pre-wrap' }}><LinkedText text={subTask.description} /></div>}
         <div style={{ marginTop: 2 }}>
           <ProgressSlider
             value={progress}
@@ -1984,17 +1985,17 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
           />
         </div>
       </div>
-      <button onClick={startEditing} title="編集" aria-label={`${subTask.title}を編集`} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>✎</button>
-      <button onClick={onDelete} title="サブタスクを削除" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>削除</button>
+      <button onClick={startEditing} title="編集" aria-label={`${subTask.title}を編集`} style={{ background: 'none', border: 'none', color: 'var(--slate-400)', cursor: 'pointer' }}>✎</button>
+      <button onClick={onDelete} title="サブタスクを削除" style={{ background: 'none', border: 'none', color: 'var(--slate-400)', cursor: 'pointer' }}>削除</button>
     </div>
   )
 }
 
 const STATUS_OPTIONS: Array<{ value: Todo['status']; label: string; color: string }> = [
-  { value: 'not_started', label: '未着手', color: '#94a3b8' },
-  { value: 'active', label: '進行中', color: '#60a5fa' },
-  { value: 'on_hold', label: '保留中', color: '#c084fc' },
-  { value: 'done', label: '完了', color: '#4ade80' }
+  { value: 'not_started', label: '未着手', color: 'var(--slate-400)' },
+  { value: 'active', label: '進行中', color: 'var(--blue-400)' },
+  { value: 'on_hold', label: '保留中', color: 'var(--purple-400)' },
+  { value: 'done', label: '完了', color: 'var(--green-400)' }
 ]
 
 const PRIORITY_OPTIONS = [
@@ -2032,7 +2033,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
   const [dueDraft, setDueDraft] = useState('')
   const isArchived = todo.status === 'archived'
   const listMode = isListTodo(todo)
-  const statusTone = STATUS_OPTIONS.find((option) => option.value === todo.status)?.color ?? '#94a3b8'
+  const statusTone = STATUS_OPTIONS.find((option) => option.value === todo.status)?.color ?? 'var(--slate-400)'
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
 
   const save = async (data: UpdateTodoInput, message: string): Promise<boolean> => {
@@ -2070,15 +2071,15 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
     if (await save(data, '日程を変更しました')) setEditingSchedule(false)
   }
 
-  const fieldLabelStyle: React.CSSProperties = { fontSize: '0.68rem', color: '#64748b', marginBottom: 3 }
+  const fieldLabelStyle: React.CSSProperties = { fontSize: '0.68rem', color: 'var(--slate-500)', marginBottom: 3 }
   const compactSelectStyle: React.CSSProperties = { ...inputStyle, padding: '5px 8px', fontSize: '0.8rem' }
 
   return (
-    <div style={{ background: '#162033', border: '1px solid #1e293b', borderRadius: 10, padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))', gap: '10px 12px' }}>
+    <div style={{ background: 'var(--c-162033)', border: '1px solid var(--slate-800)', borderRadius: 10, padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))', gap: '10px 12px' }}>
       <div>
         <div style={fieldLabelStyle}>状態</div>
         {isArchived ? (
-          <div style={{ fontSize: '0.8rem', color: '#94a3b8', padding: '5px 0' }}>アーカイブ</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)', padding: '5px 0' }}>アーカイブ</div>
         ) : (
           <select
             value={todo.status}
@@ -2120,7 +2121,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
             const categoryId = event.target.value || null
             void save({ category_id: categoryId }, `カテゴリを「${categories.find((category) => category.id === categoryId)?.name ?? 'なし'}」にしました`)
           }}
-          style={{ ...compactSelectStyle, color: todo.category_color ?? '#e2e8f0' }}
+          style={{ ...compactSelectStyle, color: dataInk(todo.category_color ?? 'var(--slate-200)') }}
         >
           <option value="">なし</option>
           {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
@@ -2143,7 +2144,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
             selectStyle={compactSelectStyle}
           />
           {(todo.co_assignees ?? []).length > 0 && (
-            <div style={{ marginTop: 3, fontSize: '0.68rem', color: '#94a3b8' }} title="サブ担当は「編集」で変えられます">
+            <div style={{ marginTop: 3, fontSize: '0.68rem', color: 'var(--slate-400)' }} title="サブ担当は「編集」で変えられます">
               副: {(todo.co_assignees ?? []).map((item) => item.display_name).join('、')}
             </div>
           )}
@@ -2152,7 +2153,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
       <div style={{ gridColumn: '1 / -1' }}>
         <div style={fieldLabelStyle}>日程</div>
         {editingSchedule ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: '0.76rem', color: '#94a3b8' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: '0.76rem', color: 'var(--slate-400)' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               開始
               <input type="date" value={startDraft} onChange={(event) => setStartDraft(event.target.value)} aria-label="開始日" style={{ ...compactSelectStyle, width: 'auto' }} />
@@ -2170,26 +2171,26 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
               />
             </label>
             {listMode && dueDraft && (
-              <button onClick={() => setDueDraft('')} title="期限を外して、期限なしのリストにします" style={{ ...buttonStyle('#334155'), padding: '3px 10px', fontSize: '0.74rem' }}>期限なし</button>
+              <button onClick={() => setDueDraft('')} title="期限を外して、期限なしのリストにします" style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: '0.74rem' }}>期限なし</button>
             )}
-            <button onClick={() => setEditingSchedule(false)} style={buttonStyle('#334155')}>取消</button>
-            <button onClick={() => void saveSchedule()} disabled={saving} style={buttonStyle('#2563eb')}>{saving ? '保存中…' : '保存'}</button>
-            <span style={{ width: '100%', fontSize: '0.66rem', color: '#64748b' }}>依存関係のある後続タスクも自動で再計算されます</span>
+            <button onClick={() => setEditingSchedule(false)} style={buttonStyle('var(--slate-700)')}>取消</button>
+            <button onClick={() => void saveSchedule()} disabled={saving} style={buttonStyle('var(--blue-600)')}>{saving ? '保存中…' : '保存'}</button>
+            <span style={{ width: '100%', fontSize: '0.66rem', color: 'var(--slate-500)' }}>依存関係のある後続タスクも自動で再計算されます</span>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.82rem' }}>
-            <span style={{ color: '#cbd5e1' }}>開始 {todo.start_date ? formatShortDate(todo.start_date) : '未設定'}</span>
+            <span style={{ color: 'var(--slate-300)' }}>開始 {todo.start_date ? formatShortDate(todo.start_date) : '未設定'}</span>
             {listMode && !todo.due_date ? (
-              <span style={{ color: '#a5b4fc' }} title="期限を決めるときは「変更」から入れます。使い終えたら「リストを終える」を押します">→ 期限なし</span>
+              <span style={{ color: 'var(--indigo-300)' }} title="期限を決めるときは「変更」から入れます。使い終えたら「リストを終える」を押します">→ 期限なし</span>
             ) : (
               <>
-                <span style={{ color: '#475569' }}>→</span>
-                <span style={{ color: dueColor || '#cbd5e1', fontWeight: dueColor ? 700 : 400 }}>期限 {todo.due_date ? formatShortDate(todo.due_date) : '未設定'}</span>
-                {todo.due_date && todo.status !== 'done' && <span style={{ fontSize: '0.74rem', color: dueColor || '#64748b' }}>（{dueRemainingLabel(todo.due_date)}）</span>}
+                <span style={{ color: 'var(--slate-600)' }}>→</span>
+                <span style={{ color: dueColor || 'var(--slate-300)', fontWeight: dueColor ? 700 : 400 }}>期限 {todo.due_date ? formatShortDate(todo.due_date) : '未設定'}</span>
+                {todo.due_date && todo.status !== 'done' && <span style={{ fontSize: '0.74rem', color: dueColor || 'var(--slate-500)' }}>（{dueRemainingLabel(todo.due_date)}）</span>}
               </>
             )}
             {!isArchived && (
-              <button onClick={openScheduleEditor} style={{ ...buttonStyle('#334155'), padding: '3px 10px', fontSize: '0.74rem' }}>変更</button>
+              <button onClick={openScheduleEditor} style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: '0.74rem' }}>変更</button>
             )}
           </div>
         )}
@@ -2199,18 +2200,18 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
 }
 
 function Badge({ children, color }: { children: React.ReactNode; color: string }): React.JSX.Element {
-  return <div style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 999, background: '#0f172a', color, fontSize: '0.74rem', fontWeight: 600 }}>{children}</div>
+  return <div style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 999, background: 'var(--slate-900)', color, fontSize: '0.74rem', fontWeight: 600 }}>{children}</div>
 }
 
-function buttonStyle(background: string, color = '#fff'): React.CSSProperties {
+function buttonStyle(background: string, color = 'var(--white)'): React.CSSProperties {
   return { padding: '6px 12px', background, border: 'none', borderRadius: 6, color, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap' }
 }
 
 function progressColor(progress: number): string {
-  if (progress >= 100) return '#4ade80'
-  if (progress >= 70) return '#6366f1'
-  if (progress >= 30) return '#818cf8'
-  return '#475569'
+  if (progress >= 100) return 'var(--green-400)'
+  if (progress >= 70) return 'var(--indigo-500)'
+  if (progress >= 30) return 'var(--indigo-400)'
+  return 'var(--slate-600)'
 }
 
 function clampProgress(value: number): number {

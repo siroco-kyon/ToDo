@@ -82,10 +82,10 @@ function ReactionChip({ emoji, reaction, onClick }: {
       </button>
       {tooltipVisible && reactors.length > 0 && (
         <span role="tooltip" style={tooltipStyle}>
-          <strong style={{ display: 'block', marginBottom: 3, color: '#f8fafc' }}>{emoji} {label}</strong>
+          <strong style={{ display: 'block', marginBottom: 3, color: 'var(--slate-50)' }}>{emoji} {label}</strong>
           {reactors.map((reactor, index) => (
             <span key={`${reactor.user_id ?? 'desktop'}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: reactor.color ?? '#64748b', flexShrink: 0 }} />
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: reactor.color ?? 'var(--slate-500)', flexShrink: 0 }} />
               <span>{reactor.display_name}</span>
             </span>
           ))}
@@ -144,7 +144,7 @@ function ReactionPicker({ reactions, onPick }: {
                 style={pickerItemStyle(active)}
               >
                 <span style={{ fontSize: '1.05rem', lineHeight: 1 }}>{option.emoji}</span>
-                <span style={{ fontSize: '0.64rem', color: active ? '#bfdbfe' : '#94a3b8' }}>{option.label}</span>
+                <span style={{ fontSize: '0.64rem', color: active ? 'var(--blue-200)' : 'var(--slate-400)' }}>{option.label}</span>
               </button>
             )
           })}
@@ -159,10 +159,10 @@ function chipStyle(active: boolean, clickable: boolean, quiet: boolean): React.C
     display: 'inline-flex',
     alignItems: 'center',
     gap: 2,
-    background: active ? '#1e3a8a' : 'transparent',
-    border: `1px solid ${active ? '#3b82f6' : quiet ? 'transparent' : '#334155'}`,
+    background: active ? 'var(--blue-900)' : 'transparent',
+    border: `1px solid ${active ? 'var(--blue-500)' : quiet ? 'transparent' : 'var(--slate-700)'}`,
     borderRadius: 999,
-    color: active ? '#bfdbfe' : '#94a3b8',
+    color: active ? 'var(--blue-200)' : 'var(--slate-400)',
     cursor: clickable ? 'pointer' : 'default',
     fontSize: '0.72rem',
     fontWeight: 800,
@@ -174,10 +174,10 @@ function chipStyle(active: boolean, clickable: boolean, quiet: boolean): React.C
 
 function pickerButtonStyle(open: boolean): React.CSSProperties {
   return {
-    background: open ? '#1e293b' : 'transparent',
+    background: open ? 'var(--slate-800)' : 'transparent',
     border: '1px solid transparent',
     borderRadius: 999,
-    color: '#64748b',
+    color: 'var(--slate-500)',
     cursor: 'pointer',
     fontSize: '0.7rem',
     fontWeight: 700,
@@ -195,8 +195,8 @@ const pickerMenuStyle: React.CSSProperties = {
   gap: 2,
   padding: 4,
   borderRadius: 10,
-  border: '1px solid #334155',
-  background: '#0f172a',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--slate-900)',
   boxShadow: '0 8px 24px rgba(0, 0, 0, 0.38)'
 }
 
@@ -209,10 +209,10 @@ function pickerItemStyle(active: boolean): React.CSSProperties {
     minWidth: 52,
     padding: '5px 4px',
     borderRadius: 8,
-    border: `1px solid ${active ? '#3b82f6' : 'transparent'}`,
-    background: active ? '#1e3a8a' : 'transparent',
+    border: `1px solid ${active ? 'var(--blue-500)' : 'transparent'}`,
+    background: active ? 'var(--blue-900)' : 'transparent',
     cursor: 'pointer',
-    color: '#e2e8f0'
+    color: 'var(--slate-200)'
   }
 }
 
@@ -227,9 +227,9 @@ const tooltipStyle: React.CSSProperties = {
   overflowY: 'auto',
   padding: '7px 9px',
   borderRadius: 7,
-  border: '1px solid #334155',
-  background: '#0f172a',
-  color: '#e2e8f0',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--slate-900)',
+  color: 'var(--slate-200)',
   boxShadow: '0 8px 24px rgba(0, 0, 0, 0.38)',
   fontSize: '0.72rem',
   lineHeight: 1.5,

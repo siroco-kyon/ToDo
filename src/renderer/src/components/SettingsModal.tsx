@@ -42,7 +42,9 @@ function formatLocal(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-type ThemeMode = 'dark' | 'light'
+type ThemeMode = 'dark' | 'light' | 'system'
+
+const THEME_LABELS: Record<ThemeMode, string> = { dark: 'ダーク', light: 'ライト', system: 'OS に合わせる' }
 
 interface ShortcutConfig {
   key: string       // Settings DBのキー
@@ -92,9 +94,9 @@ function settingsTabStyle(active: boolean): React.CSSProperties {
   return {
     padding: '6px 14px',
     borderRadius: 999,
-    border: `1px solid ${active ? '#6366f1' : '#334155'}`,
-    background: active ? '#312e81' : 'transparent',
-    color: active ? '#e0e7ff' : '#94a3b8',
+    border: `1px solid ${active ? 'var(--indigo-500)' : 'var(--slate-700)'}`,
+    background: active ? 'var(--indigo-900)' : 'transparent',
+    color: active ? 'var(--indigo-100)' : 'var(--slate-400)',
     cursor: 'pointer',
     fontSize: '0.82rem',
     fontWeight: active ? 700 : 500
@@ -382,7 +384,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
     if (nextMode === themeMode) return
     try {
       await onThemeChange(nextMode)
-      onShowToast(`表示テーマを${nextMode === 'light' ? 'ライト' : 'ダーク'}に変更しました`)
+      onShowToast(nextMode === 'system' ? '表示テーマを OS の設定に合わせます' : `表示テーマを${THEME_LABELS[nextMode]}に変更しました`)
     } catch {
       onShowToast('テーマの変更に失敗しました', 'error')
     }
@@ -422,22 +424,22 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
   const desktopReleaseSection = (offerDesktopApp || showReleaseAdmin) ? (<section>
       <h3 style={sectionHead}>デスクトップ版（Windows）</h3>
       {offerDesktopApp && offeredRelease && <>
-        <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '8px 0 12px', lineHeight: 1.6 }}>タイマーや通知が使えるデスクトップ版を配布しています（最新 {offeredRelease.version}）。</p>
+        <p style={{ fontSize: '0.8rem', color: 'var(--slate-400)', margin: '8px 0 12px', lineHeight: 1.6 }}>タイマーや通知が使えるデスクトップ版を配布しています（最新 {offeredRelease.version}）。</p>
         <a href={desktopDownloadPageUrl()} target="_blank" rel="noopener noreferrer" style={linkBtn}>ダウンロードページを開く</a>
       </>}
       {showReleaseAdmin && (offeredRelease ? <>
-        <p style={{ fontSize: '0.75rem', color: '#64748b', margin: offerDesktopApp ? '14px 0 4px' : '8px 0 4px' }}>メンバーに案内するダウンロードページ（管理者のみ表示）</p>
+        <p style={{ fontSize: '0.75rem', color: 'var(--slate-500)', margin: offerDesktopApp ? '14px 0 4px' : '8px 0 4px' }}>メンバーに案内するダウンロードページ（管理者のみ表示）</p>
         <div style={pathBox}>{desktopDownloadPageUrl()}</div>
-        {isLoopbackOrigin(window.location.origin) && <p style={{ fontSize: '0.72rem', color: '#fbbf24', marginTop: 6, lineHeight: 1.6 }}>
+        {isLoopbackOrigin(window.location.origin) && <p style={{ fontSize: '0.72rem', color: 'var(--amber-400)', marginTop: 6, lineHeight: 1.6 }}>
           このPC（サーバー）から開いているため、ほかのPCではこのURLを使えません。メンバーには {`http://<サーバーのIPアドレス>:${window.location.port || '80'}/download`} を案内してください。
         </p>}
-      </> : <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 8, lineHeight: 1.6 }}>
+      </> : <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)', marginTop: 8, lineHeight: 1.6 }}>
         <p>配布中のインストーラーはありません。</p>
         {/* 配布フォルダのパスなどは、困ったときだけ開く */}
         <details style={{ marginTop: 4 }}>
           <summary style={detailsSummary}>詳しく</summary>
-          {desktopRelease?.reason && <p style={{ fontSize: '0.75rem', color: '#fbbf24', overflowWrap: 'anywhere' }}>{desktopRelease.reason}</p>}
-          <p style={{ fontSize: '0.75rem', color: '#64748b' }}><code style={codeStyle}>npm run publish:desktop</code> で公開できます。</p>
+          {desktopRelease?.reason && <p style={{ fontSize: '0.75rem', color: 'var(--amber-400)', overflowWrap: 'anywhere' }}>{desktopRelease.reason}</p>}
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}><code style={codeStyle}>npm run publish:desktop</code> で公開できます。</p>
         </details>
       </div>)}
     </section>) : null
@@ -467,19 +469,19 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div role="dialog" aria-modal="true" aria-label="設定" style={{
-        background: '#1e293b', borderRadius: 14, padding: 28, width: 560,
+        background: 'var(--slate-800)', borderRadius: 14, padding: 28, width: 560,
         maxHeight: '85vh', overflowY: 'auto',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid #334155',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid var(--slate-700)',
         display: 'flex', flexDirection: 'column', gap: 28
       }}>
         {/* ヘッダー */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0' }}>⚙ 設定</h2>
+          <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)' }}>⚙ 設定</h2>
           <button onClick={onClose} style={closeBtnStyle}>×</button>
         </div>
 
         {/* 個人／チーム管理（管理者だけ）／データ */}
-        <div role="tablist" aria-label="設定の分類" style={{ display: 'flex', gap: 6, marginTop: -12, borderBottom: '1px solid #334155', paddingBottom: 10 }}>
+        <div role="tablist" aria-label="設定の分類" style={{ display: 'flex', gap: 6, marginTop: -12, borderBottom: '1px solid var(--slate-700)', paddingBottom: 10 }}>
           {settingsTabs.map((item) => (
             <button key={item.key} type="button" role="tab" aria-selected={settingsTab === item.key} onClick={() => setSettingsTab(item.key)} style={settingsTabStyle(settingsTab === item.key)}>
               {item.label}
@@ -490,11 +492,11 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {settingsTab === 'personal' && <>
         {desktopContext && <section>
           <h3 style={sectionHead}>HAKOBI デスクトップ</h3>
-          <p style={{ fontSize: '0.8rem', color: '#cbd5e1', margin: '10px 0 4px' }}>{desktopContext.groupName}</p>
-          <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: 12, overflowWrap: 'anywhere' }}>{desktopContext.serverUrl}</p>
-          <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: newerRelease ? 6 : 12 }}>このPCのバージョン: {desktopContext.appVersion ?? '1.0.4 以前'}</p>
+          <p style={{ fontSize: '0.8rem', color: 'var(--slate-300)', margin: '10px 0 4px' }}>{desktopContext.groupName}</p>
+          <p style={{ fontSize: '0.72rem', color: 'var(--slate-400)', marginBottom: 12, overflowWrap: 'anywhere' }}>{desktopContext.serverUrl}</p>
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-400)', marginBottom: newerRelease ? 6 : 12 }}>このPCのバージョン: {desktopContext.appVersion ?? '1.0.4 以前'}</p>
           {newerRelease && <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-            <span style={{ fontSize: '0.78rem', color: '#fbbf24' }}>新しいバージョン {newerRelease.version} を配布しています。</span>
+            <span style={{ fontSize: '0.78rem', color: 'var(--amber-400)' }}>新しいバージョン {newerRelease.version} を配布しています。</span>
             <a href={desktopDownloadPageUrl()} target="_blank" rel="noopener noreferrer" style={linkBtn}>ダウンロードページを開く</a>
           </div>}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -502,8 +504,8 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             <button disabled={desktopContext.serverVersion < 1} onClick={() => void window.desktop?.openTimer()} style={secondaryBtn}>右下タイマーを表示</button>
             <button disabled={desktopContext.serverVersion < 1} onClick={() => void window.desktop?.openQuickProgress()} style={secondaryBtn}>進捗をひとこと</button>
           </div>
-          {desktopContext.serverVersion < 1 && <p style={{ fontSize: '0.75rem', color: '#fbbf24', marginTop: 8 }}>タイマーとクイック投稿を使うにはサーバー版を更新してください。</p>}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14, fontSize: '0.8rem', color: '#cbd5e1' }}>
+          {desktopContext.serverVersion < 1 && <p style={{ fontSize: '0.75rem', color: 'var(--amber-400)', marginTop: 8 }}>タイマーとクイック投稿を使うにはサーバー版を更新してください。</p>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14, fontSize: '0.8rem', color: 'var(--slate-300)' }}>
             {([
               ['showTimer', '起動時に右下タイマーを表示'],
               ['alwaysOnTop', 'タイマーを最前面に固定'],
@@ -513,7 +515,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               <input type="checkbox" checked={desktopContext.preferences[key]} onChange={(event) => void saveDesktopPreference({ [key]: event.target.checked })} />{label}
             </label>)}
           </div>
-          <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 12 }}>接続先・タイマー・通知・グローバルショートカットの設定は、このPCだけに保存されます。</p>
+          <p style={{ fontSize: '0.72rem', color: 'var(--slate-400)', marginTop: 12 }}>接続先・タイマー・通知・グローバルショートカットの設定は、このPCだけに保存されます。</p>
         </section>}
 
         {!showTeamTab && desktopReleaseSection}
@@ -527,7 +529,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             <input type="password" autoComplete="current-password" aria-label="今のパスワード" placeholder="今のパスワード" value={passwordForm.current} onChange={(event) => updatePasswordForm({ current: event.target.value })} style={passwordInput} />
             <input type="password" autoComplete="new-password" aria-label="新しいパスワード" placeholder={`新しいパスワード（${MIN_PASSWORD_LENGTH}文字以上）`} value={passwordForm.next} onChange={(event) => updatePasswordForm({ next: event.target.value })} style={passwordInput} />
             <input type="password" autoComplete="new-password" aria-label="新しいパスワード（確認）" placeholder="新しいパスワード（確認）" value={passwordForm.confirm} onChange={(event) => updatePasswordForm({ confirm: event.target.value })} style={passwordInput} />
-            {passwordError && <p role="alert" style={{ fontSize: '0.75rem', color: '#fca5a5', margin: 0 }}>{passwordError}</p>}
+            {passwordError && <p role="alert" style={{ fontSize: '0.75rem', color: 'var(--red-300)', margin: 0 }}>{passwordError}</p>}
             <button type="submit" disabled={savingPassword || !passwordForm.current || !passwordForm.next || !passwordForm.confirm} style={{ ...primaryBtn, alignSelf: 'flex-start', opacity: savingPassword || !passwordForm.current || !passwordForm.next || !passwordForm.confirm ? 0.5 : 1 }}>
               {savingPassword ? '変更中…' : 'パスワードを変える'}
             </button>
@@ -538,7 +540,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {onMySummary && (
           <section>
             <h3 style={sectionHead}>進捗サマリー</h3>
-            <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
               期間を指定して、追加タスク・タスク変更・進捗ログ・作業時間を振り返ります。タスク別のMarkdownをコピーして日報・週報に貼れます。
             </p>
             <button onClick={onMySummary} style={secondaryBtn}>📊 自分の進捗サマリーを開く</button>
@@ -548,39 +550,32 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── 1. キーボードショートカット ─── */}
         <section>
           <h3 style={sectionHead}>表示テーマ</h3>
-          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
-            アプリ表示をライト/ダークで切り替えます。
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
+            アプリの色をライト／ダークで切り替えます。「OS に合わせる」は Windows の設定に合わせて切り替わります。
           </p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => { void handleThemeSelect('dark') }}
-              style={{
-                ...secondaryBtn,
-                border: `1px solid ${themeMode === 'dark' ? '#2563eb' : '#334155'}`,
-                background: themeMode === 'dark' ? '#1d4ed8' : '#334155',
-                color: themeMode === 'dark' ? '#eff6ff' : '#cbd5e1'
-              }}
-            >
-              ダーク
-            </button>
-            <button
-              onClick={() => { void handleThemeSelect('light') }}
-              style={{
-                ...secondaryBtn,
-                border: `1px solid ${themeMode === 'light' ? '#2563eb' : '#334155'}`,
-                background: themeMode === 'light' ? '#1d4ed8' : '#334155',
-                color: themeMode === 'light' ? '#eff6ff' : '#cbd5e1'
-              }}
-            >
-              ライト
-            </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {(['dark', 'light', 'system'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => { void handleThemeSelect(mode) }}
+                aria-pressed={themeMode === mode}
+                style={{
+                  ...secondaryBtn,
+                  border: `1px solid ${themeMode === mode ? 'var(--blue-600)' : 'var(--slate-700)'}`,
+                  background: themeMode === mode ? 'var(--blue-700)' : 'var(--slate-700)',
+                  color: themeMode === mode ? 'var(--on-fill-blue-50)' : 'var(--slate-300)'
+                }}
+              >
+                {THEME_LABELS[mode]}
+              </button>
+            ))}
           </div>
         </section>
 
         {/* ─── フォント ─── */}
         <section>
           <h3 style={sectionHead}>フォント</h3>
-          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
             アプリ全体の表示フォントを切り替えます。
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -591,9 +586,9 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
                 style={{
                   ...secondaryBtn,
                   fontFamily: preset.value,
-                  border: `1px solid ${fontFamily === preset.value ? '#2563eb' : '#334155'}`,
-                  background: fontFamily === preset.value ? '#1d4ed8' : '#334155',
-                  color: fontFamily === preset.value ? '#eff6ff' : '#cbd5e1'
+                  border: `1px solid ${fontFamily === preset.value ? 'var(--blue-600)' : 'var(--slate-700)'}`,
+                  background: fontFamily === preset.value ? 'var(--blue-700)' : 'var(--slate-700)',
+                  color: fontFamily === preset.value ? 'var(--on-fill-blue-50)' : 'var(--slate-300)'
                 }}
               >
                 {preset.label}
@@ -605,7 +600,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── 文字サイズ ─── */}
         <section>
           <h3 style={sectionHead}>文字サイズ</h3>
-          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
             アプリ全体の文字サイズを切り替えます。
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -615,9 +610,9 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
                 onClick={() => { void handleFontScaleSelect(preset.value) }}
                 style={{
                   ...secondaryBtn,
-                  border: `1px solid ${fontScale === preset.value ? '#2563eb' : '#334155'}`,
-                  background: fontScale === preset.value ? '#1d4ed8' : '#334155',
-                  color: fontScale === preset.value ? '#eff6ff' : '#cbd5e1'
+                  border: `1px solid ${fontScale === preset.value ? 'var(--blue-600)' : 'var(--slate-700)'}`,
+                  background: fontScale === preset.value ? 'var(--blue-700)' : 'var(--slate-700)',
+                  color: fontScale === preset.value ? 'var(--on-fill-blue-50)' : 'var(--slate-300)'
                 }}
               >
                 {preset.label}
@@ -628,7 +623,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
 
         {(!serverManaged || window.desktop) && <section>
           <h3 style={sectionHead}>キーボードショートカット</h3>
-          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
             キーをクリックして新しいキーを押すと変更できます。Escでキャンセル。<br/>
             グローバルショートカットは、アプリを隠したり最小化したりしていても使えます。
           </p>
@@ -647,21 +642,21 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               <div key={s.key} style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '10px 12px', borderRadius: 8,
-                background: s.editing ? '#0f172a' : 'transparent',
-                border: `1px solid ${s.editing ? '#6366f1' : 'transparent'}`
+                background: s.editing ? 'var(--slate-900)' : 'transparent',
+                border: `1px solid ${s.editing ? 'var(--indigo-500)' : 'transparent'}`
               }}>
                 <div>
-                  <div style={{ fontSize: '0.88rem', color: '#e2e8f0' }}>{s.label}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: 2 }}>グローバル</div>
+                  <div style={{ fontSize: '0.88rem', color: 'var(--slate-200)' }}>{s.label}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--slate-600)', marginTop: 2 }}>グローバル</div>
                 </div>
                 <button
                   onClick={() => s.editing ? cancelEdit() : startEdit(i)}
                   title={s.editing ? 'キーを押してください (Escでキャンセル)' : 'クリックして変更'}
                   style={{
-                    background: s.editing ? '#6366f130' : '#0f172a',
-                    border: `1px solid ${s.editing ? '#6366f1' : '#334155'}`,
+                    background: s.editing ? 'color-mix(in srgb, var(--indigo-500) 18.8%, transparent)' : 'var(--slate-900)',
+                    border: `1px solid ${s.editing ? 'var(--indigo-500)' : 'var(--slate-700)'}`,
                     borderRadius: 6, padding: '4px 12px', cursor: 'pointer',
-                    color: s.editing ? '#a5b4fc' : '#e2e8f0',
+                    color: s.editing ? 'var(--indigo-300)' : 'var(--slate-200)',
                     fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'nowrap',
                     minWidth: 160, textAlign: 'center'
                   }}
@@ -675,8 +670,8 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               padding: '10px 12px'
             }}>
               <div>
-                <div style={{ fontSize: '0.88rem', color: '#e2e8f0' }}>モーダルを閉じる</div>
-                <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: 2 }}>アプリ内</div>
+                <div style={{ fontSize: '0.88rem', color: 'var(--slate-200)' }}>モーダルを閉じる</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--slate-600)', marginTop: 2 }}>アプリ内</div>
               </div>
               <kbd style={kbdStyle}>Esc</kbd>
             </div>
@@ -691,7 +686,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               <img
                 src={iconDataUrl}
                 alt="icon"
-                style={{ width: 56, height: 56, borderRadius: 12, border: '2px solid #334155', imageRendering: 'pixelated' }}
+                style={{ width: 56, height: 56, borderRadius: 12, border: '2px solid var(--slate-700)', imageRendering: 'pixelated' }}
               />
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -704,11 +699,11 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── 3. 通知 ─── */}
         {!serverManaged && <section>
           <h3 style={sectionHead}>期限通知</h3>
-          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
             起動時・1時間ごとに期限が近いタスクを通知します。-1で通知しない。
           </p>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <label style={{ fontSize: '0.78rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>何日前から通知</label>
+            <label style={{ fontSize: '0.78rem', color: 'var(--slate-400)', whiteSpace: 'nowrap' }}>何日前から通知</label>
             <input
               type="number"
               min={-1}
@@ -725,7 +720,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               style={secondaryBtn}
             >保存</button>
           </div>
-          <p style={{ fontSize: '0.72rem', color: '#475569', marginTop: 4 }}>0 = 当日のみ　1 = 前日から　-1 = 通知しない</p>
+          <p style={{ fontSize: '0.72rem', color: 'var(--slate-600)', marginTop: 4 }}>0 = 当日のみ　1 = 前日から　-1 = 通知しない</p>
         </section>}
         </>}
 
@@ -734,7 +729,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {canManageUsers && onManageUsers && (
           <section>
             <h3 style={sectionHead}>管理者</h3>
-            <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
               メンバーの追加・編集・削除、権限の変更、パスワードの再設定ができます。
             </p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -747,13 +742,13 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               )}
             </div>
             {serverManaged && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 12, fontSize: '0.8rem', color: '#cbd5e1' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 12, fontSize: '0.8rem', color: 'var(--slate-300)' }}>
                 定例の曜日
-                <select value={meetingWeekday} onChange={(event) => changeMeetingWeekday(event.target.value)} aria-label="定例の曜日" style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}>
+                <select value={meetingWeekday} onChange={(event) => changeMeetingWeekday(event.target.value)} aria-label="定例の曜日" style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)' }}>
                   <option value="">決めない（リマインドしない）</option>
                   {[1, 2, 3, 4, 5, 6, 0].map((day) => <option key={day} value={String(day)}>{MEETING_WEEKDAYS[day]}曜日</option>)}
                 </select>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>前日の17時に、直近7日に報告がない担当タスクがある人へ通知します</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>前日の17時に、直近7日に報告がない担当タスクがある人へ通知します</span>
               </label>
             )}
           </section>
@@ -761,23 +756,23 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
 
         {serverManaged && <section>
           <h3 style={sectionHead}>バックアップ</h3>
-          <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '6px 0 12px', lineHeight: 1.6 }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-400)', margin: '6px 0 12px', lineHeight: 1.6 }}>
             今のデータ（タスク・進捗ログ・作業記録・アカウントなど全部）を1つのファイルに保存します。
           </p>
           {backupInfo ? <>
             <a href={backupInfo.downloadUrl} download style={linkBtn}>💾 今のデータをダウンロード</a>
-            <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 12, lineHeight: 1.6 }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--slate-400)', marginTop: 12, lineHeight: 1.6 }}>
               {backupInfo.keep > 0
                 ? `サーバーは毎日1回、自動でバックアップを取り、${backupInfo.keep}日分を残します。${backupInfo.latestAt ? `いちばん新しいもの: ${formatLocal(backupInfo.latestAt)}（${backupInfo.count}件）` : 'まだ自動のバックアップはありません。'}`
                 : '自動のバックアップは止めています（サーバーの設定 TODO_BACKUP_KEEP=0）。'}
             </p>
             <details style={{ marginTop: 6 }}>
               <summary style={detailsSummary}>詳しく</summary>
-              <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '8px 0 4px' }}>自動のバックアップの置き場所（サーバーのフォルダ）</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--slate-500)', margin: '8px 0 4px' }}>自動のバックアップの置き場所（サーバーのフォルダ）</p>
               <div style={pathBox}>{backupInfo.directory}</div>
-              <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 8, lineHeight: 1.6 }}>戻すときは、サーバーを止めてから DB を差し替えます。手順は docs/HAKOBI.md の「バックアップから戻す」にあります。</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginTop: 8, lineHeight: 1.6 }}>戻すときは、サーバーを止めてから DB を差し替えます。手順は docs/HAKOBI.md の「バックアップから戻す」にあります。</p>
             </details>
-          </> : <p style={{ fontSize: '0.8rem', color: backupError ? '#fca5a5' : '#94a3b8' }}>{backupError ?? '読み込み中…'}</p>}
+          </> : <p style={{ fontSize: '0.8rem', color: backupError ? 'var(--red-300)' : 'var(--slate-400)' }}>{backupError ?? '読み込み中…'}</p>}
         </section>}
 
         {desktopReleaseSection}
@@ -787,7 +782,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── データのエクスポート ─── */}
         <section>
           <h3 style={sectionHead}>データのエクスポート</h3>
-          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
             CSV（UTF-8 BOM付き・Excel対応）でダウンロードします。
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -795,7 +790,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             <button onClick={() => void exportCsv('subtasks')} disabled={exporting} style={secondaryBtn}>📑 サブタスクCSV</button>
             <button onClick={() => void exportCsv('worklogs')} disabled={exporting} style={secondaryBtn}>⏱ 作業ログCSV</button>
           </div>
-          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '14px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '14px 0 12px' }}>
             Markdown形式でタスク一覧を出力します（クリップボードへのコピーは Ctrl+Alt+E でも可能）。
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -807,7 +802,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── 4. Markdownテンプレート ─── */}
         <section>
           <h3 style={sectionHead}>Markdownテンプレート</h3>
-          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 14px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 14px' }}>
             Markdownエクスポートの出力形式を変更します。変数: <code style={codeStyle}>{'{{date}}'}</code> <code style={codeStyle}>{'{{title}}'}</code> <code style={codeStyle}>{'{{category}}'}</code> <code style={codeStyle}>{'{{task_min}}'}</code> <code style={codeStyle}>{'{{start}}'}</code> <code style={codeStyle}>{'{{end}}'}</code> <code style={codeStyle}>{'{{min}}'}</code> <code style={codeStyle}>{'{{note}}'}</code> <code style={codeStyle}>{'{{total_min}}'}</code>
           </p>
           {(
@@ -819,8 +814,8 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             ] as { key: keyof MdTemplates; label: string; hint: string }[]
           ).map(({ key, label, hint }) => (
             <div key={key} style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'block', marginBottom: 2 }}>
-                {label} <span style={{ color: '#475569', fontWeight: 'normal' }}>— {hint}</span>
+              <label style={{ fontSize: '0.78rem', color: 'var(--slate-400)', display: 'block', marginBottom: 2 }}>
+                {label} <span style={{ color: 'var(--slate-600)', fontWeight: 'normal' }}>— {hint}</span>
               </label>
               <div style={{ display: 'flex', gap: 8 }}>
                 <textarea
@@ -846,7 +841,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           <h3 style={sectionHead}>データ保持期間</h3>
           <div style={{ display: 'flex', gap: 20, marginTop: 12 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--slate-400)', display: 'block', marginBottom: 4 }}>
                 アーカイブ保持（日数）
               </label>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -865,10 +860,10 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
                   style={secondaryBtn}
                 >保存</button>
               </div>
-              <p style={{ fontSize: '0.72rem', color: '#475569', marginTop: 4 }}>0 = 自動削除しない</p>
+              <p style={{ fontSize: '0.72rem', color: 'var(--slate-600)', marginTop: 4 }}>0 = 自動削除しない</p>
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--slate-400)', display: 'block', marginBottom: 4 }}>
                 作業ログ保持（日数）
               </label>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -887,7 +882,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
                   style={secondaryBtn}
                 >保存</button>
               </div>
-              <p style={{ fontSize: '0.72rem', color: '#475569', marginTop: 4 }}>0 = 無期限保持</p>
+              <p style={{ fontSize: '0.72rem', color: 'var(--slate-600)', marginTop: 4 }}>0 = 無期限保持</p>
             </div>
           </div>
         </section>}
@@ -895,17 +890,17 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── 5. データ保存場所 ─── */}
         {!serverManaged && <section>
           <h3 style={sectionHead}>データ保存場所</h3>
-          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
             変更すると既存データを新しいフォルダにコピーします。<br/>
             保存先はすぐに切り替わり、元のフォルダにもバックアップを残します。<br/>
             データが入っているフォルダは選択できません。
           </p>
-          <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: 4 }}>現在の場所</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', marginBottom: 4 }}>現在の場所</div>
           <div style={pathBox}>{dataDir || '読み込み中…'}</div>
 
-          <div style={{ fontSize: '0.72rem', color: '#64748b', margin: '12px 0 4px' }}>変更先</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', margin: '12px 0 4px' }}>変更先</div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <div style={{ ...pathBox, flex: 1, cursor: 'default', color: newDataDir !== dataDir ? '#a5b4fc' : '#94a3b8' }}>
+            <div style={{ ...pathBox, flex: 1, cursor: 'default', color: newDataDir !== dataDir ? 'var(--indigo-300)' : 'var(--slate-400)' }}>
               {newDataDir || '…'}
             </div>
             <button onClick={handlePickDir} disabled={changingDir} style={secondaryBtn}>参照…</button>
@@ -927,7 +922,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               { label: 'アイコン画像', path: dataDir ? `${dataDir}\\icons\\` : '…' }
             ].map(({ label, path: p }) => (
               <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap', width: 80 }}>{label}</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--slate-500)', whiteSpace: 'nowrap', width: 80 }}>{label}</span>
                 <span style={{ ...pathBox, flex: 1, fontSize: '0.75rem' }}>{p}</span>
               </div>
             ))}
@@ -936,7 +931,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
 
         {serverManaged && <section>
           <h3 style={sectionHead}>旧版の下書き</h3>
-          <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '8px 0 12px', lineHeight: 1.6 }}>更新前にこのPCで入力した進捗やコメントが見つからない場合は、内容を確認して自分のアカウントへ復元できます。</p>
+          <p style={{ fontSize: '0.8rem', color: 'var(--slate-400)', margin: '8px 0 12px', lineHeight: 1.6 }}>更新前にこのPCで入力した進捗やコメントが見つからない場合は、内容を確認して自分のアカウントへ復元できます。</p>
           <button type="button" onClick={() => setShowDraftRecovery(true)} style={secondaryBtn}>旧版の下書きを確認・復元</button>
         </section>}
         </>}
@@ -949,70 +944,70 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
 // ─── スタイル定数 ─────────────────────────────────────────────
 
 const sectionHead: React.CSSProperties = {
-  fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase',
+  fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase',
   letterSpacing: '0.08em', fontWeight: 'bold'
 }
 
 const closeBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: '#64748b',
+  background: 'none', border: 'none', color: 'var(--slate-500)',
   cursor: 'pointer', fontSize: '1.2rem', padding: '2px 6px'
 }
 
 const primaryBtn: React.CSSProperties = {
-  padding: '7px 14px', background: '#6366f1', border: 'none',
-  borderRadius: 7, color: '#fff', cursor: 'pointer', fontSize: '0.85rem',
+  padding: '7px 14px', background: 'var(--indigo-500)', border: 'none',
+  borderRadius: 7, color: 'var(--on-fill-white)', cursor: 'pointer', fontSize: '0.85rem',
   fontWeight: 'bold', whiteSpace: 'nowrap'
 }
 
 const secondaryBtn: React.CSSProperties = {
-  padding: '7px 14px', background: '#334155', border: 'none',
-  borderRadius: 7, color: '#94a3b8', cursor: 'pointer', fontSize: '0.85rem',
+  padding: '7px 14px', background: 'var(--slate-700)', border: 'none',
+  borderRadius: 7, color: 'var(--slate-400)', cursor: 'pointer', fontSize: '0.85rem',
   whiteSpace: 'nowrap'
 }
 
 const linkBtn: React.CSSProperties = {
-  ...secondaryBtn, display: 'inline-block', color: '#e2e8f0', textDecoration: 'none'
+  ...secondaryBtn, display: 'inline-block', color: 'var(--slate-200)', textDecoration: 'none'
 }
 
 const kbdStyle: React.CSSProperties = {
-  display: 'inline-block', background: '#0f172a', border: '1px solid #475569',
+  display: 'inline-block', background: 'var(--slate-900)', border: '1px solid var(--slate-600)',
   borderRadius: 5, padding: '4px 12px', fontSize: '0.8rem',
-  color: '#e2e8f0', fontFamily: 'monospace', whiteSpace: 'nowrap'
+  color: 'var(--slate-200)', fontFamily: 'monospace', whiteSpace: 'nowrap'
 }
 
 const detailsSummary: React.CSSProperties = {
   cursor: 'pointer',
   fontSize: '0.75rem',
-  color: '#94a3b8'
+  color: 'var(--slate-400)'
 }
 
 const passwordInput: React.CSSProperties = {
   padding: '7px 10px',
   borderRadius: 7,
-  border: '1px solid #334155',
-  background: '#0f172a',
-  color: '#e2e8f0',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--slate-900)',
+  color: 'var(--slate-200)',
   fontSize: '0.85rem'
 }
 
 const pathBox: React.CSSProperties = {
-  background: '#0f172a', border: '1px solid #1e293b', borderRadius: 5,
-  padding: '6px 10px', fontSize: '0.78rem', color: '#94a3b8',
+  background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 5,
+  padding: '6px 10px', fontSize: '0.78rem', color: 'var(--slate-400)',
   fontFamily: 'monospace', userSelect: 'all', wordBreak: 'break-all'
 }
 
 const numInputStyle: React.CSSProperties = {
-  padding: '6px 8px', background: '#0f172a', border: '1px solid #334155',
-  borderRadius: 6, color: '#e2e8f0', fontSize: '0.85rem', outline: 'none'
+  padding: '6px 8px', background: 'var(--slate-900)', border: '1px solid var(--slate-700)',
+  borderRadius: 6, color: 'var(--slate-200)', fontSize: '0.85rem', outline: 'none'
 }
 
 const textareaStyle: React.CSSProperties = {
-  padding: '6px 8px', background: '#0f172a', border: '1px solid #334155',
-  borderRadius: 6, color: '#e2e8f0', fontSize: '0.82rem', outline: 'none',
+  padding: '6px 8px', background: 'var(--slate-900)', border: '1px solid var(--slate-700)',
+  borderRadius: 6, color: 'var(--slate-200)', fontSize: '0.82rem', outline: 'none',
   fontFamily: 'monospace', resize: 'vertical'
 }
 
 const codeStyle: React.CSSProperties = {
-  background: '#0f172a', border: '1px solid #334155', borderRadius: 3,
-  padding: '1px 4px', fontSize: '0.78rem', color: '#a5b4fc', fontFamily: 'monospace'
+  background: 'var(--slate-900)', border: '1px solid var(--slate-700)', borderRadius: 3,
+  padding: '1px 4px', fontSize: '0.78rem', color: 'var(--indigo-300)', fontFamily: 'monospace'
 }

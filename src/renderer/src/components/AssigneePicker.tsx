@@ -5,10 +5,10 @@ const baseSelectStyle: React.CSSProperties = {
   flex: 1,
   minWidth: 0,
   padding: '8px 12px',
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 8,
-  color: '#e2e8f0',
+  color: 'var(--slate-200)',
   fontSize: '0.9rem',
   boxSizing: 'border-box'
 }
@@ -60,7 +60,7 @@ interface ChipProps {
 /** Read-only colored badge with the assignee's initial and name. Renders nothing when unassigned. */
 export function AssigneeChip({ name, color, fontSize = 0.72 }: ChipProps): React.JSX.Element | null {
   if (!name) return null
-  const dotColor = color ?? '#64748b'
+  const dotColor = color ?? 'var(--slate-500)'
 
   return (
     <span
@@ -70,9 +70,9 @@ export function AssigneeChip({ name, color, fontSize = 0.72 }: ChipProps): React
         gap: 5,
         padding: '1px 7px 1px 3px',
         borderRadius: 99,
-        background: `${dotColor}1f`,
-        border: `1px solid ${dotColor}55`,
-        color: '#e2e8f0',
+        background: `color-mix(in srgb, ${dotColor} 12.2%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${dotColor} 33.3%, transparent)`,
+        color: 'var(--slate-200)',
         fontSize: `${fontSize}rem`,
         lineHeight: 1.6,
         maxWidth: 140,
@@ -91,8 +91,8 @@ function dotStyle(color: string | null, size: number): React.CSSProperties {
     height: size,
     borderRadius: '50%',
     flexShrink: 0,
-    background: color ?? '#475569',
-    boxShadow: color ? `0 0 0 2px ${color}33` : 'none'
+    background: color ?? 'var(--slate-600)',
+    boxShadow: color ? `0 0 0 2px color-mix(in srgb, ${color} 20%, transparent)` : 'none'
   }
 }
 
@@ -103,7 +103,8 @@ function avatarStyle(color: string): React.CSSProperties {
     borderRadius: '50%',
     flexShrink: 0,
     background: color,
-    color: '#0b1220',
+    // 利用者が選んだ色の上の文字なので、テーマで変えない
+    color: 'var(--ink-on-data)',
     fontWeight: 800,
     fontSize: '0.62rem',
     display: 'inline-flex',

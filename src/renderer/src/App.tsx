@@ -10,6 +10,7 @@ import { QuickAddModal } from './components/QuickAddModal'
 import { Toast } from './components/Toast'
 import type { ToastMessage } from './components/Toast'
 import { FONT_FAMILY_DEFAULT, FONT_SCALE_DEFAULT } from './lib/fontSettings'
+import './styles/theme.css'
 import type { ProgressTimelineFocusTarget } from './components/ProgressTimeline'
 import { TodayFlowRail } from './components/TodayFlowRail'
 import { GanttView } from './components/GanttView'
@@ -43,7 +44,7 @@ type CenterView = 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan'
 type ScopeLens = 'personal' | 'team'
 type GanttSidePanelMode = 'detail' | 'today'
 type PaneKey = 'category' | 'list' | 'side'
-type ThemeMode = 'dark' | 'light'
+type ThemeMode = 'dark' | 'light' | 'system'
 
 interface PaneWidths {
   category: number
@@ -181,7 +182,7 @@ export function App(): React.JSX.Element {
   const [showSettings, setShowSettings] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const saved = window.localStorage.getItem('app-theme-mode')
-    return saved === 'light' ? 'light' : 'dark'
+    return saved === 'light' || saved === 'system' ? saved : 'dark'
   })
   const [fontFamily, setFontFamily] = useState<string>(() => (
     window.localStorage.getItem('app-font-family') ?? FONT_FAMILY_DEFAULT
@@ -341,7 +342,7 @@ export function App(): React.JSX.Element {
     let disposed = false
     window.api.settingsGet('themeMode').then((value) => {
       if (disposed) return
-      if (value === 'dark' || value === 'light') setThemeMode(value)
+      if (value === 'dark' || value === 'light' || value === 'system') setThemeMode(value)
     })
     window.api.settingsGet('fontFamily').then((value) => {
       if (disposed) return
@@ -516,13 +517,22 @@ export function App(): React.JSX.Element {
     setAssigneeDefaultApplied(true)
   }, [assigneeDefaultApplied, currentUser, users.length])
 
+  // 「OS に合わせる」のときは、OS のライト・ダークの切り替えにもついていく
+  const [systemPrefersLight, setSystemPrefersLight] = useState(() => window.matchMedia?.('(prefers-color-scheme: light)').matches ?? false)
+  useEffect(() => {
+    const query = window.matchMedia?.('(prefers-color-scheme: light)')
+    if (!query) return
+    const update = (): void => setSystemPrefersLight(query.matches)
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  const effectiveTheme: 'dark' | 'light' = themeMode === 'system' ? (systemPrefersLight ? 'light' : 'dark') : themeMode
+
   useEffect(() => {
     window.localStorage.setItem('app-theme-mode', themeMode)
-    window.localStorage.setItem('wavely-theme', themeMode)
-    document.documentElement.setAttribute('data-theme', themeMode)
-    if (themeMode === 'light') document.body.classList.add('theme-light')
-    else document.body.classList.remove('theme-light')
-  }, [themeMode])
+    // 色は styles/theme.css のトークンを :root[data-theme] で切り替える（以前の画面全体の色反転はやめた）
+    document.documentElement.setAttribute('data-theme', effectiveTheme)
+  }, [effectiveTheme, themeMode])
 
   useEffect(() => {
     window.localStorage.setItem('app-font-family', fontFamily)
@@ -1261,22 +1271,22 @@ export function App(): React.JSX.Element {
   }, [categories, currentUser?.id, q, searchQuery, selectedAssigneeId, selectedCategoryId, users])
 
   if (isFirstLaunch === null) {
-    return <div style={{ height: '100vh', background: '#0a0f1a' }} />
+    return <div style={{ height: '100vh', background: 'var(--c-0a0f1a)' }} />
   }
 
   if (isFirstLaunch) {
-    return <ViewBoundary fallback={<div style={{ height: '100vh', background: '#0a0f1a' }} />}><SetupWizardModal onComplete={handleSetupComplete} /></ViewBoundary>
+    return <ViewBoundary fallback={<div style={{ height: '100vh', background: 'var(--c-0a0f1a)' }} />}><SetupWizardModal onComplete={handleSetupComplete} /></ViewBoundary>
   }
 
   if (isStandaloneGanttWindow) {
     return (
-      <div style={{ height: '100vh', overflow: 'hidden', background: '#0f172a', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ flexShrink: 0, padding: '10px 12px', borderBottom: '1px solid #1e293b', background: '#0b1220', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ height: '100vh', overflow: 'hidden', background: 'var(--slate-900)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flexShrink: 0, padding: '10px 12px', borderBottom: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="タスク検索"
-            style={{ minWidth: 200, flex: '1 1 220px', padding: '7px 9px', background: '#0f172a', border: `1px solid ${searchQuery ? '#6366f1' : '#334155'}`, borderRadius: 7, color: '#e2e8f0', fontSize: '0.82rem', outline: 'none' }}
+            style={{ minWidth: 200, flex: '1 1 220px', padding: '7px 9px', background: 'var(--slate-900)', border: `1px solid ${searchQuery ? 'var(--indigo-500)' : 'var(--slate-700)'}`, borderRadius: 7, color: 'var(--slate-200)', fontSize: '0.82rem', outline: 'none' }}
           />
           {multiUser && (
             <select
@@ -1285,7 +1295,7 @@ export function App(): React.JSX.Element {
                 const v = e.target.value
                 setSelectedAssigneeId(v === '__all__' ? null : v === '__none__' ? '' : v)
               }}
-              style={{ padding: '7px 9px', background: '#0f172a', border: `1px solid ${selectedAssigneeId !== null ? '#6366f1' : '#334155'}`, borderRadius: 7, color: '#e2e8f0', fontSize: '0.82rem', outline: 'none' }}
+              style={{ padding: '7px 9px', background: 'var(--slate-900)', border: `1px solid ${selectedAssigneeId !== null ? 'var(--indigo-500)' : 'var(--slate-700)'}`, borderRadius: 7, color: 'var(--slate-200)', fontSize: '0.82rem', outline: 'none' }}
             >
               <option value="__all__">全員</option>
               <option value="__none__">未割り当て</option>
@@ -1313,7 +1323,7 @@ export function App(): React.JSX.Element {
                       setSortDir('desc')
                     }
                   }}
-                  style={{ padding: '6px 9px', borderRadius: 999, border: `1px solid ${active ? '#3b82f6' : '#334155'}`, background: active ? '#172554' : '#111827', color: active ? '#dbeafe' : '#94a3b8', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}
+                  style={{ padding: '6px 9px', borderRadius: 999, border: `1px solid ${active ? 'var(--blue-500)' : 'var(--slate-700)'}`, background: active ? 'var(--blue-950)' : 'var(--gray-900)', color: active ? 'var(--blue-100)' : 'var(--slate-400)', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}
                 >
                   {label}{active && key !== 'sort_order' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
                 </button>
@@ -1412,7 +1422,7 @@ export function App(): React.JSX.Element {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       {serverDisconnected && (
-        <div role="status" style={{ flexShrink: 0, padding: '6px 16px', background: '#78350f', borderBottom: '1px solid #b45309', color: '#fef3c7', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div role="status" style={{ flexShrink: 0, padding: '6px 16px', background: 'var(--amber-900)', borderBottom: '1px solid var(--amber-700)', color: 'var(--amber-100)', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span aria-hidden="true">⚠</span>
           サーバーに再接続しています… つながるまで、変更は保存できません。
         </div>
@@ -1457,7 +1467,7 @@ export function App(): React.JSX.Element {
       />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minWidth: 0 }}>
-        <div style={{ width: paneWidths.category, flexShrink: 0, background: '#0a0f1a', borderRight: '1px solid #1e293b', overflow: 'hidden', display: categoryPaneVisible ? 'block' : 'none' }}>
+        <div style={{ width: paneWidths.category, flexShrink: 0, background: 'var(--c-0a0f1a)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: categoryPaneVisible ? 'block' : 'none' }}>
           <CategoryList
             categories={categories}
             selectedId={selectedCategoryId}
@@ -1474,8 +1484,8 @@ export function App(): React.JSX.Element {
           style={{ ...resizeHandleStyle, display: categoryPaneVisible ? 'block' : 'none' }}
         />
 
-        <div style={{ width: paneWidths.list, flexShrink: 0, background: '#0d1525', borderRight: '1px solid #1e293b', overflow: 'hidden', display: taskPaneVisible ? 'flex' : 'none', flexDirection: 'column' }}>
-          <div style={{ padding: '6px 8px', borderBottom: '1px solid #1e293b' }}>
+        <div style={{ width: paneWidths.list, flexShrink: 0, background: 'var(--c-0d1525)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: taskPaneVisible ? 'flex' : 'none', flexDirection: 'column' }}>
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--slate-800)' }}>
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -1483,10 +1493,10 @@ export function App(): React.JSX.Element {
               style={{
                 width: '100%',
                 padding: '5px 8px',
-                background: '#0f172a',
-                border: `1px solid ${searchQuery ? '#6366f1' : '#1e293b'}`,
+                background: 'var(--slate-900)',
+                border: `1px solid ${searchQuery ? 'var(--indigo-500)' : 'var(--slate-800)'}`,
                 borderRadius: 6,
-                color: '#e2e8f0',
+                color: 'var(--slate-200)',
                 fontSize: '0.8rem',
                 outline: 'none',
                 boxSizing: 'border-box'
@@ -1503,10 +1513,10 @@ export function App(): React.JSX.Element {
                   width: '100%',
                   marginTop: 6,
                   padding: '5px 8px',
-                  background: '#0f172a',
-                  border: `1px solid ${selectedAssigneeId !== null ? '#6366f1' : '#1e293b'}`,
+                  background: 'var(--slate-900)',
+                  border: `1px solid ${selectedAssigneeId !== null ? 'var(--indigo-500)' : 'var(--slate-800)'}`,
                   borderRadius: 6,
-                  color: selectedAssigneeId !== null ? '#e2e8f0' : '#94a3b8',
+                  color: selectedAssigneeId !== null ? 'var(--slate-200)' : 'var(--slate-400)',
                   fontSize: '0.8rem',
                   outline: 'none',
                   boxSizing: 'border-box'
@@ -1523,7 +1533,7 @@ export function App(): React.JSX.Element {
               </select>
             )}
             {savedTaskViews.length > 0 && <div style={{ display: 'flex', gap: 5, marginTop: 6, flexWrap: 'wrap' }}>
-              <select defaultValue="" onChange={(event) => { const view = savedTaskViews.find((item) => item.name === event.target.value); if (view) applyTaskView(view); event.target.value = '' }} style={{ flex: 1, minWidth: 100, padding: '4px 6px', background: '#0f172a', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6 }}><option value="">保存ビュー</option>{savedTaskViews.map((view) => <option key={view.name} value={view.name}>{view.name}</option>)}</select>
+              <select defaultValue="" onChange={(event) => { const view = savedTaskViews.find((item) => item.name === event.target.value); if (view) applyTaskView(view); event.target.value = '' }} style={{ flex: 1, minWidth: 100, padding: '4px 6px', background: 'var(--slate-900)', color: 'var(--slate-400)', border: '1px solid var(--slate-700)', borderRadius: 6 }}><option value="">保存ビュー</option>{savedTaskViews.map((view) => <option key={view.name} value={view.name}>{view.name}</option>)}</select>
             </div>}
             {(searchQuery || selectedCategoryId || showArchived) && (
               <div aria-label="適用中の絞り込み" style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
@@ -1534,7 +1544,7 @@ export function App(): React.JSX.Element {
             )}
           </div>
 
-          <div style={{ padding: '5px 8px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+          <div style={{ padding: '5px 8px', borderBottom: '1px solid var(--slate-800)', display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
             {SORT_FIELDS.map(({ key, label }) => {
               const active = sortField === key
 
@@ -1557,9 +1567,9 @@ export function App(): React.JSX.Element {
                     fontSize: '0.75rem',
                     padding: '2px 7px',
                     borderRadius: 99,
-                    background: active ? '#6366f120' : 'transparent',
-                    border: `1px solid ${active ? '#6366f1' : '#334155'}`,
-                    color: active ? '#a5b4fc' : '#94a3b8',
+                    background: active ? 'color-mix(in srgb, var(--indigo-500) 12.5%, transparent)' : 'transparent',
+                    border: `1px solid ${active ? 'var(--indigo-500)' : 'var(--slate-700)'}`,
+                    color: active ? 'var(--indigo-300)' : 'var(--slate-400)',
                     cursor: 'pointer',
                     whiteSpace: 'nowrap'
                   }}
@@ -1606,13 +1616,13 @@ export function App(): React.JSX.Element {
           style={{ ...resizeHandleStyle, display: taskPaneVisible ? 'block' : 'none' }}
         />
 
-        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: '#0f172a' }}>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: 'var(--slate-900)' }}>
           <ViewBoundary key={activeView}>
           {initialLoadError ? (
-            <div role="alert" style={{ margin: 24, padding: 20, border: '1px solid #ef4444', borderRadius: 12, background: '#450a0a', color: '#fecaca' }}>
+            <div role="alert" style={{ margin: 24, padding: 20, border: '1px solid var(--red-500)', borderRadius: 12, background: 'var(--red-950)', color: 'var(--red-200)' }}>
               <strong>データを読み込めませんでした</strong>
               <div style={{ marginTop: 6, fontSize: '0.82rem' }}>{initialLoadError}</div>
-              <button onClick={() => void loadInitialData().catch((error) => setInitialLoadError(error instanceof Error ? error.message : '再読み込みできませんでした'))} style={{ marginTop: 12, padding: '7px 12px', borderRadius: 7, border: '1px solid #ef4444', background: '#7f1d1d', color: '#fff', cursor: 'pointer' }}>再試行</button>
+              <button onClick={() => void loadInitialData().catch((error) => setInitialLoadError(error instanceof Error ? error.message : '再読み込みできませんでした'))} style={{ marginTop: 12, padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red-500)', background: 'var(--red-900)', color: 'var(--white)', cursor: 'pointer' }}>再試行</button>
             </div>
           ) : activeView === 'overview' ? (
             <OverviewDashboard
@@ -1652,12 +1662,12 @@ export function App(): React.JSX.Element {
               checklistSummaries={checklistSummaries}
             />
           ) : activeView === 'plan' && selectedPlanLoading ? (
-            <div role="status" style={{ padding: 24, color: '#94a3b8' }}>計画を読み込んでいます…</div>
+            <div role="status" style={{ padding: 24, color: 'var(--slate-400)' }}>計画を読み込んでいます…</div>
           ) : activeView === 'plan' && selectedPlanError ? (
-            <div role="alert" style={{ margin: 24, padding: 20, border: '1px solid #ef4444', borderRadius: 12, background: '#450a0a', color: '#fecaca' }}>
+            <div role="alert" style={{ margin: 24, padding: 20, border: '1px solid var(--red-500)', borderRadius: 12, background: 'var(--red-950)', color: 'var(--red-200)' }}>
               <strong>{planDate} の計画を読み込めませんでした</strong>
               <div style={{ marginTop: 6, fontSize: '0.82rem' }}>{selectedPlanError}</div>
-              <button onClick={() => void loadSelectedPlan(planDate).catch(() => undefined)} style={{ marginTop: 12, padding: '7px 12px', borderRadius: 7, border: '1px solid #ef4444', background: '#7f1d1d', color: '#fff', cursor: 'pointer' }}>再試行</button>
+              <button onClick={() => void loadSelectedPlan(planDate).catch(() => undefined)} style={{ marginTop: 12, padding: '7px 12px', borderRadius: 7, border: '1px solid var(--red-500)', background: 'var(--red-900)', color: 'var(--white)', cursor: 'pointer' }}>再試行</button>
             </div>
           ) : activeView === 'plan' ? (
             <PlanView
@@ -1750,10 +1760,10 @@ export function App(): React.JSX.Element {
               style={resizeHandleStyle}
             />
 
-            <div style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid #1e293b', background: '#0b1220', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               {activeView === 'gantt' ? (
                 <>
-                  <div style={{ padding: '10px 12px', borderBottom: '1px solid #1e293b', background: '#0b1220', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button
                         onClick={() => setGanttSidePanelMode('detail')}
@@ -1937,13 +1947,13 @@ const resizeHandleStyle: React.CSSProperties = {
   width: 6,
   flexShrink: 0,
   cursor: 'col-resize',
-  background: 'linear-gradient(to right, transparent 0, transparent 2px, #162033 2px, #162033 4px, transparent 4px)',
+  background: 'linear-gradient(to right, transparent 0, transparent 2px, var(--c-162033) 2px, var(--c-162033) 4px, transparent 4px)',
   opacity: 0.8
 }
 
 const filterChipStyle: React.CSSProperties = {
-  maxWidth: '100%', padding: '2px 6px', borderRadius: 999, border: '1px solid #4f46e5',
-  background: '#1e1b4b', color: '#c7d2fe', cursor: 'pointer', fontSize: '0.75rem',
+  maxWidth: '100%', padding: '2px 6px', borderRadius: 999, border: '1px solid var(--indigo-600)',
+  background: 'var(--indigo-950)', color: 'var(--indigo-200)', cursor: 'pointer', fontSize: '0.75rem',
   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
 }
 
@@ -1952,9 +1962,9 @@ function sideTabButtonStyle(active: boolean): React.CSSProperties {
   return {
     padding: '6px 10px',
     borderRadius: 8,
-    border: `1px solid ${active ? '#2563eb' : '#334155'}`,
-    background: active ? '#1d4ed8' : '#111827',
-    color: active ? '#eff6ff' : '#94a3b8',
+    border: `1px solid ${active ? 'var(--blue-600)' : 'var(--slate-700)'}`,
+    background: active ? 'var(--blue-700)' : 'var(--gray-900)',
+    color: active ? 'var(--on-fill-blue-50)' : 'var(--slate-400)',
     cursor: 'pointer',
     fontSize: '0.76rem',
     fontWeight: 700
@@ -1965,9 +1975,9 @@ function auxButtonStyle(active: boolean): React.CSSProperties {
   return {
     padding: '6px 10px',
     borderRadius: 8,
-    border: `1px solid ${active ? '#2563eb' : '#334155'}`,
-    background: active ? '#172554' : '#111827',
-    color: active ? '#dbeafe' : '#94a3b8',
+    border: `1px solid ${active ? 'var(--blue-600)' : 'var(--slate-700)'}`,
+    background: active ? 'var(--blue-950)' : 'var(--gray-900)',
+    color: active ? 'var(--blue-100)' : 'var(--slate-400)',
     cursor: 'pointer',
     fontSize: '0.74rem',
     fontWeight: 700

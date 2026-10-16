@@ -20,7 +20,7 @@ interface ItemsProps {
 export function TodayTodoItems({ groups, pendingIds, onToggle, onOpenList, showAssignee = false }: ItemsProps): React.JSX.Element {
   const todayKey = toDateKey(new Date())
   if (groups.length === 0) {
-    return <div style={{ fontSize: '0.78rem', color: '#64748b', lineHeight: 1.5 }}>今日やる項目はありません。</div>
+    return <div style={{ fontSize: '0.78rem', color: 'var(--slate-500)', lineHeight: 1.5 }}>今日やる項目はありません。</div>
   }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -29,14 +29,14 @@ export function TodayTodoItems({ groups, pendingIds, onToggle, onOpenList, showA
         return (
           <div key={section} style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
             <div title={TODAY_SECTION_LABEL[section].title} style={{ display: 'flex', alignItems: 'baseline', gap: 6, paddingBottom: 2 }}>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>{TODAY_SECTION_LABEL[section].label}</span>
-              <span style={{ fontSize: '0.66rem', color: done === entries.length ? '#4ade80' : '#64748b' }}>{done}/{entries.length}</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)', fontWeight: 700 }}>{TODAY_SECTION_LABEL[section].label}</span>
+              <span style={{ fontSize: '0.66rem', color: done === entries.length ? 'var(--green-400)' : 'var(--slate-500)' }}>{done}/{entries.length}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
               {groupEntriesByList(entries).map(({ todo, items }) => (
                 <div key={todo.id} style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                   <ListHeading todo={todo} onOpen={() => onOpenList(todo.id)} />
-                  <div style={{ marginLeft: 3, paddingLeft: 8, borderLeft: `2px solid ${todo.category_color ?? '#475569'}66`, minWidth: 0 }}>
+                  <div style={{ marginLeft: 3, paddingLeft: 8, borderLeft: `2px solid color-mix(in srgb, ${todo.category_color ?? 'var(--slate-600)'} 40%, transparent)`, minWidth: 0 }}>
                     {items.map((item) => (
                       <QuickCheckItem
                         key={item.id}
@@ -62,7 +62,7 @@ export function TodayTodoItems({ groups, pendingIds, onToggle, onOpenList, showA
 
 /** どの ToDoリストの項目かを示す小見出し（カテゴリとリスト名）。押すとリストの詳細を開く */
 function ListHeading({ todo, onOpen }: { todo: Todo; onOpen: () => void }): React.JSX.Element {
-  const color = todo.category_color ?? '#475569'
+  const color = todo.category_color ?? 'var(--slate-600)'
   return (
     <button
       onClick={onOpen}
@@ -75,7 +75,7 @@ function ListHeading({ todo, onOpen }: { todo: Todo; onOpen: () => void }): Reac
           {todo.category_name}
         </span>
       )}
-      <span style={{ fontSize: '0.72rem', color: '#cbd5e1', fontWeight: 700, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ fontSize: '0.72rem', color: 'var(--slate-300)', fontWeight: 700, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {todo.title}
       </span>
     </button>
@@ -109,19 +109,19 @@ export function TodayTodoCard({ groups, pendingIds, storageKey, onToggle, onOpen
     })
   }
   return (
-    <section aria-label="今日のToDo" style={{ background: '#0f172a', border: '1px solid #312e81', borderRadius: 12, padding: '10px 12px' }}>
+    <section aria-label="今日のToDo" style={{ background: 'var(--slate-900)', border: '1px solid var(--indigo-900)', borderRadius: 12, padding: '10px 12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button
           onClick={toggleCollapsed}
           aria-expanded={!collapsed}
           title={collapsed ? '開く' : '折りたたむ'}
-          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#94a3b8', fontSize: '0.75rem', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s ease' }}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--slate-400)', fontSize: '0.75rem', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s ease' }}
         >
           ▾
         </button>
-        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e0e7ff' }}>今日のToDo</span>
-        <span style={{ fontSize: '0.7rem', color: remaining > 0 ? '#c7d2fe' : '#4ade80' }}>{remaining > 0 ? `残り ${remaining}` : 'すべて済み'}</span>
-        <button onClick={onOpenTab} title="ToDo タブを開く" style={{ marginLeft: 'auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#93c5fd', fontSize: '0.7rem', fontWeight: 700 }}>
+        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--indigo-100)' }}>今日のToDo</span>
+        <span style={{ fontSize: '0.7rem', color: remaining > 0 ? 'var(--indigo-200)' : 'var(--green-400)' }}>{remaining > 0 ? `残り ${remaining}` : 'すべて済み'}</span>
+        <button onClick={onOpenTab} title="ToDo タブを開く" style={{ marginLeft: 'auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--blue-300)', fontSize: '0.7rem', fontWeight: 700 }}>
           ToDoタブ
         </button>
       </div>

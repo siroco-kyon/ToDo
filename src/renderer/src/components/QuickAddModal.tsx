@@ -22,10 +22,10 @@ interface Props {
 const selectStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 12px',
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 8,
-  color: '#e2e8f0',
+  color: 'var(--slate-200)',
   fontSize: '0.9rem',
   boxSizing: 'border-box'
 }
@@ -34,7 +34,7 @@ const labelStyle: React.CSSProperties = {
   display: 'block',
   marginBottom: 4,
   fontSize: '0.75rem',
-  color: '#94a3b8'
+  color: 'var(--slate-400)'
 }
 
 function addDays(base: Date, days: number): Date {
@@ -229,7 +229,7 @@ export function QuickAddModal({
         aria-modal="true"
         aria-labelledby="quick-add-title"
         style={{
-          background: '#1e293b',
+          background: 'var(--slate-800)',
           borderRadius: 12,
           padding: 20,
           width: 560,
@@ -238,10 +238,10 @@ export function QuickAddModal({
           overflowY: 'auto',
           boxSizing: 'border-box',
           boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-          border: '1px solid #334155'
+          border: '1px solid var(--slate-700)'
         }}
       >
-        <h2 id="quick-add-title" style={{ margin: '0 0 14px', fontSize: '1.08rem', color: '#e2e8f0' }}>
+        <h2 id="quick-add-title" style={{ margin: '0 0 14px', fontSize: '1.08rem', color: 'var(--slate-200)' }}>
           タスクを追加
         </h2>
 
@@ -274,9 +274,9 @@ export function QuickAddModal({
               rows={titles.length > 1 ? Math.min(6, titles.length + 1) : 2}
               style={{ ...selectStyle, fontSize: '1rem', resize: 'vertical', lineHeight: 1.5 }}
             />
-            <div style={{ marginTop: 4, fontSize: '0.7rem', color: '#64748b' }}>
+            <div style={{ marginTop: 4, fontSize: '0.7rem', color: 'var(--slate-500)' }}>
               Enter で追加・Shift+Enter で改行。複数行にすると1行ずつ別のタスクになります
-              {titles.length > 1 && <span style={{ color: '#93c5fd', fontWeight: 700 }}>（{titles.length}件）</span>}
+              {titles.length > 1 && <span style={{ color: 'var(--blue-300)', fontWeight: 700 }}>（{titles.length}件）</span>}
             </div>
           </div>
 
@@ -291,7 +291,7 @@ export function QuickAddModal({
               </button>
             </div>
             {listMode && (
-              <div style={{ marginTop: 4, fontSize: '0.7rem', color: '#a5b4fc', lineHeight: 1.5 }}>
+              <div style={{ marginTop: 4, fontSize: '0.7rem', color: 'var(--indigo-300)', lineHeight: 1.5 }}>
                 毎日・毎週のチェックや細かいやることをまとめるリストです。期限は「なし」のままでも、決めても使えます。作ったあと、詳細か ToDo タブで項目を追加します。項目ごとに「毎日・平日・毎週・毎月」を選ぶと、決めた日が来るたびに未チェックに戻ります。
               </div>
             )}
@@ -333,7 +333,7 @@ export function QuickAddModal({
                   ))}
                 </select>
               ) : (
-                <div style={{ ...selectStyle, color: '#64748b' }}>カテゴリ未登録</div>
+                <div style={{ ...selectStyle, color: 'var(--slate-500)' }}>カテゴリ未登録</div>
               )}
             </div>
           </div>
@@ -353,7 +353,7 @@ export function QuickAddModal({
               )}
             </div>
             {!startDate && !dueDate && !listMode && (
-              <div style={{ marginTop: 4, fontSize: '0.7rem', color: '#fbbf24' }}>
+              <div style={{ marginTop: 4, fontSize: '0.7rem', color: 'var(--amber-400)' }}>
                 開始日も期限もないタスクは、ガントでは下の「未配置タスク」に表示されます。
               </div>
             )}
@@ -363,13 +363,13 @@ export function QuickAddModal({
             type="button"
             onClick={() => setShowDetails((previous) => !previous)}
             aria-expanded={showDetails}
-            style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, color: '#93c5fd', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}
+            style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, color: 'var(--blue-300)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}
           >
             {showDetails ? '▾ 詳しい設定を閉じる' : '▸ 詳しく設定（内容・メモ・状態・優先度）'}
           </button>
 
           {showDetails && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: 10, background: '#162033', border: '1px solid #334155' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: 10, background: 'var(--c-162033)', border: '1px solid var(--slate-700)' }}>
               <div>
                 <label htmlFor="quick-add-description" style={labelStyle}>内容（このタスクでやること・目的）</label>
                 <textarea
@@ -424,13 +424,13 @@ export function QuickAddModal({
           )}
 
           {isDateRangeInvalid && (
-            <div role="alert" style={{ fontSize: '0.76rem', color: '#fca5a5' }}>
+            <div role="alert" style={{ fontSize: '0.76rem', color: 'var(--red-300)' }}>
               開始日は期限以前にしてください。
             </div>
           )}
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
-            <label style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 6, color: '#94a3b8', fontSize: '0.78rem', cursor: 'pointer' }}>
+            <label style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--slate-400)', fontSize: '0.78rem', cursor: 'pointer' }}>
               <input type="checkbox" checked={keepOpen} onChange={(event) => setKeepOpen(event.target.checked)} />
               追加後も続けて入力する
             </label>
@@ -439,10 +439,10 @@ export function QuickAddModal({
               onClick={requestClose}
               style={{
                 padding: '8px 16px',
-                background: '#334155',
+                background: 'var(--slate-700)',
                 border: 'none',
                 borderRadius: 8,
-                color: '#cbd5e1',
+                color: 'var(--slate-300)',
                 cursor: 'pointer'
               }}
             >
@@ -453,10 +453,10 @@ export function QuickAddModal({
               disabled={!canSubmit}
               style={{
                 padding: '8px 16px',
-                background: canSubmit ? '#2563eb' : '#334155',
+                background: canSubmit ? 'var(--blue-600)' : 'var(--slate-700)',
                 border: 'none',
                 borderRadius: 8,
-                color: canSubmit ? '#fff' : '#64748b',
+                color: canSubmit ? 'var(--on-fill-white)' : 'var(--slate-500)',
                 cursor: canSubmit ? 'pointer' : 'not-allowed',
                 fontWeight: 'bold'
               }}
@@ -474,9 +474,9 @@ function presetButtonStyle(active: boolean): React.CSSProperties {
   return {
     padding: '5px 10px',
     borderRadius: 999,
-    border: `1px solid ${active ? '#3b82f6' : '#334155'}`,
-    background: active ? '#1e3a8a' : '#0f172a',
-    color: active ? '#dbeafe' : '#94a3b8',
+    border: `1px solid ${active ? 'var(--blue-500)' : 'var(--slate-700)'}`,
+    background: active ? 'var(--blue-900)' : 'var(--slate-900)',
+    color: active ? 'var(--blue-100)' : 'var(--slate-400)',
     cursor: 'pointer',
     fontSize: '0.78rem',
     fontWeight: 700,

@@ -39,10 +39,10 @@ export function LoginScreen({ onSuccess }: { onSuccess: (user: CurrentUser) => v
         <div style={styles.brand}>
           <div style={styles.logo}>
             <svg width="44" height="44" viewBox="0 0 128 128" aria-hidden>
-              <rect x="9" y="9" width="110" height="110" rx="23" fill="#0f172a" />
-              <rect x="28" y="35" width="51" height="15" rx="4.5" fill="#2dd4bf" />
-              <rect x="42" y="56" width="56" height="15" rx="4.5" fill="#5eead4" />
-              <rect x="56" y="78" width="35" height="15" rx="4.5" fill="#fbbf24" />
+              <rect x="9" y="9" width="110" height="110" rx="23" fill="var(--slate-900)" />
+              <rect x="28" y="35" width="51" height="15" rx="4.5" fill="var(--teal-400)" />
+              <rect x="42" y="56" width="56" height="15" rx="4.5" fill="var(--teal-300)" />
+              <rect x="56" y="78" width="35" height="15" rx="4.5" fill="var(--amber-400)" />
             </svg>
           </div>
           <div>
@@ -97,7 +97,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'radial-gradient(circle at 30% 20%, #1e293b 0%, #0f172a 55%, #020617 100%)',
+    background: 'radial-gradient(circle at 30% 20%, var(--slate-800) 0%, var(--slate-900) 55%, var(--slate-950) 100%)',
     padding: 24,
     boxSizing: 'border-box'
   },
@@ -109,37 +109,37 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 16,
     padding: 32,
     borderRadius: 18,
-    border: '1px solid #1e293b',
-    background: '#0b1220',
-    boxShadow: '0 24px 60px rgba(2, 6, 23, 0.6)'
+    border: '1px solid var(--slate-800)',
+    background: 'var(--c-0b1220)',
+    boxShadow: '0 24px 60px color-mix(in srgb, var(--slate-950) 60%, transparent)'
   },
   brand: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 },
   logo: { display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: '1.25rem', fontWeight: 750, letterSpacing: '0.12em', color: '#f1f5f9' },
-  subtitle: { fontSize: '0.82rem', color: '#94a3b8', marginTop: 2 },
+  title: { fontSize: '1.25rem', fontWeight: 750, letterSpacing: '0.12em', color: 'var(--slate-100)' },
+  subtitle: { fontSize: '0.82rem', color: 'var(--slate-400)', marginTop: 2 },
   label: {
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
     fontSize: '0.8rem',
-    color: '#cbd5e1',
+    color: 'var(--slate-300)',
     fontWeight: 600
   },
   input: {
     padding: '10px 12px',
     borderRadius: 10,
-    border: '1px solid #334155',
-    background: '#0f172a',
-    color: '#e2e8f0',
+    border: '1px solid var(--slate-700)',
+    background: 'var(--slate-900)',
+    color: 'var(--slate-200)',
     fontSize: '0.95rem',
     outline: 'none'
   },
   error: {
     padding: '10px 12px',
     borderRadius: 10,
-    border: '1px solid #7f1d1d',
-    background: '#450a0a',
-    color: '#fecaca',
+    border: '1px solid var(--red-900)',
+    background: 'var(--red-950)',
+    color: 'var(--red-200)',
     fontSize: '0.82rem'
   },
   button: {
@@ -147,12 +147,12 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '11px 12px',
     borderRadius: 10,
     border: 'none',
-    background: '#2dd4bf',
-    color: '#0f172a',
+    background: 'var(--teal-400)',
+    color: 'var(--slate-900)',
     fontSize: '0.95rem',
     fontWeight: 700,
     cursor: 'pointer'
   },
-  hint: { fontSize: '0.74rem', color: '#64748b', lineHeight: 1.6, marginTop: 4 },
-  link: { fontSize: '0.78rem', color: '#5eead4', alignSelf: 'flex-start' }
+  hint: { fontSize: '0.74rem', color: 'var(--slate-500)', lineHeight: 1.6, marginTop: 4 },
+  link: { fontSize: '0.78rem', color: 'var(--teal-300)', alignSelf: 'flex-start' }
 }

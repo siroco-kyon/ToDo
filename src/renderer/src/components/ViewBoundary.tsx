@@ -36,22 +36,22 @@ class ViewErrorBoundary extends React.Component<BoundaryProps, State> {
       ? { position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 1200, width: 'min(440px, calc(100vw - 32px))', boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)' }
       : { margin: 24 }
     return (
-      <div role="alert" style={{ ...placement, padding: 16, border: '1px solid #b45309', borderRadius: 10, background: '#1c1408', color: '#fde68a', fontSize: '0.85rem', lineHeight: 1.6, boxSizing: 'border-box' }}>
+      <div role="alert" style={{ ...placement, padding: 16, border: '1px solid var(--amber-700)', borderRadius: 10, background: 'var(--c-1c1408)', color: 'var(--amber-200)', fontSize: '0.85rem', lineHeight: 1.6, boxSizing: 'border-box' }}>
         <strong>{updated ? 'アプリが更新されました' : 'この画面を表示できませんでした'}</strong>
-        <div style={{ marginTop: 4, color: '#fcd34d' }}>
+        <div style={{ marginTop: 4, color: 'var(--amber-300)' }}>
           {updated ? '新しい版を読み込むため、再読み込みしてください。' : '再読み込みすると直ることがあります。'}
         </div>
         <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
           <button
             onClick={() => window.location.reload()}
-            style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid #b45309', background: '#78350f', color: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}
+            style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--amber-700)', background: 'var(--amber-900)', color: 'var(--white)', cursor: 'pointer', fontSize: '0.8rem' }}
           >
             再読み込み
           </button>
           {onDismiss && (
             <button
               onClick={onDismiss}
-              style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid #475569', background: 'transparent', color: '#e2e8f0', cursor: 'pointer', fontSize: '0.8rem' }}
+              style={{ padding: '6px 12px', borderRadius: 7, border: '1px solid var(--slate-600)', background: 'transparent', color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.8rem' }}
             >
               閉じる
             </button>
@@ -63,7 +63,7 @@ class ViewErrorBoundary extends React.Component<BoundaryProps, State> {
 }
 
 export function ViewLoading(): React.JSX.Element {
-  return <div aria-busy="true" style={{ padding: 24, color: '#64748b', fontSize: '0.85rem' }}>読み込み中…</div>
+  return <div aria-busy="true" style={{ padding: 24, color: 'var(--slate-500)', fontSize: '0.85rem' }}>読み込み中…</div>
 }
 
 /**

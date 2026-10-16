@@ -97,9 +97,9 @@ export function CommandPalette({ commands, todos, onOpenTodo, onClose }: Props):
   return (
     <div
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(2, 6, 23, 0.6)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '12vh' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'color-mix(in srgb, var(--slate-950) 60%, transparent)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '12vh' }}
     >
-      <div role="dialog" aria-modal="true" aria-label="移動・操作" style={{ width: 'min(640px, calc(100vw - 32px))', background: '#0f172a', border: '1px solid #334155', borderRadius: 12, boxShadow: '0 24px 60px rgba(2, 6, 23, 0.7)', overflow: 'hidden' }}>
+      <div role="dialog" aria-modal="true" aria-label="移動・操作" style={{ width: 'min(640px, calc(100vw - 32px))', background: 'var(--slate-900)', border: '1px solid var(--slate-700)', borderRadius: 12, boxShadow: '0 24px 60px color-mix(in srgb, var(--slate-950) 70%, transparent)', overflow: 'hidden' }}>
         <input
           ref={inputRef}
           value={query}
@@ -111,17 +111,17 @@ export function CommandPalette({ commands, todos, onOpenTodo, onClose }: Props):
           aria-activedescendant={items[activeIndex] ? `hakobi-palette-item-${activeIndex}` : undefined}
           aria-label="タスク名・画面・操作を探す"
           placeholder="タスク名・画面・操作を入力（↑↓で選び Enter）"
-          style={{ width: '100%', padding: '14px 16px', background: 'transparent', border: 'none', borderBottom: '1px solid #1e293b', color: '#e2e8f0', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box' }}
+          style={{ width: '100%', padding: '14px 16px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--slate-800)', color: 'var(--slate-200)', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box' }}
         />
         <div ref={listRef} id="hakobi-command-palette-list" role="listbox" aria-label="候補" style={{ maxHeight: '52vh', overflowY: 'auto', padding: 6 }}>
-          {items.length === 0 && <div style={{ padding: '12px 10px', color: '#94a3b8', fontSize: '0.85rem' }}>当てはまるものはありません</div>}
+          {items.length === 0 && <div style={{ padding: '12px 10px', color: 'var(--slate-400)', fontSize: '0.85rem' }}>当てはまるものはありません</div>}
           {items.map((item, index) => {
             const showGroup = item.group !== lastGroup
             lastGroup = item.group
             const active = index === activeIndex
             return (
               <React.Fragment key={item.key}>
-                {showGroup && <div style={{ padding: '8px 10px 4px', fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8' }}>{item.group}</div>}
+                {showGroup && <div style={{ padding: '8px 10px 4px', fontSize: '0.72rem', fontWeight: 700, color: 'var(--slate-400)' }}>{item.group}</div>}
                 <div
                   id={`hakobi-palette-item-${index}`}
                   data-index={index}
@@ -129,16 +129,16 @@ export function CommandPalette({ commands, todos, onOpenTodo, onClose }: Props):
                   aria-selected={active}
                   onMouseEnter={() => setActiveIndex(index)}
                   onMouseDown={(event) => { event.preventDefault(); choose(item) }}
-                  style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: active ? '#1e293b' : 'transparent' }}
+                  style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: active ? 'var(--slate-800)' : 'transparent' }}
                 >
-                  <span style={{ color: '#e2e8f0', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{item.label}</span>
-                  {item.detail && <span style={{ marginLeft: 'auto', flexShrink: 0, color: '#94a3b8', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{item.detail}</span>}
+                  <span style={{ color: 'var(--slate-200)', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{item.label}</span>
+                  {item.detail && <span style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--slate-400)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{item.detail}</span>}
                 </div>
               </React.Fragment>
             )
           })}
         </div>
-        <div style={{ padding: '8px 14px', borderTop: '1px solid #1e293b', color: '#94a3b8', fontSize: '0.72rem' }}>
+        <div style={{ padding: '8px 14px', borderTop: '1px solid var(--slate-800)', color: 'var(--slate-400)', fontSize: '0.72rem' }}>
           ↑↓ で選ぶ・Enter で開く・Esc で閉じる
         </div>
       </div>

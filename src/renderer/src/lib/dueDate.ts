@@ -33,8 +33,8 @@ export function diffDaysFromToday(dateKey: string): number {
 export function getDueDateColor(dueDate: string | null): string {
   if (!dueDate) return ''
   const diffDays = diffDaysFromToday(dueDate)
-  if (diffDays < 0) return '#ef4444'
-  if (diffDays < 1) return '#f97316'
-  if (diffDays <= 3) return '#f59e0b'
+  if (diffDays < 0) return 'var(--red-500)'
+  if (diffDays < 1) return 'var(--orange-500)'
+  if (diffDays <= 3) return 'var(--amber-500)'
   return ''
 }

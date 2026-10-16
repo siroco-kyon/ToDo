@@ -32,23 +32,23 @@ export function SetupWizardModal({ onComplete }: Props): React.JSX.Element {
     <div
       style={{
         position: 'fixed', inset: 0,
-        background: 'linear-gradient(135deg, #0a0f1a 0%, #0d1525 100%)',
+        background: 'linear-gradient(135deg, var(--c-0a0f1a) 0%, var(--c-0d1525) 100%)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 2000
       }}
     >
       <div style={{
-        background: '#1e293b', borderRadius: 16, padding: 40, width: 520,
-        boxShadow: '0 32px 80px rgba(0,0,0,0.7)', border: '1px solid #334155',
+        background: 'var(--slate-800)', borderRadius: 16, padding: 40, width: 520,
+        boxShadow: '0 32px 80px rgba(0,0,0,0.7)', border: '1px solid var(--slate-700)',
         display: 'flex', flexDirection: 'column', gap: 24
       }}>
         {/* ヘッダー */}
         <div>
           <div style={{ fontSize: '1.6rem', marginBottom: 8 }}>📋</div>
-          <h1 style={{ fontSize: '1.3rem', color: '#e2e8f0', marginBottom: 6 }}>
+          <h1 style={{ fontSize: '1.3rem', color: 'var(--slate-200)', marginBottom: 6 }}>
             HAKOBIへようこそ
           </h1>
-          <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.6 }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--slate-500)', lineHeight: 1.6 }}>
             データベースの保存場所を選択してください。<br />
             後から設定で変更することもできます。
           </p>
@@ -56,14 +56,14 @@ export function SetupWizardModal({ onComplete }: Props): React.JSX.Element {
 
         {/* 保存場所選択 */}
         <div>
-          <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             データ保存場所
           </div>
 
           <div style={{
-            background: '#0f172a', border: `1px solid ${selectedDir ? '#6366f1' : '#334155'}`,
+            background: 'var(--slate-900)', border: `1px solid ${selectedDir ? 'var(--indigo-500)' : 'var(--slate-700)'}`,
             borderRadius: 8, padding: '10px 14px',
-            fontSize: '0.82rem', color: selectedDir ? '#a5b4fc' : '#94a3b8',
+            fontSize: '0.82rem', color: selectedDir ? 'var(--indigo-300)' : 'var(--slate-400)',
             fontFamily: 'monospace', wordBreak: 'break-all', marginBottom: 10,
             minHeight: 40, display: 'flex', alignItems: 'center'
           }}>
@@ -71,7 +71,7 @@ export function SetupWizardModal({ onComplete }: Props): React.JSX.Element {
           </div>
 
           {!selectedDir && (
-            <p style={{ fontSize: '0.75rem', color: '#475569', marginBottom: 10 }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', marginBottom: 10 }}>
               ↑ デフォルトの保存場所（変更しない場合はこのまま）
             </p>
           )}
@@ -79,8 +79,8 @@ export function SetupWizardModal({ onComplete }: Props): React.JSX.Element {
           <button
             onClick={handlePickDir}
             style={{
-              padding: '8px 16px', background: '#334155', border: 'none',
-              borderRadius: 8, color: '#94a3b8', cursor: 'pointer',
+              padding: '8px 16px', background: 'var(--slate-700)', border: 'none',
+              borderRadius: 8, color: 'var(--slate-400)', cursor: 'pointer',
               fontSize: '0.85rem', whiteSpace: 'nowrap'
             }}
           >
@@ -93,8 +93,8 @@ export function SetupWizardModal({ onComplete }: Props): React.JSX.Element {
           onClick={handleComplete}
           disabled={loading}
           style={{
-            padding: '12px 24px', background: loading ? '#334155' : '#6366f1',
-            border: 'none', borderRadius: 10, color: loading ? '#64748b' : '#fff',
+            padding: '12px 24px', background: loading ? 'var(--slate-700)' : 'var(--indigo-500)',
+            border: 'none', borderRadius: 10, color: loading ? 'var(--slate-500)' : 'var(--on-fill-white)',
             cursor: loading ? 'not-allowed' : 'pointer', fontSize: '1rem',
             fontWeight: 'bold', transition: 'background 0.2s'
           }}
