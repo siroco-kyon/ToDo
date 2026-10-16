@@ -65,6 +65,8 @@ src/renderer/src/components/WorkLogSummary.tsx 作業ログ
 src/renderer/src/components/ReportView.tsx    報告タブ（定例用。担当者別に進捗ログを返信まで全文表示・鮮度判定）
 src/renderer/src/components/ReportSettingsPanel.tsx 報告タブの表示設定（カテゴリ・状態・対象・サブタスク・小見出し・隠したタスク）
 src/renderer/src/lib/reportViewSettings.ts     報告タブの表示設定の型と保存（見ている人ごと。キーにユーザーID）
+src/renderer/src/components/MeetingMode.tsx    報告タブの定例モード（1人ずつ表示・持ち時間・その場でタスク作成・議事録のコピー）
+src/renderer/src/components/ProgressNoteHelpers.tsx 進捗ログの投稿欄の「ひな形」「予定どおり」（詳細・報告タブ・進捗タブで共通）
 src/renderer/src/components/ProgressNoteThread.tsx 進捗ログ＋返信スレッドの表示（報告タブ・概要で共通。コールバックを渡すと、いいね・編集・削除が有効になる）
 src/renderer/src/components/LikeButton.tsx    いいねボタンと押した人のツールチップ（進捗タブ・報告タブ・概要で共通）
 src/renderer/src/components/ProgressSlider.tsx ドラッグ・キー操作で進捗率を変えるバー（離したときに1回だけ保存）
@@ -134,6 +136,7 @@ server/scripts/publish-desktop.ts npm run publish:desktop の本体（dist/ を�
 - 用語は「期限」（締切と書かない）、「進捗ログ」（進捗メモと書かない）に揃える。説明＝目的、メモ＝今の状況（上書き）、進捗ログ＝日付つきで積み上がる報告
 - 進捗タブの「新着」は、前回タブを見た時刻（`progressTimeline.lastSeenAt:<userId>`、`lib/progressActivity.ts`）より後にほかの人が書いた投稿・返信。タブを開いた時点と離れる時点で `serverNow()` を書き込む。上部タブの件数は `useProgressUnseenCount`（サーバー版のみ、`onDataChanged('progress')` で取り直す）
 - 「@名前」の判定はサーバーの `server/src/mention.ts` と画面の `lib/progressActivity.ts`（`mentionsUser`・`MENTION_BEFORE`）で同じ規則にする（片方だけ直さない）。入力欄の候補は `MentionTextarea`
+- 報告のリマインド（サーバー版だけ）は、設定 `reportMeetingWeekday`（管理者が設定画面で選ぶ。未設定なら出さない）の前日17時以降に、直近7日に進捗ログもメモの更新もない担当タスクがある人へ1日1回 `report_reminder` の通知を出す（`server/src/db/notifications.ts` の `ensureReportReminder`。1分ごとの点検と通知の取得時に確かめる）
 - 進捗ログ・返信のリアクションは `ReactionBar`（`LikeButton.tsx`）。👍 は常に出し、🎉 👀 🙏 は「☺＋」から。サーバー・デスクトップの DB は任意の絵文字を受け付ける
 
 ## 注意点

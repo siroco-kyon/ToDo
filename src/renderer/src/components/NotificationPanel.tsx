@@ -70,7 +70,7 @@ export function NotificationPanel({
           <button onClick={() => setTab('all')} style={buttonStyle(tab === 'all')}>すべて</button>
         </div>
         {showSettings && <div style={{ margin: '8px 10px 0', padding: 10, borderRadius: 8, border: '1px solid #334155', display: 'grid', gap: 6 }}>
-          {([['task_assigned', '担当への追加'], ['progress_reply', '返信・購読更新'], ['progress_reaction', 'いいね'], ['mention', 'メンション'], ['task_due', '期限通知']] as const).map(([type, label]) => {
+          {([['task_assigned', '担当への追加'], ['progress_reply', '返信・購読更新'], ['progress_reaction', 'いいね'], ['mention', 'メンション'], ['task_due', '期限通知'], ['report_reminder', '報告のリマインド']] as const).map(([type, label]) => {
             const enabled = preferences[type] !== false
             return <label key={type} style={{ display: 'flex', gap: 7, alignItems: 'center', color: '#cbd5e1', fontSize: '0.76rem' }}><input type="checkbox" checked={enabled} onChange={(event) => { void updatePreference(type, event.target.checked) }} />{label}</label>
           })}

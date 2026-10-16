@@ -823,6 +823,10 @@ export function App(): React.JSX.Element {
           nonce: Date.now()
         })
         setActiveView('progress')
+      } else if (notification.type === 'report_reminder') {
+        // 報告のリマインドは報告タブで、自分の未報告を確かめてもらう
+        if (navigationStateRef.current.detailDirty && !window.confirm('未保存の変更があります。報告タブへ移動しますか？')) return
+        setActiveView('report')
       } else if (notification.todo_id) {
         openTodoDetail(notification.todo_id)
       }
@@ -1654,6 +1658,7 @@ export function App(): React.JSX.Element {
               onUpdateSubTask={handleUpdateSubTask}
               onCreateSubTask={handleCreateSubTask}
               onShowToast={showToast}
+              onCreateTodo={handleAdd}
             />
           ) : activeView === 'todo' ? (
             <TodoListsView

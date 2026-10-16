@@ -1,0 +1,352 @@
+import React, { useEffect, useState } from 'react'
+import { copyTextToClipboard } from '../lib/clipboard'
+
+/** 定例モードで1人ずつ見せるまとまり（担当者別なら担当者、カテゴリ別ならカテゴリ） */
+export interface MeetingGroup {
+  key: string
+  label: string
+  color: string | null
+  /** 見出しの横に出す件数など（例: 「5件・報告なし 1・要相談 2」） */
+  summary: string
+}
+
+/** 定例の進み具合。報告タブを開いている間は、定例モードを閉じても残す */
+export interface MeetingState {
+  startedAt: number
+  index: number
+  /** 今話している人（まとまり）のキー。並びが変わったり、その人が一覧から外れたりしても時間を取り違えないため */
+  currentKey: string | null
+  /** 話した人の表示名。一覧から外れた人も議事録に残すため */
+  labels: Record<string, string>
+  /** 今の人を表示し始めた時刻 */
+  personStartedAt: number
+  /** まとまりごとに使った秒数（前の人に戻ったときは足していく） */
+  spentSeconds: Record<string, number>
+  notes: Record<string, string>
+  /** その場で作ったタスクの名前 */
+  createdTasks: Record<string, string[]>
+  targetMinutes: number
+  /** 閉じていた時間の合計（議事録の会議時間に入れない） */
+  pausedMs: number
+  /** 閉じた時刻（開いているあいだは null） */
+  pausedAt: number | null
+}
+
+export function createMeetingState(now = Date.now(), first?: { key: string; label: string }): MeetingState {
+  return {
+    startedAt: now,
+    index: 0,
+    currentKey: first?.key ?? null,
+    labels: first ? { [first.key]: first.label } : {},
+    personStartedAt: now,
+    spentSeconds: {},
+    notes: {},
+    createdTasks: {},
+    targetMinutes: 3,
+    pausedMs: 0,
+    pausedAt: null
+  }
+}
+
+/** 開き直すとき: 閉じていた時間を会議時間から外し、今の人の時間はここから数え直す */
+export function resumeMeetingState(state: MeetingState, now = Date.now()): MeetingState {
+  return {
+    ...state,
+    personStartedAt: now,
+    pausedMs: state.pausedMs + (state.pausedAt != null ? Math.max(0, now - state.pausedAt) : 0),
+    pausedAt: null
+  }
+}
+
+/** 会議の時間（閉じていた時間を除く） */
+function activeMeetingMs(state: MeetingState, now: number): number {
+  const pausing = state.pausedAt != null ? Math.max(0, now - state.pausedAt) : 0
+  return Math.max(0, now - state.startedAt - state.pausedMs - pausing)
+}
+
+interface Props {
+  groups: MeetingGroup[]
+  state: MeetingState
+  onStateChange: (updater: (previous: MeetingState) => MeetingState) => void
+  /** 期間の表示（議事録の見出しに使う） */
+  periodLabel: string
+  renderBody: (groupKey: string) => React.ReactNode
+  /** 決まったことをタスクにする。作れたら true */
+  onCreateTask?: (groupKey: string, title: string) => Promise<boolean>
+  /** タスクを作るときの担当・カテゴリの説明（例: 「担当: 佐藤」） */
+  createTaskHint: (groupKey: string) => string
+  onShowToast: (message: string, type?: 'success' | 'error') => void
+  onClose: () => void
+}
+
+const TARGET_MINUTE_OPTIONS = [1, 2, 3, 5, 10]
+
+function formatDuration(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds))
+  const minutes = Math.floor(total / 60)
+  const rest = total % 60
+  return `${minutes}:${String(rest).padStart(2, '0')}`
+}
+
+function formatMinutes(seconds: number): string {
+  const minutes = Math.round(seconds / 60)
+  return minutes < 1 ? '1分未満' : `${minutes}分`
+}
+
+function formatClock(time: number): string {
+  const date = new Date(time)
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+/** 今の人の経過時間を足した、まとまりごとの使った秒数（閉じているあいだは足さない） */
+function spentWithCurrent(state: MeetingState, now: number): Record<string, number> {
+  const key = state.currentKey
+  if (key == null || state.pausedAt != null) return state.spentSeconds
+  return { ...state.spentSeconds, [key]: (state.spentSeconds[key] ?? 0) + Math.max(0, now - state.personStartedAt) / 1000 }
+}
+
+/** 今の人を切り替える。それまでの時間は前の人に足す */
+function switchPerson(state: MeetingState, target: MeetingGroup, index: number, now: number): MeetingState {
+  return {
+    ...state,
+    spentSeconds: spentWithCurrent(state, now),
+    index,
+    currentKey: target.key,
+    labels: { ...state.labels, [target.key]: target.label },
+    personStartedAt: now
+  }
+}
+
+/** 議事録（Markdown）。話した人・メモ・その場で作ったタスクを残す */
+export function meetingMinutesMarkdown(groups: MeetingGroup[], state: MeetingState, periodLabel: string, now = Date.now()): string {
+  const spent = spentWithCurrent(state, now)
+  const started = new Date(state.startedAt)
+  const lines = [
+    `# 定例 ${started.getMonth() + 1}/${started.getDate()}（${['日', '月', '火', '水', '木', '金', '土'][started.getDay()]}）`,
+    '',
+    `- 報告の期間: ${periodLabel}`,
+    `- 時間: ${formatClock(state.startedAt)}〜${formatClock(now)}（${formatMinutes(activeMeetingMs(state, now) / 1000)}${state.pausedMs > 0 || state.pausedAt != null ? '。中断した時間を除く' : ''}）`
+  ]
+  // 途中で一覧から外れた人（報告して「報告なし」の絞り込みから外れたなど）も、話していれば最後に載せる
+  const shownKeys = new Set(groups.map((group) => group.key))
+  const leftGroups = [...new Set([...Object.keys(spent), ...Object.keys(state.notes), ...Object.keys(state.createdTasks)])]
+    .filter((key) => !shownKeys.has(key))
+    .map((key) => ({ key, label: state.labels[key] ?? '（一覧から外れた担当）' }))
+  for (const group of [...groups, ...leftGroups]) {
+    const seconds = spent[group.key] ?? 0
+    const note = (state.notes[group.key] ?? '').trim()
+    const tasks = state.createdTasks[group.key] ?? []
+    if (seconds < 1 && !note && tasks.length === 0) continue
+    lines.push('', `## ${group.label}（${formatMinutes(seconds)}）`)
+    if (tasks.length > 0) {
+      lines.push('- 決まったこと（タスクにしたもの）')
+      for (const task of tasks) lines.push(`  - ${task}`)
+    }
+    if (note) {
+      lines.push('- メモ')
+      for (const line of note.split('\n')) lines.push(`  ${line}`)
+    }
+  }
+  return `${lines.join('\n')}\n`
+}
+
+// 定例モード。報告タブの担当者（カテゴリ）を1人ずつ大きく表示し、持ち時間を計りながら進める。
+// 決まったことはその場でタスクにでき、終わったら議事録をコピーできる
+export function MeetingMode({ groups, state, onStateChange, periodLabel, renderBody, onCreateTask, createTaskHint, onShowToast, onClose }: Props): React.JSX.Element {
+  const [now, setNow] = useState(() => Date.now())
+  const [taskTitle, setTaskTitle] = useState('')
+  const [creatingTask, setCreatingTask] = useState(false)
+  // 今の人はキーで探す（並びが変わっても同じ人のまま）。一覧から外れていたら、同じ位置の人を見せる
+  const keyedIndex = state.currentKey == null ? -1 : groups.findIndex((item) => item.key === state.currentKey)
+  const index = keyedIndex >= 0 ? keyedIndex : Math.min(state.index, Math.max(groups.length - 1, 0))
+  const group = groups[index]
+
+  // 見せている人と今の人が違う（今の人が一覧から外れた）ときは、そこまでの時間を前の人に足して切り替える
+  useEffect(() => {
+    if (!group || state.currentKey === group.key) return
+    const at = Date.now()
+    onStateChange((previous) => previous.currentKey === group.key ? previous : switchPerson(previous, group, index, at))
+  }, [group, index, onStateChange, state.currentKey])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const goTo = (nextIndex: number): void => {
+    if (nextIndex < 0 || nextIndex >= groups.length || nextIndex === index) return
+    const at = Date.now()
+    const target = groups[nextIndex]
+    onStateChange((previous) => switchPerson(previous, target, nextIndex, at))
+    setTaskTitle('')
+  }
+
+  // ←→ で前の人・次の人、Esc で閉じる（入力中は除く）
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      const target = event.target as HTMLElement | null
+      const typing = target != null && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
+      if (event.key === 'Escape' && !typing) { event.preventDefault(); close(); return }
+      if (typing || event.altKey || event.ctrlKey || event.metaKey) return
+      if (event.key === 'ArrowRight') { event.preventDefault(); goTo(index + 1) }
+      if (event.key === 'ArrowLeft') { event.preventDefault(); goTo(index - 1) }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  })
+
+  // 閉じている間は今の人の時間を止める（ここまでの時間を足しておき、開き直した時刻から数え直す）
+  const close = (): void => {
+    const at = Date.now()
+    onStateChange((previous) => ({ ...previous, spentSeconds: spentWithCurrent(previous, at), personStartedAt: at, pausedAt: at }))
+    onClose()
+  }
+
+  const copyMinutes = async (): Promise<void> => {
+    try {
+      await copyTextToClipboard(meetingMinutesMarkdown(groups, state, periodLabel))
+      onShowToast('議事録をコピーしました')
+    } catch {
+      onShowToast('クリップボードへのコピーに失敗しました', 'error')
+    }
+  }
+
+  const createTask = async (): Promise<void> => {
+    const title = taskTitle.trim()
+    if (!group || !title || !onCreateTask || creatingTask) return
+    setCreatingTask(true)
+    const ok = await onCreateTask(group.key, title)
+    setCreatingTask(false)
+    if (!ok) return
+    setTaskTitle('')
+    onStateChange((previous) => ({ ...previous, createdTasks: { ...previous.createdTasks, [group.key]: [...(previous.createdTasks[group.key] ?? []), title] } }))
+  }
+
+  const personSeconds = group
+    ? (state.spentSeconds[group.key] ?? 0) + (state.currentKey === group.key ? Math.max(0, now - state.personStartedAt) / 1000 : 0)
+    : 0
+  const overTime = personSeconds > state.targetMinutes * 60
+  const nearTime = !overTime && personSeconds > state.targetMinutes * 60 - 30
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label="定例モード" style={{ position: 'fixed', inset: 0, zIndex: 950, background: '#0b1220', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 20px', borderBottom: '1px solid #1e293b', background: '#0f172a' }}>
+        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#a5b4fc' }}>定例モード</span>
+        {group && (
+          <>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: group.color ?? '#475569', flexShrink: 0 }} />
+            <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc' }}>{group.label}</span>
+            <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{group.summary}</span>
+          </>
+        )}
+        <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{groups.length > 0 ? `${index + 1} / ${groups.length}` : ''}</span>
+
+        <span
+          role="timer"
+          aria-label={`この人の時間 ${formatDuration(personSeconds)}`}
+          style={{ marginLeft: 'auto', fontSize: '1.3rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: overTime ? '#f87171' : nearTime ? '#fbbf24' : '#e2e8f0' }}
+        >
+          {formatDuration(personSeconds)}
+        </span>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#94a3b8' }}>
+          持ち時間
+          <select
+            value={state.targetMinutes}
+            onChange={(event) => onStateChange((previous) => ({ ...previous, targetMinutes: Number(event.target.value) }))}
+            style={{ padding: '4px 6px', borderRadius: 6, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}
+          >
+            {TARGET_MINUTE_OPTIONS.map((minutes) => <option key={minutes} value={minutes}>{minutes}分</option>)}
+          </select>
+        </label>
+        <button onClick={() => goTo(index - 1)} disabled={index === 0} title="前の人（←）" style={navButtonStyle(index === 0)}>◀ 前の人</button>
+        <button onClick={() => goTo(index + 1)} disabled={index >= groups.length - 1} title="次の人（→）" style={navButtonStyle(index >= groups.length - 1, true)}>次の人 ▶</button>
+        <button onClick={() => void copyMinutes()} title="話した人・メモ・その場で作ったタスクを Markdown でコピーします" style={navButtonStyle(false)}>議事録をコピー</button>
+        <button onClick={close} title="定例モードを閉じます（Esc）。進み具合は残ります" style={navButtonStyle(false)}>閉じる</button>
+      </div>
+
+      {group ? (
+        <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(260px, 340px)', gap: 0 }}>
+          <div style={{ overflowY: 'auto', padding: '16px 20px 40px' }}>
+            <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {renderBody(group.key)}
+            </div>
+          </div>
+          <aside style={{ borderLeft: '1px solid #1e293b', background: '#0f172a', padding: 16, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
+            {onCreateTask && (
+              <section style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0' }}>決まったことをタスクにする</div>
+                <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{createTaskHint(group.key)}・開始日は今日</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    value={taskTitle}
+                    onChange={(event) => setTaskTitle(event.target.value)}
+                    onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); void createTask() } }}
+                    aria-label="決まったこと（タスク名）"
+                    placeholder="例: 見積書を再提出する"
+                    style={{ flex: 1, minWidth: 0, padding: '7px 9px', borderRadius: 7, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0', fontSize: '0.82rem' }}
+                  />
+                  <button onClick={() => void createTask()} disabled={!taskTitle.trim() || creatingTask} style={navButtonStyle(!taskTitle.trim() || creatingTask, true)}>
+                    {creatingTask ? '追加中…' : '追加'}
+                  </button>
+                </div>
+                {(state.createdTasks[group.key] ?? []).length > 0 && (
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.8rem', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {(state.createdTasks[group.key] ?? []).map((title, taskIndex) => <li key={`${title}-${taskIndex}`}>{title}</li>)}
+                  </ul>
+                )}
+              </section>
+            )}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0' }}>メモ（議事録に入ります）</div>
+              <textarea
+                value={state.notes[group.key] ?? ''}
+                onChange={(event) => {
+                  const value = event.target.value
+                  onStateChange((previous) => ({ ...previous, notes: { ...previous.notes, [group.key]: value } }))
+                }}
+                aria-label={`${group.label}のメモ`}
+                rows={8}
+                placeholder="話したこと・決まったこと"
+                style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0', fontSize: '0.82rem', lineHeight: 1.6, resize: 'vertical' }}
+              />
+            </section>
+            <section style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0' }}>順番</div>
+              {groups.map((item, itemIndex) => {
+                const seconds = itemIndex === index ? personSeconds : state.spentSeconds[item.key] ?? 0
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => goTo(itemIndex)}
+                    aria-current={itemIndex === index ? 'true' : undefined}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, border: 'none', background: itemIndex === index ? '#1e293b' : 'transparent', color: '#e2e8f0', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'left' }}
+                  >
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.color ?? '#475569', flexShrink: 0 }} />
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</span>
+                    <span style={{ color: '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>{seconds >= 1 ? formatDuration(seconds) : ''}</span>
+                  </button>
+                )
+              })}
+            </section>
+          </aside>
+        </div>
+      ) : (
+        <div style={{ padding: 40, color: '#94a3b8' }}>表示できる担当者がいません。報告タブの絞り込みを確かめてください。</div>
+      )}
+    </div>
+  )
+}
+
+function navButtonStyle(disabled: boolean, primary = false): React.CSSProperties {
+  return {
+    padding: '7px 12px',
+    borderRadius: 8,
+    border: `1px solid ${primary && !disabled ? '#2563eb' : '#334155'}`,
+    background: primary && !disabled ? '#1d4ed8' : 'transparent',
+    color: disabled ? '#64748b' : '#e2e8f0',
+    cursor: disabled ? 'default' : 'pointer',
+    fontSize: '0.8rem',
+    fontWeight: 700,
+    whiteSpace: 'nowrap'
+  }
+}

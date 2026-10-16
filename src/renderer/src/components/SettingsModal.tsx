@@ -104,8 +104,28 @@ function captureKeyEvent(e: React.KeyboardEvent): string | null {
   return modifiers.join('+')
 }
 
+const MEETING_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
+
 export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, fontFamily, onFontFamilyChange, fontScale, onFontScaleChange, canManageUsers = false, serverManaged = false, onManageUsers, onProgressReport, onDesktopImport, onMySummary, onExportClipboard, onExportFile }: Props): React.JSX.Element {
   const [exporting, setExporting] = useState(false)
+  // 定例の曜日（サーバー版の管理者だけ）。前日の17時に、報告がまだのタスクがある人へ知らせる
+  const [meetingWeekday, setMeetingWeekday] = useState<string>('')
+  useEffect(() => {
+    if (!serverManaged || !canManageUsers) return
+    let disposed = false
+    void window.api.settingsGet('reportMeetingWeekday').then((value) => { if (!disposed) setMeetingWeekday(value ?? '') }).catch(() => undefined)
+    return () => { disposed = true }
+  }, [canManageUsers, serverManaged])
+  const changeMeetingWeekday = (value: string): void => {
+    const previous = meetingWeekday
+    setMeetingWeekday(value)
+    void window.api.settingsSet('reportMeetingWeekday', value)
+      .then(() => onShowToast(value === '' ? '報告のリマインドを止めました' : `定例を${MEETING_WEEKDAYS[Number(value)]}曜日にしました。前日の17時に、報告がまだのタスクがある人へ知らせます`))
+      .catch((error) => {
+        setMeetingWeekday(previous)
+        onShowToast(error instanceof Error ? error.message : '定例の曜日を保存できませんでした', 'error')
+      })
+  }
   const [showDraftRecovery, setShowDraftRecovery] = useState(false)
   const [desktopContext, setDesktopContext] = useState<DesktopContext | null>(null)
   const [desktopRelease, setDesktopRelease] = useState<DesktopReleaseStatus | null>(null)
@@ -455,6 +475,16 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
                 <button onClick={onDesktopImport} style={secondaryBtn}>💾 デスクトップDBを取り込む</button>
               )}
             </div>
+            {serverManaged && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 12, fontSize: '0.8rem', color: '#cbd5e1' }}>
+                定例の曜日
+                <select value={meetingWeekday} onChange={(event) => changeMeetingWeekday(event.target.value)} aria-label="定例の曜日" style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}>
+                  <option value="">決めない（リマインドしない）</option>
+                  {[1, 2, 3, 4, 5, 6, 0].map((day) => <option key={day} value={String(day)}>{MEETING_WEEKDAYS[day]}曜日</option>)}
+                </select>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>前日の17時に、直近7日に報告がない担当タスクがある人へ通知します</span>
+              </label>
+            )}
           </section>
         )}
 
