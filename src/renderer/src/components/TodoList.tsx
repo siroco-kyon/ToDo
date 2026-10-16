@@ -4,6 +4,7 @@ import { RunningTimerDisplay } from './TimerDisplay'
 import { QuickCheckItem } from './TodoChecklist'
 import { diffDaysFromToday, getDueDateColor, toDateKey } from '../lib/dueDate'
 import { checklistBadgeText, checklistBadgeTitle, type ChecklistSummary } from '../lib/todoList'
+import { dataInk } from '../lib/theme'
 
 const EXPANDED_LISTS_KEY = 'todoList.expandedLists'
 
@@ -69,10 +70,10 @@ function formatDueLabel(dueDate: string, done: boolean): string {
 }
 
 function progressColor(p: number): string {
-  if (p >= 100) return '#4ade80'
-  if (p >= 70) return '#a5b4fc'
-  if (p >= 30) return '#818cf8'
-  return '#94a3b8'
+  if (p >= 100) return 'var(--green-400)'
+  if (p >= 70) return 'var(--indigo-300)'
+  if (p >= 30) return 'var(--indigo-400)'
+  return 'var(--slate-400)'
 }
 
 function Highlight({ text, query }: { text: string; query: string }): React.JSX.Element {
@@ -82,7 +83,7 @@ function Highlight({ text, query }: { text: string; query: string }): React.JSX.
   return (
     <>
       {text.slice(0, idx)}
-      <mark style={{ background: '#f59e0b40', color: '#f59e0b', borderRadius: 2 }}>
+      <mark style={{ background: 'color-mix(in srgb, var(--amber-500) 25.1%, transparent)', color: 'var(--amber-500)', borderRadius: 2 }}>
         {text.slice(idx, idx + query.length)}
       </mark>
       {text.slice(idx + query.length)}
@@ -156,10 +157,10 @@ function TodoItem({
       }}
       style={{
         cursor: 'pointer', position: 'relative', outlineOffset: -3,
-        background: isDragOver ? '#6366f115' : isSelected ? '#1e293b' : hovered ? '#111827' : 'transparent',
-        borderLeft: `3px solid ${isRunning ? '#4ade80' : isSelected ? '#6366f1' : 'transparent'}`,
-        borderBottom: `1px solid ${isDragOver ? '#6366f140' : '#0f172a'}`,
-        borderTop: isDragOver ? '2px solid #6366f1' : '2px solid transparent',
+        background: isDragOver ? 'color-mix(in srgb, var(--indigo-500) 8.2%, transparent)' : isSelected ? 'var(--slate-800)' : hovered ? 'var(--gray-900)' : 'transparent',
+        borderLeft: `3px solid ${isRunning ? 'var(--green-400)' : isSelected ? 'var(--indigo-500)' : 'transparent'}`,
+        borderBottom: `1px solid ${isDragOver ? 'color-mix(in srgb, var(--indigo-500) 25.1%, transparent)' : 'var(--slate-900)'}`,
+        borderTop: isDragOver ? '2px solid var(--indigo-500)' : '2px solid transparent',
         opacity: isArchived ? 0.6 : 1, transition: 'background 0.1s'
       }}
     >
@@ -167,7 +168,7 @@ function TodoItem({
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
           {/* ドラッグハンドル */}
           {isManualSort && !isArchived && (
-            <span style={{ color: '#64748b', fontSize: '0.8rem', cursor: 'grab', flexShrink: 0, marginTop: 2, userSelect: 'none' }}>⠿</span>
+            <span style={{ color: 'var(--slate-500)', fontSize: '0.8rem', cursor: 'grab', flexShrink: 0, marginTop: 2, userSelect: 'none' }}>⠿</span>
           )}
 
           {/* 完了チェック。ToDoリストは中の項目をチェックして使うので、一覧からは終えられないようにする */}
@@ -175,7 +176,7 @@ function TodoItem({
             <span
               title="ToDoリスト。▸ で項目を開くと、ここでチェックできます"
               aria-label="ToDoリスト"
-              style={{ width: 17, height: 17, flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a5b4fc', fontSize: '0.8rem' }}
+              style={{ width: 17, height: 17, flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--indigo-300)', fontSize: '0.8rem' }}
             >
               ☑
             </span>
@@ -186,15 +187,15 @@ function TodoItem({
               aria-label={todo.status === 'done' ? '完了を取り消す' : '完了にする'}
               style={{
                 width: 17, height: 17, borderRadius: '50%', flexShrink: 0, marginTop: 2,
-                border: `2px solid ${todo.status === 'done' ? '#4ade80' : '#475569'}`,
-                background: todo.status === 'done' ? '#4ade80' : 'transparent',
+                border: `2px solid ${todo.status === 'done' ? 'var(--green-400)' : 'var(--slate-600)'}`,
+                background: todo.status === 'done' ? 'var(--green-400)' : 'transparent',
                 cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}
             >
-              {todo.status === 'done' && <span style={{ fontSize: 9, color: '#0f172a', fontWeight: 'bold' }}>✓</span>}
+              {todo.status === 'done' && <span style={{ fontSize: 9, color: 'var(--slate-900)', fontWeight: 'bold' }}>✓</span>}
             </button>
           ) : (
-            <span style={{ fontSize: '0.75rem', color: '#475569', flexShrink: 0, marginTop: 2 }}>📦</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--slate-600)', flexShrink: 0, marginTop: 2 }}>📦</span>
           )}
 
           {/* タイトル・メタ */}
@@ -202,23 +203,23 @@ function TodoItem({
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <span style={{
                 fontSize: '0.88rem',
-                color: isArchived || todo.status === 'done' ? '#94a3b8' : '#e2e8f0',
+                color: isArchived || todo.status === 'done' ? 'var(--slate-400)' : 'var(--slate-200)',
                 textDecoration: todo.status === 'done' || isArchived ? 'line-through' : 'none',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0
               }}>
                 <Highlight text={todo.title} query={searchQuery} />
               </span>
               {isRunning && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', background: '#4ade8020', color: '#4ade80', padding: '1px 5px', borderRadius: 99, flexShrink: 0 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', background: 'color-mix(in srgb, var(--green-400) 12.5%, transparent)', color: 'var(--green-400)', padding: '1px 5px', borderRadius: 99, flexShrink: 0 }}>
                   ●<RunningTimerDisplay startTime={timerStartTime} />
                 </span>
               )}
               {todo.recurrence && !isArchived && (
                 <span title={`繰り返し: ${todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : '毎月'}`}
-                  style={{ fontSize: '0.75rem', color: '#818cf8', flexShrink: 0 }}>🔁</span>
+                  style={{ fontSize: '0.75rem', color: 'var(--indigo-400)', flexShrink: 0 }}>🔁</span>
               )}
               {listMode && checklist && !isArchived && (
-                <span title={checklistBadgeTitle(checklist)} style={{ fontSize: '0.75rem', color: '#a5b4fc', border: '1px solid #4338ca', borderRadius: 99, padding: '0 6px', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                <span title={checklistBadgeTitle(checklist)} style={{ fontSize: '0.75rem', color: 'var(--indigo-300)', border: '1px solid var(--indigo-700)', borderRadius: 99, padding: '0 6px', flexShrink: 0, whiteSpace: 'nowrap' }}>
                   {checklistBadgeText(checklist)}
                 </span>
               )}
@@ -228,7 +229,7 @@ function TodoItem({
                   aria-expanded={expanded}
                   aria-label={expanded ? `${todo.title}の項目を閉じる` : `${todo.title}の項目を開く`}
                   title={expanded ? '項目を閉じる' : '項目を開いて、ここでチェックする'}
-                  style={{ background: 'none', border: 'none', padding: '0 2px', cursor: 'pointer', color: '#a5b4fc', fontSize: '0.72rem', flexShrink: 0, transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }}
+                  style={{ background: 'none', border: 'none', padding: '0 2px', cursor: 'pointer', color: 'var(--indigo-300)', fontSize: '0.72rem', flexShrink: 0, transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }}
                 >
                   ▸
                 </button>
@@ -238,20 +239,20 @@ function TodoItem({
                 <div style={{ display: 'flex', gap: 2, flexShrink: 0, marginLeft: 'auto' }} onClick={(e) => e.stopPropagation()}>
                   {isArchived ? (
                     <>
-                      <button onClick={onUnarchive} title="アーカイブから戻す" aria-label="アーカイブから戻す" style={actionBtn('#10b981')}>↩</button>
+                      <button onClick={onUnarchive} title="アーカイブから戻す" aria-label="アーカイブから戻す" style={actionBtn('var(--emerald-500)')}>↩</button>
                       <button
                         onClick={() => { if (window.confirm(`「${todo.title}」を完全に削除しますか？`)) onDelete() }}
-                        title="完全に削除（元に戻せません）" aria-label="完全に削除" style={actionBtn('#ef4444')}
+                        title="完全に削除（元に戻せません）" aria-label="完全に削除" style={actionBtn('var(--red-500)')}
                       >🗑</button>
                     </>
                   ) : (
                     <>
                       {todo.status !== 'done' && (
                         isRunning
-                          ? <button onClick={onStopTimer} title="計測を停止" aria-label="計測を停止" style={actionBtn('#ef4444')}>■</button>
-                          : <button onClick={onStartTimer} title="作業時間の計測を開始" aria-label="計測を開始" style={actionBtn('#4ade80')}>▶</button>
+                          ? <button onClick={onStopTimer} title="計測を停止" aria-label="計測を停止" style={actionBtn('var(--red-500)')}>■</button>
+                          : <button onClick={onStartTimer} title="作業時間の計測を開始" aria-label="計測を開始" style={actionBtn('var(--green-400)')}>▶</button>
                       )}
-                      <button onClick={onArchive} title="アーカイブ（一覧から片付ける。あとで戻せます）" aria-label="アーカイブ" style={actionBtn('#64748b')}>📦</button>
+                      <button onClick={onArchive} title="アーカイブ（一覧から片付ける。あとで戻せます）" aria-label="アーカイブ" style={actionBtn('var(--slate-500)')}>📦</button>
                     </>
                   )}
                 </div>
@@ -260,12 +261,12 @@ function TodoItem({
 
             {/* 幅が足りないときは詰めずに折り返す（カテゴリ名や期限を読めることを優先する） */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, rowGap: 2, marginTop: 3, minWidth: 0, flexWrap: 'wrap' }}>
-              {todo.status === 'on_hold' && <span style={{ fontSize: '0.75rem', color: '#d8b4fe', flexShrink: 0, whiteSpace: 'nowrap' }}>保留中</span>}
+              {todo.status === 'on_hold' && <span style={{ fontSize: '0.75rem', color: 'var(--purple-300)', flexShrink: 0, whiteSpace: 'nowrap' }}>保留中</span>}
               {todo.category_name && (
                 <span title={todo.category_name} style={{
                   fontSize: '0.75rem', padding: '1px 5px', borderRadius: 99,
-                  background: `${todo.category_color ?? '#6366f1'}30`,
-                  color: todo.category_color ?? '#6366f1',
+                  background: `color-mix(in srgb, ${todo.category_color ?? 'var(--indigo-500)'} 18.8%, transparent)`,
+                  color: dataInk(todo.category_color ?? 'var(--indigo-500)'),
                   // 1文字ずつ縦に折れないようにする。とても長い名前だけ「…」で切る
                   maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
                 }}>
@@ -273,12 +274,12 @@ function TodoItem({
                 </span>
               )}
               {todo.priority >= 4 && !isArchived && (
-                <span style={{ fontSize: '0.75rem', color: todo.priority === 5 ? '#ef4444' : '#f59e0b', flexShrink: 0 }}>
+                <span style={{ fontSize: '0.75rem', color: todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)', flexShrink: 0 }}>
                   {'!'.repeat(todo.priority - 3)}
                 </span>
               )}
               {todo.due_date && !isArchived && (
-                <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: '0.75rem', color: dueColor || '#94a3b8', fontWeight: dueColor ? 700 : 400, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: '0.75rem', color: dueColor || 'var(--slate-400)', fontWeight: dueColor ? 700 : 400, whiteSpace: 'nowrap', flexShrink: 0 }}>
                   {formatDueLabel(todo.due_date, todo.status === 'done')}
                 </span>
               )}
@@ -299,7 +300,7 @@ function TodoItem({
                     </span>
                   ))}
                   {(todo.co_assignees?.length ?? 0) > 3 && (
-                    <span style={{ ...avatarStyle('#475569'), marginLeft: -4 }}>
+                    <span style={{ ...avatarStyle('var(--slate-600)'), marginLeft: -4 }}>
                       +{(todo.co_assignees?.length ?? 0) - 3}
                     </span>
                   )}
@@ -333,12 +334,12 @@ function TodoItem({
         </div>
       )}
       {canExpand && expanded && shownItems.length === 0 && (
-        <div style={{ padding: '0 12px 8px 37px', fontSize: '0.75rem', color: '#94a3b8' }}>まだのやることはありません</div>
+        <div style={{ padding: '0 12px 8px 37px', fontSize: '0.75rem', color: 'var(--slate-400)' }}>まだのやることはありません</div>
       )}
 
       {/* プログレスバー（ToDoリストは進捗率を使わない） */}
       {!isArchived && !listMode && (
-        <div style={{ height: 3, background: '#0f172a' }}>
+        <div style={{ height: 3, background: 'var(--slate-900)' }}>
           <div style={{ height: '100%', width: `${prog}%`, background: progressColor(prog), transition: 'width 0.3s' }} />
         </div>
       )}
@@ -444,13 +445,13 @@ export function TodoList({
 
   if (todos.length === 0 && !hasAnyTodos) {
     return (
-      <div style={{ padding: '28px 18px', color: '#cbd5e1', textAlign: 'center' }}>
-        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#e2e8f0' }}>まだタスクがありません</div>
-        <div style={{ marginTop: 8, fontSize: '0.8rem', lineHeight: 1.6, color: '#94a3b8' }}>
+      <div style={{ padding: '28px 18px', color: 'var(--slate-300)', textAlign: 'center' }}>
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--slate-200)' }}>まだタスクがありません</div>
+        <div style={{ marginTop: 8, fontSize: '0.8rem', lineHeight: 1.6, color: 'var(--slate-400)' }}>
           追加したタスクはここに並び、ガントでは開始日から期限までの横棒で表示されます。
         </div>
         {onAddTodo && (
-          <button onClick={onAddTodo} style={{ marginTop: 14, padding: '8px 14px', borderRadius: 8, border: '1px solid #2563eb', background: '#1d4ed8', color: '#eff6ff', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700 }}>
+          <button onClick={onAddTodo} style={{ marginTop: 14, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--blue-600)', background: 'var(--blue-700)', color: 'var(--on-fill-blue-50)', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700 }}>
             ＋ 最初のタスクを追加
           </button>
         )}
@@ -461,14 +462,14 @@ export function TodoList({
   if (todos.length === 0) {
     // 絞り込みで隠れているだけなのに「タスクがありません」と出すと、消えたと思われる
     const filtered = Boolean(searchQuery) || hasOtherFilters
-    const emptyButtonStyle: React.CSSProperties = { padding: '6px 10px', borderRadius: 7, border: '1px solid #334155', background: '#172554', color: '#dbeafe', cursor: 'pointer', fontSize: '0.8rem' }
+    const emptyButtonStyle: React.CSSProperties = { padding: '6px 10px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--blue-950)', color: 'var(--blue-100)', cursor: 'pointer', fontSize: '0.8rem' }
     return (
-      <div style={{ padding: 24, color: '#94a3b8', textAlign: 'center', fontSize: '0.9rem' }}>
+      <div style={{ padding: 24, color: 'var(--slate-400)', textAlign: 'center', fontSize: '0.9rem' }}>
         <div>{searchQuery ? '検索に合うタスクはありません' : filtered ? '絞り込み条件に合うタスクはありません' : 'タスクがありません'}</div>
         <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', marginTop: 10 }}>
           {searchQuery && <button onClick={onClearSearch} style={emptyButtonStyle}>検索をクリア</button>}
           {!searchQuery && hasOtherFilters && onClearFilters && <button onClick={onClearFilters} style={emptyButtonStyle}>絞り込みを解除</button>}
-          {onAddTodo && <button onClick={onAddTodo} style={{ ...emptyButtonStyle, background: '#1d4ed8', borderColor: '#2563eb' }}>＋ タスクを追加</button>}
+          {onAddTodo && <button onClick={onAddTodo} style={{ ...emptyButtonStyle, background: 'var(--blue-700)', borderColor: 'var(--blue-600)' }}>＋ タスクを追加</button>}
         </div>
       </div>
     )
@@ -506,7 +507,7 @@ export function TodoList({
 
 function actionBtn(color: string): React.CSSProperties {
   return {
-    background: `${color}20`, border: `1px solid ${color}60`,
+    background: `color-mix(in srgb, ${color} 12.5%, transparent)`, border: `1px solid color-mix(in srgb, ${color} 37.6%, transparent)`,
     borderRadius: 4, color, cursor: 'pointer',
     fontSize: '0.78rem', padding: '2px 5px', lineHeight: 1
   }
@@ -516,7 +517,7 @@ function avatarStyle(color: string | null | undefined): React.CSSProperties {
   return {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     width: 15, height: 15, borderRadius: '50%', flexShrink: 0,
-    background: color ?? '#64748b', border: '1px solid #0d1525',
-    color: '#0b1220', fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase'
+    background: color ?? 'var(--slate-500)', border: '1px solid var(--c-0d1525)',
+    color: 'var(--ink-on-data)', fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase'
   }
 }

@@ -22,7 +22,7 @@ export function TimerDisplay({ elapsedSeconds, isRunning }: Props): React.JSX.El
       style={{
         fontFamily: 'monospace',
         fontSize: '1.1em',
-        color: isRunning ? '#4ade80' : '#94a3b8',
+        color: isRunning ? 'var(--green-400)' : 'var(--slate-400)',
         fontWeight: isRunning ? 'bold' : 'normal'
       }}
     >

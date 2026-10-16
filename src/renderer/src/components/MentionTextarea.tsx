@@ -129,7 +129,7 @@ export function MentionTextarea({ value, onValueChange, users = [], onKeyDown, o
       />
       {open && (
         <span role="listbox" aria-label="メンションする人" style={listStyle}>
-          <span style={{ display: 'block', padding: '3px 8px 4px', fontSize: '0.64rem', color: '#64748b' }}>
+          <span style={{ display: 'block', padding: '3px 8px 4px', fontSize: '0.64rem', color: 'var(--slate-500)' }}>
             メンションすると相手に通知が届きます（↑↓で選んで Enter）
           </span>
           {candidates.map((user, index) => (
@@ -143,8 +143,8 @@ export function MentionTextarea({ value, onValueChange, users = [], onKeyDown, o
               style={optionStyle(index === activeIndex)}
             >
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
-              <span style={{ fontWeight: 700, color: '#e2e8f0' }}>{user.display_name}</span>
-              <span style={{ color: '#64748b', fontSize: '0.7rem' }}>@{user.username}</span>
+              <span style={{ fontWeight: 700, color: 'var(--slate-200)' }}>{user.display_name}</span>
+              <span style={{ color: 'var(--slate-500)', fontSize: '0.7rem' }}>@{user.username}</span>
             </span>
           ))}
         </span>
@@ -162,8 +162,8 @@ const listStyle: React.CSSProperties = {
   maxWidth: '100%',
   padding: 4,
   borderRadius: 10,
-  border: '1px solid #334155',
-  background: '#0f172a',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--slate-900)',
   boxShadow: '0 10px 28px rgba(0, 0, 0, 0.45)',
   display: 'flex',
   flexDirection: 'column'
@@ -177,7 +177,7 @@ function optionStyle(active: boolean): React.CSSProperties {
     padding: '6px 8px',
     borderRadius: 7,
     cursor: 'pointer',
-    background: active ? '#1e3a8a' : 'transparent',
+    background: active ? 'var(--blue-900)' : 'transparent',
     fontSize: '0.8rem'
   }
 }

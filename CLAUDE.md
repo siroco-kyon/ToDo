@@ -70,6 +70,8 @@ src/renderer/src/components/ProgressNoteHelpers.tsx 進捗ログの投稿欄の�
 src/renderer/src/components/ProgressNoteThread.tsx 進捗ログ＋返信スレッドの表示（報告タブ・概要で共通。コールバックを渡すと、いいね・編集・削除が有効になる）
 src/renderer/src/components/LikeButton.tsx    いいねボタンと押した人のツールチップ（進捗タブ・報告タブ・概要で共通）
 src/renderer/src/components/ProgressSlider.tsx ドラッグ・キー操作で進捗率を変えるバー（離したときに1回だけ保存）
+src/renderer/src/styles/theme.css    色のトークン（ダーク・ライトの値）
+src/renderer/src/lib/theme.ts                利用者が選んだ色を文字に使うときの dataInk()
 src/renderer/src/lib/dueDate.ts               日付のみ文字列のローカル解釈と期限色分けの共通ヘルパー
 src/renderer/src/components/TodoChecklist.tsx ToDoリスト（中の項目をチェックして使うタスク）の項目の表示・チェック・追加・編集
 src/renderer/src/lib/todoList.ts              ToDoリストの項目の繰り返しの選択肢と「今回 3/5・残り2」の集計
@@ -138,6 +140,7 @@ server/scripts/publish-desktop.ts npm run publish:desktop の本体（dist/ を�
 - 設定画面は「個人／チーム管理（`serverManaged && canManageUsers` のときだけ）／データ」のタブに分けている。項目を足すときは、どのタブに入れるかを決める
 - 進捗率のバーは `ProgressSlider` に揃えている（タスク詳細・サブタスク・報告タブ）。ドラッグは要素の pointer イベントで受け、ウィンドウ全体にリスナーを付けない
 - ガントの保留ボタンは、保留中のタスクだけ紫の「▶」を常に出す。保留していない行の「Ⅱ」は `.tarbo-gantt-hold-toggle`（行にマウスを乗せたときだけ表示）
+- 色は直書きせず、`src/renderer/src/styles/theme.css` のトークン（`var(--slate-500)` など）を使う。ダークの値は元の色そのまま、ライトの値は同じファイルの先頭の規則で決める。トークンを足すときは両方のテーマに値を書く。色の付いたボタン・バッジの上の明るい文字は `--on-fill-*`、カテゴリ・担当者の色（利用者が選んだ色）を文字に使うときは `dataInk()`（`lib/theme.ts`）を通す。`:root` に `color-scheme` を書かない（色を書いていない部品の既定の色が変わる）。テーマは `data-theme` 属性（`dark`／`light`、設定は「OS に合わせる」も選べる）で切り替える。以前の画面全体の色反転はやめた
 - 「集計から外す」カテゴリ（`is_private`）はアクセス制限ではない。画面では「プライベート」と書かず「集計外」と表記する。上部の「すべて表示／集計外を隠す」は集計外カテゴリがあるときだけ出す
 - 用語は「期限」（締切と書かない）、「進捗ログ」（進捗メモと書かない）に揃える。説明＝目的、メモ＝今の状況（上書き）、進捗ログ＝日付つきで積み上がる報告
 - 進捗タブの「新着」は、前回タブを見た時刻（`progressTimeline.lastSeenAt:<userId>`、`lib/progressActivity.ts`）より後にほかの人が書いた投稿・返信。タブを開いた時点と離れる時点で `serverNow()` を書き込む。上部タブの件数は `useProgressUnseenCount`（サーバー版のみ、`onDataChanged('progress')` で取り直す）

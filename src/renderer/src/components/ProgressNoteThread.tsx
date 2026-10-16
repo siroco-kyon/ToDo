@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { ReactionBar, countReactions } from './LikeButton'
 import { MentionTextarea } from './MentionTextarea'
 import type { ProgressNote, ProgressNoteComment, PublicUser } from '../types'
+import { dataInk } from '../lib/theme'
 
 // 進捗ログ1件を、返信スレッドまで省略せずに表示するカード（報告タブ・概要で共通）。
 // 操作用のコールバックを渡したときだけ、いいね・返信・要相談・編集・削除ができる。渡さなければ表示専用。
@@ -110,16 +111,16 @@ function CommentItem({
   onStartReply?: (commentId: string) => void
   renderReplyComposer: (comment: ProgressNoteComment) => React.ReactNode
 }): React.JSX.Element {
-  const authorColor = comment.author_color ?? '#a78bfa'
+  const authorColor = comment.author_color ?? 'var(--violet-400)'
   const replies = comment.replies ?? []
   return (
     <div style={{ marginLeft: Math.min(depth, MAX_INDENT_DEPTH) * 14 }}>
-      <div style={{ borderLeft: `2px solid ${authorColor}66`, paddingLeft: 9 }}>
+      <div style={{ borderLeft: `2px solid color-mix(in srgb, ${authorColor} 40%, transparent)`, paddingLeft: 9 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', fontSize: '0.72rem' }}>
-          <span style={{ color: '#64748b' }}>↳</span>
-          <span style={{ color: authorColor, fontWeight: 700 }}>{getAuthorName(comment.author_name)}</span>
-          <span style={{ color: '#64748b' }}>{formatDateTime(comment.created_at)}</span>
-          {comment.updated_at !== comment.created_at && <span style={{ color: '#475569' }}>編集済み</span>}
+          <span style={{ color: 'var(--slate-500)' }}>↳</span>
+          <span style={{ color: dataInk(authorColor), fontWeight: 700 }}>{getAuthorName(comment.author_name)}</span>
+          <span style={{ color: 'var(--slate-500)' }}>{formatDateTime(comment.created_at)}</span>
+          {comment.updated_at !== comment.created_at && <span style={{ color: 'var(--slate-600)' }}>編集済み</span>}
           <ReactionBar
             reactions={comment.reactions}
             onToggle={onToggleReaction ? (emoji) => onToggleReaction(comment.id, emoji) : undefined}
@@ -128,7 +129,7 @@ function CommentItem({
             <button onClick={() => onStartReply(comment.id)} style={inlineActionStyle}>返信</button>
           )}
         </div>
-        <div style={{ marginTop: 2, fontSize: '0.8rem', color: '#cbd5e1', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
+        <div style={{ marginTop: 2, fontSize: '0.8rem', color: 'var(--slate-300)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
           <LinkedText text={comment.body} />
         </div>
         {replyingToId === comment.id && renderReplyComposer(comment)}
@@ -170,7 +171,7 @@ export function ProgressNoteThread({
   const [saving, setSaving] = useState(false)
   // 返信先: 'note' は進捗ログ本体、それ以外はコメントID
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
-  const authorColor = note.author_color ?? '#93c5fd'
+  const authorColor = note.author_color ?? 'var(--blue-300)'
   const comments = note.comments ?? []
   const needsDiscussion = note.needs_discussion === 1
   const canEdit = canModify && Boolean(onUpdate)
@@ -204,8 +205,8 @@ export function ProgressNoteThread({
   return (
     <article
       style={{
-        background: '#111827',
-        border: '1px solid #1f2937',
+        background: 'var(--gray-900)',
+        border: '1px solid var(--gray-800)',
         borderRadius: 10,
         padding: '9px 11px',
         minWidth: 0
@@ -213,20 +214,20 @@ export function ProgressNoteThread({
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.74rem' }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: authorColor, flexShrink: 0 }} />
-        <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{getAuthorName(note.author_name)}</span>
-        <span style={{ color: '#64748b' }}>{formatDateTime(note.created_at)}</span>
-        {note.updated_at !== note.created_at && <span style={{ color: '#475569' }}>編集済み</span>}
+        <span style={{ color: 'var(--slate-200)', fontWeight: 700 }}>{getAuthorName(note.author_name)}</span>
+        <span style={{ color: 'var(--slate-500)' }}>{formatDateTime(note.created_at)}</span>
+        {note.updated_at !== note.created_at && <span style={{ color: 'var(--slate-600)' }}>編集済み</span>}
         {needsDiscussion && <span style={discussionBadgeStyle}>要相談</span>}
         {showTask && (
           onSelectTodo ? (
             <button
               onClick={() => onSelectTodo(note.todo_id)}
-              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: note.category_color ?? '#93c5fd', fontSize: '0.74rem', fontWeight: 700, textAlign: 'left' }}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: dataInk(note.category_color ?? 'var(--blue-300)'), fontSize: '0.74rem', fontWeight: 700, textAlign: 'left' }}
             >
               {note.todo_title}
             </button>
           ) : (
-            <span style={{ color: note.category_color ?? '#93c5fd', fontWeight: 700 }}>{note.todo_title}</span>
+            <span style={{ color: dataInk(note.category_color ?? 'var(--blue-300)'), fontWeight: 700 }}>{note.todo_title}</span>
           )
         )}
       </div>
@@ -254,7 +255,7 @@ export function ProgressNoteThread({
           </div>
         </div>
       ) : (
-        <div style={{ marginTop: 5, fontSize: '0.84rem', color: '#e2e8f0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.6 }}>
+        <div style={{ marginTop: 5, fontSize: '0.84rem', color: 'var(--slate-200)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.6 }}>
           <LinkedText text={note.body} />
         </div>
       )}
@@ -309,9 +310,9 @@ export function ProgressNoteThread({
 export const discussionBadgeStyle: React.CSSProperties = {
   fontSize: '0.68rem',
   fontWeight: 600,
-  color: '#d6b38a',
+  color: 'var(--c-d6b38a)',
   background: 'transparent',
-  border: '1px solid #4b3b2c',
+  border: '1px solid var(--c-4b3b2c)',
   borderRadius: 999,
   padding: '0 7px',
   whiteSpace: 'nowrap'
@@ -420,7 +421,7 @@ function NoteMenuButton({ item, onSelect }: { item: NoteMenuItem; onSelect: () =
       onClick={onSelect}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{ ...menuItemStyle(item.danger === true), background: hovered ? '#1e293b' : 'transparent' }}
+      style={{ ...menuItemStyle(item.danger === true), background: hovered ? 'var(--slate-800)' : 'transparent' }}
     >
       {item.label}
     </button>
@@ -429,10 +430,10 @@ function NoteMenuButton({ item, onSelect }: { item: NoteMenuItem; onSelect: () =
 
 function moreButtonStyle(active: boolean): React.CSSProperties {
   return {
-    background: active ? '#1e293b' : 'transparent',
+    background: active ? 'var(--slate-800)' : 'transparent',
     border: 'none',
     borderRadius: 5,
-    color: '#94a3b8',
+    color: 'var(--slate-400)',
     cursor: 'pointer',
     fontSize: '0.8rem',
     fontWeight: 800,
@@ -452,8 +453,8 @@ const menuStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   padding: 4,
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 8,
   boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
 }
@@ -463,7 +464,7 @@ function menuItemStyle(danger: boolean): React.CSSProperties {
     background: 'transparent',
     border: 'none',
     borderRadius: 5,
-    color: danger ? '#fca5a5' : '#cbd5e1',
+    color: danger ? 'var(--red-300)' : 'var(--slate-300)',
     cursor: 'pointer',
     fontSize: '0.76rem',
     padding: '6px 10px',
@@ -475,10 +476,10 @@ function menuItemStyle(danger: boolean): React.CSSProperties {
 const textareaStyle: React.CSSProperties = {
   width: '100%',
   padding: '7px 9px',
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 7,
-  color: '#e2e8f0',
+  color: 'var(--slate-200)',
   fontSize: '0.84rem',
   lineHeight: 1.55,
   outline: 'none',
@@ -488,7 +489,7 @@ const textareaStyle: React.CSSProperties = {
 const inlineActionStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
-  color: '#94a3b8',
+  color: 'var(--slate-400)',
   cursor: 'pointer',
   fontSize: '0.72rem',
   fontWeight: 800,
@@ -498,9 +499,9 @@ const inlineActionStyle: React.CSSProperties = {
 const ghostButtonStyle: React.CSSProperties = {
   padding: '5px 10px',
   borderRadius: 7,
-  border: '1px solid #334155',
-  background: '#0f172a',
-  color: '#94a3b8',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--slate-900)',
+  color: 'var(--slate-400)',
   cursor: 'pointer',
   fontSize: '0.76rem',
   fontWeight: 700
@@ -510,9 +511,9 @@ function saveButtonStyle(enabled: boolean): React.CSSProperties {
   return {
     padding: '5px 12px',
     borderRadius: 7,
-    border: `1px solid ${enabled ? '#1d4ed8' : '#334155'}`,
-    background: enabled ? '#2563eb' : '#1e293b',
-    color: enabled ? '#eff6ff' : '#64748b',
+    border: `1px solid ${enabled ? 'var(--blue-700)' : 'var(--slate-700)'}`,
+    background: enabled ? 'var(--blue-600)' : 'var(--slate-800)',
+    color: enabled ? 'var(--on-fill-blue-50)' : 'var(--slate-500)',
     cursor: enabled ? 'pointer' : 'default',
     fontSize: '0.76rem',
     fontWeight: 700

@@ -11,6 +11,7 @@ import {
 } from '../lib/todoList'
 import { TodoChecklist } from './TodoChecklist'
 import { TodayTodoItems } from './TodayTodo'
+import { dataInk } from '../lib/theme'
 
 // ToDo タブ。ToDoリスト（中の項目をチェックして使うタスク）を使う人のための画面。
 // 上に「今日やること」、下に ToDoリストごとのチェックリスト（追加・編集・並べ替えもここでできる）。
@@ -115,11 +116,11 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', background: '#0f172a' }}>
+    <div style={{ height: '100%', overflowY: 'auto', background: 'var(--slate-900)' }}>
       <div style={{ padding: '18px 20px 40px', display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 1400, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: '1.15rem', color: '#f8fafc', fontWeight: 800 }}>ToDo</div>
-          <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 700 }}>{todayKey}</div>
+          <div style={{ fontSize: '1.15rem', color: 'var(--slate-50)', fontWeight: 800 }}>ToDo</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)', fontWeight: 700 }}>{todayKey}</div>
           {multiUser && (
             <div role="group" aria-label="表示するリスト" style={groupStyle}>
               <button onClick={() => changeScope('mine')} aria-pressed={effectiveScope === 'mine'} style={chipStyle(effectiveScope === 'mine')}>自分のリスト</button>
@@ -131,16 +132,16 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
 
         {showIntro && (
           <section aria-label="ToDoリストとは" style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#e0e7ff' }}>ToDoリストを使ってみる</div>
-            <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.7 }}>
+            <div style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--indigo-100)' }}>ToDoリストを使ってみる</div>
+            <div style={{ fontSize: '0.82rem', color: 'var(--slate-300)', lineHeight: 1.7 }}>
               ToDoリストは、毎日・毎週のチェックや細かいやることをまとめるリストです。期限を決めなくても使えるので、延長し続けなくてもかまいません（期限を決めたいときは「詳しく設定して作る」か、作ったあとの詳細で入れられます）。
               <br />・毎日のメール確認や週1回の集計など、決まった作業は「毎日／平日／毎週〇曜／毎月〇日」を付けると、その日に未チェックに戻ります。
               <br />・思いついたやることは、繰り返さずに追加すると、チェックしたときに「済み」へ移ります。開始日を付けるとその日から、期限だけを付けると期限の日から、ここの「今日やること」に出ます。
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: '0.78rem', color: '#94a3b8' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--slate-400)' }}>
               上の欄に名前（例: 毎日のルーティン・今週のやること）を入れて「作る」を押すと始められます。
               {othersHaveLists && (
-                <button onClick={() => changeScope('all')} style={{ background: 'none', border: 'none', padding: 0, color: '#93c5fd', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
+                <button onClick={() => changeScope('all')} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--blue-300)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
                   ほかの人の ToDoリストを見る
                 </button>
               )}
@@ -151,9 +152,9 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
         {!showIntro && (
         <section aria-label="今日やること" style={cardStyle}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
-            <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#e0e7ff' }}>今日やること</span>
-            <span style={{ fontSize: '0.76rem', color: remaining > 0 ? '#c7d2fe' : '#4ade80' }}>{todayGroups.length === 0 ? '' : remaining > 0 ? `残り ${remaining}` : 'すべて済み'}</span>
-            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>繰り返しの項目と、開始日が来たやること・期限が今日までのやること</span>
+            <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--indigo-100)' }}>今日やること</span>
+            <span style={{ fontSize: '0.76rem', color: remaining > 0 ? 'var(--indigo-200)' : 'var(--green-400)' }}>{todayGroups.length === 0 ? '' : remaining > 0 ? `残り ${remaining}` : 'すべて済み'}</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>繰り返しの項目と、開始日が来たやること・期限が今日までのやること</span>
           </div>
           <TodayTodoItems
             groups={todayGroups}
@@ -172,18 +173,18 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
               return (
                 <article key={todo.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ width: 9, height: 9, borderRadius: 2, background: todo.category_color ?? '#475569', flexShrink: 0 }} />
+                    <span style={{ width: 9, height: 9, borderRadius: 2, background: todo.category_color ?? 'var(--slate-600)', flexShrink: 0 }} />
                     <button onClick={() => onSelectTodo(todo.id)} title="詳細を開く（名前・担当・説明・進捗ログなど）" style={titleButtonStyle}>{todo.title}</button>
-                    {todo.status === 'on_hold' && <span style={{ fontSize: '0.7rem', color: '#d8b4fe' }}>保留中</span>}
+                    {todo.status === 'on_hold' && <span style={{ fontSize: '0.7rem', color: 'var(--purple-300)' }}>保留中</span>}
                     {multiUser && todo.assignee_name && (
-                      <span style={{ fontSize: '0.72rem', color: todo.assignee_color ?? '#94a3b8' }}>{todo.assignee_name}</span>
+                      <span style={{ fontSize: '0.72rem', color: dataInk(todo.assignee_color ?? 'var(--slate-400)') }}>{todo.assignee_name}</span>
                     )}
                     {todo.due_date && (
-                      <span title="この ToDoリストの期限" style={{ fontSize: '0.72rem', color: getDueDateColor(todo.due_date) || '#94a3b8', fontWeight: getDueDateColor(todo.due_date) ? 700 : 400 }}>
+                      <span title="この ToDoリストの期限" style={{ fontSize: '0.72rem', color: getDueDateColor(todo.due_date) || 'var(--slate-400)', fontWeight: getDueDateColor(todo.due_date) ? 700 : 400 }}>
                         期限 {Number(todo.due_date.slice(5, 7))}/{Number(todo.due_date.slice(8, 10))}
                       </span>
                     )}
-                    <span style={{ fontSize: '0.7rem', color: '#a5b4fc', marginLeft: 'auto' }}>{checklistBadgeText(summarizeChecklist(items, todayKey))}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--indigo-300)', marginLeft: 'auto' }}>{checklistBadgeText(summarizeChecklist(items, todayKey))}</span>
                   </div>
                   <TodoChecklist
                     key={todo.id}
@@ -227,12 +228,12 @@ function NewListForm({ onCreate, onCreateWithDetails }: { onCreate: (title: stri
         placeholder="新しい ToDoリストの名前"
         aria-label="新しい ToDoリストの名前"
         disabled={creating}
-        style={{ padding: '7px 10px', background: '#0b1220', border: '1px solid #334155', borderRadius: 8, color: '#e2e8f0', fontSize: '0.82rem', width: 220, outline: 'none' }}
+        style={{ padding: '7px 10px', background: 'var(--c-0b1220)', border: '1px solid var(--slate-700)', borderRadius: 8, color: 'var(--slate-200)', fontSize: '0.82rem', width: 220, outline: 'none' }}
       />
       <button type="submit" disabled={!title.trim() || creating} style={{ ...primaryButtonStyle, opacity: title.trim() && !creating ? 1 : 0.5 }}>
         {creating ? '作成中…' : '作る'}
       </button>
-      <button type="button" onClick={onCreateWithDetails} title="カテゴリや担当なども決めて作ります" style={{ background: 'none', border: 'none', padding: 0, color: '#93c5fd', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700 }}>
+      <button type="button" onClick={onCreateWithDetails} title="カテゴリや担当なども決めて作ります" style={{ background: 'none', border: 'none', padding: 0, color: 'var(--blue-300)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700 }}>
         詳しく設定して作る
       </button>
     </form>
@@ -244,18 +245,18 @@ const groupStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 3,
   padding: 3,
-  background: '#111827',
-  border: '1px solid #1f2937',
+  background: 'var(--gray-900)',
+  border: '1px solid var(--gray-800)',
   borderRadius: 10
 }
 
 function chipStyle(active: boolean): React.CSSProperties {
   return {
     padding: '5px 10px',
-    background: active ? '#2563eb' : 'transparent',
+    background: active ? 'var(--blue-600)' : 'transparent',
     border: '1px solid transparent',
     borderRadius: 7,
-    color: active ? '#eff6ff' : '#94a3b8',
+    color: active ? 'var(--on-fill-blue-50)' : 'var(--slate-400)',
     cursor: 'pointer',
     fontSize: '0.78rem',
     fontWeight: 700,
@@ -265,10 +266,10 @@ function chipStyle(active: boolean): React.CSSProperties {
 
 const primaryButtonStyle: React.CSSProperties = {
   padding: '7px 14px',
-  background: '#1d4ed8',
-  border: '1px solid #2563eb',
+  background: 'var(--blue-700)',
+  border: '1px solid var(--blue-600)',
   borderRadius: 8,
-  color: '#eff6ff',
+  color: 'var(--on-fill-blue-50)',
   cursor: 'pointer',
   fontSize: '0.8rem',
   fontWeight: 700,
@@ -276,8 +277,8 @@ const primaryButtonStyle: React.CSSProperties = {
 }
 
 const cardStyle: React.CSSProperties = {
-  background: '#0b1220',
-  border: '1px solid #312e81',
+  background: 'var(--c-0b1220)',
+  border: '1px solid var(--indigo-900)',
   borderRadius: 12,
   padding: '14px 16px'
 }
@@ -287,7 +288,7 @@ const titleButtonStyle: React.CSSProperties = {
   border: 'none',
   padding: 0,
   cursor: 'pointer',
-  color: '#f1f5f9',
+  color: 'var(--slate-100)',
   fontSize: '0.95rem',
   fontWeight: 800,
   textAlign: 'left',

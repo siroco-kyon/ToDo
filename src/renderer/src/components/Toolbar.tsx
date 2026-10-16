@@ -159,8 +159,8 @@ export function Toolbar({
         position: 'relative',
         zIndex: 30,
         padding: '8px 16px',
-        background: '#0f172a',
-        borderBottom: '1px solid #1e293b',
+        background: 'var(--slate-900)',
+        borderBottom: '1px solid var(--slate-800)',
         display: 'flex',
         alignItems: 'center',
         gap: 12,
@@ -196,7 +196,7 @@ export function Toolbar({
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
         {isTimerRunning && (
-          <span style={{ fontSize: '0.74rem', color: '#4ade80', padding: '5px 10px', background: '#052e16', border: '1px solid #14532d', borderRadius: 999, whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: '0.74rem', color: 'var(--green-400)', padding: '5px 10px', background: 'var(--green-950)', border: '1px solid var(--green-900)', borderRadius: 999, whiteSpace: 'nowrap' }}>
             計測中
           </span>
         )}
@@ -212,7 +212,7 @@ export function Toolbar({
         {onOpenCommandPalette && (
           <button onClick={onOpenCommandPalette} title="タスクや画面へすぐ移動します（Ctrl+K）" aria-keyshortcuts="Control+K" style={menuButtonStyle(false)}>
             🔍 移動
-            <span aria-hidden="true" style={{ fontSize: '0.66rem', color: '#94a3b8', border: '1px solid #334155', borderRadius: 4, padding: '0 4px' }}>Ctrl+K</span>
+            <span aria-hidden="true" style={{ fontSize: '0.66rem', color: 'var(--slate-400)', border: '1px solid var(--slate-700)', borderRadius: 4, padding: '0 4px' }}>Ctrl+K</span>
           </button>
         )}
 
@@ -243,7 +243,7 @@ export function Toolbar({
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: currentUser.color, flexShrink: 0 }} />
               {currentUser.display_name}
               {currentUser.role === 'admin' && (
-                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#fbbf24', background: '#451a03', borderRadius: 6, padding: '1px 6px' }}>管理者</span>
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--amber-400)', background: 'var(--amber-950)', borderRadius: 6, padding: '1px 6px' }}>管理者</span>
               )}
             </>
           ) : 'メニュー'}
@@ -318,7 +318,7 @@ function ToolbarMenu({ menuKey, label, buttonContent, title, sections, footer, a
         style={menuButtonStyle(open)}
       >
         {buttonContent}
-        <span aria-hidden="true" style={{ fontSize: '0.62rem', color: '#64748b', marginLeft: 2 }}>▼</span>
+        <span aria-hidden="true" style={{ fontSize: '0.62rem', color: 'var(--slate-500)', marginLeft: 2 }}>▼</span>
       </button>
       {open && (
         <div
@@ -330,8 +330,8 @@ function ToolbarMenu({ menuKey, label, buttonContent, title, sections, footer, a
           style={{ ...menuPopoverStyle, [align === 'right' ? 'right' : 'left']: 0 }}
         >
           {sections.map((section, sectionIndex) => (
-            <div key={section.key} role="group" aria-label={section.title} style={{ borderTop: sectionIndex > 0 ? '1px solid #1e293b' : 'none', paddingTop: sectionIndex > 0 ? 4 : 0, marginTop: sectionIndex > 0 ? 4 : 0 }}>
-              {section.title && <div style={{ padding: '4px 10px 2px', fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8' }}>{section.title}</div>}
+            <div key={section.key} role="group" aria-label={section.title} style={{ borderTop: sectionIndex > 0 ? '1px solid var(--slate-800)' : 'none', paddingTop: sectionIndex > 0 ? 4 : 0, marginTop: sectionIndex > 0 ? 4 : 0 }}>
+              {section.title && <div style={{ padding: '4px 10px 2px', fontSize: '0.7rem', fontWeight: 700, color: 'var(--slate-400)' }}>{section.title}</div>}
               {section.items.map((item) => (
                 <button
                   key={item.key}
@@ -352,7 +352,7 @@ function ToolbarMenu({ menuKey, label, buttonContent, title, sections, footer, a
               ))}
             </div>
           ))}
-          {footer && <div style={{ borderTop: '1px solid #1e293b', marginTop: 4, padding: '6px 10px 2px', fontSize: '0.72rem', color: '#94a3b8', lineHeight: 1.5 }}>{footer}</div>}
+          {footer && <div style={{ borderTop: '1px solid var(--slate-800)', marginTop: 4, padding: '6px 10px 2px', fontSize: '0.72rem', color: 'var(--slate-400)', lineHeight: 1.5 }}>{footer}</div>}
         </div>
       )}
     </div>
@@ -364,18 +364,18 @@ const groupStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 2,
   padding: 3,
-  background: '#111827',
-  border: '1px solid #1f2937',
+  background: 'var(--gray-900)',
+  border: '1px solid var(--gray-800)',
   borderRadius: 12,
   flexWrap: 'wrap'
 }
 
 const primaryButtonStyle: React.CSSProperties = {
   padding: '8px 12px',
-  background: '#2563eb',
-  border: '1px solid #1d4ed8',
+  background: 'var(--blue-600)',
+  border: '1px solid var(--blue-700)',
   borderRadius: 8,
-  color: '#eff6ff',
+  color: 'var(--on-fill-blue-50)',
   cursor: 'pointer',
   fontSize: '0.84rem',
   fontWeight: 700,
@@ -387,10 +387,10 @@ const menuPopoverStyle: React.CSSProperties = {
   top: 'calc(100% + 6px)',
   minWidth: 220,
   padding: 6,
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 10,
-  boxShadow: '0 16px 40px rgba(2, 6, 23, 0.6)',
+  boxShadow: '0 16px 40px color-mix(in srgb, var(--slate-950) 60%, transparent)',
   zIndex: 40
 }
 
@@ -401,10 +401,10 @@ function menuButtonStyle(open: boolean): React.CSSProperties {
     gap: 6,
     minHeight: 32,
     padding: '6px 10px',
-    background: open ? '#1e293b' : 'transparent',
-    border: `1px solid ${open ? '#475569' : '#334155'}`,
+    background: open ? 'var(--slate-800)' : 'transparent',
+    border: `1px solid ${open ? 'var(--slate-600)' : 'var(--slate-700)'}`,
     borderRadius: 8,
-    color: '#e2e8f0',
+    color: 'var(--slate-200)',
     cursor: 'pointer',
     fontSize: '0.78rem',
     fontWeight: 700,
@@ -415,9 +415,9 @@ function menuButtonStyle(open: boolean): React.CSSProperties {
 const stateChipStyle: React.CSSProperties = {
   padding: '4px 9px',
   borderRadius: 999,
-  border: '1px solid #4f46e5',
-  background: '#1e1b4b',
-  color: '#c7d2fe',
+  border: '1px solid var(--indigo-600)',
+  background: 'var(--indigo-950)',
+  color: 'var(--indigo-200)',
   cursor: 'pointer',
   fontSize: '0.72rem',
   fontWeight: 700,
@@ -431,10 +431,10 @@ function notificationButtonStyle(active: boolean): React.CSSProperties {
     gap: 6,
     minHeight: 32,
     padding: '6px 10px',
-    background: active ? '#172554' : '#0f172a',
-    border: `1px solid ${active ? '#2563eb' : '#334155'}`,
+    background: active ? 'var(--blue-950)' : 'var(--slate-900)',
+    border: `1px solid ${active ? 'var(--blue-600)' : 'var(--slate-700)'}`,
     borderRadius: 8,
-    color: active ? '#dbeafe' : '#cbd5e1',
+    color: active ? 'var(--blue-100)' : 'var(--slate-300)',
     cursor: 'pointer',
     fontSize: '0.76rem',
     fontWeight: 700,
@@ -447,8 +447,8 @@ const notificationBadgeStyle: React.CSSProperties = {
   height: 18,
   padding: '0 5px',
   borderRadius: 99,
-  background: '#ef4444',
-  color: '#fff',
+  background: 'var(--red-500)',
+  color: 'var(--on-fill-white)',
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -463,8 +463,8 @@ const tabBadgeStyle: React.CSSProperties = {
   height: 16,
   padding: '0 4px',
   borderRadius: 99,
-  background: '#3b82f6',
-  color: '#fff',
+  background: 'var(--blue-500)',
+  color: 'var(--on-fill-white)',
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -477,17 +477,17 @@ const tabBadgeStyle: React.CSSProperties = {
 // ToDo タブの残り。新着のような赤ではなく、落ち着いた色にする
 const todoBadgeStyle: React.CSSProperties = {
   ...tabBadgeStyle,
-  background: '#4338ca',
-  color: '#e0e7ff'
+  background: 'var(--indigo-700)',
+  color: 'var(--on-fill-indigo-100)'
 }
 
 function viewButtonStyle(active: boolean): React.CSSProperties {
   return {
     padding: '6px 10px',
-    background: active ? '#2563eb' : 'transparent',
+    background: active ? 'var(--blue-600)' : 'transparent',
     border: '1px solid transparent',
     borderRadius: 8,
-    color: active ? '#eff6ff' : '#94a3b8',
+    color: active ? 'var(--on-fill-blue-50)' : 'var(--slate-400)',
     cursor: 'pointer',
     fontSize: '0.8rem',
     fontWeight: 700,

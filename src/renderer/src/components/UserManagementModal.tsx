@@ -204,13 +204,13 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
       onClick={(e) => e.target === e.currentTarget && !actionPending.current && onClose()}
     >
       <div role="dialog" aria-modal="true" aria-label="ユーザー管理" style={{
-        background: '#1e293b', borderRadius: 14, padding: 28, width: 600,
+        background: 'var(--slate-800)', borderRadius: 14, padding: 28, width: 600,
         maxHeight: '88vh', overflowY: 'auto',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid #334155',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid var(--slate-700)',
         display: 'flex', flexDirection: 'column', gap: 24
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0', margin: 0 }}>👤 ユーザー管理</h2>
+          <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)', margin: 0 }}>👤 ユーザー管理</h2>
           <button onClick={onClose} style={closeBtnStyle}>×</button>
         </div>
 
@@ -218,7 +218,7 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
         <section>
           <h3 style={sectionHead}>メンバー（{users.length}人）</h3>
           {loading ? (
-            <div style={{ color: '#64748b', fontSize: '0.84rem', padding: '12px 0' }}>読み込み中…</div>
+            <div style={{ color: 'var(--slate-500)', fontSize: '0.84rem', padding: '12px 0' }}>読み込み中…</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
               {users.map((user) => {
@@ -229,22 +229,22 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
                 const rowBusy = busyId !== null
                 return (
                   <div key={user.id} style={{
-                    border: `1px solid ${isEditing ? '#6366f1' : '#334155'}`,
-                    borderRadius: 10, background: '#0f172a', padding: '10px 12px',
+                    border: `1px solid ${isEditing ? 'var(--indigo-500)' : 'var(--slate-700)'}`,
+                    borderRadius: 10, background: 'var(--slate-900)', padding: '10px 12px',
                     opacity: inactive && !isEditing ? 0.6 : 1
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span style={{ width: 12, height: 12, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontSize: '0.9rem', color: 'var(--slate-200)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {user.display_name}
                           </span>
                           <span style={roleBadge(user.role)}>{roleLabel(user.role)}</span>
                           {isSelf && <span style={selfBadge}>自分</span>}
                           {inactive && <span style={inactiveBadge}>無効</span>}
                         </div>
-                        <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 2 }}>@{user.username}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', marginTop: 2 }}>@{user.username}</div>
                       </div>
                       {!isEditing && (
                         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -256,7 +256,7 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
                           >
                             パスワード
                           </button>
-                          <button onClick={() => void beginDelete(user)} style={{ ...ghostBtn, color: '#fca5a5' }}
+                          <button onClick={() => void beginDelete(user)} style={{ ...ghostBtn, color: 'var(--red-300)' }}
                             disabled={isSelf || rowBusy} title={isSelf ? '自分自身は削除できません' : undefined}>削除</button>
                         </div>
                       )}
@@ -291,7 +291,7 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
                               title={isSelf ? '自分自身は無効化できません' : undefined}
                               style={{
                                 ...inputStyle, width: 140, cursor: isSelf ? 'default' : 'pointer',
-                                color: editActive ? '#4ade80' : '#f87171', opacity: isSelf ? 0.5 : 1, textAlign: 'left'
+                                color: editActive ? 'var(--green-400)' : 'var(--red-400)', opacity: isSelf ? 0.5 : 1, textAlign: 'left'
                               }}
                             >
                               {editActive ? '有効' : '無効'}
@@ -385,7 +385,7 @@ function ColorSwatches({ value, onChange }: { value: string; onChange: (color: s
           title={color}
           style={{
             width: 24, height: 24, borderRadius: '50%', background: color, cursor: 'pointer',
-            border: value === color ? '2px solid #f8fafc' : '2px solid transparent',
+            border: value === color ? '2px solid var(--slate-50)' : '2px solid transparent',
             boxShadow: value === color ? `0 0 0 2px ${color}` : 'none'
           }}
         />
@@ -395,56 +395,56 @@ function ColorSwatches({ value, onChange }: { value: string; onChange: (color: s
 }
 
 const sectionHead: React.CSSProperties = {
-  fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase',
+  fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase',
   letterSpacing: '0.08em', fontWeight: 'bold', margin: 0
 }
 
 const fieldLabel: React.CSSProperties = {
-  fontSize: '0.74rem', color: '#94a3b8', display: 'block', marginBottom: 4
+  fontSize: '0.74rem', color: 'var(--slate-400)', display: 'block', marginBottom: 4
 }
 
 const inputStyle: React.CSSProperties = {
   width: '100%', boxSizing: 'border-box', padding: '7px 10px',
-  background: '#0f172a', border: '1px solid #334155', borderRadius: 7,
-  color: '#e2e8f0', fontSize: '0.85rem', outline: 'none'
+  background: 'var(--slate-900)', border: '1px solid var(--slate-700)', borderRadius: 7,
+  color: 'var(--slate-200)', fontSize: '0.85rem', outline: 'none'
 }
 
 const closeBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: '#64748b',
+  background: 'none', border: 'none', color: 'var(--slate-500)',
   cursor: 'pointer', fontSize: '1.2rem', padding: '2px 6px'
 }
 
 const primaryBtn: React.CSSProperties = {
-  padding: '7px 16px', background: '#6366f1', border: 'none',
-  borderRadius: 7, color: '#fff', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap'
+  padding: '7px 16px', background: 'var(--indigo-500)', border: 'none',
+  borderRadius: 7, color: 'var(--on-fill-white)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap'
 }
 
 const secondaryBtn: React.CSSProperties = {
-  padding: '7px 14px', background: '#334155', border: 'none',
-  borderRadius: 7, color: '#cbd5e1', cursor: 'pointer', fontSize: '0.85rem', whiteSpace: 'nowrap'
+  padding: '7px 14px', background: 'var(--slate-700)', border: 'none',
+  borderRadius: 7, color: 'var(--slate-300)', cursor: 'pointer', fontSize: '0.85rem', whiteSpace: 'nowrap'
 }
 
 const ghostBtn: React.CSSProperties = {
-  padding: '5px 10px', background: 'transparent', border: '1px solid #334155',
-  borderRadius: 6, color: '#94a3b8', cursor: 'pointer', fontSize: '0.76rem', whiteSpace: 'nowrap'
+  padding: '5px 10px', background: 'transparent', border: '1px solid var(--slate-700)',
+  borderRadius: 6, color: 'var(--slate-400)', cursor: 'pointer', fontSize: '0.76rem', whiteSpace: 'nowrap'
 }
 
 function roleBadge(role: UserRole): React.CSSProperties {
   const admin = role === 'admin'
   return {
     fontSize: '0.64rem', fontWeight: 700, padding: '1px 7px', borderRadius: 99,
-    background: admin ? '#7c3aed30' : '#33415540', color: admin ? '#c4b5fd' : '#94a3b8'
+    background: admin ? 'color-mix(in srgb, var(--violet-600) 18.8%, transparent)' : 'color-mix(in srgb, var(--slate-700) 25.1%, transparent)', color: admin ? 'var(--violet-300)' : 'var(--slate-400)'
   }
 }
 
 const selfBadge: React.CSSProperties = {
   fontSize: '0.64rem', fontWeight: 700, padding: '1px 7px', borderRadius: 99,
-  background: '#1d4ed830', color: '#93c5fd'
+  background: 'color-mix(in srgb, var(--blue-700) 18.8%, transparent)', color: 'var(--blue-300)'
 }
 
 const inactiveBadge: React.CSSProperties = {
   fontSize: '0.64rem', fontWeight: 700, padding: '1px 7px', borderRadius: 99,
-  background: '#7f1d1d40', color: '#fca5a5'
+  background: 'color-mix(in srgb, var(--red-900) 25.1%, transparent)', color: 'var(--red-300)'
 }
 
 function DeleteMemberConfirmation({ preview, busy, onCancel, onDelete }: {
@@ -458,10 +458,10 @@ function DeleteMemberConfirmation({ preview, busy, onCancel, onDelete }: {
   const canDelete = !busy && confirmation === user.username
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="delete-member-heading" style={{ background: '#1e293b', border: '1px solid #ef4444', borderRadius: 14, padding: 28, width: 480, maxWidth: '90vw', maxHeight: '88vh', overflowY: 'auto', color: '#e2e8f0', lineHeight: 1.6 }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="delete-member-heading" style={{ background: 'var(--slate-800)', border: '1px solid var(--red-500)', borderRadius: 14, padding: 28, width: 480, maxWidth: '90vw', maxHeight: '88vh', overflowY: 'auto', color: 'var(--slate-200)', lineHeight: 1.6 }}>
         <h2 id="delete-member-heading" style={{ margin: '0 0 14px' }}>メンバーの削除を確認</h2>
         <div style={{ fontSize: '1.2rem', fontWeight: 700, overflowWrap: 'anywhere' }}>{user.display_name}</div>
-        <div style={{ color: '#cbd5e1', fontSize: '1rem', marginTop: 6, overflowWrap: 'anywhere' }}>ログインID: {user.username}</div>
+        <div style={{ color: 'var(--slate-300)', fontSize: '1rem', marginTop: 6, overflowWrap: 'anywhere' }}>ログインID: {user.username}</div>
         <p style={{ margin: '14px 0' }}>担当タスク {preview.taskCount}件・サブタスク {preview.subtaskCount}件を未割り当てにします。共同担当のタスク {preview.coAssignedTaskCount}件からも外します。</p>
         <p style={{ margin: '14px 0' }}>削除後はログインできなくなり、接続中のセッションを終了します。計測中の作業は停止してログを保存します。</p>
         <p style={{ margin: '14px 0' }}>タスク・作業ログ・投稿・変更履歴は残ります。削除は取り消せません。同じログインIDは再利用できません。</p>
@@ -471,7 +471,7 @@ function DeleteMemberConfirmation({ preview, busy, onCancel, onDelete }: {
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
           <button autoFocus onClick={onCancel} disabled={busy} style={secondaryBtn}>キャンセル</button>
           <button onClick={() => { if (canDelete) void onDelete(confirmation) }} disabled={!canDelete}
-            style={{ ...primaryBtn, background: canDelete ? '#b91c1c' : '#334155', opacity: canDelete ? 1 : 0.6 }}>{busy ? '削除中…' : '削除する'}</button>
+            style={{ ...primaryBtn, background: canDelete ? 'var(--red-700)' : 'var(--slate-700)', opacity: canDelete ? 1 : 0.6 }}>{busy ? '削除中…' : '削除する'}</button>
         </div>
       </div>
     </div>

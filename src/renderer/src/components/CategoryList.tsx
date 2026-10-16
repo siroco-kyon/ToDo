@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react'
 import type { Category } from '../types'
+import { textOnFill } from '../lib/theme'
 
 interface Props {
   categories: Category[]
@@ -85,7 +86,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
       onDragEnd={() => { setDraggedId(null); setDragOverId(null); dragging.current = false }}
     >
-      <div style={{ padding: '16px 12px 8px', fontSize: '0.75rem', color: '#94a3b8', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+      <div style={{ padding: '16px 12px 8px', fontSize: '0.75rem', color: 'var(--slate-400)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
         カテゴリ
       </div>
 
@@ -94,14 +95,14 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
           onClick={() => onSelect(null)}
           style={itemStyle(selectedId === null)}
         >
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#64748b', display: 'inline-block', marginRight: 8 }} />
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--slate-500)', display: 'inline-block', marginRight: 8 }} />
           すべて
         </button>
 
         {categories.map((cat) => (
           <div key={cat.id}>
             {editingId === cat.id ? (
-              <form onSubmit={handleUpdate} style={{ padding: '8px 12px', borderBottom: '1px solid #1e293b' }}>
+              <form onSubmit={handleUpdate} style={{ padding: '8px 12px', borderBottom: '1px solid var(--slate-800)' }}>
                 <input
                   autoFocus
                   value={editName}
@@ -118,7 +119,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                       onClick={() => setEditColor(c)}
                       style={{
                         width: 18, height: 18, borderRadius: '50%', background: c,
-                        border: `2px solid ${editColor === c ? '#fff' : 'transparent'}`,
+                        border: `2px solid ${editColor === c ? 'var(--white)' : 'transparent'}`,
                         cursor: 'pointer', padding: 0
                       }}
                     />
@@ -132,12 +133,12 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                   style={{ ...inputStyle, resize: 'vertical', marginBottom: 4 }}
                 />
                 <label style={privateLabelStyle}>
-                  <input type="checkbox" checked={editPrivate} onChange={(e) => setEditPrivate(e.target.checked)} style={{ accentColor: '#6366f1' }} />
+                  <input type="checkbox" checked={editPrivate} onChange={(e) => setEditPrivate(e.target.checked)} style={{ accentColor: 'var(--indigo-500)' }} />
                   集計から外す（個人用。ほかの人にも見えます）
                 </label>
                 <div style={{ display: 'flex', gap: 4 }}>
-                  <button type="submit" style={btnStyle('#6366f1')}>保存</button>
-                  <button type="button" onClick={() => setEditingId(null)} style={btnStyle('#334155')}>×</button>
+                  <button type="submit" style={btnStyle('var(--indigo-500)')}>保存</button>
+                  <button type="button" onClick={() => setEditingId(null)} style={btnStyle('var(--slate-700)')}>×</button>
                 </div>
               </form>
             ) : (
@@ -150,25 +151,25 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                 onMouseLeave={() => setHoveredId(null)}
                 style={{
                   position: 'relative',
-                  borderTop: dragOverId === cat.id ? '2px solid #6366f1' : '2px solid transparent'
+                  borderTop: dragOverId === cat.id ? '2px solid var(--indigo-500)' : '2px solid transparent'
                 }}
               >
                 <button
                   onClick={() => onSelect(cat.id)}
                   style={{ ...itemStyle(selectedId === cat.id), paddingRight: hoveredId === cat.id ? 60 : 12 }}
                 >
-                  <span style={{ width: 6, height: 20, borderRadius: 2, background: '#334155', display: 'inline-block', marginRight: 6, flexShrink: 0, cursor: 'grab' }} />
+                  <span style={{ width: 6, height: 20, borderRadius: 2, background: 'var(--slate-700)', display: 'inline-block', marginRight: 6, flexShrink: 0, cursor: 'grab' }} />
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: cat.color, display: 'inline-block', marginRight: 8, flexShrink: 0 }} />
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
                     {cat.name}
                   </span>
                   {cat.is_private ? (
-                    <span title="チームの集計・レポートに含めないカテゴリです（ほかの人にも見えます）" style={{ marginLeft: 4, fontSize: '0.75rem', flexShrink: 0, color: '#94a3b8', border: '1px solid #334155', borderRadius: 99, padding: '0 5px' }}>集計外</span>
+                    <span title="チームの集計・レポートに含めないカテゴリです（ほかの人にも見えます）" style={{ marginLeft: 4, fontSize: '0.75rem', flexShrink: 0, color: 'var(--slate-400)', border: '1px solid var(--slate-700)', borderRadius: 99, padding: '0 5px' }}>集計外</span>
                   ) : null}
                 </button>
                 {cat.description && hoveredId !== cat.id && (
                   <div style={{
-                    fontSize: '0.75rem', color: '#94a3b8', padding: '0 12px 4px 34px',
+                    fontSize: '0.75rem', color: 'var(--slate-400)', padding: '0 12px 4px 34px',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     lineHeight: 1.4
                   }}>
@@ -181,7 +182,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                       onClick={(e) => startEdit(cat, e)}
                       title="名前・色・説明を編集"
                       aria-label={`${cat.name}を編集`}
-                      style={iconBtn('#334155', '#94a3b8')}
+                      style={iconBtn('var(--slate-700)', 'var(--slate-400)')}
                     >
                       ✏
                     </button>
@@ -189,7 +190,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                       onClick={(e) => handleDelete(cat, e)}
                       title="カテゴリを削除（タスクは消えず「未分類」になります）"
                       aria-label={`${cat.name}を削除`}
-                      style={iconBtn('#7f1d1d', '#ef4444')}
+                      style={iconBtn('var(--red-900)', 'var(--red-500)')}
                     >
                       🗑
                     </button>
@@ -202,7 +203,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
       </div>
 
       {adding ? (
-        <form onSubmit={handleAdd} style={{ padding: '8px 12px', borderTop: '1px solid #1e293b' }}>
+        <form onSubmit={handleAdd} style={{ padding: '8px 12px', borderTop: '1px solid var(--slate-800)' }}>
           <input
             autoFocus
             value={newName}
@@ -218,19 +219,19 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                 type="button"
                 onClick={() => setNewColor(c)}
                 style={{
-                  width: 18, height: 18, borderRadius: '50%', background: c, border: `2px solid ${newColor === c ? '#fff' : 'transparent'}`,
+                  width: 18, height: 18, borderRadius: '50%', background: c, border: `2px solid ${newColor === c ? 'var(--white)' : 'transparent'}`,
                   cursor: 'pointer', padding: 0
                 }}
               />
             ))}
           </div>
           <label style={privateLabelStyle}>
-            <input type="checkbox" checked={newPrivate} onChange={(e) => setNewPrivate(e.target.checked)} style={{ accentColor: '#6366f1' }} />
+            <input type="checkbox" checked={newPrivate} onChange={(e) => setNewPrivate(e.target.checked)} style={{ accentColor: 'var(--indigo-500)' }} />
             集計から外す（個人用。ほかの人にも見えます）
           </label>
           <div style={{ display: 'flex', gap: 4 }}>
-            <button type="submit" style={btnStyle('#6366f1')}>追加</button>
-            <button type="button" onClick={() => setAdding(false)} style={btnStyle('#334155')}>×</button>
+            <button type="submit" style={btnStyle('var(--indigo-500)')}>追加</button>
+            <button type="button" onClick={() => setAdding(false)} style={btnStyle('var(--slate-700)')}>×</button>
           </div>
         </form>
       ) : (
@@ -239,8 +240,8 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 'calc(100% - 16px)', margin: '8px', padding: '7px',
-            background: '#1e293b', border: '1px dashed #334155',
-            borderRadius: 6, color: '#a5b4fc', cursor: 'pointer',
+            background: 'var(--slate-800)', border: '1px dashed var(--slate-700)',
+            borderRadius: 6, color: 'var(--indigo-300)', cursor: 'pointer',
             fontSize: '0.85rem', fontWeight: 'bold'
           }}
         >
@@ -254,8 +255,8 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
 function itemStyle(active: boolean): React.CSSProperties {
   return {
     display: 'flex', alignItems: 'center', width: '100%', padding: '8px 12px',
-    background: active ? '#1e293b' : 'transparent', border: 'none', borderRadius: 6,
-    color: active ? '#e2e8f0' : '#94a3b8', cursor: 'pointer', textAlign: 'left',
+    background: active ? 'var(--slate-800)' : 'transparent', border: 'none', borderRadius: 6,
+    color: active ? 'var(--slate-200)' : 'var(--slate-400)', cursor: 'pointer', textAlign: 'left',
     fontSize: '0.9rem', transition: 'background 0.15s'
   }
 }
@@ -269,19 +270,19 @@ function iconBtn(bg: string, color: string): React.CSSProperties {
 }
 
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '6px 8px', background: '#0f172a',
-  border: '1px solid #334155', borderRadius: 6, color: '#e2e8f0',
+  width: '100%', padding: '6px 8px', background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)', borderRadius: 6, color: 'var(--slate-200)',
   fontSize: '0.85rem', outline: 'none', marginBottom: 4, boxSizing: 'border-box'
 }
 
 function btnStyle(bg: string): React.CSSProperties {
   return {
     flex: 1, padding: '4px 8px', background: bg, border: 'none',
-    borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: '0.8rem'
+    borderRadius: 6, color: textOnFill(bg), cursor: 'pointer', fontSize: '0.8rem'
   }
 }
 
 const privateLabelStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, margin: '2px 0 6px',
-  fontSize: '0.72rem', color: '#94a3b8', cursor: 'pointer'
+  fontSize: '0.72rem', color: 'var(--slate-400)', cursor: 'pointer'
 }

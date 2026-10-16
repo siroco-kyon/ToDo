@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import type { WorkLogSummaryRow } from '../types'
+import { dataInk } from '../lib/theme'
 
 interface Props {
   hiddenTodoIds?: Set<string>
@@ -98,14 +99,14 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* ヘッダー */}
       <div style={{
-        padding: '14px 20px 10px', borderBottom: '1px solid #1e293b',
+        padding: '14px 20px 10px', borderBottom: '1px solid var(--slate-800)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0
       }}>
         <div>
-          <div style={{ fontSize: '1rem', color: '#e2e8f0', fontWeight: 'bold' }}>作業ログ</div>
+          <div style={{ fontSize: '1rem', color: 'var(--slate-200)', fontWeight: 'bold' }}>作業ログ</div>
           {totalSeconds > 0 && (
-            <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 2 }}>
-              合計 <span style={{ color: '#4ade80', fontWeight: 'bold' }}>{formatDuration(totalSeconds)}</span>
+            <div style={{ fontSize: '0.78rem', color: 'var(--slate-500)', marginTop: 2 }}>
+              合計 <span style={{ color: 'var(--green-400)', fontWeight: 'bold' }}>{formatDuration(totalSeconds)}</span>
               {' / '}{groups.length}タスク
             </div>
           )}
@@ -118,9 +119,9 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
               onClick={() => setDays(opt.value)}
               style={{
                 padding: '4px 10px', borderRadius: 6, fontSize: '0.8rem', cursor: 'pointer',
-                background: days === opt.value ? '#6366f1' : '#1e293b',
-                border: `1px solid ${days === opt.value ? '#6366f1' : '#334155'}`,
-                color: days === opt.value ? '#fff' : '#94a3b8',
+                background: days === opt.value ? 'var(--indigo-500)' : 'var(--slate-800)',
+                border: `1px solid ${days === opt.value ? 'var(--indigo-500)' : 'var(--slate-700)'}`,
+                color: days === opt.value ? 'var(--on-fill-white)' : 'var(--slate-400)',
                 fontWeight: days === opt.value ? 'bold' : 'normal'
               }}
             >
@@ -133,13 +134,13 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
       {/* コンテンツ */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
         {loading && (
-          <div style={{ color: '#475569', textAlign: 'center', padding: 24, fontSize: '0.9rem' }}>
+          <div style={{ color: 'var(--slate-600)', textAlign: 'center', padding: 24, fontSize: '0.9rem' }}>
             読み込み中…
           </div>
         )}
 
         {!loading && groups.length === 0 && (
-          <div style={{ color: '#475569', textAlign: 'center', padding: 32, fontSize: '0.9rem' }}>
+          <div style={{ color: 'var(--slate-600)', textAlign: 'center', padding: 32, fontSize: '0.9rem' }}>
             この期間の作業ログはありません
           </div>
         )}
@@ -159,8 +160,8 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
             <div
               key={group.todo_id}
               style={{
-                background: '#1e293b', borderRadius: 10, marginBottom: 10,
-                border: '1px solid #334155', overflow: 'hidden'
+                background: 'var(--slate-800)', borderRadius: 10, marginBottom: 10,
+                border: '1px solid var(--slate-700)', overflow: 'hidden'
               }}
             >
               {/* タスクヘッダー */}
@@ -172,18 +173,18 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
                   alignItems: 'center', gap: 10
                 }}
               >
-                <span style={{ color: '#64748b', fontSize: '0.8rem', flexShrink: 0 }}>
+                <span style={{ color: 'var(--slate-500)', fontSize: '0.8rem', flexShrink: 0 }}>
                   {expanded ? '▼' : '▶'}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '0.92rem', color: '#e2e8f0', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: '0.92rem', color: 'var(--slate-200)', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {group.title}
                   </div>
                   {group.category_name && (
                     <span style={{
                       fontSize: '0.7rem', padding: '1px 6px', borderRadius: 99, marginTop: 3, display: 'inline-block',
-                      background: `${group.category_color ?? '#6366f1'}30`,
-                      color: group.category_color ?? '#6366f1'
+                      background: `color-mix(in srgb, ${group.category_color ?? 'var(--indigo-500)'} 18.8%, transparent)`,
+                      color: dataInk(group.category_color ?? 'var(--indigo-500)')
                     }}>
                       {group.category_name}
                     </span>
@@ -191,10 +192,10 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
                 </div>
                 {/* 合計時間バー */}
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: '1rem', color: '#4ade80', fontWeight: 'bold' }}>
+                  <div style={{ fontSize: '1rem', color: 'var(--green-400)', fontWeight: 'bold' }}>
                     {formatDuration(group.total_seconds)}
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: '#475569' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--slate-600)' }}>
                     {group.entries.length}件
                   </div>
                 </div>
@@ -202,7 +203,7 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
 
               {/* 展開: 日付ごとのエントリ */}
               {expanded && (
-                <div style={{ borderTop: '1px solid #0f172a' }}>
+                <div style={{ borderTop: '1px solid var(--slate-900)' }}>
                   {[...byDate.entries()].map(([dateLabel, entries]) => {
                     const dayTotal = entries.reduce((s, e) => s + e.duration_seconds, 0)
                     return (
@@ -213,12 +214,12 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
                           marginBottom: 4
                         }}>
                           <span style={{
-                            fontSize: '0.72rem', color: '#6366f1', fontWeight: 'bold',
-                            background: '#6366f115', padding: '2px 8px', borderRadius: 99
+                            fontSize: '0.72rem', color: 'var(--indigo-500)', fontWeight: 'bold',
+                            background: 'color-mix(in srgb, var(--indigo-500) 8.2%, transparent)', padding: '2px 8px', borderRadius: 99
                           }}>
                             {dateLabel}
                           </span>
-                          <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}>
                             {formatDuration(dayTotal)}
                           </span>
                         </div>
@@ -229,17 +230,17 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
                             style={{
                               display: 'flex', alignItems: 'center', gap: 8,
                               padding: '4px 6px', borderRadius: 5, marginBottom: 2,
-                              background: '#0f172a'
+                              background: 'var(--slate-900)'
                             }}
                           >
-                            <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontFamily: 'monospace', flexShrink: 0 }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--slate-400)', fontFamily: 'monospace', flexShrink: 0 }}>
                               {formatTime(entry.start_time)}–{formatTime(entry.end_time)}
                             </span>
-                            <span style={{ fontSize: '0.8rem', color: '#4ade80', flexShrink: 0 }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--green-400)', flexShrink: 0 }}>
                               {formatDuration(entry.duration_seconds)}
                             </span>
                             {entry.note && (
-                              <span style={{ fontSize: '0.78rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <span style={{ fontSize: '0.78rem', color: 'var(--slate-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 — {entry.note}
                               </span>
                             )}

@@ -2,7 +2,7 @@ import React from 'react'
 import { splitLinks } from '../lib/links'
 
 function Link({ url }: { url: string }): React.JSX.Element {
-  return <a href={url} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} style={{ color: '#60a5fa', textDecoration: 'underline', overflowWrap: 'anywhere' }}>{url}</a>
+  return <a href={url} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} style={{ color: 'var(--blue-400)', textDecoration: 'underline', overflowWrap: 'anywhere' }}>{url}</a>
 }
 
 export function LinkedText({ text }: { text: string }): React.JSX.Element {

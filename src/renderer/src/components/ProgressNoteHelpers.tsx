@@ -51,9 +51,9 @@ function helperButtonStyle(disabled: boolean): React.CSSProperties {
   return {
     padding: '4px 10px',
     borderRadius: 999,
-    border: '1px solid #334155',
+    border: '1px solid var(--slate-700)',
     background: 'transparent',
-    color: disabled ? '#64748b' : '#cbd5e1',
+    color: disabled ? 'var(--slate-500)' : 'var(--slate-300)',
     cursor: disabled ? 'default' : 'pointer',
     fontSize: '0.75rem',
     fontWeight: 600,

@@ -118,7 +118,7 @@ export function ProgressSlider({
   }
 
   const active = dragging || hovered
-  const fillColor = shown >= 100 ? '#22c55e' : '#3b82f6'
+  const fillColor = shown >= 100 ? 'var(--green-500)' : 'var(--blue-500)'
   const thumbSize = height + 6
 
   return (
@@ -150,7 +150,7 @@ export function ProgressSlider({
           outlineOffset: 2
         }}
       >
-        <div ref={trackRef} style={{ position: 'relative', height, background: '#1e293b', borderRadius: 999 }}>
+        <div ref={trackRef} style={{ position: 'relative', height, background: 'var(--slate-800)', borderRadius: 999 }}>
           <div
             style={{
               width: `${shown}%`,
@@ -172,7 +172,7 @@ export function ProgressSlider({
                 marginLeft: -thumbSize / 2,
                 marginTop: -thumbSize / 2,
                 borderRadius: '50%',
-                background: '#f8fafc',
+                background: 'var(--slate-50)',
                 border: `2px solid ${fillColor}`,
                 boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
                 opacity: active ? 1 : 0.55,
@@ -184,7 +184,7 @@ export function ProgressSlider({
         </div>
       </div>
       {showValue && (
-        <span style={{ fontSize: height >= 8 ? '0.86rem' : '0.72rem', color: dragging ? '#93c5fd' : '#f1f5f9', fontWeight: 800, minWidth: valueMinWidth, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ fontSize: height >= 8 ? '0.86rem' : '0.72rem', color: dragging ? 'var(--blue-300)' : 'var(--slate-100)', fontWeight: 800, minWidth: valueMinWidth, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
           {shown}%
         </span>
       )}

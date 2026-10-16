@@ -37,15 +37,15 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: nu
   return (
     <div role={toast.type === 'error' ? 'alert' : 'status'} style={{
       padding: '10px 16px',
-      background: toast.type === 'success' ? '#166534' : '#7f1d1d',
-      border: `1px solid ${toast.type === 'success' ? '#4ade80' : '#ef4444'}`,
-      borderRadius: 8, color: '#fff', fontSize: '0.9rem',
+      background: toast.type === 'success' ? 'var(--green-800)' : 'var(--red-900)',
+      border: `1px solid ${toast.type === 'success' ? 'var(--green-400)' : 'var(--red-500)'}`,
+      borderRadius: 8, color: 'var(--white)', fontSize: '0.9rem',
       boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
       pointerEvents: 'auto', userSelect: 'none'
     }}>
       <span>{toast.type === 'success' ? '✓ ' : '✗ '}{toast.message}</span>
-      {toast.actionLabel && toast.onAction && <button onClick={() => { toast.onAction?.(); onRemove(toast.id) }} style={{ marginLeft: 12, border: '1px solid rgba(255,255,255,.65)', borderRadius: 6, background: 'transparent', color: '#fff', cursor: 'pointer', padding: '3px 7px' }}>{toast.actionLabel}</button>}
-      <button onClick={() => onRemove(toast.id)} aria-label="通知を閉じる" style={{ marginLeft: 12, border: 0, background: 'transparent', color: '#fff', cursor: 'pointer', fontSize: '1rem' }}>×</button>
+      {toast.actionLabel && toast.onAction && <button onClick={() => { toast.onAction?.(); onRemove(toast.id) }} style={{ marginLeft: 12, border: '1px solid rgba(255,255,255,.65)', borderRadius: 6, background: 'transparent', color: 'var(--white)', cursor: 'pointer', padding: '3px 7px' }}>{toast.actionLabel}</button>}
+      <button onClick={() => onRemove(toast.id)} aria-label="通知を閉じる" style={{ marginLeft: 12, border: 0, background: 'transparent', color: 'var(--white)', cursor: 'pointer', fontSize: '1rem' }}>×</button>
     </div>
   )
 }

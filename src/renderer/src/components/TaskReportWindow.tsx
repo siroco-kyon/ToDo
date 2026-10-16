@@ -40,7 +40,7 @@ export function TaskReportWindow(): React.JSX.Element {
     return (
       <div style={emptyStateStyle}>
         <p>表示するレポートがありません。</p>
-        <p style={{ color: '#64748b', fontSize: '0.85rem' }}>
+        <p style={{ color: 'var(--slate-500)', fontSize: '0.85rem' }}>
           メインウィンドウの進捗レポートで「集計する」を実行してから「別ウィンドウで開く」を押してください。
         </p>
       </div>
@@ -48,22 +48,22 @@ export function TaskReportWindow(): React.JSX.Element {
   }
 
   return (
-    <div style={{ height: '100vh', overflowY: 'auto', background: '#0f172a', color: '#e2e8f0' }}>
+    <div style={{ height: '100vh', overflowY: 'auto', background: 'var(--slate-900)', color: 'var(--slate-200)' }}>
       <div style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h1 style={{ fontSize: '1.3rem', margin: 0 }}>📊 タスク別レポート</h1>
-            <p style={{ color: '#64748b', fontSize: '0.85rem', margin: '6px 0 0' }}>
+            <p style={{ color: 'var(--slate-500)', fontSize: '0.85rem', margin: '6px 0 0' }}>
               期間 {snapshot.from} 〜 {snapshot.to} ・ 生成: {formatDateTime(snapshot.generatedAt)}
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: '#94a3b8', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: 'var(--slate-400)', cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={showOnlyActiveTasks}
                 onChange={(e) => setShowOnlyActiveTasks(e.target.checked)}
-                style={{ accentColor: '#6366f1' }}
+                style={{ accentColor: 'var(--indigo-500)' }}
               />
               活動があったタスクのみ表示
             </label>
@@ -74,7 +74,7 @@ export function TaskReportWindow(): React.JSX.Element {
         </div>
 
         {rows.length === 0 ? (
-          <div style={{ color: '#64748b', fontSize: '0.9rem' }}>
+          <div style={{ color: 'var(--slate-500)', fontSize: '0.9rem' }}>
             {showOnlyActiveTasks ? 'この期間に進捗記録があるタスクがありません。' : '表示するタスクがありません。'}
           </div>
         ) : (
@@ -85,7 +85,7 @@ export function TaskReportWindow(): React.JSX.Element {
                   {group.category_color && (
                     <span style={{ width: 10, height: 10, borderRadius: '50%', background: group.category_color, flexShrink: 0 }} />
                   )}
-                  <span style={{ fontSize: '0.9rem', color: '#94a3b8', fontWeight: 700 }}>{group.category_name}</span>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--slate-400)', fontWeight: 700 }}>{group.category_name}</span>
                 </div>
                 {group.rows.map((row) => (
                   <TaskReportCard key={row.todo.id} row={row} />
@@ -100,13 +100,13 @@ export function TaskReportWindow(): React.JSX.Element {
 }
 
 const copyBtn: React.CSSProperties = {
-  padding: '8px 16px', background: '#334155', border: 'none',
-  borderRadius: 8, color: '#cbd5e1', cursor: 'pointer', fontSize: '0.85rem',
+  padding: '8px 16px', background: 'var(--slate-700)', border: 'none',
+  borderRadius: 8, color: 'var(--slate-300)', cursor: 'pointer', fontSize: '0.85rem',
   fontWeight: 'bold', whiteSpace: 'nowrap'
 }
 
 const emptyStateStyle: React.CSSProperties = {
-  minHeight: '100vh', background: '#0f172a', color: '#94a3b8',
+  minHeight: '100vh', background: 'var(--slate-900)', color: 'var(--slate-400)',
   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
   gap: 8, fontSize: '0.95rem', textAlign: 'center', padding: 24
 }

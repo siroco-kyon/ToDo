@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import type { Category, Todo, TodoStatus } from '../types'
 import { checklistBadgeText, checklistBadgeTitle, type ChecklistSummary } from '../lib/todoList'
+import { dataInk } from '../lib/theme'
 
 interface Props {
   todos: Todo[]
@@ -16,10 +17,10 @@ interface Props {
 }
 
 const COLUMNS: { status: TodoStatus; label: string; accent: string }[] = [
-  { status: 'not_started', label: '未着手', accent: '#64748b' },
-  { status: 'active', label: '進行中', accent: '#3b82f6' },
-  { status: 'on_hold', label: '保留中', accent: '#c084fc' },
-  { status: 'done', label: '完了', accent: '#22c55e' }
+  { status: 'not_started', label: '未着手', accent: 'var(--slate-500)' },
+  { status: 'active', label: '進行中', accent: 'var(--blue-500)' },
+  { status: 'on_hold', label: '保留中', accent: 'var(--purple-400)' },
+  { status: 'done', label: '完了', accent: 'var(--green-500)' }
 ]
 
 /** 日付のみの文字列（YYYY-MM-DD）をローカル日付の0時としてパースする */
@@ -29,21 +30,21 @@ function parseDateOnly(dateKey: string): Date {
 }
 
 function getDueColor(dueDate: string | null): string {
-  if (!dueDate) return '#64748b'
+  if (!dueDate) return 'var(--slate-500)'
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const diffDays = (parseDateOnly(dueDate).getTime() - today.getTime()) / 86400000
-  if (diffDays < 0) return '#ef4444'
-  if (diffDays < 1) return '#f97316'
-  if (diffDays <= 3) return '#f59e0b'
-  return '#64748b'
+  if (diffDays < 0) return 'var(--red-500)'
+  if (diffDays < 1) return 'var(--orange-500)'
+  if (diffDays <= 3) return 'var(--amber-500)'
+  return 'var(--slate-500)'
 }
 
 function progressColor(p: number): string {
-  if (p >= 100) return '#4ade80'
-  if (p >= 70) return '#6366f1'
-  if (p >= 30) return '#818cf8'
-  return '#475569'
+  if (p >= 100) return 'var(--green-400)'
+  if (p >= 70) return 'var(--indigo-500)'
+  if (p >= 30) return 'var(--indigo-400)'
+  return 'var(--slate-600)'
 }
 
 // 列内の並び順: 優先度の高い順 → 期限の早い順（無期限は後ろ）→ 手動順
@@ -59,8 +60,8 @@ function avatarStyle(color: string | null | undefined): React.CSSProperties {
   return {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
-    background: color ?? '#64748b', border: '1px solid #0f172a',
-    color: '#0b1220', fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase'
+    background: color ?? 'var(--slate-500)', border: '1px solid var(--slate-900)',
+    color: 'var(--ink-on-data)', fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase'
   }
 }
 
@@ -83,9 +84,9 @@ function KanbanCard({
       onDragEnd={onDragEnd}
       onClick={onSelect}
       style={{
-        background: '#0f172a',
-        border: `1px solid ${isRunning ? '#14532d' : '#1e293b'}`,
-        borderLeft: `3px solid ${isRunning ? '#4ade80' : 'transparent'}`,
+        background: 'var(--slate-900)',
+        border: `1px solid ${isRunning ? 'var(--green-900)' : 'var(--slate-800)'}`,
+        borderLeft: `3px solid ${isRunning ? 'var(--green-400)' : 'transparent'}`,
         borderRadius: 8,
         padding: '8px 10px',
         cursor: 'grab',
@@ -96,35 +97,35 @@ function KanbanCard({
         {todo.category_name && (
           <span style={{
             fontSize: '0.66rem', padding: '1px 6px', borderRadius: 99,
-            background: `${todo.category_color ?? '#6366f1'}30`, color: todo.category_color ?? '#6366f1'
+            background: `color-mix(in srgb, ${todo.category_color ?? 'var(--indigo-500)'} 18.8%, transparent)`, color: dataInk(todo.category_color ?? 'var(--indigo-500)')
           }}>
             {todo.category_name}
           </span>
         )}
         {todo.priority >= 4 && (
-          <span style={{ fontSize: '0.66rem', color: todo.priority === 5 ? '#ef4444' : '#f59e0b' }}>
+          <span style={{ fontSize: '0.66rem', color: todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)' }}>
             {'!'.repeat(todo.priority - 3)}
           </span>
         )}
         {todo.recurrence && (
-          <span title="繰り返し" style={{ fontSize: '0.62rem', color: '#818cf8' }}>🔁</span>
+          <span title="繰り返し" style={{ fontSize: '0.62rem', color: 'var(--indigo-400)' }}>🔁</span>
         )}
         {todo.list_mode === 1 && checklist && (
-          <span title={checklistBadgeTitle(checklist)} style={{ fontSize: '0.6rem', color: '#a5b4fc', border: '1px solid #4338ca', borderRadius: 99, padding: '0 5px' }}>
+          <span title={checklistBadgeTitle(checklist)} style={{ fontSize: '0.6rem', color: 'var(--indigo-300)', border: '1px solid var(--indigo-700)', borderRadius: 99, padding: '0 5px' }}>
             ☑ {checklistBadgeText(checklist)}
           </span>
         )}
         {isPrivate && (
-          <span title="集計から外すカテゴリ（チームの集計・レポートに含めません。ほかの人にも見えます）" style={{ fontSize: '0.6rem', color: '#94a3b8', border: '1px solid #334155', borderRadius: 99, padding: '0 5px' }}>集計外</span>
+          <span title="集計から外すカテゴリ（チームの集計・レポートに含めません。ほかの人にも見えます）" style={{ fontSize: '0.6rem', color: 'var(--slate-400)', border: '1px solid var(--slate-700)', borderRadius: 99, padding: '0 5px' }}>集計外</span>
         )}
         {isRunning && (
-          <span style={{ fontSize: '0.6rem', background: '#4ade8020', color: '#4ade80', padding: '1px 5px', borderRadius: 99 }}>計測中</span>
+          <span style={{ fontSize: '0.6rem', background: 'color-mix(in srgb, var(--green-400) 12.5%, transparent)', color: 'var(--green-400)', padding: '1px 5px', borderRadius: 99 }}>計測中</span>
         )}
       </div>
 
       <div style={{
         fontSize: '0.84rem',
-        color: isDone ? '#64748b' : '#e2e8f0',
+        color: isDone ? 'var(--slate-500)' : 'var(--slate-200)',
         textDecoration: isDone ? 'line-through' : 'none',
         lineHeight: 1.4, wordBreak: 'break-word'
       }}>
@@ -132,14 +133,14 @@ function KanbanCard({
       </div>
 
       {prog > 0 && (
-        <div style={{ height: 3, background: '#1e293b', borderRadius: 99, marginTop: 7, overflow: 'hidden' }}>
+        <div style={{ height: 3, background: 'var(--slate-800)', borderRadius: 99, marginTop: 7, overflow: 'hidden' }}>
           <div style={{ height: '100%', width: `${prog}%`, background: progressColor(prog) }} />
         </div>
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
         {todo.due_date && (
-          <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: '0.66rem', color: isDone ? '#64748b' : getDueColor(todo.due_date) }}>
+          <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: '0.66rem', color: isDone ? 'var(--slate-500)' : getDueColor(todo.due_date) }}>
             期限 {Number(todo.due_date.slice(5, 7))}/{Number(todo.due_date.slice(8, 10))}
           </span>
         )}
@@ -159,7 +160,7 @@ function KanbanCard({
               </span>
             ))}
             {coAssignees.length > 3 && (
-              <span style={{ ...avatarStyle('#475569'), marginLeft: -4 }}>+{coAssignees.length - 3}</span>
+              <span style={{ ...avatarStyle('var(--slate-600)'), marginLeft: -4 }}>+{coAssignees.length - 3}</span>
             )}
           </span>
         )}
@@ -220,22 +221,22 @@ export function KanbanView({
             onDrop={(e) => { e.preventDefault(); handleDrop(col.status) }}
             style={{
               flex: '1 1 0', minWidth: 240, display: 'flex', flexDirection: 'column',
-              background: isOver ? '#13203b' : '#0b1220',
-              border: `1px solid ${isOver ? '#3b82f6' : '#1e293b'}`,
+              background: isOver ? 'var(--c-13203b)' : 'var(--c-0b1220)',
+              border: `1px solid ${isOver ? 'var(--blue-500)' : 'var(--slate-800)'}`,
               borderRadius: 12, overflow: 'hidden'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid #1e293b' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--slate-800)' }}>
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: col.accent, flexShrink: 0 }} />
-              <span style={{ fontSize: '0.84rem', fontWeight: 700, color: '#e2e8f0' }}>{col.label}</span>
-              <span style={{ fontSize: '0.7rem', color: '#64748b', background: '#0f172a', border: '1px solid #1e293b', borderRadius: 99, padding: '1px 7px' }}>
+              <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--slate-200)' }}>{col.label}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--slate-500)', background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 99, padding: '1px 7px' }}>
                 {items.length}
               </span>
               <button
                 onClick={() => { setAddingStatus(col.status); setAddTitle('') }}
                 title={`「${col.label}」の列にタスクを追加`}
                 aria-label={`${col.label}にタスクを追加`}
-                style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid #334155', borderRadius: 6, color: '#94a3b8', cursor: 'pointer', fontSize: '0.8rem', lineHeight: 1, padding: '3px 7px' }}
+                style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid var(--slate-700)', borderRadius: 6, color: 'var(--slate-400)', cursor: 'pointer', fontSize: '0.8rem', lineHeight: 1, padding: '3px 7px' }}
               >
                 ＋
               </button>
@@ -254,7 +255,7 @@ export function KanbanView({
                   }}
                   onBlur={() => submitAdd(col.status)}
                   placeholder="タスク名を入力して Enter"
-                  style={{ width: '100%', padding: '7px 9px', background: '#0f172a', border: '1px solid #3b82f6', borderRadius: 8, color: '#e2e8f0', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '7px 9px', background: 'var(--slate-900)', border: '1px solid var(--blue-500)', borderRadius: 8, color: 'var(--slate-200)', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}
                 />
               )}
 
@@ -272,7 +273,7 @@ export function KanbanView({
               ))}
 
               {items.length === 0 && addingStatus !== col.status && (
-                <div style={{ padding: '16px 8px', textAlign: 'center', color: '#475569', fontSize: '0.76rem' }}>
+                <div style={{ padding: '16px 8px', textAlign: 'center', color: 'var(--slate-600)', fontSize: '0.76rem' }}>
                   カードをここにドラッグ
                 </div>
               )}

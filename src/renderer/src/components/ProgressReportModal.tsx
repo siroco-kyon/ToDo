@@ -37,11 +37,11 @@ const STATUS_LABEL: Record<TodoStatus, string> = {
 }
 
 const STATUS_COLOR: Record<TodoStatus, string> = {
-  not_started: '#64748b',
-  active: '#3b82f6',
-  on_hold: '#c084fc',
-  done: '#22c55e',
-  archived: '#475569'
+  not_started: 'var(--slate-500)',
+  active: 'var(--blue-500)',
+  on_hold: 'var(--purple-400)',
+  done: 'var(--green-500)',
+  archived: 'var(--slate-600)'
 }
 
 const CHANGE_FIELD_LABEL: Record<string, string> = {
@@ -126,9 +126,9 @@ function getDueDateColor(dueDate: string | null): string {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const diffDays = (parseDateOnly(dueDate).getTime() - today.getTime()) / 86400000
-  if (diffDays < 0) return '#ef4444'
-  if (diffDays < 1) return '#f97316'
-  if (diffDays <= 3) return '#f59e0b'
+  if (diffDays < 0) return 'var(--red-500)'
+  if (diffDays < 1) return 'var(--orange-500)'
+  if (diffDays <= 3) return 'var(--amber-500)'
   return ''
 }
 
@@ -520,13 +520,13 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div style={{
-        background: '#1e293b', borderRadius: 14, padding: 28, width: 680,
+        background: 'var(--slate-800)', borderRadius: 14, padding: 28, width: 680,
         maxHeight: '88vh', overflowY: 'auto',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid #334155',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid var(--slate-700)',
         display: 'flex', flexDirection: 'column', gap: 22
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0', margin: 0 }}>
+          <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)', margin: 0 }}>
             {selfOnly ? '📊 自分の進捗サマリー' : '📊 進捗レポート'}
           </h2>
           <button onClick={onClose} style={closeBtnStyle}>×</button>
@@ -537,7 +537,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
           <h3 style={sectionHead}>期間</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={dateInputStyle} />
-            <span style={{ color: '#64748b' }}>〜</span>
+            <span style={{ color: 'var(--slate-500)' }}>〜</span>
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={dateInputStyle} />
             <div style={{ display: 'flex', gap: 6, marginLeft: 4 }}>
               <button onClick={() => applyPreset(1)} style={presetBtn}>今日</button>
@@ -570,9 +570,9 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 7,
                       padding: '5px 12px', borderRadius: 99, cursor: 'pointer',
-                      border: `1px solid ${selected ? user.color : '#334155'}`,
-                      background: selected ? `${user.color}26` : '#0f172a',
-                      color: selected ? '#e2e8f0' : '#64748b',
+                      border: `1px solid ${selected ? user.color : 'var(--slate-700)'}`,
+                      background: selected ? `color-mix(in srgb, ${user.color} 14.9%, transparent)` : 'var(--slate-900)',
+                      color: selected ? 'var(--slate-200)' : 'var(--slate-500)',
                       fontSize: '0.82rem', opacity: inactive ? 0.6 : 1
                     }}
                   >
@@ -602,12 +602,12 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
               <h3 style={sectionHead}>タスク別レポート（一覧の表示順）</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.76rem', color: '#94a3b8', cursor: 'pointer' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.76rem', color: 'var(--slate-400)', cursor: 'pointer' }}>
                   <input
                     type="checkbox"
                     checked={showOnlyActiveTasks}
                     onChange={(e) => setShowOnlyActiveTasks(e.target.checked)}
-                    style={{ accentColor: '#6366f1' }}
+                    style={{ accentColor: 'var(--indigo-500)' }}
                   />
                   活動があったタスクのみ表示
                 </label>
@@ -617,14 +617,14 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
               </div>
             </div>
             {authorFiltered && (
-              <div style={{ color: '#64748b', fontSize: '0.76rem' }}>
+              <div style={{ color: 'var(--slate-500)', fontSize: '0.76rem' }}>
                 {selfOnly
                   ? '自分が書いた進捗ログ・返信だけを載せています（副担当など他の人のログは含みません）。'
                   : '選択したメンバーが書いた進捗ログ・返信だけを載せています。'}
               </div>
             )}
             {displayedTaskReport.length === 0 ? (
-              <div style={{ color: '#64748b', fontSize: '0.84rem' }}>
+              <div style={{ color: 'var(--slate-500)', fontSize: '0.84rem' }}>
                 {showOnlyActiveTasks
                   ? selfOnly && authorFiltered
                     ? 'この期間に自分が書いた進捗ログがあるタスクはありません。'
@@ -655,10 +655,10 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
         <section style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <h3 style={sectionHead}>メンバー別の活動集計</h3>
           {loading && !digest && (
-            <div style={{ color: '#64748b', fontSize: '0.84rem' }}>読み込み中…</div>
+            <div style={{ color: 'var(--slate-500)', fontSize: '0.84rem' }}>読み込み中…</div>
           )}
           {digest && digest.users.length === 0 && (
-            <div style={{ color: '#64748b', fontSize: '0.84rem' }}>対象メンバーがいません。</div>
+            <div style={{ color: 'var(--slate-500)', fontSize: '0.84rem' }}>対象メンバーがいません。</div>
           )}
           {digest && digest.users.map((user) => (
             <UserDigestCard key={user.user_id ?? user.display_name} user={user} />
@@ -674,31 +674,31 @@ export function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Eleme
   const assignees = formatAssignees(todo)
   const dueColor = getDueDateColor(todo.due_date)
   return (
-    <div style={{ border: '1px solid #334155', borderRadius: 10, background: '#0f172a', padding: '10px 12px' }}>
+    <div style={{ border: '1px solid var(--slate-700)', borderRadius: 10, background: 'var(--slate-900)', padding: '10px 12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '0.88rem', color: '#e2e8f0', fontWeight: 700 }}>{todo.title}</span>
+        <span style={{ fontSize: '0.88rem', color: 'var(--slate-200)', fontWeight: 700 }}>{todo.title}</span>
         {todo.priority >= 4 && (
-          <span style={{ fontSize: '0.68rem', color: todo.priority === 5 ? '#ef4444' : '#f59e0b', fontWeight: 700 }}>
+          <span style={{ fontSize: '0.68rem', color: todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)', fontWeight: 700 }}>
             {'!'.repeat(todo.priority - 3)}
           </span>
         )}
         <span style={{ ...statBadge, marginLeft: 'auto' }}>{todo.progress}%</span>
-        <span style={{ ...statBadge, ...(dueColor ? { color: dueColor, borderColor: `${dueColor}60` } : {}) }}>
+        <span style={{ ...statBadge, ...(dueColor ? { color: dueColor, borderColor: `color-mix(in srgb, ${dueColor} 37.6%, transparent)` } : {}) }}>
           {todo.due_date ? `期限 ${todo.due_date.slice(0, 10)}` : '期限なし'}
         </span>
       </div>
       {assignees && (
-        <div style={{ fontSize: '0.74rem', color: '#93c5fd', marginTop: 4 }}>{assignees}</div>
+        <div style={{ fontSize: '0.74rem', color: 'var(--blue-300)', marginTop: 4 }}>{assignees}</div>
       )}
       {todo.memo && (
-        <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 6, whiteSpace: 'pre-wrap' }}><LinkedText text={todo.memo} /></div>
+        <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)', marginTop: 6, whiteSpace: 'pre-wrap' }}><LinkedText text={todo.memo} /></div>
       )}
       {subTasks.length > 0 && (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
           {subTasks.map((sub) => (
             <div key={sub.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.78rem' }}>
-              <span style={{ color: sub.done ? '#22c55e' : '#475569', flexShrink: 0 }}>{sub.done ? '✓' : '○'}</span>
-              <span style={{ color: sub.done ? '#64748b' : '#cbd5e1', textDecoration: sub.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+              <span style={{ color: sub.done ? 'var(--green-500)' : 'var(--slate-600)', flexShrink: 0 }}>{sub.done ? '✓' : '○'}</span>
+              <span style={{ color: sub.done ? 'var(--slate-500)' : 'var(--slate-300)', textDecoration: sub.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                 {sub.title}
               </span>
               <span style={rowMeta}>{sub.progress}%{sub.due_date ? `・${sub.due_date.slice(0, 10)}` : ''}</span>
@@ -708,15 +708,15 @@ export function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Eleme
       )}
       <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {notes.length === 0 ? (
-          <div style={{ color: '#475569', fontSize: '0.78rem' }}>進捗記録なし</div>
+          <div style={{ color: 'var(--slate-600)', fontSize: '0.78rem' }}>進捗記録なし</div>
         ) : (
           notes.map((note) => (
-            <div key={note.id} style={{ background: '#1e293b', borderRadius: 8, padding: '7px 9px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.72rem', color: '#64748b', marginBottom: 3 }}>
+            <div key={note.id} style={{ background: 'var(--slate-800)', borderRadius: 8, padding: '7px 9px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.72rem', color: 'var(--slate-500)', marginBottom: 3 }}>
                 <span>{formatDateTime(note.created_at)}</span>
-                <span style={{ color: '#93c5fd' }}>{note.author_name ?? '不明'}</span>
+                <span style={{ color: 'var(--blue-300)' }}>{note.author_name ?? '不明'}</span>
               </div>
-              <div style={{ fontSize: '0.82rem', color: '#cbd5e1', whiteSpace: 'pre-wrap' }}><LinkedText text={note.body} /></div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--slate-300)', whiteSpace: 'pre-wrap' }}><LinkedText text={note.body} /></div>
               {note.comments.length > 0 && (
                 <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <CommentThread comments={note.comments} depth={0} />
@@ -734,8 +734,8 @@ function CommentThread({ comments, depth }: { comments: ProgressNoteComment[]; d
   return (
     <>
       {comments.map((comment) => (
-        <div key={comment.id} style={{ marginLeft: depth * 16, fontSize: '0.78rem', color: '#cbd5e1' }}>
-          <span style={{ color: '#a78bfa' }}>↳ {comment.author_name ?? '不明'}: </span>
+        <div key={comment.id} style={{ marginLeft: depth * 16, fontSize: '0.78rem', color: 'var(--slate-300)' }}>
+          <span style={{ color: 'var(--violet-400)' }}>↳ {comment.author_name ?? '不明'}: </span>
           <LinkedText text={comment.body} />
           {comment.replies.length > 0 && <CommentThread comments={comment.replies} depth={depth + 1} />}
         </div>
@@ -757,10 +757,10 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
     user.work_minutes > 0
 
   return (
-    <div style={{ border: '1px solid #334155', borderRadius: 12, background: '#0f172a', padding: 16 }}>
+    <div style={{ border: '1px solid var(--slate-700)', borderRadius: 12, background: 'var(--slate-900)', padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ width: 12, height: 12, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
-        <span style={{ fontSize: '0.95rem', color: '#e2e8f0', fontWeight: 700 }}>{user.display_name}</span>
+        <span style={{ fontSize: '0.95rem', color: 'var(--slate-200)', fontWeight: 700 }}>{user.display_name}</span>
         <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
           <span style={statBadge}>タスク {user.added_todos.length}</span>
           <span style={statBadge}>完了 {user.completed_todos.length}</span>
@@ -773,7 +773,7 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
       </div>
 
       {!hasActivity ? (
-        <div style={{ color: '#475569', fontSize: '0.8rem', marginTop: 10 }}>この期間の活動はありません。</div>
+        <div style={{ color: 'var(--slate-600)', fontSize: '0.8rem', marginTop: 10 }}>この期間の活動はありません。</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 14 }}>
           {user.added_todos.length > 0 && (
@@ -782,13 +782,13 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {user.added_todos.map((todo) => (
                   <div key={todo.id} style={rowStyle}>
-                    <span style={{ ...statusPill, background: `${STATUS_COLOR[todo.status]}26`, color: STATUS_COLOR[todo.status] }}>
+                    <span style={{ ...statusPill, background: `color-mix(in srgb, ${STATUS_COLOR[todo.status]} 14.9%, transparent)`, color: STATUS_COLOR[todo.status] }}>
                       {STATUS_LABEL[todo.status]}
                     </span>
                     {todo.category_name && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: todo.category_color ?? '#64748b' }} />
-                        <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{todo.category_name}</span>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: todo.category_color ?? 'var(--slate-500)' }} />
+                        <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>{todo.category_name}</span>
                       </span>
                     )}
                     <span style={rowTitle}>{todo.title}</span>
@@ -805,13 +805,13 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {user.completed_todos.map((todo) => (
                   <div key={todo.id} style={rowStyle}>
-                    <span style={{ ...statusPill, background: `${STATUS_COLOR[todo.status]}26`, color: STATUS_COLOR[todo.status] }}>
+                    <span style={{ ...statusPill, background: `color-mix(in srgb, ${STATUS_COLOR[todo.status]} 14.9%, transparent)`, color: STATUS_COLOR[todo.status] }}>
                       {STATUS_LABEL[todo.status]}
                     </span>
                     {todo.category_name && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: todo.category_color ?? '#64748b' }} />
-                        <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{todo.category_name}</span>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: todo.category_color ?? 'var(--slate-500)' }} />
+                        <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>{todo.category_name}</span>
                       </span>
                     )}
                     <span style={rowTitle}>{todo.title}</span>
@@ -828,13 +828,13 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {user.added_subtasks.map((sub) => (
                   <div key={sub.id} style={rowStyle}>
-                    <span style={{ color: sub.done ? '#22c55e' : '#475569', fontSize: '0.82rem', flexShrink: 0 }}>
+                    <span style={{ color: sub.done ? 'var(--green-500)' : 'var(--slate-600)', fontSize: '0.82rem', flexShrink: 0 }}>
                       {sub.done ? '✓' : '○'}
                     </span>
-                    <span style={{ fontSize: '0.74rem', color: '#64748b', flexShrink: 0, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--slate-500)', flexShrink: 0, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {sub.todo_title}
                     </span>
-                    <span style={{ color: '#475569', flexShrink: 0 }}>›</span>
+                    <span style={{ color: 'var(--slate-600)', flexShrink: 0 }}>›</span>
                     <span style={rowTitle}>{sub.title}</span>
                     <span style={rowMeta}>{formatDateTime(sub.created_at)}</span>
                   </div>
@@ -848,22 +848,22 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
               <div style={groupLabel}>タスク別の活動ログ</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {taskActivityGroups.map((group) => (
-                  <div key={group.todo_id} style={{ background: '#1e293b', borderRadius: 8, padding: '9px 10px' }}>
+                  <div key={group.todo_id} style={{ background: 'var(--slate-800)', borderRadius: 8, padding: '9px 10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6, flexWrap: 'wrap' }}>
                       {group.category_name && (
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.category_color ?? '#64748b' }} />
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.category_color ?? 'var(--slate-500)' }} />
                       )}
-                      <span style={{ fontSize: '0.78rem', color: '#93c5fd', fontWeight: 700 }}>{group.todo_title}</span>
-                      {group.category_name && <span style={{ fontSize: '0.68rem', color: '#64748b' }}>{group.category_name}</span>}
+                      <span style={{ fontSize: '0.78rem', color: 'var(--blue-300)', fontWeight: 700 }}>{group.todo_title}</span>
+                      {group.category_name && <span style={{ fontSize: '0.68rem', color: 'var(--slate-500)' }}>{group.category_name}</span>}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                       {group.events.map((event) => (
                         <div key={event.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, fontSize: '0.78rem', lineHeight: 1.45 }}>
-                          <span style={{ color: '#64748b', flexShrink: 0 }}>{formatDateTime(event.created_at)}</span>
-                          <span style={{ color: event.kind === 'change' ? '#fbbf24' : '#4ade80', flexShrink: 0 }}>
+                          <span style={{ color: 'var(--slate-500)', flexShrink: 0 }}>{formatDateTime(event.created_at)}</span>
+                          <span style={{ color: event.kind === 'change' ? 'var(--amber-400)' : 'var(--green-400)', flexShrink: 0 }}>
                             {event.kind === 'change' ? '変更' : '進捗'}
                           </span>
-                          <span style={{ color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>
+                          <span style={{ color: 'var(--slate-300)', whiteSpace: 'pre-wrap' }}>
                             {event.change ? formatTaskChange(event.change) : event.note?.body}
                           </span>
                         </div>
@@ -880,17 +880,17 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
               <div style={groupLabel}>コメント・返信</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {user.comments.map((comment) => (
-                  <div key={comment.id} style={{ background: '#1e293b', borderRadius: 8, padding: '8px 10px' }}>
+                  <div key={comment.id} style={{ background: 'var(--slate-800)', borderRadius: 8, padding: '8px 10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.7rem', color: comment.parent_comment_id ? '#a78bfa' : '#38bdf8', fontWeight: 800 }}>
+                      <span style={{ fontSize: '0.7rem', color: comment.parent_comment_id ? 'var(--violet-400)' : 'var(--sky-400)', fontWeight: 800 }}>
                         {comment.parent_comment_id ? '返信' : 'コメント'}
                       </span>
-                      <span style={{ fontSize: '0.74rem', color: '#93c5fd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360 }}>
+                      <span style={{ fontSize: '0.74rem', color: 'var(--blue-300)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360 }}>
                         {comment.todo_title}
                       </span>
-                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{formatDateTime(comment.created_at)}</span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>{formatDateTime(comment.created_at)}</span>
                     </div>
-                    <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}><LinkedText text={comment.body} /></div>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--slate-300)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}><LinkedText text={comment.body} /></div>
                   </div>
                 ))}
               </div>
@@ -903,49 +903,49 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
 }
 
 const sectionHead: React.CSSProperties = {
-  fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase',
+  fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase',
   letterSpacing: '0.08em', fontWeight: 'bold', margin: 0
 }
 
 const closeBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: '#64748b',
+  background: 'none', border: 'none', color: 'var(--slate-500)',
   cursor: 'pointer', fontSize: '1.2rem', padding: '2px 6px'
 }
 
 const primaryBtn: React.CSSProperties = {
-  padding: '8px 18px', background: '#6366f1', border: 'none',
-  borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: '0.85rem',
+  padding: '8px 18px', background: 'var(--indigo-500)', border: 'none',
+  borderRadius: 8, color: 'var(--on-fill-white)', cursor: 'pointer', fontSize: '0.85rem',
   fontWeight: 'bold', whiteSpace: 'nowrap', alignSelf: 'flex-start'
 }
 
 const copyBtn: React.CSSProperties = {
-  padding: '8px 18px', background: '#334155', border: 'none',
-  borderRadius: 8, color: '#cbd5e1', cursor: 'pointer', fontSize: '0.85rem',
+  padding: '8px 18px', background: 'var(--slate-700)', border: 'none',
+  borderRadius: 8, color: 'var(--slate-300)', cursor: 'pointer', fontSize: '0.85rem',
   fontWeight: 'bold', whiteSpace: 'nowrap'
 }
 
 const presetBtn: React.CSSProperties = {
-  padding: '5px 11px', background: '#334155', border: 'none',
-  borderRadius: 6, color: '#cbd5e1', cursor: 'pointer', fontSize: '0.78rem', whiteSpace: 'nowrap'
+  padding: '5px 11px', background: 'var(--slate-700)', border: 'none',
+  borderRadius: 6, color: 'var(--slate-300)', cursor: 'pointer', fontSize: '0.78rem', whiteSpace: 'nowrap'
 }
 
 const linkBtn: React.CSSProperties = {
-  background: 'none', border: 'none', color: '#818cf8',
+  background: 'none', border: 'none', color: 'var(--indigo-400)',
   cursor: 'pointer', fontSize: '0.76rem', padding: 0
 }
 
 const dateInputStyle: React.CSSProperties = {
-  padding: '6px 10px', background: '#0f172a', border: '1px solid #334155',
-  borderRadius: 7, color: '#e2e8f0', fontSize: '0.85rem', outline: 'none', colorScheme: 'dark'
+  padding: '6px 10px', background: 'var(--slate-900)', border: '1px solid var(--slate-700)',
+  borderRadius: 7, color: 'var(--slate-200)', fontSize: '0.85rem', outline: 'none', colorScheme: 'var(--native-scheme)'
 }
 
 const statBadge: React.CSSProperties = {
-  fontSize: '0.7rem', color: '#cbd5e1', background: '#1e293b',
-  border: '1px solid #334155', borderRadius: 6, padding: '2px 8px', whiteSpace: 'nowrap'
+  fontSize: '0.7rem', color: 'var(--slate-300)', background: 'var(--slate-800)',
+  border: '1px solid var(--slate-700)', borderRadius: 6, padding: '2px 8px', whiteSpace: 'nowrap'
 }
 
 const groupLabel: React.CSSProperties = {
-  fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, marginBottom: 6
+  fontSize: '0.72rem', color: 'var(--slate-400)', fontWeight: 700, marginBottom: 6
 }
 
 const rowStyle: React.CSSProperties = {
@@ -953,11 +953,11 @@ const rowStyle: React.CSSProperties = {
 }
 
 const rowTitle: React.CSSProperties = {
-  color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0
+  color: 'var(--slate-200)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0
 }
 
 const rowMeta: React.CSSProperties = {
-  fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap', flexShrink: 0
+  fontSize: '0.72rem', color: 'var(--slate-500)', whiteSpace: 'nowrap', flexShrink: 0
 }
 
 const statusPill: React.CSSProperties = {

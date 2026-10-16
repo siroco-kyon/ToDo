@@ -59,18 +59,18 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div style={{
-        background: '#1e293b', borderRadius: 14, padding: 28, width: 560,
+        background: 'var(--slate-800)', borderRadius: 14, padding: 28, width: 560,
         maxHeight: '88vh', overflowY: 'auto',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid #334155',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid var(--slate-700)',
         display: 'flex', flexDirection: 'column', gap: 18
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontSize: '1.1rem', color: '#e2e8f0', margin: 0 }}>💾 デスクトップDBの取り込み</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1.2rem', padding: '2px 6px' }}>×</button>
+          <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)', margin: 0 }}>💾 デスクトップDBの取り込み</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--slate-500)', cursor: 'pointer', fontSize: '1.2rem', padding: '2px 6px' }}>×</button>
         </div>
 
-        <div style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.6 }}>
-          デスクトップ版（1人用）の <code style={{ color: '#cbd5e1' }}>todo.db</code> を、担当者を指定してこのサーバーに取り込みます。
+        <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)', lineHeight: 1.6 }}>
+          デスクトップ版（1人用）の <code style={{ color: 'var(--slate-300)' }}>todo.db</code> を、担当者を指定してこのサーバーに取り込みます。
           同じファイルを再度取り込んでも二重登録はされません。まず「ドライラン」で件数を確認してから実行するのがおすすめです。
           進捗・返信・リアクション・変更履歴の投稿者も、指定したメンバーとして引き継ぎます。
         </div>
@@ -83,7 +83,7 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
             onChange={(event) => { setFile(event.target.files?.[0] ?? null); setResult(null) }}
             style={{ ...inputStyle, padding: 8 }}
           />
-          {file && <div style={{ marginTop: 4, fontSize: '0.74rem', color: '#64748b' }}>{file.name}（{Math.max(1, Math.round(file.size / 1024))} KB）</div>}
+          {file && <div style={{ marginTop: 4, fontSize: '0.74rem', color: 'var(--slate-500)' }}>{file.name}（{Math.max(1, Math.round(file.size / 1024))} KB）</div>}
         </div>
 
         <div>
@@ -97,20 +97,20 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={() => void runImport(true)} disabled={busy} style={btn('#334155', '#cbd5e1')}>
+          <button onClick={() => void runImport(true)} disabled={busy} style={btn('var(--slate-700)', 'var(--slate-300)')}>
             {busy ? '処理中...' : 'ドライラン（確認のみ）'}
           </button>
-          <button onClick={() => void runImport(false)} disabled={busy} style={btn('#6366f1', '#fff')}>
+          <button onClick={() => void runImport(false)} disabled={busy} style={btn('var(--indigo-500)', 'var(--on-fill-white)')}>
             {busy ? '処理中...' : '取り込みを実行'}
           </button>
         </div>
 
         {result && (
-          <div style={{ background: '#0f172a', borderRadius: 10, padding: 14, border: '1px solid #334155' }}>
-            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: result.dryRun ? '#fbbf24' : '#4ade80', marginBottom: 8 }}>
+          <div style={{ background: 'var(--slate-900)', borderRadius: 10, padding: 14, border: '1px solid var(--slate-700)' }}>
+            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: result.dryRun ? 'var(--amber-400)' : 'var(--green-400)', marginBottom: 8 }}>
               {result.dryRun ? 'ドライラン結果（未保存）' : '取り込み完了'}
             </div>
-            <table style={{ fontSize: '0.8rem', color: '#cbd5e1', borderCollapse: 'collapse' }}>
+            <table style={{ fontSize: '0.8rem', color: 'var(--slate-300)', borderCollapse: 'collapse' }}>
               <tbody>
                 <ResultRow label="カテゴリ" value={result.categories} note="（新規追加分のみ）" />
                 <ResultRow label="タスク" value={result.todos} />
@@ -127,12 +127,12 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
               </tbody>
             </table>
             {!!result.categoryConflicts?.length && (
-              <p role="alert" style={{ margin: '10px 0 0', fontSize: '0.76rem', color: '#fbbf24' }}>
+              <p role="alert" style={{ margin: '10px 0 0', fontSize: '0.76rem', color: 'var(--amber-400)' }}>
                 次の同名カテゴリは集計除外の設定が異なるため、サーバー側の設定を維持します：{result.categoryConflicts.join('、')}
               </p>
             )}
             {result.dryRun && (
-              <div style={{ marginTop: 8, fontSize: '0.76rem', color: '#94a3b8' }}>
+              <div style={{ marginTop: 8, fontSize: '0.76rem', color: 'var(--slate-400)' }}>
                 問題なければ「取り込みを実行」を押してください。
               </div>
             )}
@@ -146,20 +146,20 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
 function ResultRow({ label, value, note }: { label: string; value: number; note?: string }): React.JSX.Element {
   return (
     <tr>
-      <td style={{ padding: '2px 16px 2px 0', color: '#94a3b8' }}>{label}</td>
+      <td style={{ padding: '2px 16px 2px 0', color: 'var(--slate-400)' }}>{label}</td>
       <td style={{ padding: '2px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{value} 件</td>
-      <td style={{ padding: '2px 0 2px 8px', color: '#64748b', fontSize: '0.72rem' }}>{note ?? ''}</td>
+      <td style={{ padding: '2px 0 2px 8px', color: 'var(--slate-500)', fontSize: '0.72rem' }}>{note ?? ''}</td>
     </tr>
   )
 }
 
 const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: '0.74rem', color: '#94a3b8', marginBottom: 6
+  display: 'block', fontSize: '0.74rem', color: 'var(--slate-400)', marginBottom: 6
 }
 
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 10px', background: '#0f172a', border: '1px solid #334155',
-  borderRadius: 7, color: '#e2e8f0', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box'
+  width: '100%', padding: '8px 10px', background: 'var(--slate-900)', border: '1px solid var(--slate-700)',
+  borderRadius: 7, color: 'var(--slate-200)', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box'
 }
 
 function btn(background: string, color: string): React.CSSProperties {

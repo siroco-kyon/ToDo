@@ -50,6 +50,7 @@ import type {
   UpdateSubTaskInput,
   UpdateTodoInput
 } from '../types'
+import { dataInk } from '../lib/theme'
 
 // 定例ミーティング向けの「報告」タブ。
 // 担当者ごとに、タスク・サブタスク・期限・進捗と、期間内の進捗ログ（返信込み）を全文で並べ、
@@ -167,11 +168,11 @@ const STATUS_LABEL: Record<TodoStatus, string> = {
 }
 
 const STATUS_COLOR: Record<TodoStatus, string> = {
-  not_started: '#64748b',
-  active: '#3b82f6',
-  on_hold: '#c084fc',
-  done: '#22c55e',
-  archived: '#475569'
+  not_started: 'var(--slate-500)',
+  active: 'var(--blue-500)',
+  on_hold: 'var(--purple-400)',
+  done: 'var(--green-500)',
+  archived: 'var(--slate-600)'
 }
 
 
@@ -541,13 +542,13 @@ function freshnessText(row: ReportRow): string {
 }
 
 function freshnessTone(freshness: Freshness): { color: string; background: string; border: string } {
-  if (freshness === 'onHold') return { color: '#e9d5ff', background: '#3b0764', border: '#a855f7' }
-  if (freshness === 'fresh') return { color: '#86efac', background: '#052e16', border: '#166534' }
-  if (freshness === 'quiet') return { color: '#fde68a', background: '#422006', border: '#a16207' }
-  if (freshness === 'stale' || freshness === 'none') return { color: '#fecaca', background: '#450a0a', border: '#b91c1c' }
-  if (freshness === 'done') return { color: '#bbf7d0', background: '#0f172a', border: '#334155' }
-  if (freshness === 'list') return { color: '#c7d2fe', background: '#1e1b4b', border: '#4338ca' }
-  return { color: '#94a3b8', background: '#0f172a', border: '#334155' }
+  if (freshness === 'onHold') return { color: 'var(--purple-200)', background: 'var(--purple-950)', border: 'var(--purple-500)' }
+  if (freshness === 'fresh') return { color: 'var(--green-300)', background: 'var(--green-950)', border: 'var(--green-800)' }
+  if (freshness === 'quiet') return { color: 'var(--amber-200)', background: 'var(--yellow-950)', border: 'var(--yellow-700)' }
+  if (freshness === 'stale' || freshness === 'none') return { color: 'var(--red-200)', background: 'var(--red-950)', border: 'var(--red-700)' }
+  if (freshness === 'done') return { color: 'var(--green-200)', background: 'var(--slate-900)', border: 'var(--slate-700)' }
+  if (freshness === 'list') return { color: 'var(--indigo-200)', background: 'var(--indigo-950)', border: 'var(--indigo-700)' }
+  return { color: 'var(--slate-400)', background: 'var(--slate-900)', border: 'var(--slate-700)' }
 }
 
 /** 状態と鮮度をまとめた表記。完了・未着手は状態だけで意味が伝わるので重ねない */
@@ -568,11 +569,11 @@ function progressDeltaText(summary: ChangeSummary, current: number): string | nu
 }
 
 function progressDeltaColor(summary: ChangeSummary, current: number): string {
-  if (summary.progressStart === null) return '#64748b'
+  if (summary.progressStart === null) return 'var(--slate-500)'
   const delta = current - summary.progressStart
-  if (delta > 0) return '#86efac'
-  if (delta < 0) return '#fca5a5'
-  return '#94a3b8'
+  if (delta > 0) return 'var(--green-300)'
+  if (delta < 0) return 'var(--red-300)'
+  return 'var(--slate-400)'
 }
 
 /** 期間中の期限の変更。変更がなければ null */
@@ -1096,12 +1097,12 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const noteCount = baseRows.reduce((sum, row) => sum + row.notes.length, 0)
   const myNeedsReportCount = multiUser && currentUserId ? countOf('myNeedsReport') : 0
   const quickFilterChips: Array<{ value: QuickFilter; label: string; count: number; color: string; title: string }> = [
-    { value: 'all', label: 'すべて', count: baseRows.length, color: '#cbd5e1', title: '絞り込まずに表示' },
-    { value: 'needsReport', label: '報告なし', count: countOf('needsReport'), color: '#fde68a', title: '進行中なのに、この期間の進捗ログ・メモ更新がないタスク' },
-    { value: 'discussion', label: '要相談', count: countOf('discussion'), color: '#d6b38a', title: '「要相談」が付いた進捗ログがあるタスク（期間に関係なく）' },
-    { value: 'onHold', label: '保留中', count: countOf('onHold'), color: '#d8b4fe', title: '保留中のタスク（保留が長い順）' },
-    { value: 'overdue', label: '期限超過', count: countOf('overdue'), color: '#fca5a5', title: '期限を過ぎて完了していないタスク' },
-    { value: 'postponed', label: '期間中に延期', count: countOf('postponed'), color: '#fde68a', title: 'この期間に期限を後ろへずらしたタスク' }
+    { value: 'all', label: 'すべて', count: baseRows.length, color: 'var(--slate-300)', title: '絞り込まずに表示' },
+    { value: 'needsReport', label: '報告なし', count: countOf('needsReport'), color: 'var(--amber-200)', title: '進行中なのに、この期間の進捗ログ・メモ更新がないタスク' },
+    { value: 'discussion', label: '要相談', count: countOf('discussion'), color: 'var(--c-d6b38a)', title: '「要相談」が付いた進捗ログがあるタスク（期間に関係なく）' },
+    { value: 'onHold', label: '保留中', count: countOf('onHold'), color: 'var(--purple-300)', title: '保留中のタスク（保留が長い順）' },
+    { value: 'overdue', label: '期限超過', count: countOf('overdue'), color: 'var(--red-300)', title: '期限を過ぎて完了していないタスク' },
+    { value: 'postponed', label: '期間中に延期', count: countOf('postponed'), color: 'var(--amber-200)', title: 'この期間に期限を後ろへずらしたタスク' }
   ]
   const toggleGroupCollapsed = (key: string): void => {
     setCollapsedGroups((previous) => {
@@ -1335,7 +1336,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       <>
         {discussions.length > 0 && (
           <div style={discussionBoxStyle}>
-            <div style={{ fontSize: '0.8rem', color: '#cbd5e1', fontWeight: 700 }}>要相談（{discussions.length}件）</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--slate-300)', fontWeight: 700 }}>要相談（{discussions.length}件）</div>
             {discussions.map((note) => <InteractiveNote key={`meeting-discussion-${note.id}`} note={note} actions={actions} showTask />)}
           </div>
         )}
@@ -1374,17 +1375,17 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', background: '#0f172a' }}>
+    <div style={{ height: '100%', overflowY: 'auto', background: 'var(--slate-900)' }}>
       <div style={{ padding: '18px 20px 40px', display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 1400, margin: '0 auto' }}>
         {/* ─── 見出し・操作 ─── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: '1.15rem', color: '#f8fafc', fontWeight: 800 }}>報告</div>
-            <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 700 }}>
+            <div style={{ fontSize: '1.15rem', color: 'var(--slate-50)', fontWeight: 800 }}>報告</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)', fontWeight: 700 }}>
               {formatShortDate(range.from)}（{weekdayLabel(range.from)}）～ {formatShortDate(range.to)}（{weekdayLabel(range.to)}）
             </div>
             {listFilters}
-            <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
+            <div style={{ fontSize: '0.76rem', color: 'var(--slate-500)' }}>
               定例用に、タスクごとの進捗と報告（進捗ログ・メモ）を1ページにまとめて表示します。状態・日程・進捗・メモはその場で変えられます
             </div>
           </div>
@@ -1409,7 +1410,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               }}
               style={inputStyle}
             />
-            <span style={{ color: '#64748b', fontSize: '0.8rem' }}>～</span>
+            <span style={{ color: 'var(--slate-500)', fontSize: '0.8rem' }}>～</span>
             <input
               type="date"
               aria-label="報告期間の終了日"
@@ -1431,7 +1432,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                 onClick={openMeeting}
                 disabled={!loaded || groups.length === 0}
                 title="担当者を1人ずつ大きく表示し、持ち時間を計りながら進めます。決まったことはその場でタスクにでき、終わったら議事録をコピーできます"
-                style={{ ...secondaryButtonStyle, borderColor: '#4f46e5', color: '#c7d2fe' }}
+                style={{ ...secondaryButtonStyle, borderColor: 'var(--indigo-600)', color: 'var(--indigo-200)' }}
               >
                 {meetingState ? '定例モードに戻る' : '定例モード'}
               </button>
@@ -1472,7 +1473,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                     setExcludeCoAssigned(event.target.checked)
                     writeStorage(STORAGE_KEYS.excludeCoAssigned, event.target.checked ? '1' : '0')
                   }}
-                  style={{ accentColor: '#6366f1' }}
+                  style={{ accentColor: 'var(--indigo-500)' }}
                 />
                 副担当のタスクを除く（主担当のみ）
               </label>
@@ -1482,7 +1483,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               aria-expanded={settingsOpen}
               aria-controls="report-view-settings"
               title="報告に出すカテゴリ・状態・対象・サブタスクの見せ方などを選びます"
-              style={{ ...secondaryButtonStyle, borderColor: settingsOpen ? '#6366f1' : '#334155' }}
+              style={{ ...secondaryButtonStyle, borderColor: settingsOpen ? 'var(--indigo-500)' : 'var(--slate-700)' }}
             >
               表示設定 {settingsOpen ? '▴' : '▾'}
             </button>
@@ -1531,7 +1532,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                 </button>
               )
             })}
-            <span style={{ fontSize: '0.72rem', color: '#64748b', marginLeft: 4 }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--slate-500)', marginLeft: 4 }}>
               期間内に報告あり {reportedCount}件 ・ 進捗ログ {noteCount}件
             </span>
           </div>
@@ -1551,15 +1552,15 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
 
           {loaded && (groups.length > 1 || visibleSubGroupKeys.length > 1) && (
             <nav aria-label={effectiveGroupMode === 'assignee' ? '担当者へ移動' : 'カテゴリへ移動'} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', paddingTop: 2 }}>
-              {groups.length > 1 && <span style={{ fontSize: '0.72rem', color: '#64748b' }}>{effectiveGroupMode === 'assignee' ? '担当者へ移動:' : 'カテゴリへ移動:'}</span>}
+              {groups.length > 1 && <span style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{effectiveGroupMode === 'assignee' ? '担当者へ移動:' : 'カテゴリへ移動:'}</span>}
               {groups.length > 1 && groups.map((group) => {
                 const needs = group.rows.filter((row) => needsReport(row.freshness)).length
                 return (
                   <button key={group.key} onClick={() => jumpToGroup(group.key)} title={`${group.label}の欄へ移動`} style={jumpChipStyle}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.color ?? '#475569', flexShrink: 0 }} />
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.color ?? 'var(--slate-600)', flexShrink: 0 }} />
                     {group.label}
-                    <span style={{ color: '#64748b', fontWeight: 600 }}>{group.rows.length}</span>
-                    {needs > 0 && <span style={{ color: '#fde68a', fontWeight: 700 }}>報告なし{needs}</span>}
+                    <span style={{ color: 'var(--slate-500)', fontWeight: 600 }}>{group.rows.length}</span>
+                    {needs > 0 && <span style={{ color: 'var(--amber-200)', fontWeight: 700 }}>報告なし{needs}</span>}
                   </button>
                 )
               })}
@@ -1580,7 +1581,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
         </div>
 
         {loadError && (
-          <div role="alert" style={{ padding: '10px 14px', border: '1px solid #b91c1c', borderRadius: 10, background: '#450a0a', color: '#fecaca', fontSize: '0.82rem' }}>
+          <div role="alert" style={{ padding: '10px 14px', border: '1px solid var(--red-700)', borderRadius: 10, background: 'var(--red-950)', color: 'var(--red-200)', fontSize: '0.82rem' }}>
             {loadError}
           </div>
         )}
@@ -1630,23 +1631,23 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                 >
                   ▾
                 </button>
-                <span style={{ width: 11, height: 11, borderRadius: '50%', background: group.color ?? '#475569', flexShrink: 0 }} />
-                <span style={{ fontSize: '0.98rem', color: '#f1f5f9', fontWeight: 800 }}>{group.label}</span>
-                {group.isMe && <span style={{ fontSize: '0.68rem', color: '#c7d2fe', background: '#312e81', borderRadius: 999, padding: '1px 7px' }}>自分</span>}
-                <span style={{ fontSize: '0.76rem', color: '#94a3b8' }}>{group.rows.length}件</span>
-                <span style={{ fontSize: '0.76rem', color: '#86efac' }}>報告あり {groupReported}</span>
-                <span style={{ fontSize: '0.76rem', color: groupNeeds > 0 ? '#fde68a' : '#64748b', fontWeight: groupNeeds > 0 ? 700 : 400 }}>
+                <span style={{ width: 11, height: 11, borderRadius: '50%', background: group.color ?? 'var(--slate-600)', flexShrink: 0 }} />
+                <span style={{ fontSize: '0.98rem', color: 'var(--slate-100)', fontWeight: 800 }}>{group.label}</span>
+                {group.isMe && <span style={{ fontSize: '0.68rem', color: 'var(--indigo-200)', background: 'var(--indigo-900)', borderRadius: 999, padding: '1px 7px' }}>自分</span>}
+                <span style={{ fontSize: '0.76rem', color: 'var(--slate-400)' }}>{group.rows.length}件</span>
+                <span style={{ fontSize: '0.76rem', color: 'var(--green-300)' }}>報告あり {groupReported}</span>
+                <span style={{ fontSize: '0.76rem', color: groupNeeds > 0 ? 'var(--amber-200)' : 'var(--slate-500)', fontWeight: groupNeeds > 0 ? 700 : 400 }}>
                   報告なし {groupNeeds}
                 </span>
                 {groupDiscussions.length > 0 && (
-                  <span style={{ fontSize: '0.76rem', color: '#d6b38a' }}>要相談 {groupDiscussions.length}</span>
+                  <span style={{ fontSize: '0.76rem', color: 'var(--c-d6b38a)' }}>要相談 {groupDiscussions.length}</span>
                 )}
               </div>
               {!collapsed && groupDiscussions.length > 0 && (
                 <div style={discussionBoxStyle}>
-                  <div style={{ fontSize: '0.76rem', color: '#cbd5e1', fontWeight: 700 }}>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--slate-300)', fontWeight: 700 }}>
                     要相談（{groupDiscussions.length}件）
-                    <span style={{ marginLeft: 8, fontSize: '0.7rem', color: '#64748b', fontWeight: 400 }}>相談が済んだら ⋯ から外します</span>
+                    <span style={{ marginLeft: 8, fontSize: '0.7rem', color: 'var(--slate-500)', fontWeight: 400 }}>相談が済んだら ⋯ から外します</span>
                   </div>
                   {groupDiscussions.map((note) => (
                     <InteractiveNote key={`discussion-${note.id}`} note={note} actions={actions} showTask />
@@ -1672,11 +1673,11 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                       >
                         ▾
                       </button>
-                      <span style={{ width: 9, height: 9, borderRadius: subGroupMode === 'category' ? 2 : '50%', background: subGroup.color ?? '#475569', flexShrink: 0 }} />
-                      <span style={{ fontSize: '0.86rem', color: '#e2e8f0', fontWeight: 800 }}>{subGroup.label}</span>
-                      <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>{subGroup.rows.length}件</span>
-                      {subNeeds > 0 && <span style={{ fontSize: '0.74rem', color: '#fde68a', fontWeight: 700 }}>報告なし {subNeeds}</span>}
-                      {subDiscussions > 0 && <span style={{ fontSize: '0.74rem', color: '#d6b38a' }}>要相談 {subDiscussions}</span>}
+                      <span style={{ width: 9, height: 9, borderRadius: subGroupMode === 'category' ? 2 : '50%', background: subGroup.color ?? 'var(--slate-600)', flexShrink: 0 }} />
+                      <span style={{ fontSize: '0.86rem', color: 'var(--slate-200)', fontWeight: 800 }}>{subGroup.label}</span>
+                      <span style={{ fontSize: '0.74rem', color: 'var(--slate-400)' }}>{subGroup.rows.length}件</span>
+                      {subNeeds > 0 && <span style={{ fontSize: '0.74rem', color: 'var(--amber-200)', fontWeight: 700 }}>報告なし {subNeeds}</span>}
+                      {subDiscussions > 0 && <span style={{ fontSize: '0.74rem', color: 'var(--c-d6b38a)' }}>要相談 {subDiscussions}</span>}
                     </div>
                     {!subCollapsed && subGroup.rows.map((row) => renderCard(row))}
                   </div>
@@ -1743,7 +1744,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
   const change = subTaskChangeText(subTask, summary)
   const changeColor = summary && summary.progressStart !== null
     ? progressDeltaColor(summary, subTask.progress)
-    : summary && summary.postponedCount > 0 ? '#fde68a' : '#93c5fd'
+    : summary && summary.postponedCount > 0 ? 'var(--amber-200)' : 'var(--blue-300)'
 
   const run = async (data: UpdateSubTaskInput, successMessage: string): Promise<boolean> => {
     setSaving(true)
@@ -1803,12 +1804,12 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
             { done: event.target.checked },
             event.target.checked ? 'サブタスクを完了にしました' : 'サブタスクを未完了に戻しました'
           )}
-          style={{ accentColor: '#22c55e', cursor: 'pointer', flexShrink: 0, margin: 0, transform: 'translateY(1px)' }}
+          style={{ accentColor: 'var(--green-500)', cursor: 'pointer', flexShrink: 0, margin: 0, transform: 'translateY(1px)' }}
         />
-        <span style={{ flex: 1, minWidth: 0, color: done ? '#64748b' : '#cbd5e1', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word' }}>
+        <span style={{ flex: 1, minWidth: 0, color: done ? 'var(--slate-500)' : 'var(--slate-300)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word' }}>
           {subTask.title}
           {subTask.assignee_name && (
-            <span style={{ marginLeft: 6, fontSize: '0.7rem', color: subTask.assignee_color ?? '#94a3b8', display: 'inline-block' }}>
+            <span style={{ marginLeft: 6, fontSize: '0.7rem', color: dataInk(subTask.assignee_color ?? 'var(--slate-400)'), display: 'inline-block' }}>
               {subTask.assignee_name}
             </span>
           )}
@@ -1830,7 +1831,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
               disabled={saving}
               style={{ ...inputStyle, padding: '2px 6px', fontSize: '0.72rem' }}
             />
-            <button onClick={() => void saveStart()} disabled={saving} style={{ ...inlineActionStyle, color: '#93c5fd' }}>保存</button>
+            <button onClick={() => void saveStart()} disabled={saving} style={{ ...inlineActionStyle, color: 'var(--blue-300)' }}>保存</button>
             <button onClick={() => setEditingStart(false)} style={inlineActionStyle}>取消</button>
           </div>
         ) : (
@@ -1838,7 +1839,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
             onClick={openStartEditor}
             disabled={saving}
             title="開始日を変更"
-            style={{ ...inlineActionStyle, textDecoration: 'none', color: '#64748b', flexShrink: 0 }}
+            style={{ ...inlineActionStyle, textDecoration: 'none', color: 'var(--slate-500)', flexShrink: 0 }}
           >
             {subTask.start_date ? `開始 ${formatShortDate(subTask.start_date)}` : '開始日なし'}
           </button>
@@ -1857,7 +1858,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
               autoFocus
               style={{ ...inputStyle, padding: '2px 6px', fontSize: '0.72rem' }}
             />
-            <button onClick={() => void saveDue()} disabled={saving} style={{ ...inlineActionStyle, color: '#93c5fd' }}>保存</button>
+            <button onClick={() => void saveDue()} disabled={saving} style={{ ...inlineActionStyle, color: 'var(--blue-300)' }}>保存</button>
             <button onClick={() => setEditingDue(false)} style={inlineActionStyle}>取消</button>
           </div>
         ) : (
@@ -1865,7 +1866,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
             onClick={openDueEditor}
             disabled={saving}
             title="期限を変更"
-            style={{ ...inlineActionStyle, textDecoration: 'none', color: dueColor || '#64748b', fontWeight: dueColor ? 800 : 600, flexShrink: 0 }}
+            style={{ ...inlineActionStyle, textDecoration: 'none', color: dueColor || 'var(--slate-500)', fontWeight: dueColor ? 800 : 600, flexShrink: 0 }}
           >
             {subTask.due_date ? `期限 ${formatShortDate(subTask.due_date)}` : '期限なし'}
           </button>
@@ -1928,14 +1929,14 @@ function AddSubTaskForm({ todo, actions }: { todo: Todo; actions: ReportCardActi
 
   if (!open) {
     return (
-      <button onClick={openForm} style={{ ...inlineActionStyle, textDecoration: 'none', alignSelf: 'flex-start', color: '#64748b' }}>
+      <button onClick={openForm} style={{ ...inlineActionStyle, textDecoration: 'none', alignSelf: 'flex-start', color: 'var(--slate-500)' }}>
         ＋ サブタスクを追加
       </button>
     )
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: '#111827', border: '1px solid #334155', borderRadius: 8, padding: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--gray-900)', border: '1px solid var(--slate-700)', borderRadius: 8, padding: 8 }}>
       <input
         value={title}
         onChange={(event) => setTitle(event.target.value)}
@@ -1959,11 +1960,11 @@ function AddSubTaskForm({ todo, actions }: { todo: Todo; actions: ReportCardActi
             {activeUsers.map((user) => <option key={user.id} value={user.id}>{user.display_name}</option>)}
           </select>
         )}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.74rem', color: '#94a3b8' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.74rem', color: 'var(--slate-400)' }}>
           開始日
           <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} aria-label="追加するサブタスクの開始日" style={inputStyle} />
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.74rem', color: '#94a3b8' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.74rem', color: 'var(--slate-400)' }}>
           期限
           <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} aria-label="追加するサブタスクの期限" style={inputStyle} />
         </label>
@@ -1979,26 +1980,26 @@ function AddSubTaskForm({ todo, actions }: { todo: Todo; actions: ReportCardActi
 const WEEKDAY_SHORT = ['日', '月', '火', '水', '木', '金', '土']
 
 function dayTone(done: number, total: number): string {
-  if (total === 0) return '#1e293b'
-  if (done >= total) return '#22c55e'
-  if (done === 0) return '#7f1d1d'
-  return done / total >= 0.5 ? '#eab308' : '#f97316'
+  if (total === 0) return 'var(--slate-800)'
+  if (done >= total) return 'var(--green-500)'
+  if (done === 0) return 'var(--red-900)'
+  return done / total >= 0.5 ? 'var(--yellow-500)' : 'var(--orange-500)'
 }
 
 /** 終わった回の実施の色。全部済みは緑、8割以上は黄、それより下は赤 */
 function rateTone(checked: number, periods: number): string {
-  if (periods === 0) return '#64748b'
-  if (checked >= periods) return '#86efac'
-  return checked / periods >= 0.8 ? '#fde68a' : '#fca5a5'
+  if (periods === 0) return 'var(--slate-500)'
+  if (checked >= periods) return 'var(--green-300)'
+  return checked / periods >= 0.8 ? 'var(--amber-200)' : 'var(--red-300)'
 }
 
 /** 周期（毎日・毎週・毎月）ごとの1行。終わった回の実施と、今の回の進み具合を分けて出す */
 function RepeatGroupLine({ group }: { group: RepeatGroupDigest }): React.JSX.Element {
-  const muted: React.CSSProperties = { fontSize: '0.7rem', color: '#64748b' }
+  const muted: React.CSSProperties = { fontSize: '0.7rem', color: 'var(--slate-500)' }
   const currentDone = group.current != null && group.current.checked >= group.current.total
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', fontSize: '0.8rem' }}>
-      <span style={{ color: '#94a3b8' }}>{group.label} {group.itemCount}件</span>
+      <span style={{ color: 'var(--slate-400)' }}>{group.label} {group.itemCount}件</span>
       {group.periods > 0 && (
         <span
           title={`${group.doneLabel}の回のうち、チェックした回数。今日・今週・今月の分はまだ途中なので入れません。${MIN_PERIODS_FOR_RATE}回以上になると率（%）も出します`}
@@ -2010,7 +2011,7 @@ function RepeatGroupLine({ group }: { group: RepeatGroupDigest }): React.JSX.Ele
       {group.current && (
         <span
           title="まだ途中の回です。チェックしても上の回数には入りません"
-          style={{ color: currentDone ? '#86efac' : '#c7d2fe', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
+          style={{ color: currentDone ? 'var(--green-300)' : 'var(--indigo-200)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
         >
           {group.current.label} {group.current.checked}/{group.current.total}
         </span>
@@ -2027,11 +2028,11 @@ function RepeatGroupLine({ group }: { group: RepeatGroupDigest }): React.JSX.Ele
  */
 function ListItemsSummary({ row, period }: { row: ReportRow; period: DateRange }): React.JSX.Element {
   const digest = digestRow(row, period)
-  const labelStyle: React.CSSProperties = { fontSize: '0.7rem', color: '#64748b' }
+  const labelStyle: React.CSSProperties = { fontSize: '0.7rem', color: 'var(--slate-500)' }
   const items = splitListItems(row.subTasks, period)
   const missed = missedText(digest, 3)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 2, paddingTop: 8, borderTop: '1px dashed #1e293b' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 2, paddingTop: 8, borderTop: '1px dashed var(--slate-800)' }}>
       {row.subTasks.length === 0 && <div style={labelStyle}>まだ項目がありません</div>}
       {digest.groups.map((group) => (
         <React.Fragment key={group.kind}>
@@ -2044,8 +2045,8 @@ function ListItemsSummary({ row, period }: { row: ReportRow; period: DateRange }
                   const [y, m, d] = day.split('-').map(Number)
                   const label = `${m}/${d}（${WEEKDAY_SHORT[new Date(y, m - 1, d).getDay()]}） ${done}/${total}${today ? '（今日・途中）' : ''}`
                   // 今日はまだ途中なので、済んでいなくても赤くせず、枠だけにする
-                  const background = today && done < total ? (done > 0 ? '#eab30866' : 'transparent') : dayTone(done, total)
-                  return <span key={day} title={label} style={{ width: 11, height: 11, borderRadius: 2, background, boxSizing: 'border-box', border: today ? '1px solid #94a3b8' : 'none' }} />
+                  const background = today && done < total ? (done > 0 ? 'color-mix(in srgb, var(--yellow-500) 40%, transparent)' : 'transparent') : dayTone(done, total)
+                  return <span key={day} title={label} style={{ width: 11, height: 11, borderRadius: 2, background, boxSizing: 'border-box', border: today ? '1px solid var(--slate-400)' : 'none' }} />
                 })}
               </span>
               <span style={{ ...labelStyle, fontSize: '0.66rem' }}>{formatShortDate(digest.days[0].day)}〜{formatShortDate(digest.days[digest.days.length - 1].day)}</span>
@@ -2054,41 +2055,41 @@ function ListItemsSummary({ row, period }: { row: ReportRow; period: DateRange }
         </React.Fragment>
       ))}
       {missed && (
-        <div style={{ fontSize: '0.74rem', color: digest.missed.length > 0 ? '#fde68a' : '#86efac' }}>{missed}</div>
+        <div style={{ fontSize: '0.74rem', color: digest.missed.length > 0 ? 'var(--amber-200)' : 'var(--green-300)' }}>{missed}</div>
       )}
       {(digest.open.length > 0 || digest.doneInPeriod.length > 0) && (
-        <div style={{ fontSize: '0.74rem', color: '#94a3b8', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: '0.74rem', color: 'var(--slate-400)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <span>やること</span>
           {digest.overdue.length > 0 && (
-            <span style={{ color: '#fca5a5', fontWeight: 700 }}>期限切れ {digest.overdue.length}件（{namesText(digest.overdue.map((item) => item.title), 2)}）</span>
+            <span style={{ color: 'var(--red-300)', fontWeight: 700 }}>期限切れ {digest.overdue.length}件（{namesText(digest.overdue.map((item) => item.title), 2)}）</span>
           )}
           <span>まだ {digest.open.length}件</span>
           {digest.doneInPeriod.length > 0 && (
-            <span title={digest.doneInPeriod.map((item) => item.title).join('\n')} style={{ color: '#86efac' }}>期間中に済んだ {digest.doneInPeriod.length}件</span>
+            <span title={digest.doneInPeriod.map((item) => item.title).join('\n')} style={{ color: 'var(--green-300)' }}>期間中に済んだ {digest.doneInPeriod.length}件</span>
           )}
         </div>
       )}
       {row.subTasks.length > 0 && (
         <details>
-          <summary style={{ cursor: 'pointer', fontSize: '0.7rem', color: '#64748b' }}>項目ごとに見る</summary>
+          <summary style={{ cursor: 'pointer', fontSize: '0.7rem', color: 'var(--slate-500)' }}>項目ごとに見る</summary>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingTop: 5 }}>
             {items.repeat.map((item) => (
               <div key={item.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.76rem' }}>
-                <span style={{ flex: 1, minWidth: 0, color: '#cbd5e1', overflowWrap: 'anywhere' }}>{item.title}</span>
-                <span style={{ fontSize: '0.66rem', color: '#a5b4fc', flexShrink: 0 }}>{repeatLabel(item)}</span>
-                <span style={{ color: '#94a3b8', fontVariantNumeric: 'tabular-nums', flexShrink: 0, minWidth: 40, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <span style={{ flex: 1, minWidth: 0, color: 'var(--slate-300)', overflowWrap: 'anywhere' }}>{item.title}</span>
+                <span style={{ fontSize: '0.66rem', color: 'var(--indigo-300)', flexShrink: 0 }}>{repeatLabel(item)}</span>
+                <span style={{ color: 'var(--slate-400)', fontVariantNumeric: 'tabular-nums', flexShrink: 0, minWidth: 40, textAlign: 'right', whiteSpace: 'nowrap' }}>
                   {itemStatusText(itemCheckStatus(item, row.checkSummaries.get(item.id))) ?? '—'}
                 </span>
               </div>
             ))}
             {items.open.map((item) => (
               <div key={item.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.76rem' }}>
-                <span style={{ flex: 1, minWidth: 0, color: '#cbd5e1', overflowWrap: 'anywhere' }}>☐ {item.title}</span>
-                {itemPeriodText(item) && <span style={{ fontSize: '0.68rem', color: getDueDateColor(item.due_date) || '#64748b', flexShrink: 0 }}>{itemPeriodText(item)}</span>}
+                <span style={{ flex: 1, minWidth: 0, color: 'var(--slate-300)', overflowWrap: 'anywhere' }}>☐ {item.title}</span>
+                {itemPeriodText(item) && <span style={{ fontSize: '0.68rem', color: getDueDateColor(item.due_date) || 'var(--slate-500)', flexShrink: 0 }}>{itemPeriodText(item)}</span>}
               </div>
             ))}
             {items.doneInPeriod.map((item) => (
-              <div key={item.id} style={{ fontSize: '0.76rem', color: '#64748b', textDecoration: 'line-through', overflowWrap: 'anywhere' }}>☑ {item.title}</div>
+              <div key={item.id} style={{ fontSize: '0.76rem', color: 'var(--slate-500)', textDecoration: 'line-through', overflowWrap: 'anywhere' }}>☑ {item.title}</div>
             ))}
           </div>
         </details>
@@ -2209,8 +2210,8 @@ function ReportTaskCard({
         display: 'flex',
         flexWrap: 'wrap',
         gap: 16,
-        background: '#0b1220',
-        border: '1px solid #1e293b',
+        background: 'var(--c-0b1220)',
+        border: '1px solid var(--slate-800)',
         borderLeft: `4px solid ${tone.border}`,
         borderRadius: 12,
         padding: '14px 16px'
@@ -2223,7 +2224,7 @@ function ReportTaskCard({
             {todo.title}
           </button>
           {todo.priority >= 4 && (
-            <span style={{ fontSize: '0.72rem', color: todo.priority === 5 ? '#ef4444' : '#f59e0b', fontWeight: 800, flexShrink: 0, marginTop: 2 }}>
+            <span style={{ fontSize: '0.72rem', color: todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)', fontWeight: 800, flexShrink: 0, marginTop: 2 }}>
               {'!'.repeat(todo.priority - 3)}
             </span>
           )}
@@ -2236,35 +2237,35 @@ function ReportTaskCard({
             onChange={(event) => void updateField({ status: event.target.value as TodoStatus }, 'ステータスを更新しました')}
             aria-label="ステータス"
             title="ステータスを変更"
-            style={{ ...pillSelectStyle, color: STATUS_COLOR[todo.status], borderColor: `${STATUS_COLOR[todo.status]}80` }}
+            style={{ ...pillSelectStyle, color: STATUS_COLOR[todo.status], borderColor: `color-mix(in srgb, ${STATUS_COLOR[todo.status]} 50.2%, transparent)` }}
           >
             <option value="not_started">未着手</option>
             <option value="active">進行中</option><option value="on_hold">保留中</option>
             <option value="done">完了</option>
           </select>
           {groupMode === 'assignee' && subGroupMode !== 'category' ? (
-            <span style={{ ...pillStyle, color: todo.category_color ?? '#94a3b8', borderColor: `${todo.category_color ?? '#475569'}80` }}>
+            <span style={{ ...pillStyle, color: dataInk(todo.category_color ?? 'var(--slate-400)'), borderColor: `color-mix(in srgb, ${todo.category_color ?? 'var(--slate-600)'} 50.2%, transparent)` }}>
               {todo.category_name ?? '未分類'}
             </span>
           ) : null}
           {multiUser && (groupMode !== 'assignee' || showAssignee) && (
-            <span style={{ ...pillStyle, color: '#cbd5e1' }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: todo.assignee_color ?? '#475569' }} />
+            <span style={{ ...pillStyle, color: 'var(--slate-300)' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: todo.assignee_color ?? 'var(--slate-600)' }} />
               主: {todo.assignee_name ?? '未割り当て'}
             </span>
           )}
           {(todo.co_assignees ?? []).length > 0 && (
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>
               副: {(todo.co_assignees ?? []).map((assignee) => assignee.display_name).join('、')}
             </span>
           )}
         </div>
 
         {todo.status === 'on_hold' && (
-          <div style={{ background: '#3b0764', border: '1px solid #a855f7', borderRadius: 10, padding: '12px 14px', color: '#e9d5ff', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ background: 'var(--purple-950)', border: '1px solid var(--purple-500)', borderRadius: 10, padding: '12px 14px', color: 'var(--purple-200)', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <strong style={{ fontSize: '0.92rem' }}>保留中 · {hold.durationLabel}</strong>
             <div style={{ fontSize: '0.8rem' }}>保留開始: {hold.sinceLabel}</div>
-            <div style={{ fontSize: '0.74rem', color: '#d8b4fe' }}>作業を停止しています。保留理由や再開の条件をメモに残せます。</div>
+            <div style={{ fontSize: '0.74rem', color: 'var(--purple-300)' }}>作業を停止しています。保留理由や再開の条件をメモに残せます。</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
               <button onClick={() => void updateField({ status: 'active' }, '進行中に戻しました')} disabled={saving} style={secondaryButtonStyle}>進行中に戻す</button>
               <button onClick={openMemoEditor} style={secondaryButtonStyle}>{memo ? 'メモを編集' : '保留理由をメモする'}</button>
@@ -2273,41 +2274,41 @@ function ReportTaskCard({
         )}
 
         {editingSchedule ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: '#111827', border: '1px solid #334155', borderRadius: 8, padding: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: '0.76rem', color: '#94a3b8' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--gray-900)', border: '1px solid var(--slate-700)', borderRadius: 8, padding: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: '0.76rem', color: 'var(--slate-400)' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 開始
                 <input type="date" value={startDraft} onChange={(event) => setStartDraft(event.target.value)} aria-label="開始日" style={inputStyle} />
               </label>
-              <span style={{ color: '#475569' }}>→</span>
+              <span style={{ color: 'var(--slate-600)' }}>→</span>
               <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 期限
                 <input type="date" value={dueDraft} onChange={(event) => setDueDraft(event.target.value)} aria-label="期限" style={inputStyle} />
               </label>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '0.68rem', color: '#64748b', flex: 1 }}>依存関係のある後続タスクも再計算されます</span>
+              <span style={{ fontSize: '0.68rem', color: 'var(--slate-500)', flex: 1 }}>依存関係のある後続タスクも再計算されます</span>
               <button onClick={() => setEditingSchedule(false)} style={secondaryButtonStyle}>キャンセル</button>
               <button onClick={() => void saveSchedule()} disabled={saving} style={primaryButtonStyle(!saving)}>{saving ? '保存中…' : '保存'}</button>
             </div>
           </div>
         ) : todo.list_mode && !todo.due_date ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.8rem' }}>
-            <span style={{ color: '#94a3b8' }}>開始 {formatShortDate(todo.start_date)}</span>
-            <span style={{ color: '#a5b4fc' }} title="期限のない ToDoリストです。使い終えたら「リストを終える」を押します">→ 期限なし</span>
+            <span style={{ color: 'var(--slate-400)' }}>開始 {formatShortDate(todo.start_date)}</span>
+            <span style={{ color: 'var(--indigo-300)' }} title="期限のない ToDoリストです。使い終えたら「リストを終える」を押します">→ 期限なし</span>
             <button onClick={openScheduleEditor} title="開始日・期限を変更" style={inlineActionStyle}>変更</button>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.8rem' }}>
-            <span style={{ color: '#94a3b8' }}>開始 {formatShortDate(todo.start_date)}</span>
-            <span style={{ color: '#475569' }}>→</span>
-            <span style={{ color: dueColor || '#cbd5e1', fontWeight: dueColor ? 700 : 400 }}>期限 {formatShortDate(todo.due_date)}</span>
-            {dueLabel && <span style={{ color: dueColor || '#64748b', fontSize: '0.74rem' }}>（{dueLabel}）</span>}
+            <span style={{ color: 'var(--slate-400)' }}>開始 {formatShortDate(todo.start_date)}</span>
+            <span style={{ color: 'var(--slate-600)' }}>→</span>
+            <span style={{ color: dueColor || 'var(--slate-300)', fontWeight: dueColor ? 700 : 400 }}>期限 {formatShortDate(todo.due_date)}</span>
+            {dueLabel && <span style={{ color: dueColor || 'var(--slate-500)', fontSize: '0.74rem' }}>（{dueLabel}）</span>}
             <button onClick={openScheduleEditor} title="開始日・期限を変更" style={inlineActionStyle}>変更</button>
           </div>
         )}
         {!editingSchedule && dueChange && (
-          <div style={{ fontSize: '0.72rem', color: row.postponedCount > 0 ? '#fde68a' : '#94a3b8', fontWeight: row.postponedCount > 0 ? 700 : 400 }}>
+          <div style={{ fontSize: '0.72rem', color: row.postponedCount > 0 ? 'var(--amber-200)' : 'var(--slate-400)', fontWeight: row.postponedCount > 0 ? 700 : 400 }}>
             期間中の期限変更: {dueChange}
           </div>
         )}
@@ -2328,9 +2329,9 @@ function ReportTaskCard({
         {todo.list_mode ? (
           <ListItemsSummary row={row} period={{ from: periodFrom, to: periodTo }} />
         ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 2, paddingTop: 8, borderTop: '1px dashed #1e293b' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 2, paddingTop: 8, borderTop: '1px dashed var(--slate-800)' }}>
           {subTasks.length > 0 && (
-            <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>
               サブタスク {subTasks.filter((subTask) => subTask.done).length}/{subTasks.length} 完了
             </div>
           )}
@@ -2339,7 +2340,7 @@ function ReportTaskCard({
           ))}
           {foldedSubTasks.length > 0 && (
             <details>
-              <summary style={{ cursor: 'pointer', fontSize: '0.76rem', color: '#94a3b8', padding: '5px 0' }}>
+              <summary style={{ cursor: 'pointer', fontSize: '0.76rem', color: 'var(--slate-400)', padding: '5px 0' }}>
                 {foldedLabel}
               </summary>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingTop: 5 }}>
@@ -2360,7 +2361,7 @@ function ReportTaskCard({
           <span style={{ fontSize: '0.74rem', fontWeight: 700, color: tone.color, background: tone.background, border: `1px solid ${tone.border}`, borderRadius: 999, padding: '2px 9px' }}>
             {freshnessText(row)}
           </span>
-          <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
+          <span style={{ fontSize: '0.74rem', color: 'var(--slate-500)' }}>
             {lastReportAt ? `最終報告 ${formatDateTime(lastReportAt)}（${formatDaysAgo(lastReportAt)}）` : '最終報告 なし'}
           </span>
           {row.discussions.length > 0 && (
@@ -2377,7 +2378,7 @@ function ReportTaskCard({
               onClick={() => actions.onHideTodo(todo)}
               aria-label={`${todo.title}を報告に出さない`}
               title="このタスクを報告に出さない（自分の表示だけ。表示設定から戻せます）"
-              style={{ ...inlineActionStyle, textDecoration: 'none', color: '#64748b', fontWeight: 700, padding: '0 2px' }}
+              style={{ ...inlineActionStyle, textDecoration: 'none', color: 'var(--slate-500)', fontWeight: 700, padding: '0 2px' }}
             >
               隠す
             </button>
@@ -2385,7 +2386,7 @@ function ReportTaskCard({
         </div>
 
         {composerOpen && (
-          <div style={{ background: '#111827', border: '1px solid #334155', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ background: 'var(--gray-900)', border: '1px solid var(--slate-700)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <MentionTextarea
               value={draft}
               onValueChange={setDraft}
@@ -2415,8 +2416,8 @@ function ReportTaskCard({
                   if (ok) setComposerOpen(false)
                 })()}
               />
-              <label style={{ ...checkboxLabelStyle, marginRight: 'auto', color: draftNeedsDiscussion ? '#d6b38a' : '#94a3b8' }}>
-                <input type="checkbox" checked={draftNeedsDiscussion} onChange={(event) => setDraftNeedsDiscussion(event.target.checked)} style={{ accentColor: '#6366f1' }} />
+              <label style={{ ...checkboxLabelStyle, marginRight: 'auto', color: draftNeedsDiscussion ? 'var(--c-d6b38a)' : 'var(--slate-400)' }}>
+                <input type="checkbox" checked={draftNeedsDiscussion} onChange={(event) => setDraftNeedsDiscussion(event.target.checked)} style={{ accentColor: 'var(--indigo-500)' }} />
                 要相談として投稿（定例で話したいこと）
               </label>
               <button onClick={() => { setComposerOpen(false); setDraft(''); setDraftNeedsDiscussion(false) }} style={secondaryButtonStyle}>キャンセル</button>
@@ -2428,8 +2429,8 @@ function ReportTaskCard({
         )}
 
         {editingMemo ? (
-          <div style={{ background: '#111827', border: '1px solid #334155', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: '0.7rem', color: '#64748b' }}>メモ（現状・次にやること・引き継ぎなど。上書き保存）</div>
+          <div style={{ background: 'var(--gray-900)', border: '1px solid var(--slate-700)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>メモ（現状・次にやること・引き継ぎなど。上書き保存）</div>
             <textarea
               value={memoDraft}
               onChange={(event) => setMemoDraft(event.target.value)}
@@ -2445,7 +2446,7 @@ function ReportTaskCard({
               style={{ ...inputStyle, width: '100%', resize: 'vertical', lineHeight: 1.55 }}
             />
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '0.7rem', color: memoChanged ? '#93c5fd' : '#64748b', flex: 1 }}>
+              <span style={{ fontSize: '0.7rem', color: memoChanged ? 'var(--blue-300)' : 'var(--slate-500)', flex: 1 }}>
                 {memoChanged ? '未保存の変更があります（Ctrl+Enterで保存）' : '変更なし'}
               </span>
               <button onClick={() => setEditingMemo(false)} style={secondaryButtonStyle}>キャンセル</button>
@@ -2455,19 +2456,19 @@ function ReportTaskCard({
             </div>
           </div>
         ) : memo ? (
-          <div style={{ background: '#111827', border: '1px dashed #334155', borderRadius: 10, padding: '8px 11px' }}>
+          <div style={{ background: 'var(--gray-900)', border: '1px dashed var(--slate-700)', borderRadius: 10, padding: '8px 11px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>メモ{lastMemoAt ? `（更新 ${formatDateTime(lastMemoAt)}）` : ''}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>メモ{lastMemoAt ? `（更新 ${formatDateTime(lastMemoAt)}）` : ''}</span>
               <button onClick={openMemoEditor} style={{ ...inlineActionStyle, marginLeft: 'auto' }}>編集</button>
             </div>
-            <div style={{ fontSize: '0.82rem', color: '#cbd5e1', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
+            <div style={{ fontSize: '0.82rem', color: 'var(--slate-300)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
               <LinkedText text={memo} />
             </div>
           </div>
         ) : null}
 
         {notes.length === 0 ? (
-          <div style={{ fontSize: '0.8rem', color: '#475569', padding: '4px 2px' }}>この期間の進捗ログはありません。</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)', padding: '4px 2px' }}>この期間の進捗ログはありません。</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {notes.map((note) => <InteractiveNote key={note.id} note={note} actions={actions} />)}
@@ -2482,10 +2483,10 @@ function ReportTaskCard({
 
 const inputStyle: React.CSSProperties = {
   padding: '6px 9px',
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 7,
-  color: '#e2e8f0',
+  color: 'var(--slate-200)',
   fontSize: '0.8rem',
   outline: 'none'
 }
@@ -2495,18 +2496,18 @@ const groupStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 3,
   padding: 3,
-  background: '#111827',
-  border: '1px solid #1f2937',
+  background: 'var(--gray-900)',
+  border: '1px solid var(--gray-800)',
   borderRadius: 10
 }
 
 function chipStyle(active: boolean): React.CSSProperties {
   return {
     padding: '5px 10px',
-    background: active ? '#2563eb' : 'transparent',
+    background: active ? 'var(--blue-600)' : 'transparent',
     border: '1px solid transparent',
     borderRadius: 7,
-    color: active ? '#eff6ff' : '#94a3b8',
+    color: active ? 'var(--on-fill-blue-50)' : 'var(--slate-400)',
     cursor: 'pointer',
     fontSize: '0.78rem',
     fontWeight: 700,
@@ -2516,10 +2517,10 @@ function chipStyle(active: boolean): React.CSSProperties {
 
 const secondaryButtonStyle: React.CSSProperties = {
   padding: '6px 11px',
-  background: '#111827',
-  border: '1px solid #334155',
+  background: 'var(--gray-900)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 7,
-  color: '#cbd5e1',
+  color: 'var(--slate-300)',
   cursor: 'pointer',
   fontSize: '0.78rem',
   fontWeight: 700,
@@ -2529,10 +2530,10 @@ const secondaryButtonStyle: React.CSSProperties = {
 function primaryButtonStyle(enabled: boolean): React.CSSProperties {
   return {
     padding: '6px 14px',
-    background: enabled ? '#2563eb' : '#1e293b',
-    border: `1px solid ${enabled ? '#1d4ed8' : '#334155'}`,
+    background: enabled ? 'var(--blue-600)' : 'var(--slate-800)',
+    border: `1px solid ${enabled ? 'var(--blue-700)' : 'var(--slate-700)'}`,
     borderRadius: 7,
-    color: enabled ? '#eff6ff' : '#64748b',
+    color: enabled ? 'var(--on-fill-blue-50)' : 'var(--slate-500)',
     cursor: enabled ? 'pointer' : 'default',
     fontSize: '0.78rem',
     fontWeight: 700,
@@ -2543,10 +2544,10 @@ function primaryButtonStyle(enabled: boolean): React.CSSProperties {
 function reportButtonStyle(emphasized: boolean): React.CSSProperties {
   return {
     padding: '4px 10px',
-    background: emphasized ? '#1e3a8a' : 'transparent',
-    border: `1px solid ${emphasized ? '#2563eb' : '#334155'}`,
+    background: emphasized ? 'var(--blue-900)' : 'transparent',
+    border: `1px solid ${emphasized ? 'var(--blue-600)' : 'var(--slate-700)'}`,
     borderRadius: 999,
-    color: emphasized ? '#dbeafe' : '#94a3b8',
+    color: emphasized ? 'var(--blue-100)' : 'var(--slate-400)',
     cursor: 'pointer',
     fontSize: '0.74rem',
     fontWeight: 700,
@@ -2557,9 +2558,9 @@ function reportButtonStyle(emphasized: boolean): React.CSSProperties {
 function quickFilterChipStyle(color: string, active: boolean, muted: boolean): React.CSSProperties {
   return {
     fontSize: '0.76rem',
-    color: muted ? '#475569' : active ? '#0f172a' : color,
-    background: active ? color : '#111827',
-    border: `1px solid ${active ? color : muted ? '#1f2937' : `${color}55`}`,
+    color: muted ? 'var(--slate-600)' : active ? 'var(--slate-900)' : color,
+    background: active ? color : 'var(--gray-900)',
+    border: `1px solid ${active ? color : muted ? 'var(--gray-800)' : `color-mix(in srgb, ${color} 33.3%, transparent)`}`,
     borderRadius: 999,
     padding: '3px 11px',
     fontWeight: 700,
@@ -2575,9 +2576,9 @@ const myReminderStyle: React.CSSProperties = {
   flexWrap: 'wrap',
   padding: '8px 12px',
   borderRadius: 10,
-  border: '1px solid #a16207',
-  background: '#1c1408',
-  color: '#fde68a',
+  border: '1px solid var(--yellow-700)',
+  background: 'var(--c-1c1408)',
+  color: 'var(--amber-200)',
   fontSize: '0.8rem'
 }
 
@@ -2587,9 +2588,9 @@ const jumpChipStyle: React.CSSProperties = {
   gap: 5,
   padding: '3px 9px',
   borderRadius: 999,
-  border: '1px solid #334155',
-  background: '#0b1220',
-  color: '#e2e8f0',
+  border: '1px solid var(--slate-700)',
+  background: 'var(--c-0b1220)',
+  color: 'var(--slate-200)',
   cursor: 'pointer',
   fontSize: '0.74rem',
   fontWeight: 700,
@@ -2601,9 +2602,9 @@ function collapseButtonStyle(collapsed: boolean): React.CSSProperties {
     width: 22,
     height: 22,
     borderRadius: 6,
-    border: '1px solid #334155',
-    background: '#111827',
-    color: '#94a3b8',
+    border: '1px solid var(--slate-700)',
+    background: 'var(--gray-900)',
+    color: 'var(--slate-400)',
     cursor: 'pointer',
     padding: 0,
     fontSize: '0.8rem',
@@ -2619,7 +2620,7 @@ const checkboxLabelStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 6,
   fontSize: '0.78rem',
-  color: '#94a3b8',
+  color: 'var(--slate-400)',
   cursor: 'pointer'
 }
 
@@ -2629,10 +2630,10 @@ const groupHeaderStyle: React.CSSProperties = {
   gap: 10,
   flexWrap: 'wrap',
   padding: '8px 4px',
-  borderBottom: '1px solid #1e293b',
+  borderBottom: '1px solid var(--slate-800)',
   position: 'sticky',
   top: 0,
-  background: '#0f172a',
+  background: 'var(--slate-900)',
   zIndex: 1
 }
 
@@ -2640,9 +2641,9 @@ const settingsChipStyle: React.CSSProperties = {
   maxWidth: 260,
   padding: '1px 7px',
   borderRadius: 999,
-  border: '1px solid #4f46e5',
-  background: '#1e1b4b',
-  color: '#c7d2fe',
+  border: '1px solid var(--indigo-600)',
+  background: 'var(--indigo-950)',
+  color: 'var(--indigo-200)',
   cursor: 'pointer',
   fontSize: '0.68rem',
   fontWeight: 600,
@@ -2660,9 +2661,9 @@ function subGroupHeaderStyle(color: string | null): React.CSSProperties {
     flexWrap: 'wrap',
     padding: '5px 8px',
     marginLeft: 6,
-    borderLeft: `3px solid ${color ?? '#475569'}`,
+    borderLeft: `3px solid ${color ?? 'var(--slate-600)'}`,
     borderRadius: 4,
-    background: '#0b1220'
+    background: 'var(--c-0b1220)'
   }
 }
 
@@ -2671,7 +2672,7 @@ const pillStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 5,
   fontSize: '0.7rem',
-  border: '1px solid #334155',
+  border: '1px solid var(--slate-700)',
   borderRadius: 999,
   padding: '1px 8px'
 }
@@ -2679,8 +2680,8 @@ const pillStyle: React.CSSProperties = {
 const pillSelectStyle: React.CSSProperties = {
   fontSize: '0.7rem',
   fontWeight: 700,
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
   borderRadius: 999,
   padding: '1px 6px',
   cursor: 'pointer',
@@ -2692,9 +2693,9 @@ const discussionBoxStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
-  background: '#0b1220',
-  border: '1px solid #1e293b',
-  borderLeft: '3px solid #4b3b2c',
+  background: 'var(--c-0b1220)',
+  border: '1px solid var(--slate-800)',
+  borderLeft: '3px solid var(--c-4b3b2c)',
   borderRadius: 12,
   padding: '10px 12px'
 }
@@ -2702,7 +2703,7 @@ const discussionBoxStyle: React.CSSProperties = {
 const inlineActionStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
-  color: '#94a3b8',
+  color: 'var(--slate-400)',
   cursor: 'pointer',
   fontSize: '0.72rem',
   fontWeight: 800,
@@ -2716,7 +2717,7 @@ const taskTitleButtonStyle: React.CSSProperties = {
   border: 'none',
   padding: 0,
   cursor: 'pointer',
-  color: '#f1f5f9',
+  color: 'var(--slate-100)',
   fontSize: '0.95rem',
   fontWeight: 800,
   textAlign: 'left',
@@ -2725,7 +2726,7 @@ const taskTitleButtonStyle: React.CSSProperties = {
 }
 
 const emptyStyle: React.CSSProperties = {
-  color: '#64748b',
+  color: 'var(--slate-500)',
   fontSize: '0.86rem',
   padding: '20px 4px'
 }

@@ -18,7 +18,7 @@ export function ListFilterChips({ chips }: { chips: ListFilterChip[] }): React.J
       title="左のタスク一覧の絞り込みを、この画面にも反映しています"
       style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', minWidth: 0 }}
     >
-      <span style={{ fontSize: '0.68rem', color: '#64748b', whiteSpace: 'nowrap' }}>絞り込み中</span>
+      <span style={{ fontSize: '0.68rem', color: 'var(--slate-500)', whiteSpace: 'nowrap' }}>絞り込み中</span>
       {chips.map((chip) => (
         <button key={chip.key} onClick={chip.clear} title={`${chip.label} の絞り込みを解除`} style={chipStyle}>
           {chip.label} ×
@@ -35,9 +35,9 @@ const chipStyle: React.CSSProperties = {
   maxWidth: 220,
   padding: '1px 7px',
   borderRadius: 999,
-  border: '1px solid #4f46e5',
-  background: '#1e1b4b',
-  color: '#c7d2fe',
+  border: '1px solid var(--indigo-600)',
+  background: 'var(--indigo-950)',
+  color: 'var(--indigo-200)',
   cursor: 'pointer',
   fontSize: '0.68rem',
   fontWeight: 600,
@@ -49,9 +49,9 @@ const chipStyle: React.CSSProperties = {
 const clearAllStyle: React.CSSProperties = {
   padding: '1px 7px',
   borderRadius: 999,
-  border: '1px solid #334155',
+  border: '1px solid var(--slate-700)',
   background: 'transparent',
-  color: '#94a3b8',
+  color: 'var(--slate-400)',
   cursor: 'pointer',
   fontSize: '0.68rem',
   whiteSpace: 'nowrap'
