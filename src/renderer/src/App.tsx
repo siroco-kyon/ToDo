@@ -398,7 +398,8 @@ export function App(): React.JSX.Element {
       }
       replaceNextUrlRef.current = true
       const view = state.view ?? (state.taskId ? 'detail' : 'gantt')
-      if (state.taskId) setSelectedTodoId(state.taskId)
+      // 詳細の履歴にタスクがない（消したタスクを見ていたなど）ときは、別のタスクを出さずにタスクなしで戻す
+      if (state.taskId || view === 'detail') setSelectedTodoId(state.taskId ?? null)
       setGanttSidePanelMode(view === 'gantt' && state.taskId ? 'detail' : 'today')
       setActiveView(view)
     }
@@ -568,9 +569,13 @@ export function App(): React.JSX.Element {
     }
   }, [])
 
+  // 最初のデータ（タスク・カテゴリなど）がそろったか。URL で開いたタスクの確認に使う
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false)
+
   const handleSetupComplete = useCallback(async () => {
     setIsFirstLaunch(false)
     await loadInitialData()
+    setInitialDataLoaded(true)
     await syncTimer()
   }, [loadInitialData, syncTimer])
 
@@ -579,6 +584,7 @@ export function App(): React.JSX.Element {
 
     const init = async (): Promise<void> => {
       await loadInitialData()
+      setInitialDataLoaded(true)
       await syncTimer()
     }
 
@@ -633,6 +639,17 @@ export function App(): React.JSX.Element {
   )
   // 上部の「進捗」タブに出す新着の件数（サーバー版のみ。進捗タブを開いている間は 0）
   const progressUnseenCount = useProgressUnseenCount(users.length > 0 ? currentUser?.id ?? null : null, activeView === 'progress', hiddenPrivateTodoIds)
+  // 共有されたリンクで開いたタスクが「集計外を隠す」で隠れていたら、隠すのをやめて開く（集計外はアクセス制限ではない）
+  const deepLinkTaskIdRef = useRef(initialUrlState.taskId)
+  useEffect(() => {
+    const id = deepLinkTaskIdRef.current
+    if (!id || !initialDataLoaded) return
+    deepLinkTaskIdRef.current = null
+    if (!hiddenPrivateTodoIds.has(id)) return
+    setScopeLens('personal')
+    showToast('リンクのタスクは集計外のカテゴリにあるので、集計外も表示しました')
+  }, [hiddenPrivateTodoIds, initialDataLoaded, showToast])
+
   // レンズ以外の検索・担当・カテゴリ絞り込みとは分離し、詳細や依存候補にも同じ集合を使う。
   const lensTodos = useMemo(
     () => hiddenPrivateTodoIds.size === 0 ? todos : todos.filter((todo) => !hiddenPrivateTodoIds.has(todo.id)),
