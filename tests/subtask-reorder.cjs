@@ -52,4 +52,12 @@ assert.deepEqual(list(lib.moveIdBy(ids, 'c', 1)), ['a', 'b', 'd', 'c', 'e'])
 assert.equal(lib.moveIdBy(ids, 'a', -1), null, '先頭より上へは動かない')
 assert.equal(lib.moveIdBy(ids, 'e', 1), null, '最後より下へは動かない')
 
+// 絞り込み中の並べ替え: 見えている分の新しい並びを、全体の中で見えている分が占めていた位置に入れ直す
+const all = ['h1', 'v1', 'h2', 'v2', 'v3', 'h3']
+assert.deepEqual(list(lib.mergeSubsetOrder(all, ['v3', 'v1', 'v2'])), ['h1', 'v3', 'h2', 'v1', 'v2', 'h3'], '隠れている項目（h）の位置は動かない')
+assert.deepEqual(list(lib.mergeSubsetOrder(all, ['v1', 'v2', 'v3'])), all, '並びが同じなら全体も同じ')
+assert.deepEqual(list(lib.mergeSubsetOrder(all, ['v2', 'gone', 'v1', 'v3'])), ['h1', 'v2', 'h2', 'v1', 'v3', 'h3'], '全体にない ID は無視する')
+assert.deepEqual(list(lib.mergeSubsetOrder(all, [])), all)
+assert.equal(new Set(lib.mergeSubsetOrder(all, ['v3', 'v2', 'v1'])).size, all.length, '重複も欠けもない')
+
 console.log('subtask-reorder: ok')
