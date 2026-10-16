@@ -1001,7 +1001,7 @@ function areDependencyPathsEqual(previous: DependencyPath[], next: DependencyPat
   return previous.every((path, index) => path.id === next[index]?.id && path.path === next[index]?.path)
 }
 
-export function GanttView({
+function GanttViewContent({
   todos,
   categories,
   users = [],
@@ -5189,3 +5189,7 @@ function taskToggleStyle(active: boolean, accent?: string | null): React.CSSProp
     whiteSpace: 'nowrap'
   }
 }
+
+// 渡すものが変わらない限り、App の描き直し（タスクの選択など）ではガントを描き直さない。
+// 全行（数百行）を描き直すと、タスクを選ぶたびに 100ms 以上かかっていた
+export const GanttView = React.memo(GanttViewContent)

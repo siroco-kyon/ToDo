@@ -18,6 +18,7 @@ async function main() {
       import { createRoot } from 'react-dom/client'
       import { flushSync } from 'react-dom'
       import { useTimer } from './src/renderer/src/hooks/useTimer'
+      import { useElapsedSeconds } from './src/renderer/src/hooks/useElapsedSeconds'
       const intervals = new Map(); let nextInterval = 1; let activeRoot = null
       window.clockListeners = new Set(); window.clockNow = Date.parse('2026-10-09T03:00:00Z')
       window.setInterval = (callback) => { const id = nextInterval++; intervals.set(id, callback); return id }
@@ -34,7 +35,8 @@ async function main() {
           if (window.callbackFailure === 'reject') return Promise.reject(new Error('refresh rejected'))
           if (window.callbackFailure === 'throw') throw new Error('refresh threw')
         })
-        useEffect(() => { window.timer = timer })
+        const elapsedSeconds = useElapsedSeconds(timer.startTime)
+        useEffect(() => { window.timer = { ...timer, elapsedSeconds } })
         useEffect(() => { if (autoSync) window.jobs.push(timer.sync()) }, [autoSync, timer.sync])
         return null
       }

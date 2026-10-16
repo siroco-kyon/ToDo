@@ -1,4 +1,4 @@
-import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import React, { lazy, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { AddDailyPlanItemOptions, Category, CreateSubTaskInput, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateSubTaskInput, UpdateTodoInput, UserNotification } from './types'
 import { useTimer } from './hooks/useTimer'
 import { useProgressUnseenCount } from './hooks/useProgressUnseenCount'
@@ -9,29 +9,34 @@ import { TodoDetail } from './components/TodoDetail'
 import { QuickAddModal } from './components/QuickAddModal'
 import { Toast } from './components/Toast'
 import type { ToastMessage } from './components/Toast'
-import { SettingsModal, FONT_FAMILY_DEFAULT, FONT_SCALE_DEFAULT } from './components/SettingsModal'
-import { UserManagementModal } from './components/UserManagementModal'
-import { ProgressReportModal } from './components/ProgressReportModal'
-import { TaskReportWindow } from './components/TaskReportWindow'
-import { DesktopImportModal } from './components/DesktopImportModal'
-import { WorkLogSummary } from './components/WorkLogSummary'
-import { ProgressTimeline, type ProgressTimelineFocusTarget } from './components/ProgressTimeline'
-import { SetupWizardModal } from './components/SetupWizardModal'
-import { PlanView } from './components/PlanView'
+import { FONT_FAMILY_DEFAULT, FONT_SCALE_DEFAULT } from './lib/fontSettings'
+import type { ProgressTimelineFocusTarget } from './components/ProgressTimeline'
 import { TodayFlowRail } from './components/TodayFlowRail'
 import { GanttView } from './components/GanttView'
-import { KanbanView } from './components/KanbanView'
-import { TeamDashboard } from './components/TeamDashboard'
 import { NotificationPanel } from './components/NotificationPanel'
-import { OverviewDashboard } from './components/OverviewDashboard'
-import { ReportView } from './components/ReportView'
+import { ViewBoundary } from './components/ViewBoundary'
 import { ListFilterChips, type ListFilterChip } from './components/ListFilterChips'
 import { buildChecklistSummaries, buildTodayGroups, countRemaining, groupListItems, isActiveList, isMyList } from './lib/todoList'
-import { TodoListsView } from './components/TodoListsView'
 import { TodayTodoCard } from './components/TodayTodo'
 import { mergeSubsetOrder } from './lib/reorder'
 import { buildUrlSearch, parseUrlState } from './lib/urlState'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
+
+// 最初に開くガント・タスク一覧・詳細以外の画面と、設定などの小窓は、開いたときに読み込む（起動を軽くする）
+const SettingsModal = lazy(() => import('./components/SettingsModal').then((module) => ({ default: module.SettingsModal })))
+const UserManagementModal = lazy(() => import('./components/UserManagementModal').then((module) => ({ default: module.UserManagementModal })))
+const ProgressReportModal = lazy(() => import('./components/ProgressReportModal').then((module) => ({ default: module.ProgressReportModal })))
+const TaskReportWindow = lazy(() => import('./components/TaskReportWindow').then((module) => ({ default: module.TaskReportWindow })))
+const DesktopImportModal = lazy(() => import('./components/DesktopImportModal').then((module) => ({ default: module.DesktopImportModal })))
+const SetupWizardModal = lazy(() => import('./components/SetupWizardModal').then((module) => ({ default: module.SetupWizardModal })))
+const WorkLogSummary = lazy(() => import('./components/WorkLogSummary').then((module) => ({ default: module.WorkLogSummary })))
+const ProgressTimeline = lazy(() => import('./components/ProgressTimeline').then((module) => ({ default: module.ProgressTimeline })))
+const PlanView = lazy(() => import('./components/PlanView').then((module) => ({ default: module.PlanView })))
+const KanbanView = lazy(() => import('./components/KanbanView').then((module) => ({ default: module.KanbanView })))
+const TeamDashboard = lazy(() => import('./components/TeamDashboard').then((module) => ({ default: module.TeamDashboard })))
+const OverviewDashboard = lazy(() => import('./components/OverviewDashboard').then((module) => ({ default: module.OverviewDashboard })))
+const ReportView = lazy(() => import('./components/ReportView').then((module) => ({ default: module.ReportView })))
+const TodoListsView = lazy(() => import('./components/TodoListsView').then((module) => ({ default: module.TodoListsView })))
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
 type CenterView = 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban' | 'todo'
@@ -300,7 +305,7 @@ export function App(): React.JSX.Element {
     void loadSelectedPlan(planDate).catch((error) => showToast(error instanceof Error ? error.message : '計画を読み込めませんでした', 'error'))
   }, [isFirstLaunch, loadSelectedPlan, planDate, showToast])
 
-  const { isRunning, runningTodoId, elapsedSeconds, start: startTimer, stop: stopTimer, sync: syncTimer } = useTimer(loadTodos)
+  const { isRunning, runningTodoId, startTime: timerStartTime, start: startTimer, stop: stopTimer, sync: syncTimer } = useTimer(loadTodos)
 
   const stop = useCallback(async (note?: string) => {
     try { await stopTimer(note) }
@@ -868,6 +873,8 @@ export function App(): React.JSX.Element {
   // 追加したタスクが今の絞り込みで一覧に出ないと「消えた」と思われるので、そのときは理由と解除ボタンを出す
   const openTodoDetailRef = useRef(openTodoDetail)
   openTodoDetailRef.current = openTodoDetail
+  // ガントに渡す「タスクを開く」。選択が変わっても同じ関数のままにして、ガントを描き直さない
+  const selectTodoStable = useCallback((id: string) => openTodoDetailRef.current(id), [])
   const handleAdded = (created: Todo[]): void => {
     if (created.length === 0) return
     const first = created[0]
@@ -894,10 +901,10 @@ export function App(): React.JSX.Element {
   // 新しいタスクの担当の初期値: 一覧を特定の人で絞っていればその人、未割り当てで絞っていれば未割り当て、それ以外は自分。
   // 追加した直後に一覧から消えたように見えないようにする
   const defaultNewTaskAssigneeId = selectedAssigneeId === null ? currentUser?.id ?? null : selectedAssigneeId === '' ? null : selectedAssigneeId
-  const openQuickAdd = (defaults?: { categoryId?: string | null; assigneeId?: string | null; listMode?: boolean }): void => {
+  const openQuickAdd = useCallback((defaults?: { categoryId?: string | null; assigneeId?: string | null; listMode?: boolean }): void => {
     setQuickAddDefaults(defaults ?? null)
     setShowQuickAdd(true)
-  }
+  }, [])
 
   // 一覧が空のときの「絞り込みを解除」。集計外を隠していてタスクが見えないこともあるので、それも戻す
   const clearListFilters = useCallback((): void => {
@@ -1185,12 +1192,39 @@ export function App(): React.JSX.Element {
     { key: 'title', label: 'タイトル' }
   ]
 
+  // タスク一覧の絞り込みはガントやカンバンにも効くので、一覧を見ていなくても分かるよう各画面の見出しの横に出す。
+  // 報告タブは自前の担当絞り込みを使うので、一覧の担当絞り込みは出さない（効いていない）。
+  // 詳細・進捗・記録・チームの画面には一覧の絞り込みが効かないので出さない。
+  // 絞り込みが変わったときだけ作り直す（毎回作るとガントなどが描き直される）
+  const { listFilters, categoryAndSearchFilters } = useMemo(() => {
+    const assigneeFilterLabel = selectedAssigneeId === null
+      ? null
+      : selectedAssigneeId === ''
+        ? '未割り当て'
+        : selectedAssigneeId === currentUser?.id
+          ? '自分'
+          : users.find((user) => user.id === selectedAssigneeId)?.display_name ?? '不明'
+    const categoryAndSearchChips: ListFilterChip[] = [
+      ...(selectedCategoryId ? [{ key: 'category', label: `カテゴリ: ${categories.find((item) => item.id === selectedCategoryId)?.name ?? '不明'}`, clear: () => setSelectedCategoryId(null) }] : []),
+      ...(q ? [{ key: 'search', label: `検索: ${searchQuery.trim()}`, clear: () => setSearchQuery('') }] : [])
+    ]
+    const listFilterChips: ListFilterChip[] = [
+      ...(assigneeFilterLabel ? [{ key: 'assignee', label: `担当: ${assigneeFilterLabel}`, clear: () => setSelectedAssigneeId(null) }] : []),
+      ...categoryAndSearchChips
+    ]
+    return {
+      // 絞り込みがないときは null（見出しの横に何も出さない）
+      listFilters: listFilterChips.length > 0 ? <ListFilterChips chips={listFilterChips} /> : null,
+      categoryAndSearchFilters: categoryAndSearchChips.length > 0 ? <ListFilterChips chips={categoryAndSearchChips} /> : null
+    }
+  }, [categories, currentUser?.id, q, searchQuery, selectedAssigneeId, selectedCategoryId, users])
+
   if (isFirstLaunch === null) {
     return <div style={{ height: '100vh', background: '#0a0f1a' }} />
   }
 
   if (isFirstLaunch) {
-    return <SetupWizardModal onComplete={handleSetupComplete} />
+    return <ViewBoundary fallback={<div style={{ height: '100vh', background: '#0a0f1a' }} />}><SetupWizardModal onComplete={handleSetupComplete} /></ViewBoundary>
   }
 
   if (isStandaloneGanttWindow) {
@@ -1266,29 +1300,9 @@ export function App(): React.JSX.Element {
   }
 
   if (isStandaloneTaskReportWindow) {
-    return <TaskReportWindow />
+    return <ViewBoundary><TaskReportWindow /></ViewBoundary>
   }
 
-  // タスク一覧の絞り込みはガントやカンバンにも効くので、一覧を見ていなくても分かるよう各画面の見出しの横に出す。
-  // 報告タブは自前の担当絞り込みを使うので、一覧の担当絞り込みは出さない（効いていない）。
-  // 詳細・進捗・記録・チームの画面には一覧の絞り込みが効かないので出さない。
-  const assigneeFilterLabel = selectedAssigneeId === null
-    ? null
-    : selectedAssigneeId === ''
-      ? '未割り当て'
-      : selectedAssigneeId === currentUser?.id
-        ? '自分'
-        : users.find((user) => user.id === selectedAssigneeId)?.display_name ?? '不明'
-  const categoryAndSearchChips: ListFilterChip[] = [
-    ...(selectedCategoryId ? [{ key: 'category', label: `カテゴリ: ${categories.find((item) => item.id === selectedCategoryId)?.name ?? '不明'}`, clear: () => setSelectedCategoryId(null) }] : []),
-    ...(q ? [{ key: 'search', label: `検索: ${searchQuery.trim()}`, clear: () => setSearchQuery('') }] : [])
-  ]
-  const listFilterChips: ListFilterChip[] = [
-    ...(assigneeFilterLabel ? [{ key: 'assignee', label: `担当: ${assigneeFilterLabel}`, clear: () => setSelectedAssigneeId(null) }] : []),
-    ...categoryAndSearchChips
-  ]
-  // 絞り込みがないときは null（見出しの横に何も出さない）
-  const listFilters = listFilterChips.length > 0 ? <ListFilterChips chips={listFilterChips} /> : null
 
   const isManualSort = sortField === 'sort_order'
   // ガントの画面だけ、パネルの開閉をほかの画面とは別に持つ
@@ -1515,7 +1529,7 @@ export function App(): React.JSX.Element {
               todos={filteredTodos}
               selectedId={selectedTodoId}
               runningTodoId={runningTodoId}
-              elapsedSeconds={elapsedSeconds}
+              timerStartTime={timerStartTime}
               isManualSort={isManualSort}
               searchQuery={q}
               hasOtherFilters={selectedAssigneeId !== null || selectedCategoryId !== null || hiddenPrivateTodoIds.size > 0}
@@ -1546,6 +1560,7 @@ export function App(): React.JSX.Element {
         />
 
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: '#0f172a' }}>
+          <ViewBoundary key={activeView}>
           {initialLoadError ? (
             <div role="alert" style={{ margin: 24, padding: 20, border: '1px solid #ef4444', borderRadius: 12, background: '#450a0a', color: '#fecaca' }}>
               <strong>データを読み込めませんでした</strong>
@@ -1560,7 +1575,7 @@ export function App(): React.JSX.Element {
               selectedAssigneeId={selectedAssigneeId}
               includePrivate={scopeLens === 'personal'}
               runningTodoId={runningTodoId}
-              elapsedSeconds={elapsedSeconds}
+              timerStartTime={timerStartTime}
               listFilters={listFilters}
               onSelectTodo={openTodoDetail}
             />
@@ -1569,11 +1584,11 @@ export function App(): React.JSX.Element {
               categories={categories}
               users={users}
               todos={filteredTodos}
-              onSelectTodo={openTodoDetail}
+              onSelectTodo={selectTodoStable}
               onUpdateTodo={handleUpdate}
               onReorderTodos={handleReorder}
               onOpenSeparateWindow={handleOpenGanttWindow}
-              onAddTodo={(defaults) => openQuickAdd(defaults)}
+              onAddTodo={openQuickAdd}
               listFilters={listFilters}
               hasAnyTodos={todos.length > 0}
               groupByCategory={selectedCategoryId === null}
@@ -1631,7 +1646,7 @@ export function App(): React.JSX.Element {
           ) : activeView === 'report' ? (
             <ReportView
               todos={reportTodos}
-              listFilters={categoryAndSearchChips.length > 0 ? <ListFilterChips chips={categoryAndSearchChips} /> : null}
+              listFilters={categoryAndSearchFilters}
               subTasks={allSubTasks}
               categories={categories}
               users={users}
@@ -1669,7 +1684,7 @@ export function App(): React.JSX.Element {
               currentUser={currentUser}
               todayPlanItems={lensPlanItems}
               runningTodoId={runningTodoId}
-              elapsedSeconds={elapsedSeconds}
+              timerStartTime={timerStartTime}
               onUpdate={handleUpdate}
               onStartTimer={start}
               onStopTimer={stop}
@@ -1678,6 +1693,7 @@ export function App(): React.JSX.Element {
               onDirtyChange={setDetailDirty}
             />
           )}
+          </ViewBoundary>
         </div>
 
         {showAuxiliaryPanel && (
@@ -1726,7 +1742,7 @@ export function App(): React.JSX.Element {
                         currentUser={currentUser}
                         todayPlanItems={lensPlanItems}
                         runningTodoId={runningTodoId}
-                        elapsedSeconds={elapsedSeconds}
+                        timerStartTime={timerStartTime}
                         onUpdate={handleUpdate}
                         onStartTimer={start}
                         onStopTimer={stop}
@@ -1787,6 +1803,7 @@ export function App(): React.JSX.Element {
       )}
 
       {showSettings && (
+        <ViewBoundary fallback={null} onDismiss={() => setShowSettings(false)}>
         <SettingsModal
           onClose={() => setShowSettings(false)}
           onShowToast={showToast}
@@ -1805,6 +1822,7 @@ export function App(): React.JSX.Element {
           onExportClipboard={handleExportClipboard}
           onExportFile={handleExportFile}
         />
+        </ViewBoundary>
       )}
 
       {showNotifications && currentUser && (
@@ -1819,15 +1837,18 @@ export function App(): React.JSX.Element {
       )}
 
       {showUserManagement && currentUser && (
+        <ViewBoundary fallback={null} onDismiss={() => setShowUserManagement(false)}>
         <UserManagementModal
           currentUserId={currentUser.id}
           onClose={() => setShowUserManagement(false)}
           onShowToast={showToast}
           onChanged={() => void loadUsers()}
         />
+        </ViewBoundary>
       )}
 
       {showProgressReport && isAdmin && multiUser && (
+        <ViewBoundary fallback={null} onDismiss={() => setShowProgressReport(false)}>
         <ProgressReportModal
           users={users}
           includePrivate={scopeLens === 'personal'}
@@ -1835,17 +1856,21 @@ export function App(): React.JSX.Element {
           onClose={() => setShowProgressReport(false)}
           onShowToast={showToast}
         />
+        </ViewBoundary>
       )}
 
       {showDesktopImport && isAdmin && multiUser && (
+        <ViewBoundary fallback={null} onDismiss={() => setShowDesktopImport(false)}>
         <DesktopImportModal
           users={users}
           onClose={() => setShowDesktopImport(false)}
           onShowToast={showToast}
         />
+        </ViewBoundary>
       )}
 
       {showMySummary && (
+        <ViewBoundary fallback={null} onDismiss={() => setShowMySummary(false)}>
         <ProgressReportModal
           users={users}
           selfOnly
@@ -1855,6 +1880,7 @@ export function App(): React.JSX.Element {
           onClose={() => setShowMySummary(false)}
           onShowToast={showToast}
         />
+        </ViewBoundary>
       )}
     </div>
   )
