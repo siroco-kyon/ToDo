@@ -355,7 +355,10 @@ async function run() {
   const legacyKey = 'progress-note-draft:' + todo.id
   const recoveredKey = 'progress-note-draft:' + user.id + ':' + todo.id
   await main.webContents.executeJavaScript('localStorage.setItem(' + JSON.stringify(legacyKey) + ', "以前のWeb版で書いた未投稿の文章")')
-  await main.webContents.executeJavaScript("Array.from(document.querySelectorAll('button')).find((button) => button.textContent === '設定').click()")
+  // 設定は上部バーのユーザー名のメニューの中にある
+  await main.webContents.executeJavaScript("document.querySelector('[data-toolbar-menu=account]').click()")
+  await until(main, "Boolean(document.querySelector('[role=menu] [role=menuitem]'))", 'The account menu did not open')
+  await main.webContents.executeJavaScript("Array.from(document.querySelectorAll('[role=menu] [role=menuitem]')).find((button) => button.textContent === '設定').click()")
   await until(main, "Boolean(document.querySelector('[role=dialog][aria-label=設定]'))", 'Settings did not open')
   assert.ok(await main.webContents.executeJavaScript("document.body.innerText.includes('通知をデスクトップに表示')"), 'The desktop notification setting is missing')
   await until(main, "document.body.innerText.includes('このPCのバージョン: 1.0.4 以前') && document.body.innerText.includes('新しいバージョン 9.9.9 を配布しています')", 'Settings did not compare the installed app with the published installer')

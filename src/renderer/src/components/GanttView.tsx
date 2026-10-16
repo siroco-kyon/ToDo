@@ -128,6 +128,8 @@ interface UndoEntry {
 type EditableTodoField = 'start_date' | 'due_date' | 'progress' | 'assignee_id'
 type EditableSubTaskField = 'title' | 'start_date' | 'due_date' | 'progress' | 'done' | 'assignee_id'
 type GanttLeftColumnKey = 'title' | 'start' | 'due' | 'progress' | 'assignee'
+/** 左の表で出し入れできる列（タスク名はいつも出す） */
+type GanttOptionalColumnKey = Exclude<GanttLeftColumnKey, 'title'>
 type ZoomMode = 'compact' | 'normal' | 'detail' | 'focus'
 type StatusFilter = 'active' | 'on_hold' | 'done' | 'all'
 type TimeScale = 'day' | 'week' | 'month' | 'year'
@@ -159,6 +161,8 @@ const COLLAPSED_TODO_STORAGE_KEY = 'gantt-collapsed-todo-ids'
 const GANTT_BASELINE_STORAGE_KEY = 'gantt-baseline-snapshot'
 const GANTT_SCROLL_STATE_STORAGE_KEY = 'gantt-scroll-state'
 const GANTT_LEFT_COLUMN_WIDTHS_STORAGE_KEY = 'gantt-left-column-widths'
+const GANTT_LEFT_VISIBLE_COLUMNS_STORAGE_KEY = 'gantt-left-visible-columns'
+const OPTIONAL_LEFT_COLUMNS: GanttOptionalColumnKey[] = ['start', 'due', 'progress', 'assignee']
 const PARENT_ROW_HEIGHT = 38
 const SUBTASK_ROW_HEIGHT = 28
 const SUBTASK_ADD_ROW_HEIGHT = 70
@@ -183,7 +187,8 @@ const LEFT_COLUMN_DEFS: Array<{ key: GanttLeftColumnKey; label: string; min: num
   { key: 'assignee', label: '担当', min: 56, max: 220 }
 ]
 const DEFAULT_LEFT_COLUMN_WIDTHS: GanttLeftColumnWidths = {
-  title: 150,
+  // 既定では左の表にタスク名だけを出すので、名前が読める幅にする
+  title: 200,
   start: 64,
   due: 64,
   progress: 46,
@@ -195,6 +200,8 @@ const UNIT_WIDTH: Record<TimeScale, Record<ZoomMode, number>> = {
   month: { compact: 64, normal: 88, detail: 120, focus: 164 },
   year: { compact: 96, normal: 128, detail: 168, focus: 216 }
 }
+/** 見出しの −／＋ で1段ずつ動かすズームの順番 */
+const ZOOM_ORDER: ZoomMode[] = ['compact', 'normal', 'detail', 'focus']
 const ZOOM_LABELS: Record<ZoomMode, string> = {
   compact: 'コンパクト',
   normal: '標準',
@@ -438,14 +445,32 @@ function loadGanttLeftColumnWidths(): GanttLeftColumnWidths {
   }
 }
 
-function leftGridTemplateFor(widths: GanttLeftColumnWidths): string {
-  return `${widths.title}px ${widths.start}px ${widths.due}px ${widths.progress}px ${widths.assignee}px`
+// 左の表に出す列（開始・期限・進捗・担当）。既定はタスク名だけ（バーの上にも名前・担当・進捗が出るので、時間軸を広く見せる）
+function loadVisibleLeftColumns(): GanttOptionalColumnKey[] {
+  try {
+    const raw = window.localStorage.getItem(GANTT_LEFT_VISIBLE_COLUMNS_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return OPTIONAL_LEFT_COLUMNS.filter((key) => parsed.includes(key))
+  } catch {
+    return []
+  }
 }
 
-function leftTableWidthFor(widths: GanttLeftColumnWidths): number {
-  const columnTotal = LEFT_COLUMN_DEFS.reduce((total, column) => total + widths[column.key], 0)
+function visibleLeftColumnDefsFor(visibleColumns: GanttOptionalColumnKey[]): typeof LEFT_COLUMN_DEFS {
+  return LEFT_COLUMN_DEFS.filter((column) => column.key === 'title' || visibleColumns.includes(column.key))
+}
+
+function leftGridTemplateFor(widths: GanttLeftColumnWidths, visibleColumns: GanttOptionalColumnKey[]): string {
+  return visibleLeftColumnDefsFor(visibleColumns).map((column) => `${widths[column.key]}px`).join(' ')
+}
+
+function leftTableWidthFor(widths: GanttLeftColumnWidths, visibleColumns: GanttOptionalColumnKey[]): number {
+  const columns = visibleLeftColumnDefsFor(visibleColumns)
+  const columnTotal = columns.reduce((total, column) => total + widths[column.key], 0)
   return columnTotal
-    + LEFT_COLUMN_GAP * (LEFT_COLUMN_DEFS.length - 1)
+    + LEFT_COLUMN_GAP * (columns.length - 1)
     + LEFT_TABLE_HORIZONTAL_PADDING
     + LEFT_TABLE_CATEGORY_STRIPE_WIDTH
 }
@@ -1009,6 +1034,8 @@ export function GanttView({
   const [manualEnd, setManualEnd] = useState(initialSettings.manualEnd)
   const [manualPreset, setManualPreset] = useState<RangePreset>(initialSettings.manualPreset)
   const [controlsCollapsed, setControlsCollapsed] = useState(initialSettings.controlsCollapsed)
+  // 見出しの「期限超過」「遅れ」を押したときの絞り込み（覚えない）
+  const [healthFilter, setHealthFilter] = useState<'overdue' | 'behind' | null>(null)
   const [selectedCategoryKeys, setSelectedCategoryKeys] = useState<CategoryFilterKey[]>(initialSettings.selectedCategoryKeys)
   const [taskQuery, setTaskQuery] = useState('')
   const [selectedTodoIds, setSelectedTodoIds] = useState<string[]>([])
@@ -1028,6 +1055,7 @@ export function GanttView({
   const [dependencyLayoutVersion, setDependencyLayoutVersion] = useState(0)
   const [scrollStateReady, setScrollStateReady] = useState(false)
   const [leftColumnWidths, setLeftColumnWidths] = useState<GanttLeftColumnWidths>(() => loadGanttLeftColumnWidths())
+  const [visibleLeftColumns, setVisibleLeftColumns] = useState<GanttOptionalColumnKey[]>(() => loadVisibleLeftColumns())
   const [resizingLeftColumn, setResizingLeftColumn] = useState<LeftColumnResizeState | null>(null)
   const [panDrag, setPanDrag] = useState<PanDragState | null>(null)
   const [editingTodoCell, setEditingTodoCell] = useState<EditingTodoCell | null>(null)
@@ -1063,8 +1091,14 @@ export function GanttView({
   dependencyDragRef.current = dependencyDrag
   panDragRef.current = panDrag
 
-  const leftGridTemplate = useMemo(() => leftGridTemplateFor(leftColumnWidths), [leftColumnWidths])
-  const leftTableWidth = useMemo(() => leftTableWidthFor(leftColumnWidths), [leftColumnWidths])
+  const leftGridTemplate = useMemo(() => leftGridTemplateFor(leftColumnWidths, visibleLeftColumns), [leftColumnWidths, visibleLeftColumns])
+  const leftTableWidth = useMemo(() => leftTableWidthFor(leftColumnWidths, visibleLeftColumns), [leftColumnWidths, visibleLeftColumns])
+  const visibleLeftColumnDefs = useMemo(() => visibleLeftColumnDefsFor(visibleLeftColumns), [visibleLeftColumns])
+  // 行の左の表は5つの欄を同じ順で並べている。出さない列は CSS で隠し、残りが表示中の列の幅に入る
+  const leftGridAttributes = useMemo(() => ({
+    className: 'tarbo-gantt-left-grid',
+    'data-hidden-columns': OPTIONAL_LEFT_COLUMNS.filter((key) => !visibleLeftColumns.includes(key)).join(' ')
+  }), [visibleLeftColumns])
 
   const loadGanttData = useCallback(async (): Promise<void> => {
     // 更新中もチャートを残し、バーの編集や同期でスクロール領域を作り直さない。
@@ -1221,6 +1255,12 @@ export function GanttView({
     setDependencyLayoutVersion((previous) => previous + 1)
   }, [leftColumnWidths])
 
+  // 左の表の列を出し入れすると時間軸の位置が動くので、依存関係の線も引き直す
+  useEffect(() => {
+    window.localStorage.setItem(GANTT_LEFT_VISIBLE_COLUMNS_STORAGE_KEY, JSON.stringify(visibleLeftColumns))
+    setDependencyLayoutVersion((previous) => previous + 1)
+  }, [visibleLeftColumns])
+
   useEffect(() => {
     if (!resizingLeftColumn) return
 
@@ -1342,6 +1382,10 @@ export function GanttView({
     const container = scrollRef.current
     if (!container) return
     setPanDrag({ originClientX: event.clientX, originScrollLeft: container.scrollLeft })
+  }, [])
+
+  const stepZoom = useCallback((direction: -1 | 1) => {
+    setZoom((previous) => ZOOM_ORDER[clamp(ZOOM_ORDER.indexOf(previous) + direction, 0, ZOOM_ORDER.length - 1)])
   }, [])
 
   const applyManualPreset = useCallback((preset: Exclude<RangePreset, null>) => {
@@ -1778,6 +1822,26 @@ export function GanttView({
       })
   ), [normalizedRange.end, normalizedRange.start, scheduledGroups, showOutOfRange, showSubtasks])
 
+  // 「期限超過」「遅れ」のチップの件数と絞り込み。件数は絞り込む前の行で数える（押しても、もう一方の件数が消えないように）
+  const rangeHealthByTodoId = useMemo(() => new Map(rangeChartGroups.map((group) => [
+    group.todo.id,
+    // ToDoリストは進捗率を使わないので、遅れ・期限超過の判定はしない
+    group.todo.list_mode ? null : getScheduleHealth(group.todo, group.todoBar, todayKey, { behindThresholdDays, workingDaysOnly, holidayNames })
+  ])), [behindThresholdDays, holidayNames, rangeChartGroups, todayKey, workingDaysOnly])
+  const healthChipCounts = useMemo(() => {
+    const counts = { overdue: 0, behind: 0 }
+    for (const health of rangeHealthByTodoId.values()) {
+      if (health?.status === 'overdue') counts.overdue += 1
+      else if (health?.status === 'behind') counts.behind += 1
+    }
+    return counts
+  }, [rangeHealthByTodoId])
+  const displayedRangeGroups = useMemo(() => (
+    healthFilter && showScheduleSignals
+      ? rangeChartGroups.filter((group) => rangeHealthByTodoId.get(group.todo.id)?.status === healthFilter)
+      : rangeChartGroups
+  ), [healthFilter, rangeChartGroups, rangeHealthByTodoId, showScheduleSignals])
+
   // 担当者別はサーバー版（メンバーがいる）だけ。カテゴリで絞り込み中でも担当者別には分けられる
   const sectionGrouping: 'category' | 'assignee' | 'none' = groupMode === 'assignee' && users.length > 0
     ? 'assignee'
@@ -1795,14 +1859,14 @@ export function GanttView({
     })
 
     if (sectionGrouping === 'none') {
-      return [makeSection('__all__' as CategoryFilterKey, 'すべて', '#6366f1', rangeChartGroups)]
+      return [makeSection('__all__' as CategoryFilterKey, 'すべて', '#6366f1', displayedRangeGroups)]
     }
 
     if (sectionGrouping === 'assignee') {
       // 担当者はユーザー一覧の順（報告タブと同じ）。未割り当ては最後
       const userOrder = new Map(users.map((user, index) => [user.id, { user, index }]))
       const groupsByKey = new Map<string, ChartGroup[]>()
-      for (const group of rangeChartGroups) {
+      for (const group of displayedRangeGroups) {
         const key = `${ASSIGNEE_SECTION_PREFIX}${group.todo.assignee_id ?? ''}`
         const current = groupsByKey.get(key)
         if (current) current.push(group)
@@ -1821,7 +1885,7 @@ export function GanttView({
     }
 
     const groupsByKey = new Map<CategoryFilterKey, ChartGroup[]>()
-    for (const group of rangeChartGroups) {
+    for (const group of displayedRangeGroups) {
       const key = (group.todo.category_id ?? NO_CATEGORY_KEY) as CategoryFilterKey
       const current = groupsByKey.get(key)
       if (current) current.push(group)
@@ -1841,7 +1905,7 @@ export function GanttView({
     }
 
     return orderedSections
-  }, [categoryOptions, collapsedCategoryKeys, rangeChartGroups, sectionGrouping, users])
+  }, [categoryOptions, collapsedCategoryKeys, displayedRangeGroups, sectionGrouping, users])
 
   const showCategoryGrouping = sectionGrouping !== 'none' && chartSections.length > 0
   const chartGroups = useMemo<ChartGroup[]>(() => (
@@ -2240,7 +2304,7 @@ export function GanttView({
     centerRangeOnToday()
   }, [centerRangeOnToday, getTodayScrollLeft, todayIndex, totalUnits])
 
-  const hasScrollableChart = !loading && rangeChartGroups.length > 0
+  const hasScrollableChart = !loading && displayedRangeGroups.length > 0
 
   useLayoutEffect(() => {
     if (!hasScrollableChart) return
@@ -3026,89 +3090,59 @@ export function GanttView({
 
   return (
     <div className="tarbo-gantt" style={{ height: '100%', overflow: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 8, position: 'relative', background: GANTT_SURFACE, color: GANTT_TEXT }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: '0.95rem', color: '#f8fafc', fontWeight: 700 }}>ガントチャート</div>
-            {listFilters}
-          </div>
-          {isReorderMode && <div style={{ marginTop: 2, fontSize: '0.72rem', color: '#93c5fd' }}>並べ替えモード中</div>}
-          {reorderFeedback && <div role="alert" style={{ marginTop: 2, fontSize: '0.72rem', color: '#fca5a5' }}>{reorderFeedback}</div>}
+      {/* 見出しは1段の道具バー。期間・単位・ズームの操作をここに出し、件数や凡例は表示設定の中へ */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginRight: 4 }}>
+          <div style={{ fontSize: '0.95rem', color: '#f8fafc', fontWeight: 700, whiteSpace: 'nowrap' }}>ガントチャート</div>
+          {listFilters}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button
-            onClick={() => setIsReorderMode((previous) => !previous)}
-            disabled={reorderPending || (!isReorderMode && !canStartReorderMode)}
-            style={{
-              ...headerActionButtonStyle,
-              border: `1px solid ${isReorderMode ? '#16a34a' : '#2563eb'}`,
-              background: isReorderMode ? '#14532d' : '#172554',
-              color: isReorderMode ? '#dcfce7' : '#dbeafe',
-              cursor: reorderPending || (!isReorderMode && !canStartReorderMode) ? 'not-allowed' : 'pointer',
-              opacity: reorderPending || (!isReorderMode && !canStartReorderMode) ? 0.55 : 1
-            }}
-            title={!isReorderMode && !canStartReorderMode ? '並べ替え対象のタスクが2件以上あるときに有効です。' : undefined}
-          >
-            {reorderPending ? '並べ替えを保存中...' : isReorderMode ? '並べ替え完了' : '並べ替え'}
-          </button>
-          <button
-            onClick={() => void performUndo()}
-            disabled={!lastUndoEntry || undoPending}
-            title={lastUndoEntry?.label ?? '直前の変更を元に戻す'}
-            style={{
-              ...headerActionButtonStyle,
-              border: `1px solid ${lastUndoEntry && !undoPending ? '#16a34a' : '#334155'}`,
-              background: lastUndoEntry && !undoPending ? '#14532d' : '#0f172a',
-              color: lastUndoEntry && !undoPending ? '#dcfce7' : '#64748b',
-              cursor: lastUndoEntry && !undoPending ? 'pointer' : 'not-allowed'
-            }}
-          >
-            {undoPending ? '戻しています...' : '1つ戻る'}
-          </button>
-          <button onClick={() => setControlsCollapsed((previous) => !previous)} style={headerActionButtonStyle}>
-            {controlsCollapsed ? '表示設定を開く' : '表示設定を閉じる'}
-          </button>
-          <button onClick={handleJumpToToday} style={headerActionButtonStyle}>
-            今日に戻る
-          </button>
-          {!standalone && onOpenSeparateWindow && (
-            <button onClick={onOpenSeparateWindow} style={headerActionButtonStyle}>
-              別ウィンドウで開く
+        <span role="group" aria-label="表示する期間" style={toolGroupStyle}>
+          <button onClick={() => shiftVisibleRange(-1)} aria-label="前の期間へ" title="前の期間へ" style={toolButtonStyle(false)}>◀</button>
+          <button onClick={handleJumpToToday} title="今日を左から 1/4 の位置に表示します" style={toolButtonStyle(false)}>今日</button>
+          <button onClick={() => shiftVisibleRange(1)} aria-label="次の期間へ" title="次の期間へ" style={toolButtonStyle(false)}>▶</button>
+        </span>
+
+        <span role="group" aria-label="表示単位" style={toolGroupStyle}>
+          {(['day', 'week', 'month', 'year'] as const).map((scale) => (
+            <button key={scale} onClick={() => setTimeScale(scale)} aria-pressed={timeScale === scale} style={toolButtonStyle(timeScale === scale)}>
+              {SCALE_LABELS[scale]}
             </button>
-          )}
-          {standalone && <div style={standaloneBadgeStyle}>別ウィンドウ表示</div>}
-        </div>
-      </div>
+          ))}
+        </span>
 
-      <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 8, padding: '6px 8px', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={collapsedSummaryChipStyle}>期間 {shortDateLabel(normalizedRange.start)} - {shortDateLabel(normalizedRange.end)}</span>
-        <span style={collapsedSummaryChipStyle}>表示単位 {SCALE_LABELS[timeScale]}</span>
-        <span style={collapsedSummaryChipStyle}>ズーム {ZOOM_LABELS[zoom]}</span>
-        <span style={collapsedSummaryChipStyle}>表示 {rangeChartGroups.length}件</span>
-        {showOutOfRange && <span style={collapsedSummaryChipStyle}>期間外を表示</span>}
-        {isReorderMode && <span style={healthSummaryChipStyle('#14532d', '#16a34a', '#dcfce7')}>並べ替えモード</span>}
-        <span style={collapsedSummaryChipStyle}>サブタスク {visibleSubTaskCount}/{datedSubTaskCount}</span>
-        {expandableTodoIds.length > 0 && (
-          <span style={collapsedSummaryChipStyle}>展開 {expandedTodoCount}/{expandableTodoIds.length}</span>
+        <span role="group" aria-label={`ズーム（${ZOOM_LABELS[zoom]}）`} title={`ズーム: ${ZOOM_LABELS[zoom]}`} style={toolGroupStyle}>
+          <button onClick={() => stepZoom(-1)} disabled={zoom === ZOOM_ORDER[0]} aria-label="縮小" title={`縮小（今: ${ZOOM_LABELS[zoom]}）`} style={toolButtonStyle(false, zoom === ZOOM_ORDER[0])}>−</button>
+          <button onClick={() => stepZoom(1)} disabled={zoom === ZOOM_ORDER[ZOOM_ORDER.length - 1]} aria-label="拡大" title={`拡大（今: ${ZOOM_LABELS[zoom]}）`} style={toolButtonStyle(false, zoom === ZOOM_ORDER[ZOOM_ORDER.length - 1])}>＋</button>
+        </span>
+
+        {users.length > 0 && (
+          <span role="group" aria-label="タスクの並べ方" title="タスクの並べ方" style={toolGroupStyle}>
+            <button onClick={() => setGroupMode('category')} aria-pressed={groupMode === 'category'} style={toolButtonStyle(groupMode === 'category')}>カテゴリ別</button>
+            <button onClick={() => setGroupMode('assignee')} aria-pressed={groupMode === 'assignee'} style={toolButtonStyle(groupMode === 'assignee')}>担当者別</button>
+          </span>
         )}
-        {showBaseline && baselineCapturedLabel && (
-          <span style={collapsedSummaryChipStyle}>基準線 {baselineCapturedLabel}</span>
+
+        {/* 押すと、その状態のタスクだけに絞る。もう一度押すと戻す */}
+        {showScheduleSignals && (healthChipCounts.overdue > 0 || healthFilter === 'overdue') && (
+          <button
+            onClick={() => setHealthFilter((previous) => previous === 'overdue' ? null : 'overdue')}
+            aria-pressed={healthFilter === 'overdue'}
+            title={healthFilter === 'overdue' ? '押すと絞り込みを外します' : '期限を過ぎたタスクだけを表示します'}
+            style={healthFilterChipStyle('#450a0a', '#ef4444', '#fecaca', healthFilter === 'overdue')}
+          >
+            期限超過 {healthChipCounts.overdue}{healthFilter === 'overdue' ? ' ×' : ''}
+          </button>
         )}
-        {showScheduleSignals && scheduleHealthSummary.overdue > 0 && (
-          <span style={healthSummaryChipStyle('#450a0a', '#ef4444', '#fecaca')}>期限超過 {scheduleHealthSummary.overdue}</span>
-        )}
-        {showScheduleSignals && scheduleHealthSummary.behind > 0 && (
-          <span style={healthSummaryChipStyle('#451a03', '#f59e0b', '#fde68a')} title={`予定より${behindThresholdDays}日分以上遅れているタスク（表示設定で変更できます）`}>遅れ {scheduleHealthSummary.behind}</span>
-        )}
-        {showScheduleSignals && scheduleHealthSummary.healthy > 0 && (
-          <span style={healthSummaryChipStyle('#082f49', '#38bdf8', '#e0f2fe')}>順調 {scheduleHealthSummary.healthy}</span>
-        )}
-        {showScheduleSignals && scheduleHealthSummary.future > 0 && (
-          <span style={healthSummaryChipStyle('#0f172a', '#64748b', '#cbd5e1')}>開始前 {scheduleHealthSummary.future}</span>
-        )}
-        {lastUndoEntry && (
-          <span style={collapsedSummaryChipStyle}>戻す: {lastUndoEntry.label}</span>
+        {showScheduleSignals && (healthChipCounts.behind > 0 || healthFilter === 'behind') && (
+          <button
+            onClick={() => setHealthFilter((previous) => previous === 'behind' ? null : 'behind')}
+            aria-pressed={healthFilter === 'behind'}
+            title={healthFilter === 'behind' ? '押すと絞り込みを外します' : `予定より${behindThresholdDays}日分以上遅れているタスクだけを表示します（日数は表示設定で変えられます）`}
+            style={healthFilterChipStyle('#451a03', '#f59e0b', '#fde68a', healthFilter === 'behind')}
+          >
+            遅れ {healthChipCounts.behind}{healthFilter === 'behind' ? ' ×' : ''}
+          </button>
         )}
         {unscheduledGroups.length > 0 && (
           // 日付のないタスクはチャートの下に出るので、件数を見せて押すとそこへ移動する
@@ -3123,28 +3157,49 @@ export function GanttView({
             日付なし {unscheduledGroups.length}件 ↓
           </button>
         )}
-        {users.length > 0 && (
-          <span style={{ display: 'inline-flex', gap: 2, padding: 2, borderRadius: 8, background: '#0b1220', border: '1px solid #1f2937' }} title="タスクの並べ方">
-            <button onClick={() => setGroupMode('category')} style={miniToggleStyle(groupMode === 'category')}>カテゴリ別</button>
-            <button onClick={() => setGroupMode('assignee')} style={miniToggleStyle(groupMode === 'assignee')}>担当者別</button>
-          </span>
-        )}
-        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }} aria-label="凡例">
-          <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: STATUS_TONE.on_hold.background, border: `1px solid ${STATUS_TONE.on_hold.border}` }} />保留中</span>
-          <span style={legendItemStyle()}><span style={{ width: 10, height: 12, border: `2px solid ${TODAY_LINE_COLOR}`, borderTop: 'none', borderBottom: 'none', background: 'rgba(244, 63, 94, 0.15)' }} />今日</span>
-          {timeScale === 'day' && (
-            <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: '#f8717140', border: '1px solid #f8717166' }} />土日祝</span>
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginLeft: 'auto' }}>
+          <button
+            onClick={() => void performUndo()}
+            disabled={!lastUndoEntry || undoPending}
+            title={lastUndoEntry ? `戻す: ${lastUndoEntry.label}（Ctrl+Z）` : '直前の変更を元に戻す'}
+            style={{
+              ...headerActionButtonStyle,
+              border: `1px solid ${lastUndoEntry && !undoPending ? '#16a34a' : '#334155'}`,
+              background: lastUndoEntry && !undoPending ? '#14532d' : '#0f172a',
+              color: lastUndoEntry && !undoPending ? '#dcfce7' : '#64748b',
+              cursor: lastUndoEntry && !undoPending ? 'pointer' : 'not-allowed'
+            }}
+          >
+            {undoPending ? '戻しています...' : '1つ戻る'}
+          </button>
+          <button
+            onClick={() => setIsReorderMode((previous) => !previous)}
+            disabled={reorderPending || (!isReorderMode && !canStartReorderMode)}
+            style={{
+              ...headerActionButtonStyle,
+              border: `1px solid ${isReorderMode ? '#16a34a' : '#2563eb'}`,
+              background: isReorderMode ? '#14532d' : '#172554',
+              color: isReorderMode ? '#dcfce7' : '#dbeafe',
+              cursor: reorderPending || (!isReorderMode && !canStartReorderMode) ? 'not-allowed' : 'pointer',
+              opacity: reorderPending || (!isReorderMode && !canStartReorderMode) ? 0.55 : 1
+            }}
+            title={!isReorderMode && !canStartReorderMode ? '並べ替え対象のタスクが2件以上あるときに有効です。' : isReorderMode ? '並べ替えモード中です。押すと終わります（Esc でも終わります）' : 'タスクの行をドラッグして並べ替えます'}
+          >
+            {reorderPending ? '並べ替えを保存中...' : isReorderMode ? '並べ替え完了' : '並べ替え'}
+          </button>
+          <button onClick={() => setControlsCollapsed((previous) => !previous)} aria-expanded={!controlsCollapsed} style={headerActionButtonStyle}>
+            表示設定
+          </button>
+          {!standalone && onOpenSeparateWindow && (
+            <button onClick={onOpenSeparateWindow} style={headerActionButtonStyle}>
+              別ウィンドウで開く
+            </button>
           )}
-          {showScheduleSignals && (
-            <>
-              <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: HEALTH_BAR_TONE.onTrack.fill }} />順調</span>
-              <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: HEALTH_BAR_TONE.behind.fill }} />遅れ</span>
-              <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: HEALTH_BAR_TONE.overdue.fill }} />期限超過</span>
-              <span style={legendItemStyle()}><span style={{ width: 14, height: 8, background: OVERDUE_HATCH, border: '1px dashed #ef4444' }} />超過している日数</span>
-            </>
-          )}
-        </span>
+          {standalone && <div style={standaloneBadgeStyle}>別ウィンドウ表示</div>}
+        </div>
       </div>
+      {reorderFeedback && <div role="alert" style={{ fontSize: '0.72rem', color: '#fca5a5' }}>{reorderFeedback}</div>}
 
       {!controlsCollapsed && (
         <div style={settingsPanelStyle}>
@@ -3154,6 +3209,58 @@ export function GanttView({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+            {/* 以前は見出しの下に並べていた今の表示の内容と凡例。毎回は見ないので、ここにまとめる */}
+            <div style={settingsSectionStyle}>
+              <label style={controlLabelStyle}>今の表示</label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <span style={collapsedSummaryChipStyle}>期間 {shortDateLabel(normalizedRange.start)} - {shortDateLabel(normalizedRange.end)}</span>
+                <span style={collapsedSummaryChipStyle}>表示単位 {SCALE_LABELS[timeScale]}</span>
+                <span style={collapsedSummaryChipStyle}>ズーム {ZOOM_LABELS[zoom]}</span>
+                <span style={collapsedSummaryChipStyle}>表示 {displayedRangeGroups.length}件</span>
+                <span style={collapsedSummaryChipStyle}>サブタスク {visibleSubTaskCount}/{datedSubTaskCount}</span>
+                {expandableTodoIds.length > 0 && <span style={collapsedSummaryChipStyle}>展開 {expandedTodoCount}/{expandableTodoIds.length}</span>}
+                {showBaseline && baselineCapturedLabel && <span style={collapsedSummaryChipStyle}>基準線 {baselineCapturedLabel}</span>}
+                {showScheduleSignals && scheduleHealthSummary.healthy > 0 && <span style={healthSummaryChipStyle('#082f49', '#38bdf8', '#e0f2fe')}>順調 {scheduleHealthSummary.healthy}</span>}
+                {showScheduleSignals && scheduleHealthSummary.future > 0 && <span style={healthSummaryChipStyle('#0f172a', '#64748b', '#cbd5e1')}>開始前 {scheduleHealthSummary.future}</span>}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }} aria-label="凡例">
+                <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: STATUS_TONE.on_hold.background, border: `1px solid ${STATUS_TONE.on_hold.border}` }} />保留中</span>
+                <span style={legendItemStyle()}><span style={{ width: 10, height: 12, border: `2px solid ${TODAY_LINE_COLOR}`, borderTop: 'none', borderBottom: 'none', background: 'rgba(244, 63, 94, 0.15)' }} />今日</span>
+                {timeScale === 'day' && (
+                  <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: '#f8717140', border: '1px solid #f8717166' }} />土日祝</span>
+                )}
+                {showScheduleSignals && (
+                  <>
+                    <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: HEALTH_BAR_TONE.onTrack.fill }} />順調</span>
+                    <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: HEALTH_BAR_TONE.behind.fill }} />遅れ</span>
+                    <span style={legendItemStyle()}><span style={{ width: 10, height: 10, borderRadius: 2, background: HEALTH_BAR_TONE.overdue.fill }} />期限超過</span>
+                    <span style={legendItemStyle()}><span style={{ width: 14, height: 8, background: OVERDUE_HATCH, border: '1px dashed #ef4444' }} />超過している日数</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div style={settingsSectionStyle}>
+              <label style={controlLabelStyle}>左の表に出す列</label>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {OPTIONAL_LEFT_COLUMNS.map((key) => (
+                  <label key={key} style={toggleLabelStyle}>
+                    <input
+                      type="checkbox"
+                      checked={visibleLeftColumns.includes(key)}
+                      onChange={(event) => setVisibleLeftColumns((previous) => (
+                        event.target.checked
+                          ? OPTIONAL_LEFT_COLUMNS.filter((column) => column === key || previous.includes(column))
+                          : previous.filter((column) => column !== key)
+                      ))}
+                    />
+                    <span>{leftColumnDef(key).label}</span>
+                  </label>
+                ))}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>タスク名はいつも出します。バーの上にも担当と進捗が出ます。</div>
+            </div>
+
             <div style={settingsSectionStyle}>
               <label style={controlLabelStyle}>期間</label>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -3447,7 +3554,7 @@ export function GanttView({
       <div style={{ flex: '0 0 auto', minHeight: controlsCollapsed ? 540 : 460, height: controlsCollapsed ? '74vh' : '60vh', border: '1px solid #1e293b', borderRadius: 8, background: '#0b1220', overflow: 'hidden' }}>
         {loading ? (
           <div style={centerEmptyStyle}>タスクを読み込み中...</div>
-        ) : rangeChartGroups.length === 0 ? (
+        ) : displayedRangeGroups.length === 0 ? (
           <div style={{ ...centerEmptyStyle, flexDirection: 'column' }}>
             <div>この条件で表示できる予定タスクはありません。</div>
             <div style={{ marginTop: 6, fontSize: '0.74rem', color: '#64748b' }}>
@@ -3466,7 +3573,7 @@ export function GanttView({
               <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 6 }}>
                 <div style={{ position: 'sticky', left: 0, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0f172a', borderRight: '1px solid #1e293b', borderBottom: '1px solid #1e293b', padding: '6px 8px' }}>
                   <div style={{ ...leftHeaderGridStyle, gridTemplateColumns: leftGridTemplate }}>
-                    {LEFT_COLUMN_DEFS.map((column) => (
+                    {visibleLeftColumnDefs.map((column) => (
                       <div key={column.key} style={leftHeaderCellStyle}>
                         <span style={leftHeaderLabelStyle}>{column.label}</span>
                         <span
@@ -3746,7 +3853,7 @@ export function GanttView({
                       }}
                     >
                       <div style={{ position: 'sticky', left: 0, zIndex: 4, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: '#0f172a', borderRight: '1px solid #1e293b', padding: '0 8px', borderLeft: `3px solid ${sectionStripeColor}` }}>
-                        <div style={{ ...leftRowGridStyle, gridTemplateColumns: leftGridTemplate }}>
+                        <div {...leftGridAttributes} style={{ ...leftRowGridStyle, gridTemplateColumns: leftGridTemplate }}>
                           <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                           {isReorderMode && (
                             <div
@@ -4138,7 +4245,7 @@ export function GanttView({
                                 ⠿
                               </div>
                             )}
-                            <div style={{ ...leftSubRowGridStyle, gridTemplateColumns: leftGridTemplate }}>
+                            <div {...leftGridAttributes} style={{ ...leftSubRowGridStyle, gridTemplateColumns: leftGridTemplate }}>
                               <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
                                 {editingSubTaskCell?.subTaskId === subTask.id && editingSubTaskCell.field === 'title' ? (
                                   <input
@@ -4837,6 +4944,41 @@ const collapsedSummaryChipStyle: React.CSSProperties = {
   fontWeight: 600
 }
 
+// 見出しの道具バーで、関係するボタンを1つの枠にまとめる
+const toolGroupStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 2,
+  padding: 2,
+  borderRadius: 8,
+  background: '#0b1220',
+  border: '1px solid #1f2937'
+}
+
+function toolButtonStyle(active: boolean, disabled = false): React.CSSProperties {
+  return {
+    minWidth: 28,
+    padding: '4px 8px',
+    borderRadius: 6,
+    border: 'none',
+    background: active ? '#2563eb' : 'transparent',
+    color: disabled ? '#475569' : active ? '#eff6ff' : '#cbd5e1',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontSize: '0.76rem',
+    fontWeight: 700,
+    whiteSpace: 'nowrap'
+  }
+}
+
+// 「期限超過」「遅れ」のチップ。押すとその行だけに絞る。絞っている間は枠を太くする
+function healthFilterChipStyle(background: string, border: string, text: string, active: boolean): React.CSSProperties {
+  return {
+    ...healthSummaryChipStyle(background, border, text),
+    cursor: 'pointer',
+    boxShadow: active ? `0 0 0 2px ${border}` : undefined
+  }
+}
+
 function healthSummaryChipStyle(background: string, border: string, text: string): React.CSSProperties {
   return {
     ...collapsedSummaryChipStyle,
@@ -4848,7 +4990,7 @@ function healthSummaryChipStyle(background: string, border: string, text: string
 
 const settingsPanelStyle: React.CSSProperties = {
   position: 'absolute',
-  top: 78,
+  top: 52,
   right: 14,
   width: 'min(720px, calc(100% - 28px))',
   maxHeight: '72vh',
@@ -4911,20 +5053,6 @@ function legendItemStyle(): React.CSSProperties {
     gap: 5,
     fontSize: '0.68rem',
     color: '#94a3b8',
-    whiteSpace: 'nowrap'
-  }
-}
-
-function miniToggleStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: '3px 9px',
-    borderRadius: 6,
-    border: 'none',
-    background: active ? '#2563eb' : 'transparent',
-    color: active ? '#eff6ff' : '#94a3b8',
-    fontSize: '0.72rem',
-    fontWeight: 700,
-    cursor: 'pointer',
     whiteSpace: 'nowrap'
   }
 }
