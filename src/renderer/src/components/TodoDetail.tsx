@@ -1,6 +1,6 @@
 import { LinkedText, TextLinks } from './LinkedText'
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
-import type { Category, CreateSubTaskInput, DailyPlanItem, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, UpdateSubTaskInput, UpdateTodoInput, WorkLog } from '../types'
+import type { Category, CreateSubTaskInput, DailyPlanItem, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, TodoHistoryEntry, UpdateSubTaskInput, UpdateTodoInput, WorkLog } from '../types'
 import { TimerDisplay } from './TimerDisplay'
 import { AssigneeChip, AssigneePicker } from './AssigneePicker'
 import { diffDaysFromToday, getDueDateColor, toDateKey } from '../lib/dueDate'
@@ -52,6 +52,11 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
   boxSizing: 'border-box'
 }
+
+/** 説明・メモを自動で保存するまでの、入力が止まってからの時間 */
+const AUTOSAVE_DELAY_MS = 1500
+/** 詳細の欄がこの幅以上あれば2列にする（左: 説明・メモ・サブタスク・進捗ログ、右: 状態などの欄・計測・進捗・依存関係・記録） */
+const TWO_COLUMN_MIN_WIDTH = 880
 
 const sectionTitleStyle: React.CSSProperties = {
   fontSize: '0.75rem',
@@ -134,6 +139,9 @@ export function TodoDetail({
   const [noteDraft, setNoteDraft] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
   const [editing, setEditing] = useState(false)
+  // 説明の自動保存が終わったときに、全体の編集を始めていたかを見る（保存の途中で「編集」を押すことがある）
+  const editingRef = useRef(false)
+  editingRef.current = editing
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const [saveError, setSaveError] = useState('')
@@ -168,6 +176,21 @@ export function TodoDetail({
   const [memoBase, setMemoBase] = useState('')
   const [memoSaving, setMemoSaving] = useState(false)
   const memoSavingRef = useRef(false)
+  // 自動保存に失敗した内容。同じ内容は自動では送り直さない（書き直すか「再試行」で保存する）
+  const [descriptionFailedDraft, setDescriptionFailedDraft] = useState<string | null>(null)
+  const [memoFailedDraft, setMemoFailedDraft] = useState<string | null>(null)
+  // 詳細の欄の幅。広いときは2列にする
+  const [detailBodyWidth, setDetailBodyWidth] = useState(0)
+  const bodyObserverRef = useRef<ResizeObserver | null>(null)
+  const detailBodyRef = useCallback((node: HTMLDivElement | null) => {
+    bodyObserverRef.current?.disconnect()
+    bodyObserverRef.current = null
+    if (!node) return
+    setDetailBodyWidth(node.clientWidth)
+    const observer = new ResizeObserver((entries) => setDetailBodyWidth(entries[0]?.contentRect.width ?? 0))
+    observer.observe(node)
+    bodyObserverRef.current = observer
+  }, [])
   const [stopNote, setStopNote] = useState('')
   const [timerStopping, setTimerStopping] = useState(false)
   const timerStoppingRef = useRef(false)
@@ -610,17 +633,28 @@ export function TodoDetail({
     }
   }
 
+  // 説明・メモは自動で保存する（入力が止まって1.5秒後・欄から離れたとき・Ctrl+Enter）。
+  // 保存中も入力は止めない。保存中に書き足した分は、保存が終わったあとに続けて保存する
   const handleDescriptionSave = async (): Promise<void> => {
     if (!todoId || descriptionSavingRef.current || descriptionDraft === descriptionBase) return
 
+    const draft = descriptionDraft
+    const previousBase = descriptionBase
     descriptionSavingRef.current = true
     try {
       setDescriptionSaving(true)
-      await onUpdate(todoId, { description: descriptionDraft, expected_values: { description: descriptionBase } })
-      setDescriptionBase(descriptionDraft)
-      setEditData((previous) => ({ ...previous, description: descriptionDraft }))
-      onShowToast('説明を保存しました')
+      await onUpdate(todoId, { description: draft, expected_values: { description: previousBase } })
+      setDescriptionBase(draft)
+      setDescriptionFailedDraft(null)
+      if (editingRef.current) {
+        // 保存の途中で全体の編集を始めていたら、編集中の内容は上書きしない。
+        // 変更前の値（基準）だけを保存した値に合わせ、あとで全体を保存したときにぶつからないようにする
+        if (editBaseRef.current.description === previousBase) editBaseRef.current = { ...editBaseRef.current, description: draft }
+      } else {
+        setEditData((previous) => ({ ...previous, description: draft }))
+      }
     } catch (error) {
+      setDescriptionFailedDraft(draft)
       onShowToast(error instanceof Error ? error.message : '説明を保存できませんでした', 'error')
     } finally {
       descriptionSavingRef.current = false
@@ -630,19 +664,36 @@ export function TodoDetail({
 
   const handleMemoSave = async (): Promise<void> => {
     if (!todoId || memoSavingRef.current || memoDraft === memoBase) return
+    const draft = memoDraft
     memoSavingRef.current = true
     try {
       setMemoSaving(true)
-      await onUpdate(todoId, { memo: memoDraft, expected_values: { memo: memoBase } })
-      setMemoBase(memoDraft)
-      onShowToast('メモを保存しました')
+      await onUpdate(todoId, { memo: draft, expected_values: { memo: memoBase } })
+      setMemoBase(draft)
+      setMemoFailedDraft(null)
     } catch (error) {
+      setMemoFailedDraft(draft)
       onShowToast(error instanceof Error ? error.message : 'メモを保存できませんでした', 'error')
     } finally {
       memoSavingRef.current = false
       setMemoSaving(false)
     }
   }
+
+  // 入力が止まって1.5秒たったら保存する。失敗した内容のままなら送り直さない
+  useEffect(() => {
+    if (!todoId || editing || descriptionSaving || descriptionDraft === descriptionBase || descriptionDraft === descriptionFailedDraft) return
+    const timer = window.setTimeout(() => { void handleDescriptionSave() }, AUTOSAVE_DELAY_MS)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [descriptionBase, descriptionDraft, descriptionFailedDraft, descriptionSaving, editing, todoId])
+
+  useEffect(() => {
+    if (!todoId || editing || memoSaving || memoDraft === memoBase || memoDraft === memoFailedDraft) return
+    const timer = window.setTimeout(() => { void handleMemoSave() }, AUTOSAVE_DELAY_MS)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, memoBase, memoDraft, memoFailedDraft, memoSaving, todoId])
 
   const handleAddSubTask = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault()
@@ -868,6 +919,498 @@ export function TodoDetail({
     onShowToast(`テンプレート「${name}」を保存しました`)
   }
 
+  // 詳細の欄。幅があるときは2列（左: 書く欄、右: 状態などの欄と記録）、狭いときは1列に並べる
+  const quickPropsSection = (
+    <>
+          {!editing && (
+            <QuickProperties
+              todo={todo}
+              categories={categories}
+              users={users}
+              onUpdate={onUpdate}
+              onShowToast={onShowToast}
+            />
+          )}
+    </>
+  )
+
+  const checklistSection = (
+    <>
+          {/* ToDoリストは中の項目を毎日使うので、いちばん上に出す */}
+          {listMode && (
+            <TodoChecklist
+              todo={todo}
+              items={subTasks}
+              users={users}
+              disabled={saving}
+              onItemsChange={setSubTasks}
+              onDelete={(id) => void handleDeleteSubTask(id)}
+              onShowToast={onShowToast}
+            />
+          )}
+    </>
+  )
+
+  const timerSection = (
+    <>
+          <div style={{ background: '#1e293b', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 4 }}>計測時間</div>
+              <TimerDisplay elapsedSeconds={isRunning ? elapsedSeconds : 0} isRunning={isRunning} />
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>合計 {totalMinutes}分</div>
+            </div>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+              {isRunning ? (
+                <>
+                  <input disabled={timerStopping} value={stopNote} onChange={(event) => setStopNote(event.target.value)} placeholder="停止メモ" style={{ ...inputStyle, width: 160, fontSize: '0.8rem', padding: '6px 8px' }} />
+                  <button disabled={timerStopping} onClick={() => {
+                    if (timerStoppingRef.current) return
+                    timerStoppingRef.current = true
+                    setTimerStopping(true)
+                    void onStopTimer(stopNote || undefined).then(() => {
+                      if (mountedRef.current) setStopNote('')
+                    }).catch(() => { /* App displays the error; preserve the memo for retry. */ }).finally(() => {
+                      timerStoppingRef.current = false
+                      if (mountedRef.current) setTimerStopping(false)
+                    })
+                  }} style={buttonStyle('#ef4444')}>{timerStopping ? '停止中…' : '停止'}</button>
+                </>
+              ) : (
+                <button onClick={() => void onStartTimer(todo.id)} style={buttonStyle('#4ade80', '#000')}>開始</button>
+              )}
+            </div>
+          </div>
+    </>
+  )
+
+  const editSection = (
+    <>
+          {editing && (
+            <fieldset disabled={saving} style={{ border: 0, margin: 0, minWidth: 0, background: '#1e293b', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <label style={labelStyle}>種類</label>
+                <select
+                  value={editingListMode ? 'list' : 'task'}
+                  aria-label="種類"
+                  onChange={(event) => {
+                    const list = event.target.value === 'list'
+                    // ToDoリストは繰り返し（次回分の作成）を持たない。期限はそのまま（空にすると期限なし）
+                    setEditData((previous) => list ? { ...previous, list_mode: 1, recurrence: null } : { ...previous, list_mode: 0 })
+                  }}
+                  style={inputStyle}
+                >
+                  <option value="task">タスク（開始日と期限を決めて進める）</option>
+                  <option value="list">ToDoリスト（毎日・毎週のチェックや細かいやることをまとめる）</option>
+                </select>
+                {editingListMode && !listMode && (
+                  <div style={{ marginTop: 4, fontSize: '0.72rem', color: '#a5b4fc', lineHeight: 1.5 }}>
+                    保存すると繰り返し（次回分の作成）を外します。期限はそのままです（期限なしにするときは期限を空にします）。今のサブタスクはそのまま項目になります（繰り返しは項目ごとに設定できます）。
+                  </div>
+                )}
+                {!editingListMode && listMode && (
+                  <div style={{ marginTop: 4, fontSize: '0.72rem', color: '#fde68a', lineHeight: 1.5 }}>
+                    保存すると、項目の繰り返し（毎日・毎週など）を外し、サブタスクに戻します。
+                  </div>
+                )}
+              </div>
+              <div><label style={labelStyle}>説明</label><textarea value={editData.description ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, description: event.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} /></div>
+              <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input type="date" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div><div style={{ flex: 1 }}><label style={labelStyle}>{editingListMode ? '期限（空にすると期限なし）' : '期限'}</label><input type="date" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div></div>
+              <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最低</option><option value={2}>低</option><option value={3}>中</option><option value={4}>高</option><option value={5}>最高</option></select></div></div>
+              {!editingListMode && <div><label style={labelStyle}>繰り返し（完了にすると次回分を自動で作ります）</label><select value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as 'daily' | 'weekly' | 'monthly' | null }))} style={inputStyle}><option value="">なし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option></select></div>}
+              {!editingListMode && editData.recurrence && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={(editData.recurrence_copy_subtasks ?? 0) === 1}
+                    onChange={(event) => setEditData((previous) => ({ ...previous, recurrence_copy_subtasks: event.target.checked ? 1 : 0 }))}
+                    style={{ accentColor: '#6366f1' }}
+                  />
+                  サブタスクも次回分に引き継ぐ（未完了状態で複製）
+                </label>
+              )}
+              {!editingListMode && editData.recurrence && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={(editData.recurrence_skip_weekends ?? 0) === 1}
+                    onChange={(event) => setEditData((previous) => ({ ...previous, recurrence_skip_weekends: event.target.checked ? 1 : 0 }))}
+                    style={{ accentColor: '#6366f1' }}
+                  />
+                  土日をスキップする
+                </label>
+              )}
+              {!editingListMode && editData.recurrence && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={(editData.recurrence_skip_holidays ?? 0) === 1}
+                    onChange={(event) => setEditData((previous) => ({ ...previous, recurrence_skip_holidays: event.target.checked ? 1 : 0 }))}
+                    style={{ accentColor: '#6366f1' }}
+                  />
+                  日本の祝日をスキップする
+                </label>
+              )}
+              <div><label style={labelStyle}>状態</label><select value={editData.status ?? 'active'} onChange={(event) => setEditData((previous) => ({ ...previous, status: event.target.value as Todo['status'] }))} style={inputStyle}><option value="not_started">未着手</option><option value="active">進行中</option><option value="on_hold">保留中</option><option value="done">完了</option><option value="archived">アーカイブ</option></select></div>
+              {users.length > 0 && (
+                <div><label style={labelStyle}>担当者</label><AssigneePicker users={users} value={editData.assignee_id ?? null} onChange={(assigneeId) => setEditData((previous) => ({ ...previous, assignee_id: assigneeId, co_assignee_ids: (previous.co_assignee_ids ?? []).filter((id) => id !== assigneeId) }))} selectStyle={inputStyle} /></div>
+              )}
+              {users.length > 0 && (
+                <div>
+                  <label style={labelStyle}>サブ担当（複数選択可）</label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {users.filter((user) => user.is_active === 1 && user.id !== (editData.assignee_id ?? null)).map((user) => {
+                      const selected = (editData.co_assignee_ids ?? []).includes(user.id)
+                      return (
+                        <button
+                          key={user.id}
+                          onClick={() => setEditData((previous) => {
+                            const current = previous.co_assignee_ids ?? []
+                            return {
+                              ...previous,
+                              co_assignee_ids: selected ? current.filter((id) => id !== user.id) : [...current, user.id]
+                            }
+                          })}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            padding: '4px 10px', borderRadius: 99, cursor: 'pointer',
+                            border: `1px solid ${selected ? user.color : '#334155'}`,
+                            background: selected ? `${user.color}26` : '#0f172a',
+                            color: selected ? '#e2e8f0' : '#64748b', fontSize: '0.78rem'
+                          }}
+                        >
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
+                          {user.display_name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {!editingListMode && <div><label style={labelStyle}>進捗 {editData.progress ?? 0}%</label><input type="range" min={0} max={100} step={5} value={editData.progress ?? 0} onChange={(event) => setEditData((previous) => ({ ...previous, progress: Number(event.target.value) }))} style={{ width: '100%', accentColor: '#6366f1' }} /></div>}
+              <button onClick={() => void handleSave()} disabled={saving} style={{ ...buttonStyle('#6366f1'), alignSelf: 'flex-end' }}>{saving ? '保存中…' : '保存'}</button>
+            </fieldset>
+          )}
+    </>
+  )
+
+  const progressSection = (
+    <>
+          {!editing && !listMode && (
+            <div style={{ background: '#1e293b', borderRadius: 10, padding: '12px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>進捗 <span style={{ color: '#64748b', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span></span>
+              </div>
+              <ProgressSlider
+                value={todo.progress ?? 0}
+                label={`${todo.title}の進捗率`}
+                disabled={isArchived}
+                onCommit={handleProgressCommit}
+              />
+              {subTaskProgress !== null && (
+                <div style={{ marginTop: 8, fontSize: '0.72rem', color: '#64748b' }}>
+                  サブタスク: {doneCount}/{subTasks.length} 完了
+                  <div style={{ height: 4, background: '#0f172a', borderRadius: 99, marginTop: 4 }}>
+                    <div style={{ height: '100%', width: `${subTaskProgress}%`, background: '#6366f1', borderRadius: 99 }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+    </>
+  )
+
+  const descriptionSection = (
+    <>
+          {!editing && (
+            <section>
+              <SectionHeading title="説明" summary="目的・やること（あまり変わらない内容）" />
+              <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <textarea
+                  value={descriptionDraft}
+                  onChange={(event) => setDescriptionDraft(event.target.value)}
+                  onBlur={() => { if (descriptionDraft !== descriptionFailedDraft) void handleDescriptionSave() }}
+                  onKeyDown={(event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                      event.preventDefault()
+                      void handleDescriptionSave()
+                    }
+                  }}
+                  aria-label="説明"
+                  placeholder="例: 〇〇の見積もりを作って、△△さんに確認してもらう"
+                  rows={descriptionDraft ? 4 : 2}
+                  style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: descriptionDraft ? 100 : 56 }}
+                />
+                <TextLinks text={descriptionDraft} />
+                <AutosaveStatus
+                  saving={descriptionSaving}
+                  dirty={descriptionDraft !== descriptionBase}
+                  failed={descriptionFailedDraft !== null && descriptionDraft === descriptionFailedDraft}
+                  length={descriptionDraft.length}
+                  onRetry={() => { setDescriptionFailedDraft(null); void handleDescriptionSave() }}
+                />
+              </div>
+            </section>
+          )}
+    </>
+  )
+
+  const memoSection = (
+    <>
+          {!editing && (
+            <section>
+              <SectionHeading title="メモ" summary="今の状況・次にやること（上書き。履歴は残りません）" detail="引き継ぎにも使えます。日付つきで残したい報告は、下の進捗ログに書きます。" />
+              <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <textarea
+                  value={memoDraft}
+                  onChange={(event) => setMemoDraft(event.target.value)}
+                  onBlur={() => { if (memoDraft !== memoFailedDraft) void handleMemoSave() }}
+                  onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void handleMemoSave() } }}
+                  aria-label="メモ"
+                  placeholder="例: 〇〇待ち。返事が来たら△△に進む"
+                  rows={memoDraft ? 5 : 2}
+                  style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: memoDraft ? 120 : 56 }}
+                />
+                <TextLinks text={memoDraft} />
+                <AutosaveStatus
+                  saving={memoSaving}
+                  dirty={memoDraft !== memoBase}
+                  failed={memoFailedDraft !== null && memoDraft === memoFailedDraft}
+                  length={memoDraft.length}
+                  onRetry={() => { setMemoFailedDraft(null); void handleMemoSave() }}
+                />
+              </div>
+            </section>
+          )}
+    </>
+  )
+
+  const progressLogSection = (
+    <>
+          {!editing && (
+            <section>
+              <SectionHeading
+                title={<>進捗ログ {progressNotes.length > 0 && `(${progressNotes.length})`}</>}
+                summary="日付つきで積み上がる報告"
+                detail={`報告タブ・進捗タブに表示され、返信やリアクションが付きます。${users.length > 0 ? '「@名前」で呼ぶと相手に通知が届きます。' : ''}Ctrl+Enter でも投稿できます。`}
+              />
+              <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <MentionTextarea
+                  value={noteDraft}
+                  users={mentionUsers}
+                  onValueChange={(value) => {
+                    setNoteDraft(value)
+                    if (todoId) {
+                      if (value) window.localStorage.setItem(progressDraftKey, value)
+                      else window.localStorage.removeItem(progressDraftKey)
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                      event.preventDefault()
+                      void handleAddProgressNote()
+                    }
+                  }}
+                  aria-label="進捗ログを書く"
+                  placeholder="例: 〇〇まで終わった。次は△△。□□で困っている"
+                  rows={3}
+                  style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: 72 }}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{noteDraft.length}文字</div>
+                  <button
+                    onClick={() => void handleAddProgressNote()}
+                    disabled={!noteDraft.trim() || noteSaving}
+                    style={buttonStyle(!noteDraft.trim() || noteSaving ? '#1e293b' : '#6366f1', !noteDraft.trim() || noteSaving ? '#64748b' : '#fff')}
+                  >
+                    {noteSaving ? '投稿中...' : '投稿'}
+                  </button>
+                </div>
+                {progressNotes.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {progressNotes.map((note) => (
+                      <ProgressNoteThread
+                        key={note.id}
+                        note={note}
+                        onToggleReaction={(noteId, emoji) => void runNoteAction(`reaction:${noteId}:${emoji}`, () => window.api.progressNoteReactionToggle(noteId, emoji), 'リアクションを更新できませんでした')}
+                        onToggleCommentReaction={(commentId, emoji) => void runNoteAction(`reaction:${commentId}:${emoji}`, () => window.api.progressNoteCommentReactionToggle(commentId, emoji), 'リアクションを更新できませんでした')}
+                        mentionUsers={mentionUsers}
+                        onReply={handleReplyProgressNote}
+                        onToggleDiscussion={(noteId, value) => void runNoteAction(`discussion:${noteId}`, () => window.api.progressNoteSetNeedsDiscussion(noteId, value), '要相談を切り替えられませんでした', value ? '要相談にしました' : '要相談を外しました')}
+                        canModify={canModifyNote(note)}
+                        onUpdate={handleUpdateProgressNote}
+                        onDelete={(noteId) => void handleDeleteProgressNote(noteId)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+    </>
+  )
+
+  const subTaskSection = (
+    <>
+          {!listMode && (
+          <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+            <div style={sectionTitleStyle}>サブタスク {subTasks.length > 0 && `(${doneCount}/${subTasks.length})`}</div>
+            <div
+              ref={subTaskListRef}
+              onDragOver={handleSubTaskListDragOver}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setSubTaskDropTarget(null)
+              }}
+              onDrop={handleSubTaskListDrop}
+              style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}
+            >
+              {editing
+                ? editableSubTasks.map((subTask) => renderSubTaskRow(subTask, (
+                      <EditableSubTaskItem
+                        subTask={subTask}
+                        users={users}
+                        onChange={(data) => setEditableSubTasks((previous) => previous.map((item) => item.id === subTask.id ? { ...item, ...data } : item))}
+                        onDelete={() => void handleDeleteSubTask(subTask.id)}
+                      />
+                )))
+                : subTasks.map((subTask) => renderSubTaskRow(subTask, (
+                      <ReadonlySubTaskItem
+                        subTask={subTask}
+                        users={users}
+                        onToggle={() => void window.api.subtaskUpdate(subTask.id, { done: !subTask.done, expected_values: { done: Boolean(subTask.done) } }).then((updated) => setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))).catch((error) => onShowToast(error instanceof Error ? error.message : 'サブタスクを更新できませんでした', 'error'))}
+                        onSave={async (data) => {
+                          const updated = await window.api.subtaskUpdate(subTask.id, data)
+                          setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
+                          if (updated.parent_due_date_extended_to) onShowToast(`親タスクの期限を${updated.parent_due_date_extended_to}まで延長しました`)
+                        }}
+                        onDelete={() => void handleDeleteSubTask(subTask.id)}
+                        onShowToast={onShowToast}
+                        onDirtyChange={(dirty) => handleChildDirty(subTask.id, dirty)}
+                      />
+                )))}
+            </div>
+            <form onSubmit={(event) => void handleAddSubTask(event)} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 10, border: '1px dashed #334155' }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                <textarea
+                  value={newSubTask.title}
+                  onChange={(event) => setNewSubTask((previous) => ({ ...previous, title: event.target.value }))}
+                  onKeyDown={(event) => {
+                    // Enter で追加、Shift+Enter で改行（複数行は1行ずつ追加）。日本語変換の確定の Enter では追加しない
+                    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                      event.preventDefault()
+                      void handleAddSubTask(event)
+                    }
+                  }}
+                  aria-label="追加するサブタスク名"
+                  placeholder="＋ サブタスクを追加（Enterで追加・Shift+Enterで改行）"
+                  rows={newSubTask.title.includes('\n') ? Math.min(6, newSubTask.title.split('\n').length + 1) : 1}
+                  style={{ ...inputStyle, fontSize: '0.84rem', padding: '7px 9px', resize: 'vertical', flex: 1 }}
+                />
+                <button type="submit" disabled={!newSubTask.title.trim()} style={buttonStyle(newSubTask.title.trim() ? '#2563eb' : '#1e293b', newSubTask.title.trim() ? '#fff' : '#64748b')}>追加</button>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: '#94a3b8' }}>
+                {users.length > 0 && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    担当
+                    <select
+                      value={newSubTask.assignee_id ?? ''}
+                      onChange={(event) => setNewSubTask((previous) => ({ ...previous, assignee_id: event.target.value || null }))}
+                      aria-label="追加するサブタスクの担当"
+                      style={{ ...inputStyle, width: 'auto', fontSize: '0.76rem', padding: '3px 6px' }}
+                    >
+                      <option value="">担当なし</option>
+                      {users.filter((user) => user.is_active === 1 || user.id === newSubTask.assignee_id).map((user) => (
+                        <option key={user.id} value={user.id}>{user.display_name}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  期限
+                  <input type="date" value={newSubTask.due_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, due_date: event.target.value || null }))} aria-label="追加するサブタスクの期限" style={{ ...inputStyle, width: 'auto', fontSize: '0.76rem', padding: '3px 6px' }} />
+                </label>
+                <button type="button" onClick={() => setShowSubTaskDetails((previous) => !previous)} aria-expanded={showSubTaskDetails} style={{ background: 'none', border: 'none', padding: 0, color: '#93c5fd', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>
+                  {showSubTaskDetails ? '▾ 閉じる' : '▸ 開始日・メモ・進捗'}
+                </button>
+              </div>
+              {showSubTaskDetails && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={labelStyle}>開始日<input type="date" value={newSubTask.start_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} /></label>
+                  <textarea value={newSubTask.description ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, description: event.target.value }))} placeholder="メモ..." aria-label="追加するサブタスクのメモ" rows={2} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: '#94a3b8' }}>
+                    <span>進捗 {clampProgress(newSubTask.progress ?? 0)}%</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={clampProgress(newSubTask.progress ?? 0)}
+                      onChange={(event) => setNewSubTask((previous) => ({ ...previous, progress: clampProgress(Number(event.target.value)) }))}
+                      style={{ width: '100%', accentColor: progressColor(clampProgress(newSubTask.progress ?? 0)) }}
+                    />
+                  </label>
+                </div>
+              )}
+            </form>
+          </fieldset>
+          )}
+    </>
+  )
+
+  const dependencySection = (
+    <>
+          {/* ToDoリストは日程を持たないので、依存関係はすでにあるときだけ出す */}
+          {(!listMode || dependencies.length > 0) && (
+          <section>
+            <SectionHeading title="依存関係" summary="前後のタスク" detail="先行タスクが終わってから、このタスクを始めます。待機日数を増やすと、先行タスクの完了後に間を空けられます。" />
+            <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* 右の列（狭いとき）は2段に折り返す */}<div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                <select value={dependencyDraft.mode} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, mode: event.target.value as 'predecessor' | 'successor', relatedTodoId: '' }))} style={{ ...inputStyle, flex: '1 1 130px', width: 'auto', minWidth: 0 }}>
+                  <option value="predecessor">先行タスクを追加</option>
+                  <option value="successor">後続タスクを追加</option>
+                </select>
+                <select value={dependencyDraft.relatedTodoId} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, relatedTodoId: event.target.value }))} style={{ ...inputStyle, flex: '2 1 170px', width: 'auto', minWidth: 0 }}>
+                  <option value="">タスクを選択</option>
+                  {dependencyCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title}</option>)}
+                </select>
+                <input type="number" min={0} max={60} value={dependencyDraft.lagDays} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, lagDays: event.target.value }))} placeholder="待機日数" aria-label="待機日数" title="先行タスクの完了から、何日空けて始めるか" style={{ ...inputStyle, flex: '0 0 88px', width: 88 }} />
+                <button onClick={() => void handleCreateDependency()} style={buttonStyle('#2563eb')}>追加</button>
+              </div>
+              <DependencyList title="先行タスク" items={predecessorDependencies} getTodoId={(item) => item.predecessor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.predecessor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} />
+              <DependencyList title="後続タスク" items={successorDependencies} getTodoId={(item) => item.successor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.successor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} />
+            </div>
+          </section>
+          )}
+    </>
+  )
+
+  const workLogSection = (
+    <>
+          <section>
+            <div style={sectionTitleStyle}>作業ログ</div>
+            {logs.length === 0 ? (
+              <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>ログはまだありません</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {logs.map((log) => (
+                  <div key={log.id} style={{ background: '#1e293b', borderRadius: 6, padding: '8px 12px', fontSize: '0.82rem', color: '#94a3b8' }}>
+                    <span style={{ color: '#e2e8f0' }}>{formatTime(new Date(log.start_time))} - {formatTime(new Date(log.end_time))}</span>
+                    <span style={{ marginLeft: 8, color: '#4ade80' }}>{Math.round(log.duration_seconds / 60)}分</span>
+                    {log.note && <span style={{ marginLeft: 8 }}>メモ: {log.note}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+    </>
+  )
+
+  const historySection = (
+    <>
+          {!editing && <TodoHistory todoId={todo.id} refreshKey={todo.updated_at} />}
+    </>
+  )
+  const twoColumns = !editing && detailBodyWidth >= TWO_COLUMN_MIN_WIDTH
+
   return (
     <div style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div
@@ -940,452 +1483,165 @@ export function TodoDetail({
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div ref={detailBodyRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {saveError && <div role="alert" style={{ padding: 10, color: '#fecaca', border: '1px solid #ef4444', borderRadius: 8 }}>{saveError}</div>}
       {sectionLoadError && <div role="alert" style={{ padding: 10, borderRadius: 8, border: '1px solid #ef4444', background: '#450a0a', color: '#fecaca', fontSize: '0.8rem' }}>{sectionLoadError}<button onClick={() => { setSectionLoadError(null); void Promise.all([loadWorkLogs(todo.id), loadSubTasks(todo.id), loadDependencies(todo.id), loadProgressNotes(todo.id)]) }} style={{ marginLeft: 10, padding: '4px 8px', borderRadius: 6, border: '1px solid #ef4444', background: '#7f1d1d', color: '#fff' }}>再試行</button></div>}
-      {!editing && (
-        <QuickProperties
-          todo={todo}
-          categories={categories}
-          users={users}
-          onUpdate={onUpdate}
-          onShowToast={onShowToast}
-        />
-      )}
-
-      {/* ToDoリストは中の項目を毎日使うので、いちばん上に出す */}
-      {listMode && (
-        <TodoChecklist
-          todo={todo}
-          items={subTasks}
-          users={users}
-          disabled={saving}
-          onItemsChange={setSubTasks}
-          onDelete={(id) => void handleDeleteSubTask(id)}
-          onShowToast={onShowToast}
-        />
-      )}
-
-      <div style={{ background: '#1e293b', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div>
-          <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 4 }}>計測時間</div>
-          <TimerDisplay elapsedSeconds={isRunning ? elapsedSeconds : 0} isRunning={isRunning} />
-          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>合計 {totalMinutes}分</div>
+      {twoColumns ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 360px)', gap: 20, alignItems: 'start' }}>
+          <div style={detailColumnStyle}>
+            {checklistSection}
+            {descriptionSection}
+            {memoSection}
+            {subTaskSection}
+            {progressLogSection}
+          </div>
+          <div style={detailColumnStyle}>
+            {quickPropsSection}
+            {timerSection}
+            {progressSection}
+            {dependencySection}
+            {workLogSection}
+            {historySection}
+          </div>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {isRunning ? (
-            <>
-              <input disabled={timerStopping} value={stopNote} onChange={(event) => setStopNote(event.target.value)} placeholder="停止メモ" style={{ ...inputStyle, width: 160, fontSize: '0.8rem', padding: '6px 8px' }} />
-              <button disabled={timerStopping} onClick={() => {
-                if (timerStoppingRef.current) return
-                timerStoppingRef.current = true
-                setTimerStopping(true)
-                void onStopTimer(stopNote || undefined).then(() => {
-                  if (mountedRef.current) setStopNote('')
-                }).catch(() => { /* App displays the error; preserve the memo for retry. */ }).finally(() => {
-                  timerStoppingRef.current = false
-                  if (mountedRef.current) setTimerStopping(false)
-                })
-              }} style={buttonStyle('#ef4444')}>{timerStopping ? '停止中…' : '停止'}</button>
-            </>
-          ) : (
-            <button onClick={() => void onStartTimer(todo.id)} style={buttonStyle('#4ade80', '#000')}>開始</button>
-          )}
-        </div>
-      </div>
-
-      {editing && (
-        <fieldset disabled={saving} style={{ border: 0, margin: 0, minWidth: 0, background: '#1e293b', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div>
-            <label style={labelStyle}>種類</label>
-            <select
-              value={editingListMode ? 'list' : 'task'}
-              aria-label="種類"
-              onChange={(event) => {
-                const list = event.target.value === 'list'
-                // ToDoリストは繰り返し（次回分の作成）を持たない。期限はそのまま（空にすると期限なし）
-                setEditData((previous) => list ? { ...previous, list_mode: 1, recurrence: null } : { ...previous, list_mode: 0 })
-              }}
-              style={inputStyle}
-            >
-              <option value="task">タスク（開始日と期限を決めて進める）</option>
-              <option value="list">ToDoリスト（毎日・毎週のチェックや細かいやることをまとめる）</option>
-            </select>
-            {editingListMode && !listMode && (
-              <div style={{ marginTop: 4, fontSize: '0.72rem', color: '#a5b4fc', lineHeight: 1.5 }}>
-                保存すると繰り返し（次回分の作成）を外します。期限はそのままです（期限なしにするときは期限を空にします）。今のサブタスクはそのまま項目になります（繰り返しは項目ごとに設定できます）。
-              </div>
-            )}
-            {!editingListMode && listMode && (
-              <div style={{ marginTop: 4, fontSize: '0.72rem', color: '#fde68a', lineHeight: 1.5 }}>
-                保存すると、項目の繰り返し（毎日・毎週など）を外し、サブタスクに戻します。
-              </div>
-            )}
-          </div>
-          <div><label style={labelStyle}>説明</label><textarea value={editData.description ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, description: event.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} /></div>
-          <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input type="date" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div><div style={{ flex: 1 }}><label style={labelStyle}>{editingListMode ? '期限（空にすると期限なし）' : '期限'}</label><input type="date" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div></div>
-          <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最低</option><option value={2}>低</option><option value={3}>中</option><option value={4}>高</option><option value={5}>最高</option></select></div></div>
-          {!editingListMode && <div><label style={labelStyle}>繰り返し（完了にすると次回分を自動で作ります）</label><select value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as 'daily' | 'weekly' | 'monthly' | null }))} style={inputStyle}><option value="">なし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option></select></div>}
-          {!editingListMode && editData.recurrence && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={(editData.recurrence_copy_subtasks ?? 0) === 1}
-                onChange={(event) => setEditData((previous) => ({ ...previous, recurrence_copy_subtasks: event.target.checked ? 1 : 0 }))}
-                style={{ accentColor: '#6366f1' }}
-              />
-              サブタスクも次回分に引き継ぐ（未完了状態で複製）
-            </label>
-          )}
-          {!editingListMode && editData.recurrence && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={(editData.recurrence_skip_weekends ?? 0) === 1}
-                onChange={(event) => setEditData((previous) => ({ ...previous, recurrence_skip_weekends: event.target.checked ? 1 : 0 }))}
-                style={{ accentColor: '#6366f1' }}
-              />
-              土日をスキップする
-            </label>
-          )}
-          {!editingListMode && editData.recurrence && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#cbd5e1', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={(editData.recurrence_skip_holidays ?? 0) === 1}
-                onChange={(event) => setEditData((previous) => ({ ...previous, recurrence_skip_holidays: event.target.checked ? 1 : 0 }))}
-                style={{ accentColor: '#6366f1' }}
-              />
-              日本の祝日をスキップする
-            </label>
-          )}
-          <div><label style={labelStyle}>状態</label><select value={editData.status ?? 'active'} onChange={(event) => setEditData((previous) => ({ ...previous, status: event.target.value as Todo['status'] }))} style={inputStyle}><option value="not_started">未着手</option><option value="active">進行中</option><option value="on_hold">保留中</option><option value="done">完了</option><option value="archived">アーカイブ</option></select></div>
-          {users.length > 0 && (
-            <div><label style={labelStyle}>担当者</label><AssigneePicker users={users} value={editData.assignee_id ?? null} onChange={(assigneeId) => setEditData((previous) => ({ ...previous, assignee_id: assigneeId, co_assignee_ids: (previous.co_assignee_ids ?? []).filter((id) => id !== assigneeId) }))} selectStyle={inputStyle} /></div>
-          )}
-          {users.length > 0 && (
-            <div>
-              <label style={labelStyle}>サブ担当（複数選択可）</label>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {users.filter((user) => user.is_active === 1 && user.id !== (editData.assignee_id ?? null)).map((user) => {
-                  const selected = (editData.co_assignee_ids ?? []).includes(user.id)
-                  return (
-                    <button
-                      key={user.id}
-                      onClick={() => setEditData((previous) => {
-                        const current = previous.co_assignee_ids ?? []
-                        return {
-                          ...previous,
-                          co_assignee_ids: selected ? current.filter((id) => id !== user.id) : [...current, user.id]
-                        }
-                      })}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: '4px 10px', borderRadius: 99, cursor: 'pointer',
-                        border: `1px solid ${selected ? user.color : '#334155'}`,
-                        background: selected ? `${user.color}26` : '#0f172a',
-                        color: selected ? '#e2e8f0' : '#64748b', fontSize: '0.78rem'
-                      }}
-                    >
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
-                      {user.display_name}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-          {!editingListMode && <div><label style={labelStyle}>進捗 {editData.progress ?? 0}%</label><input type="range" min={0} max={100} step={5} value={editData.progress ?? 0} onChange={(event) => setEditData((previous) => ({ ...previous, progress: Number(event.target.value) }))} style={{ width: '100%', accentColor: '#6366f1' }} /></div>}
-          <button onClick={() => void handleSave()} disabled={saving} style={{ ...buttonStyle('#6366f1'), alignSelf: 'flex-end' }}>{saving ? '保存中…' : '保存'}</button>
-        </fieldset>
+      ) : (
+        <>
+          {quickPropsSection}
+          {checklistSection}
+          {timerSection}
+          {editSection}
+          {progressSection}
+          {descriptionSection}
+          {memoSection}
+          {subTaskSection}
+          {progressLogSection}
+          {dependencySection}
+          {workLogSection}
+          {historySection}
+        </>
       )}
+    </div>
+    </div>
+  )
+}
 
-      {!editing && !listMode && (
-        <div style={{ background: '#1e293b', borderRadius: 10, padding: '12px 16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>進捗 <span style={{ color: '#64748b', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span></span>
-          </div>
-          <ProgressSlider
-            value={todo.progress ?? 0}
-            label={`${todo.title}の進捗率`}
-            disabled={isArchived}
-            onCommit={handleProgressCommit}
-          />
-          {subTaskProgress !== null && (
-            <div style={{ marginTop: 8, fontSize: '0.72rem', color: '#64748b' }}>
-              サブタスク: {doneCount}/{subTasks.length} 完了
-              <div style={{ height: 4, background: '#0f172a', borderRadius: 99, marginTop: 4 }}>
-                <div style={{ height: '100%', width: `${subTaskProgress}%`, background: '#6366f1', borderRadius: 99 }} />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+const detailColumnStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }
 
-      {!editing && (
-        <section>
-          <SectionHeading title="説明" summary="目的・やること（あまり変わらない内容）" />
-          <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <textarea
-              value={descriptionDraft}
-              disabled={descriptionSaving}
-              onChange={(event) => setDescriptionDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-                  event.preventDefault()
-                  void handleDescriptionSave()
-                }
-              }}
-              aria-label="説明"
-              placeholder="例: 〇〇の見積もりを作って、△△さんに確認してもらう"
-              rows={descriptionDraft ? 4 : 2}
-              style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: descriptionDraft ? 100 : 56 }}
-            />
-            <TextLinks text={descriptionDraft} />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: '0.72rem', color: descriptionDraft !== descriptionBase ? '#93c5fd' : '#64748b' }}>
-                {descriptionDraft !== descriptionBase ? '未保存の変更があります' : '保存済み'}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{descriptionDraft.length}文字</div>
-                <button
-                  onClick={() => void handleDescriptionSave()}
-                  disabled={descriptionDraft === descriptionBase || descriptionSaving}
-                  title="Ctrl+Enter でも保存できます"
-                  style={buttonStyle(descriptionDraft === descriptionBase || descriptionSaving ? '#1e293b' : '#2563eb', descriptionDraft === descriptionBase || descriptionSaving ? '#64748b' : '#dbeafe')}
-                >
-                  {descriptionSaving ? '保存中...' : '説明を保存'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {!editing && (
-        <section>
-          <SectionHeading title="メモ" summary="今の状況・次にやること（上書き。履歴は残りません）" detail="引き継ぎにも使えます。日付つきで残したい報告は、下の進捗ログに書きます。" />
-          <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <textarea disabled={memoSaving} value={memoDraft} onChange={(event) => setMemoDraft(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void handleMemoSave() } }} aria-label="メモ" placeholder="例: 〇〇待ち。返事が来たら△△に進む" rows={memoDraft ? 5 : 2} style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: memoDraft ? 120 : 56 }} />
-            <TextLinks text={memoDraft} />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: '0.72rem', color: memoDraft !== memoBase ? '#93c5fd' : '#64748b' }}>{memoDraft !== memoBase ? '未保存の変更があります' : '保存済み'}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{memoDraft.length}文字</div>
-                <button onClick={() => void handleMemoSave()} disabled={memoDraft === memoBase || memoSaving} title="Ctrl+Enter でも保存できます" style={buttonStyle(memoDraft === memoBase || memoSaving ? '#1e293b' : '#2563eb', memoDraft === memoBase || memoSaving ? '#64748b' : '#dbeafe')}>
-                  {memoSaving ? '保存中...' : 'メモを保存'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {!editing && (
-        <section>
-          <SectionHeading
-            title={<>進捗ログ {progressNotes.length > 0 && `(${progressNotes.length})`}</>}
-            summary="日付つきで積み上がる報告"
-            detail={`報告タブ・進捗タブに表示され、返信やリアクションが付きます。${users.length > 0 ? '「@名前」で呼ぶと相手に通知が届きます。' : ''}Ctrl+Enter でも投稿できます。`}
-          />
-          <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <MentionTextarea
-              value={noteDraft}
-              users={mentionUsers}
-              onValueChange={(value) => {
-                setNoteDraft(value)
-                if (todoId) {
-                  if (value) window.localStorage.setItem(progressDraftKey, value)
-                  else window.localStorage.removeItem(progressDraftKey)
-                }
-              }}
-              onKeyDown={(event) => {
-                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-                  event.preventDefault()
-                  void handleAddProgressNote()
-                }
-              }}
-              aria-label="進捗ログを書く"
-              placeholder="例: 〇〇まで終わった。次は△△。□□で困っている"
-              rows={3}
-              style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: 72 }}
-            />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{noteDraft.length}文字</div>
-              <button
-                onClick={() => void handleAddProgressNote()}
-                disabled={!noteDraft.trim() || noteSaving}
-                style={buttonStyle(!noteDraft.trim() || noteSaving ? '#1e293b' : '#6366f1', !noteDraft.trim() || noteSaving ? '#64748b' : '#fff')}
-              >
-                {noteSaving ? '投稿中...' : '投稿'}
-              </button>
-            </div>
-            {progressNotes.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {progressNotes.map((note) => (
-                  <ProgressNoteThread
-                    key={note.id}
-                    note={note}
-                    onToggleReaction={(noteId, emoji) => void runNoteAction(`reaction:${noteId}:${emoji}`, () => window.api.progressNoteReactionToggle(noteId, emoji), 'リアクションを更新できませんでした')}
-                    onToggleCommentReaction={(commentId, emoji) => void runNoteAction(`reaction:${commentId}:${emoji}`, () => window.api.progressNoteCommentReactionToggle(commentId, emoji), 'リアクションを更新できませんでした')}
-                    mentionUsers={mentionUsers}
-                    onReply={handleReplyProgressNote}
-                    onToggleDiscussion={(noteId, value) => void runNoteAction(`discussion:${noteId}`, () => window.api.progressNoteSetNeedsDiscussion(noteId, value), '要相談を切り替えられませんでした', value ? '要相談にしました' : '要相談を外しました')}
-                    canModify={canModifyNote(note)}
-                    onUpdate={handleUpdateProgressNote}
-                    onDelete={(noteId) => void handleDeleteProgressNote(noteId)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {!listMode && (
-      <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-        <div style={sectionTitleStyle}>サブタスク {subTasks.length > 0 && `(${doneCount}/${subTasks.length})`}</div>
-        <div
-          ref={subTaskListRef}
-          onDragOver={handleSubTaskListDragOver}
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setSubTaskDropTarget(null)
-          }}
-          onDrop={handleSubTaskListDrop}
-          style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}
-        >
-          {editing
-            ? editableSubTasks.map((subTask) => renderSubTaskRow(subTask, (
-                  <EditableSubTaskItem
-                    subTask={subTask}
-                    users={users}
-                    onChange={(data) => setEditableSubTasks((previous) => previous.map((item) => item.id === subTask.id ? { ...item, ...data } : item))}
-                    onDelete={() => void handleDeleteSubTask(subTask.id)}
-                  />
-            )))
-            : subTasks.map((subTask) => renderSubTaskRow(subTask, (
-                  <ReadonlySubTaskItem
-                    subTask={subTask}
-                    users={users}
-                    onToggle={() => void window.api.subtaskUpdate(subTask.id, { done: !subTask.done, expected_values: { done: Boolean(subTask.done) } }).then((updated) => setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))).catch((error) => onShowToast(error instanceof Error ? error.message : 'サブタスクを更新できませんでした', 'error'))}
-                    onSave={async (data) => {
-                      const updated = await window.api.subtaskUpdate(subTask.id, data)
-                      setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
-                      if (updated.parent_due_date_extended_to) onShowToast(`親タスクの期限を${updated.parent_due_date_extended_to}まで延長しました`)
-                    }}
-                    onDelete={() => void handleDeleteSubTask(subTask.id)}
-                    onShowToast={onShowToast}
-                    onDirtyChange={(dirty) => handleChildDirty(subTask.id, dirty)}
-                  />
-            )))}
-        </div>
-        <form onSubmit={(event) => void handleAddSubTask(event)} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 10, border: '1px dashed #334155' }}>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-            <textarea
-              value={newSubTask.title}
-              onChange={(event) => setNewSubTask((previous) => ({ ...previous, title: event.target.value }))}
-              onKeyDown={(event) => {
-                // Enter で追加、Shift+Enter で改行（複数行は1行ずつ追加）。日本語変換の確定の Enter では追加しない
-                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                  event.preventDefault()
-                  void handleAddSubTask(event)
-                }
-              }}
-              aria-label="追加するサブタスク名"
-              placeholder="＋ サブタスクを追加（Enterで追加・Shift+Enterで改行）"
-              rows={newSubTask.title.includes('\n') ? Math.min(6, newSubTask.title.split('\n').length + 1) : 1}
-              style={{ ...inputStyle, fontSize: '0.84rem', padding: '7px 9px', resize: 'vertical', flex: 1 }}
-            />
-            <button type="submit" disabled={!newSubTask.title.trim()} style={buttonStyle(newSubTask.title.trim() ? '#2563eb' : '#1e293b', newSubTask.title.trim() ? '#fff' : '#64748b')}>追加</button>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: '#94a3b8' }}>
-            {users.length > 0 && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                担当
-                <select
-                  value={newSubTask.assignee_id ?? ''}
-                  onChange={(event) => setNewSubTask((previous) => ({ ...previous, assignee_id: event.target.value || null }))}
-                  aria-label="追加するサブタスクの担当"
-                  style={{ ...inputStyle, width: 'auto', fontSize: '0.76rem', padding: '3px 6px' }}
-                >
-                  <option value="">担当なし</option>
-                  {users.filter((user) => user.is_active === 1 || user.id === newSubTask.assignee_id).map((user) => (
-                    <option key={user.id} value={user.id}>{user.display_name}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              期限
-              <input type="date" value={newSubTask.due_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, due_date: event.target.value || null }))} aria-label="追加するサブタスクの期限" style={{ ...inputStyle, width: 'auto', fontSize: '0.76rem', padding: '3px 6px' }} />
-            </label>
-            <button type="button" onClick={() => setShowSubTaskDetails((previous) => !previous)} aria-expanded={showSubTaskDetails} style={{ background: 'none', border: 'none', padding: 0, color: '#93c5fd', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>
-              {showSubTaskDetails ? '▾ 閉じる' : '▸ 開始日・メモ・進捗'}
-            </button>
-          </div>
-          {showSubTaskDetails && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={labelStyle}>開始日<input type="date" value={newSubTask.start_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} /></label>
-              <textarea value={newSubTask.description ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, description: event.target.value }))} placeholder="メモ..." aria-label="追加するサブタスクのメモ" rows={2} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: '#94a3b8' }}>
-                <span>進捗 {clampProgress(newSubTask.progress ?? 0)}%</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={5}
-                  value={clampProgress(newSubTask.progress ?? 0)}
-                  onChange={(event) => setNewSubTask((previous) => ({ ...previous, progress: clampProgress(Number(event.target.value)) }))}
-                  style={{ width: '100%', accentColor: progressColor(clampProgress(newSubTask.progress ?? 0)) }}
-                />
-              </label>
-            </div>
-          )}
-        </form>
-      </fieldset>
-      )}
-
-      {/* ToDoリストは日程を持たないので、依存関係はすでにあるときだけ出す */}
-      {(!listMode || dependencies.length > 0) && (
-      <section>
-        <SectionHeading title="依存関係" summary="前後のタスク" detail="先行タスクが終わってから、このタスクを始めます。待機日数を増やすと、先行タスクの完了後に間を空けられます。" />
-        <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 0.9fr) minmax(0, 1.4fr) 88px auto', gap: 6 }}>
-            <select value={dependencyDraft.mode} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, mode: event.target.value as 'predecessor' | 'successor', relatedTodoId: '' }))} style={inputStyle}>
-              <option value="predecessor">先行タスクを追加</option>
-              <option value="successor">後続タスクを追加</option>
-            </select>
-            <select value={dependencyDraft.relatedTodoId} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, relatedTodoId: event.target.value }))} style={inputStyle}>
-              <option value="">タスクを選択</option>
-              {dependencyCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title}</option>)}
-            </select>
-            <input type="number" min={0} max={60} value={dependencyDraft.lagDays} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, lagDays: event.target.value }))} placeholder="待機日数" aria-label="待機日数" title="先行タスクの完了から、何日空けて始めるか" style={inputStyle} />
-            <button onClick={() => void handleCreateDependency()} style={buttonStyle('#2563eb')}>追加</button>
-          </div>
-          <DependencyList title="先行タスク" items={predecessorDependencies} getTodoId={(item) => item.predecessor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.predecessor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} />
-          <DependencyList title="後続タスク" items={successorDependencies} getTodoId={(item) => item.successor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.successor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} />
-        </div>
-      </section>
-      )}
-
-      <section>
-        <div style={sectionTitleStyle}>作業ログ</div>
-        {logs.length === 0 ? (
-          <div style={{ color: '#475569', fontSize: '0.85rem' }}>ログはまだありません</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {logs.map((log) => (
-              <div key={log.id} style={{ background: '#1e293b', borderRadius: 6, padding: '8px 12px', fontSize: '0.82rem', color: '#94a3b8' }}>
-                <span style={{ color: '#e2e8f0' }}>{formatTime(new Date(log.start_time))} - {formatTime(new Date(log.end_time))}</span>
-                <span style={{ marginLeft: 8, color: '#4ade80' }}>{Math.round(log.duration_seconds / 60)}分</span>
-                {log.note && <span style={{ marginLeft: 8 }}>メモ: {log.note}</span>}
-              </div>
-            ))}
-          </div>
+// 説明・メモの下に出す保存の状態
+function AutosaveStatus({ saving, dirty, failed, length, onRetry }: { saving: boolean; dirty: boolean; failed: boolean; length: number; onRetry: () => void }): React.JSX.Element {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+      <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: failed ? '#fca5a5' : dirty || saving ? '#93c5fd' : '#94a3b8' }}>
+        {saving ? '保存中…' : failed ? '保存できませんでした' : dirty ? '入力が止まると保存します' : '保存済み'}
+        {failed && !saving && (
+          <button type="button" onClick={onRetry} style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid #ef4444', background: '#450a0a', color: '#fecaca', cursor: 'pointer', fontSize: '0.75rem' }}>再試行</button>
         )}
-      </section>
+      </div>
+      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{length}文字</div>
     </div>
-    </div>
+  )
+}
+
+const HISTORY_PAGE_SIZE = 20
+const HISTORY_FIELD_LABELS: Record<string, string> = {
+  title: 'タスク名',
+  description: '説明',
+  memo: 'メモ',
+  category: 'カテゴリ',
+  assignee: '担当',
+  co_assignees: 'サブ担当',
+  status: '状態',
+  priority: '優先度',
+  progress: '進捗',
+  start_date: '開始日',
+  due_date: '期限',
+  recurrence: '繰り返し',
+  recurrence_copy_subtasks: '繰り返しでサブタスクも作る',
+  list_mode: '種類'
+}
+const HISTORY_STATUS_LABELS: Record<string, string> = { not_started: '未着手', active: '進行中', on_hold: '保留中', done: '完了', archived: 'アーカイブ' }
+const HISTORY_RECURRENCE_LABELS: Record<string, string> = { daily: '毎日', weekly: '毎週', monthly: '毎月' }
+
+function historyValue(field: string, value: string | null): string {
+  if (value == null || value === '') return 'なし'
+  if (field === 'status') return HISTORY_STATUS_LABELS[value] ?? value
+  if (field === 'priority') return PRIORITY_OPTIONS.find((option) => String(option.value) === value)?.label ?? value
+  if (field === 'progress') return `${value}%`
+  if (field === 'start_date' || field === 'due_date') return formatShortDate(value.slice(0, 10))
+  if (field === 'recurrence') return HISTORY_RECURRENCE_LABELS[value] ?? value
+  if (field === 'recurrence_copy_subtasks') return value === '1' ? 'する' : 'しない'
+  if (field === 'list_mode') return value === '1' ? 'ToDoリスト' : 'タスク'
+  return value
+}
+
+function historyText(entry: TodoHistoryEntry): string {
+  const label = HISTORY_FIELD_LABELS[entry.field] ?? entry.field
+  // 説明・メモは本文を返さないので、変えたことだけを出す
+  if (entry.field === 'description' || entry.field === 'memo') return `${label}を変更`
+  return `${label}: ${historyValue(entry.field, entry.old_value)} → ${historyValue(entry.field, entry.new_value)}`
+}
+
+function formatHistoryTime(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+// このタスクの変更履歴（いつ・誰が・何を変えたか）。新しい順に20件ずつ
+function TodoHistory({ todoId, refreshKey }: { todoId: string; refreshKey: string }): React.JSX.Element {
+  const [entries, setEntries] = useState<TodoHistoryEntry[]>([])
+  const [hasMore, setHasMore] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const requestRef = useRef(0)
+
+  const load = useCallback(async (offset: number): Promise<void> => {
+    const request = ++requestRef.current
+    setLoading(true)
+    setError(null)
+    try {
+      const page = await window.api.todoChangeGetByTodo(todoId, { limit: HISTORY_PAGE_SIZE, offset })
+      if (request !== requestRef.current) return
+      setEntries((previous) => offset === 0 ? page : [...previous, ...page])
+      setHasMore(page.length === HISTORY_PAGE_SIZE)
+    } catch (loadError) {
+      if (request === requestRef.current) setError(loadError instanceof Error ? loadError.message : '変更履歴を読み込めませんでした')
+    } finally {
+      if (request === requestRef.current) setLoading(false)
+    }
+  }, [todoId])
+
+  // タスクが変わったら最初の20件を取り直す
+  useEffect(() => {
+    void load(0)
+  }, [load, refreshKey])
+
+  return (
+    <section>
+      <SectionHeading title="変更履歴" summary="いつ・誰が変えたか" />
+      {error ? (
+        <div role="alert" style={{ fontSize: '0.8rem', color: '#fca5a5' }}>
+          {error}
+          <button type="button" onClick={() => void load(0)} style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 6, border: '1px solid #ef4444', background: '#450a0a', color: '#fecaca', cursor: 'pointer', fontSize: '0.75rem' }}>再試行</button>
+        </div>
+      ) : entries.length === 0 ? (
+        <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{loading ? '読み込み中…' : '変更はまだありません'}</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {entries.map((entry) => (
+            <div key={entry.id} style={{ background: '#1e293b', borderRadius: 6, padding: '6px 10px', fontSize: '0.8rem', color: '#e2e8f0', lineHeight: 1.5 }}>
+              <span style={{ color: '#94a3b8', marginRight: 8, whiteSpace: 'nowrap' }}>{formatHistoryTime(entry.created_at)}{entry.user_name ? `　${entry.user_name}` : ''}</span>
+              <span style={{ overflowWrap: 'anywhere' }}>{historyText(entry)}</span>
+            </div>
+          ))}
+          {hasMore && (
+            <button type="button" disabled={loading} onClick={() => void load(entries.length)} style={{ alignSelf: 'flex-start', marginTop: 2, padding: '4px 10px', borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', cursor: loading ? 'default' : 'pointer', fontSize: '0.78rem' }}>
+              {loading ? '読み込み中…' : 'もっと見る'}
+            </button>
+          )}
+        </div>
+      )}
+    </section>
   )
 }
 

@@ -231,14 +231,15 @@ async function runElectron() {
     await js('(function(){const description=document.querySelector("textarea[aria-label=\'説明\']");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(description,"手元の説明");description.dispatchEvent(new Event("input",{bubbles:true}));})()')
     await otherUpdate(tasks.a.id, { description: '別メンバーの説明' })
     await delay(150)
-    await click('説明を保存')
+    // 説明・メモは自動で保存する。ここでは自動保存を待たずに Ctrl+Enter ですぐ保存する
+    await js('document.querySelector("textarea[aria-label=\'説明\']").dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",ctrlKey:true,bubbles:true}))')
     await until('document.body.innerText.includes("「説明」が変更されています")', 'Inline description conflict was not shown')
     assert.equal(await js('document.querySelector("textarea[aria-label=\'説明\']").value'), '手元の説明')
     assert.equal((await js('window.api.todoGetAll()')).find(todo => todo.id === tasks.a.id).description, '別メンバーの説明')
     await js('(function(){const memo=document.querySelector("textarea[aria-label=\'メモ\']");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(memo,"手元のメモ");memo.dispatchEvent(new Event("input",{bubbles:true}));})()')
     await otherUpdate(tasks.a.id, { memo: '別メンバーのメモ' })
     await delay(150)
-    await click('メモを保存')
+    await js('document.querySelector("textarea[aria-label=\'メモ\']").dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",ctrlKey:true,bubbles:true}))')
     await until('document.body.innerText.includes("「メモ」が変更されています")', 'Inline memo conflict was not shown')
     assert.equal((await js('window.api.todoGetAll()')).find(todo => todo.id === tasks.a.id).memo, '別メンバーのメモ')
 

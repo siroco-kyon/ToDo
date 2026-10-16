@@ -112,4 +112,17 @@ module.exports = function checkTaskData(api) {
   } finally { api.getDb().exec('DROP TRIGGER fail_timer_delete') }
   api.stopTimer()
   assert.equal(api.getWorkLogsByTodo(timed.id).length, 1, '停止の再試行でもログは1件')
+
+  // タスク詳細の変更履歴: このタスクの変更だけを新しい順に返す。説明・メモは本文を返さない。件数と続きを指定できる
+  const historyTask = api.createTodo({ title: '履歴を見るタスク', start_date: '2026-10-01', due_date: '2026-10-02' })
+  const otherTask = api.createTodo({ title: 'ほかのタスク' })
+  api.updateTodo(historyTask.id, { due_date: '2026-10-05' })
+  api.updateTodo(otherTask.id, { title: 'ほかのタスク（変更）' })
+  api.updateTodo(historyTask.id, { title: '履歴を見るタスク（改名）' })
+  api.updateTodo(historyTask.id, { memo: '長い本文は返さない' })
+  const history = api.getTodoChangeHistory(historyTask.id, { limit: 10 })
+  assert.deepEqual(history.map((entry) => entry.field), ['memo', 'title', 'due_date'], '新しい順・このタスクの変更だけ')
+  assert.deepEqual([history[2].old_value, history[2].new_value], ['2026-10-02', '2026-10-05'])
+  assert.deepEqual([history[0].old_value, history[0].new_value], [null, null], 'メモの本文は返さない')
+  assert.deepEqual(api.getTodoChangeHistory(historyTask.id, { limit: 1, offset: 1 }).map((entry) => entry.field), ['title'], '続きを取れる')
 }
