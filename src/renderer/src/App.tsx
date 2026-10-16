@@ -626,6 +626,30 @@ export function App(): React.JSX.Element {
   const q = deferredSearchQuery.trim().toLowerCase()
   const multiUser = users.length > 0
   const isAdmin = currentUser?.role === 'admin'
+
+  // サーバーとのつながり（サーバー版だけ）。一度つながったあとに2秒以上切れていたら上に帯を出す。
+  // 一瞬の切断や、起動直後のつながる前には出さない
+  const [serverDisconnected, setServerDisconnected] = useState(false)
+  useEffect(() => {
+    if (!multiUser) return
+    let everConnected = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const unsubscribe = window.api.onConnectionChange((connected) => {
+      if (timer !== undefined) clearTimeout(timer)
+      timer = undefined
+      if (connected) {
+        everConnected = true
+        setServerDisconnected(false)
+        return
+      }
+      if (everConnected) timer = setTimeout(() => setServerDisconnected(true), 2000)
+    })
+    return () => {
+      if (timer !== undefined) clearTimeout(timer)
+      unsubscribe()
+      setServerDisconnected(false)
+    }
+  }, [multiUser])
   const privateCategoryIds = useMemo(
     () => new Set(categories.filter((category) => category.is_private).map((category) => category.id)),
     [categories]
@@ -1370,6 +1394,12 @@ export function App(): React.JSX.Element {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      {serverDisconnected && (
+        <div role="status" style={{ flexShrink: 0, padding: '6px 16px', background: '#78350f', borderBottom: '1px solid #b45309', color: '#fef3c7', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span aria-hidden="true">⚠</span>
+          サーバーに再接続しています… つながるまで、変更は保存できません。
+        </div>
+      )}
       <Toolbar
         isTimerRunning={isRunning}
         onOpenQuickAdd={() => openQuickAdd()}

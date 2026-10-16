@@ -46,6 +46,20 @@ export const DATA_DIR = process.env.TODO_DATA_DIR
 
 export const DB_PATH = path.join(DATA_DIR, 'todo.db')
 
+/** 自動バックアップ（1日1回）の置き場所。既定はデータフォルダの backups */
+export const BACKUP_DIR = process.env.TODO_BACKUP_DIR
+  ? path.resolve(process.env.TODO_BACKUP_DIR)
+  : path.join(DATA_DIR, 'backups')
+
+/** 自動バックアップを残す数（日数）。0 なら自動バックアップをしない */
+export const BACKUP_KEEP = ((): number => {
+  const raw = process.env.TODO_BACKUP_KEEP?.trim()
+  if (!raw) return 14
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 0) throw new Error('TODO_BACKUP_KEEP は 0 以上の整数にしてください')
+  return value
+})()
+
 /**
  * Location of the built web frontend (the React app, built at the repo root
  * into `dist-web`). Served as a single-page app when present.

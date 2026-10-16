@@ -44,6 +44,7 @@ import { getWorkLogsByTodo, getAllWorkLogRows, getWorkLogsByDate, getWorkLogsSum
 import { getUserById, listUsers } from '../db/users'
 import { getDb } from '../db/connection'
 import { importDesktopDb } from '../import/import-desktop-db'
+import { getBackupInfo, writeSnapshot } from '../backup'
 import { getOverviewData } from '../db/overview'
 import {
   getDailyPlanItems,
@@ -544,6 +545,27 @@ dataRouter.get('/progress-digest', (req, res) =>
     const includePrivate = req.query.includePrivate !== 'false'
     return getProgressDigest(from, to, userIds, includePrivate)
   }))
+
+// ─── Backup (admin) ───────────────────────────────────────────
+// 今の DB のスナップショットをダウンロードする。一時ファイルに書き出してから送り、送り終えたら消す
+dataRouter.get('/admin/backup', requireAdmin, async (_req, res) => {
+  const file = path.join(os.tmpdir(), `hakobi-download-${crypto.randomUUID()}.db`)
+  try {
+    await writeSnapshot(file)
+  } catch (error) {
+    fs.rmSync(file, { force: true })
+    console.error('[backup] バックアップを作れませんでした', error)
+    res.status(500).json({ error: 'バックアップを作れませんでした' })
+    return
+  }
+  const now = new Date()
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`
+  res.download(file, `hakobi-backup-${stamp}.db`, () => {
+    fs.rmSync(file, { force: true })
+  })
+})
+dataRouter.get('/admin/backup/info', requireAdmin, (_req, res) => run(res, () => getBackupInfo()))
 
 // ─── Desktop DB import (admin) ────────────────────────────────
 // Body is the raw bytes of a desktop todo.db. Written to a temp file because

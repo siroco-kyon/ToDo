@@ -94,6 +94,7 @@ server/src/db/             マルチユーザー対応の SQLite アクセス層
 server/src/routes/         auth / data / users の REST ルート
 server/src/desktopRelease.ts latest.yml の解析とインストーラーの検証（サイズ・sha512）、結果のキャッシュ
 server/src/routes/desktopRelease.ts /api/desktop-release（ログイン不要。配布中の版の情報とダウンロード）
+server/src/backup.ts       DB のバックアップ（1日1回の自動バックアップと古いものの削除、管理者のダウンロード用のスナップショット）
 server/scripts/publish-desktop.ts npm run publish:desktop の本体（dist/ を検証して配布フォルダへ公開）
 ```
 
@@ -133,6 +134,8 @@ server/scripts/publish-desktop.ts npm run publish:desktop の本体（dist/ を�
 - 画面は `React.lazy` で分けて読み込む（ガント・一覧・詳細・ツールバー以外の画面と、設定などの小窓）。分けた部品は `ViewBoundary` で包む（読み込み中の表示と、読めなかったときの再読み込みの案内）。分けた部品のファイルから定数などを App に import すると分けた意味がなくなるので、`lib/` に置く（例: `lib/fontSettings.ts`）
 - 計測中の経過秒数は `useTimer` では持たない。表示する部品が `useElapsedSeconds(startTime)`（`RunningTimerDisplay` など）で数え、App を毎秒描き直さない
 - ガント（`GanttView`）と一覧の行（`TodoRow`）は `React.memo`。App から渡す関数は `useCallback`・ref で固定し、JSX（絞り込みのチップなど）は `useMemo` で作る。毎回新しい関数や要素を渡すと、タスクを選ぶたびにガントの全行を描き直す
+- 自動バックアップは `TODO_BACKUP_DIR`（既定はデータフォルダの backups）に1日1つ `hakobi-YYYY-MM-DD.db`。`TODO_BACKUP_KEEP`（既定14、0で止める）を超えたら古いものから消す。管理者は設定の「チーム管理」から今の DB をダウンロードできる（`/api/admin/backup`）。画面からは戻さない（手順は docs/HAKOBI.md）
+- 設定画面は「個人／チーム管理（`serverManaged && canManageUsers` のときだけ）／データ」のタブに分けている。項目を足すときは、どのタブに入れるかを決める
 - 進捗率のバーは `ProgressSlider` に揃えている（タスク詳細・サブタスク・報告タブ）。ドラッグは要素の pointer イベントで受け、ウィンドウ全体にリスナーを付けない
 - ガントの保留ボタンは、保留中のタスクだけ紫の「▶」を常に出す。保留していない行の「Ⅱ」は `.tarbo-gantt-hold-toggle`（行にマウスを乗せたときだけ表示）
 - 「集計から外す」カテゴリ（`is_private`）はアクセス制限ではない。画面では「プライベート」と書かず「集計外」と表記する。上部の「すべて表示／集計外を隠す」は集計外カテゴリがあるときだけ出す
