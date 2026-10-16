@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { toCsv, downloadCsv, dateStamp } from '../lib/csv'
-import type { Todo } from '../types'
+import type { AdminBackupInfo, Todo } from '../types'
 import type { DesktopContext, DesktopPreferences } from '../../../shared/desktop'
 import { desktopDownloadPageUrl, fetchDesktopRelease, isLoopbackOrigin, isNewerDesktopRelease, type DesktopReleaseStatus } from '../lib/desktopRelease'
 import { LegacyDraftRecoveryModal } from './LegacyDraftRecoveryModal'
@@ -83,6 +83,23 @@ function captureKeyEvent(e: React.KeyboardEvent): string | null {
 }
 
 const MEETING_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
+// サーバーと同じ最小の長さ（server/src/routes/users.ts）
+const MIN_PASSWORD_LENGTH = 6
+
+type SettingsTab = 'personal' | 'team' | 'data'
+
+function settingsTabStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: '6px 14px',
+    borderRadius: 999,
+    border: `1px solid ${active ? '#6366f1' : '#334155'}`,
+    background: active ? '#312e81' : 'transparent',
+    color: active ? '#e0e7ff' : '#94a3b8',
+    cursor: 'pointer',
+    fontSize: '0.82rem',
+    fontWeight: active ? 700 : 500
+  }
+}
 
 export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, fontFamily, onFontFamilyChange, fontScale, onFontScaleChange, canManageUsers = false, serverManaged = false, onManageUsers, onProgressReport, onDesktopImport, onMySummary, onExportClipboard, onExportFile }: Props): React.JSX.Element {
   const [exporting, setExporting] = useState(false)
@@ -105,6 +122,56 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
       })
   }
   const [showDraftRecovery, setShowDraftRecovery] = useState(false)
+  // 設定を「個人／チーム管理（管理者だけ）／データ」に分けて見せる
+  const showTeamTab = serverManaged && canManageUsers
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('personal')
+
+  // 自分のパスワードを変える（サーバー版だけ）
+  const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' })
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [savingPassword, setSavingPassword] = useState(false)
+  const updatePasswordForm = (patch: Partial<typeof passwordForm>): void => {
+    setPasswordForm((previous) => ({ ...previous, ...patch }))
+    setPasswordError(null)
+  }
+  const changePassword = async (): Promise<void> => {
+    if (savingPassword) return
+    if (passwordForm.next.length < MIN_PASSWORD_LENGTH) {
+      setPasswordError(`新しいパスワードは${MIN_PASSWORD_LENGTH}文字以上にしてください`)
+      return
+    }
+    if (passwordForm.next !== passwordForm.confirm) {
+      setPasswordError('新しいパスワードと確認用が一致しません')
+      return
+    }
+    setSavingPassword(true)
+    try {
+      await window.api.authChangePassword(passwordForm.current, passwordForm.next)
+      setPasswordForm({ current: '', next: '', confirm: '' })
+      onShowToast('パスワードを変えました。次のログインから新しいパスワードを使います')
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : 'パスワードを変えられませんでした')
+    } finally {
+      setSavingPassword(false)
+    }
+  }
+
+  // バックアップの状態（チーム管理を開いたときに読む）
+  const [backupInfo, setBackupInfo] = useState<AdminBackupInfo | null>(null)
+  const [backupError, setBackupError] = useState<string | null>(null)
+  useEffect(() => {
+    if (settingsTab !== 'team' || !showTeamTab) return
+    let disposed = false
+    setBackupError(null)
+    void window.api.adminBackupInfo()
+      .then((info) => {
+        if (disposed) return
+        setBackupInfo(info)
+        if (!info) setBackupError('バックアップはサーバー版でのみ使えます')
+      })
+      .catch((error) => { if (!disposed) setBackupError(error instanceof Error ? error.message : 'バックアップの状態を読み込めませんでした') })
+    return () => { disposed = true }
+  }, [settingsTab, showTeamTab])
   const [desktopContext, setDesktopContext] = useState<DesktopContext | null>(null)
   const [desktopRelease, setDesktopRelease] = useState<DesktopReleaseStatus | null>(null)
   const saveDesktopPreference = async (patch: Partial<DesktopPreferences>): Promise<void> => {
@@ -347,6 +414,33 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
   // Members in a browser are offered the app; administrators also see what to share or why nothing is offered.
   const offerDesktopApp = serverManaged && !window.desktop && !!offeredRelease
   const showReleaseAdmin = serverManaged && canManageUsers && desktopRelease !== null
+  const settingsTabs: Array<{ key: SettingsTab; label: string }> = [
+    { key: 'personal', label: '個人' },
+    ...(showTeamTab ? [{ key: 'team' as const, label: 'チーム管理' }] : []),
+    { key: 'data', label: 'データ' }
+  ]
+  const desktopReleaseSection = (offerDesktopApp || showReleaseAdmin) ? (<section>
+      <h3 style={sectionHead}>デスクトップ版（Windows）</h3>
+      {offerDesktopApp && offeredRelease && <>
+        <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '8px 0 12px', lineHeight: 1.6 }}>タイマーや通知が使えるデスクトップ版を配布しています（最新 {offeredRelease.version}）。</p>
+        <a href={desktopDownloadPageUrl()} target="_blank" rel="noopener noreferrer" style={linkBtn}>ダウンロードページを開く</a>
+      </>}
+      {showReleaseAdmin && (offeredRelease ? <>
+        <p style={{ fontSize: '0.75rem', color: '#64748b', margin: offerDesktopApp ? '14px 0 4px' : '8px 0 4px' }}>メンバーに案内するダウンロードページ（管理者のみ表示）</p>
+        <div style={pathBox}>{desktopDownloadPageUrl()}</div>
+        {isLoopbackOrigin(window.location.origin) && <p style={{ fontSize: '0.72rem', color: '#fbbf24', marginTop: 6, lineHeight: 1.6 }}>
+          このPC（サーバー）から開いているため、ほかのPCではこのURLを使えません。メンバーには {`http://<サーバーのIPアドレス>:${window.location.port || '80'}/download`} を案内してください。
+        </p>}
+      </> : <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 8, lineHeight: 1.6 }}>
+        <p>配布中のインストーラーはありません。</p>
+        {/* 配布フォルダのパスなどは、困ったときだけ開く */}
+        <details style={{ marginTop: 4 }}>
+          <summary style={detailsSummary}>詳しく</summary>
+          {desktopRelease?.reason && <p style={{ fontSize: '0.75rem', color: '#fbbf24', overflowWrap: 'anywhere' }}>{desktopRelease.reason}</p>}
+          <p style={{ fontSize: '0.75rem', color: '#64748b' }}><code style={codeStyle}>npm run publish:desktop</code> で公開できます。</p>
+        </details>
+      </div>)}
+    </section>) : null
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -384,6 +478,16 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           <button onClick={onClose} style={closeBtnStyle}>×</button>
         </div>
 
+        {/* 個人／チーム管理（管理者だけ）／データ */}
+        <div role="tablist" aria-label="設定の分類" style={{ display: 'flex', gap: 6, marginTop: -12, borderBottom: '1px solid #334155', paddingBottom: 10 }}>
+          {settingsTabs.map((item) => (
+            <button key={item.key} type="button" role="tab" aria-selected={settingsTab === item.key} onClick={() => setSettingsTab(item.key)} style={settingsTabStyle(settingsTab === item.key)}>
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        {settingsTab === 'personal' && <>
         {desktopContext && <section>
           <h3 style={sectionHead}>HAKOBI デスクトップ</h3>
           <p style={{ fontSize: '0.8rem', color: '#cbd5e1', margin: '10px 0 4px' }}>{desktopContext.groupName}</p>
@@ -412,59 +516,23 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           <p style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 12 }}>接続先・タイマー・通知・グローバルショートカットの設定は、このPCだけに保存されます。</p>
         </section>}
 
-        {(offerDesktopApp || showReleaseAdmin) && <section>
-          <h3 style={sectionHead}>デスクトップ版（Windows）</h3>
-          {offerDesktopApp && offeredRelease && <>
-            <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '8px 0 12px', lineHeight: 1.6 }}>タイマーや通知が使えるデスクトップ版を配布しています（最新 {offeredRelease.version}）。</p>
-            <a href={desktopDownloadPageUrl()} target="_blank" rel="noopener noreferrer" style={linkBtn}>ダウンロードページを開く</a>
-          </>}
-          {showReleaseAdmin && (offeredRelease ? <>
-            <p style={{ fontSize: '0.75rem', color: '#64748b', margin: offerDesktopApp ? '14px 0 4px' : '8px 0 4px' }}>メンバーに案内するダウンロードページ（管理者のみ表示）</p>
-            <div style={pathBox}>{desktopDownloadPageUrl()}</div>
-            {isLoopbackOrigin(window.location.origin) && <p style={{ fontSize: '0.72rem', color: '#fbbf24', marginTop: 6, lineHeight: 1.6 }}>
-              このPC（サーバー）から開いているため、ほかのPCではこのURLを使えません。メンバーには {`http://<サーバーのIPアドレス>:${window.location.port || '80'}/download`} を案内してください。
-            </p>}
-          </> : <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 8, lineHeight: 1.6 }}>
-            <p>配布中のインストーラーはありません。</p>
-            {desktopRelease?.reason && <p style={{ fontSize: '0.75rem', color: '#fbbf24', overflowWrap: 'anywhere' }}>{desktopRelease.reason}</p>}
-            <p style={{ fontSize: '0.75rem', color: '#64748b' }}><code style={codeStyle}>npm run publish:desktop</code> で公開できます。</p>
-          </div>)}
-        </section>}
+        {!showTeamTab && desktopReleaseSection}
 
         {serverManaged && <section>
-          <h3 style={sectionHead}>旧版の下書き</h3>
-          <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '8px 0 12px', lineHeight: 1.6 }}>更新前にこのPCで入力した進捗やコメントが見つからない場合は、内容を確認して自分のアカウントへ復元できます。</p>
-          <button type="button" onClick={() => setShowDraftRecovery(true)} style={secondaryBtn}>旧版の下書きを確認・復元</button>
+          <h3 style={sectionHead}>パスワードの変更</h3>
+          <form
+            onSubmit={(event) => { event.preventDefault(); void changePassword() }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10, maxWidth: 320 }}
+          >
+            <input type="password" autoComplete="current-password" aria-label="今のパスワード" placeholder="今のパスワード" value={passwordForm.current} onChange={(event) => updatePasswordForm({ current: event.target.value })} style={passwordInput} />
+            <input type="password" autoComplete="new-password" aria-label="新しいパスワード" placeholder={`新しいパスワード（${MIN_PASSWORD_LENGTH}文字以上）`} value={passwordForm.next} onChange={(event) => updatePasswordForm({ next: event.target.value })} style={passwordInput} />
+            <input type="password" autoComplete="new-password" aria-label="新しいパスワード（確認）" placeholder="新しいパスワード（確認）" value={passwordForm.confirm} onChange={(event) => updatePasswordForm({ confirm: event.target.value })} style={passwordInput} />
+            {passwordError && <p role="alert" style={{ fontSize: '0.75rem', color: '#fca5a5', margin: 0 }}>{passwordError}</p>}
+            <button type="submit" disabled={savingPassword || !passwordForm.current || !passwordForm.next || !passwordForm.confirm} style={{ ...primaryBtn, alignSelf: 'flex-start', opacity: savingPassword || !passwordForm.current || !passwordForm.next || !passwordForm.confirm ? 0.5 : 1 }}>
+              {savingPassword ? '変更中…' : 'パスワードを変える'}
+            </button>
+          </form>
         </section>}
-
-        {/* ─── 管理者: ユーザー管理 ─── */}
-        {canManageUsers && onManageUsers && (
-          <section>
-            <h3 style={sectionHead}>管理者</h3>
-            <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
-              メンバーの追加・編集・削除、権限の変更、パスワードの再設定ができます。
-            </p>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button onClick={onManageUsers} style={primaryBtn}>👤 ユーザー管理を開く</button>
-              {onProgressReport && (
-                <button onClick={onProgressReport} style={secondaryBtn}>📊 進捗レポートを開く</button>
-              )}
-              {onDesktopImport && (
-                <button onClick={onDesktopImport} style={secondaryBtn}>💾 デスクトップDBを取り込む</button>
-              )}
-            </div>
-            {serverManaged && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 12, fontSize: '0.8rem', color: '#cbd5e1' }}>
-                定例の曜日
-                <select value={meetingWeekday} onChange={(event) => changeMeetingWeekday(event.target.value)} aria-label="定例の曜日" style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}>
-                  <option value="">決めない（リマインドしない）</option>
-                  {[1, 2, 3, 4, 5, 6, 0].map((day) => <option key={day} value={String(day)}>{MEETING_WEEKDAYS[day]}曜日</option>)}
-                </select>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>前日の17時に、直近7日に報告がない担当タスクがある人へ通知します</span>
-              </label>
-            )}
-          </section>
-        )}
 
         {/* ─── 自分の進捗サマリー ─── */}
         {onMySummary && (
@@ -476,26 +544,6 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             <button onClick={onMySummary} style={secondaryBtn}>📊 自分の進捗サマリーを開く</button>
           </section>
         )}
-
-        {/* ─── データのエクスポート ─── */}
-        <section>
-          <h3 style={sectionHead}>データのエクスポート</h3>
-          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
-            CSV（UTF-8 BOM付き・Excel対応）でダウンロードします。
-          </p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => void exportCsv('todos')} disabled={exporting} style={secondaryBtn}>📋 タスクCSV</button>
-            <button onClick={() => void exportCsv('subtasks')} disabled={exporting} style={secondaryBtn}>📑 サブタスクCSV</button>
-            <button onClick={() => void exportCsv('worklogs')} disabled={exporting} style={secondaryBtn}>⏱ 作業ログCSV</button>
-          </div>
-          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '14px 0 12px' }}>
-            Markdown形式でタスク一覧を出力します（クリップボードへのコピーは Ctrl+Alt+E でも可能）。
-          </p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => void onExportClipboard()} style={secondaryBtn}>📝 Markdownをコピー</button>
-            <button onClick={() => void onExportFile()} style={secondaryBtn}>💾 Markdownを書き出し</button>
-          </div>
-        </section>
 
         {/* ─── 1. キーボードショートカット ─── */}
         <section>
@@ -679,6 +727,119 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           </div>
           <p style={{ fontSize: '0.72rem', color: '#475569', marginTop: 4 }}>0 = 当日のみ　1 = 前日から　-1 = 通知しない</p>
         </section>}
+        </>}
+
+        {settingsTab === 'team' && showTeamTab && <>
+        {/* ─── 管理者: ユーザー管理 ─── */}
+        {canManageUsers && onManageUsers && (
+          <section>
+            <h3 style={sectionHead}>管理者</h3>
+            <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+              メンバーの追加・編集・削除、権限の変更、パスワードの再設定ができます。
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={onManageUsers} style={primaryBtn}>👤 ユーザー管理を開く</button>
+              {onProgressReport && (
+                <button onClick={onProgressReport} style={secondaryBtn}>📊 進捗レポートを開く</button>
+              )}
+              {onDesktopImport && (
+                <button onClick={onDesktopImport} style={secondaryBtn}>💾 デスクトップDBを取り込む</button>
+              )}
+            </div>
+            {serverManaged && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 12, fontSize: '0.8rem', color: '#cbd5e1' }}>
+                定例の曜日
+                <select value={meetingWeekday} onChange={(event) => changeMeetingWeekday(event.target.value)} aria-label="定例の曜日" style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}>
+                  <option value="">決めない（リマインドしない）</option>
+                  {[1, 2, 3, 4, 5, 6, 0].map((day) => <option key={day} value={String(day)}>{MEETING_WEEKDAYS[day]}曜日</option>)}
+                </select>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>前日の17時に、直近7日に報告がない担当タスクがある人へ通知します</span>
+              </label>
+            )}
+          </section>
+        )}
+
+        {serverManaged && <section>
+          <h3 style={sectionHead}>バックアップ</h3>
+          <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '6px 0 12px', lineHeight: 1.6 }}>
+            今のデータ（タスク・進捗ログ・作業記録・アカウントなど全部）を1つのファイルに保存します。
+          </p>
+          {backupInfo ? <>
+            <a href={backupInfo.downloadUrl} download style={linkBtn}>💾 今のデータをダウンロード</a>
+            <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 12, lineHeight: 1.6 }}>
+              {backupInfo.keep > 0
+                ? `サーバーは毎日1回、自動でバックアップを取り、${backupInfo.keep}日分を残します。${backupInfo.latestAt ? `いちばん新しいもの: ${formatLocal(backupInfo.latestAt)}（${backupInfo.count}件）` : 'まだ自動のバックアップはありません。'}`
+                : '自動のバックアップは止めています（サーバーの設定 TODO_BACKUP_KEEP=0）。'}
+            </p>
+            <details style={{ marginTop: 6 }}>
+              <summary style={detailsSummary}>詳しく</summary>
+              <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '8px 0 4px' }}>自動のバックアップの置き場所（サーバーのフォルダ）</p>
+              <div style={pathBox}>{backupInfo.directory}</div>
+              <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 8, lineHeight: 1.6 }}>戻すときは、サーバーを止めてから DB を差し替えます。手順は docs/HAKOBI.md の「バックアップから戻す」にあります。</p>
+            </details>
+          </> : <p style={{ fontSize: '0.8rem', color: backupError ? '#fca5a5' : '#94a3b8' }}>{backupError ?? '読み込み中…'}</p>}
+        </section>}
+
+        {desktopReleaseSection}
+        </>}
+
+        {settingsTab === 'data' && <>
+        {/* ─── データのエクスポート ─── */}
+        <section>
+          <h3 style={sectionHead}>データのエクスポート</h3>
+          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 12px' }}>
+            CSV（UTF-8 BOM付き・Excel対応）でダウンロードします。
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => void exportCsv('todos')} disabled={exporting} style={secondaryBtn}>📋 タスクCSV</button>
+            <button onClick={() => void exportCsv('subtasks')} disabled={exporting} style={secondaryBtn}>📑 サブタスクCSV</button>
+            <button onClick={() => void exportCsv('worklogs')} disabled={exporting} style={secondaryBtn}>⏱ 作業ログCSV</button>
+          </div>
+          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '14px 0 12px' }}>
+            Markdown形式でタスク一覧を出力します（クリップボードへのコピーは Ctrl+Alt+E でも可能）。
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => void onExportClipboard()} style={secondaryBtn}>📝 Markdownをコピー</button>
+            <button onClick={() => void onExportFile()} style={secondaryBtn}>💾 Markdownを書き出し</button>
+          </div>
+        </section>
+
+        {/* ─── 4. Markdownテンプレート ─── */}
+        <section>
+          <h3 style={sectionHead}>Markdownテンプレート</h3>
+          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 14px' }}>
+            Markdownエクスポートの出力形式を変更します。変数: <code style={codeStyle}>{'{{date}}'}</code> <code style={codeStyle}>{'{{title}}'}</code> <code style={codeStyle}>{'{{category}}'}</code> <code style={codeStyle}>{'{{task_min}}'}</code> <code style={codeStyle}>{'{{start}}'}</code> <code style={codeStyle}>{'{{end}}'}</code> <code style={codeStyle}>{'{{min}}'}</code> <code style={codeStyle}>{'{{note}}'}</code> <code style={codeStyle}>{'{{total_min}}'}</code>
+          </p>
+          {(
+            [
+              { key: 'mdHeaderTpl', label: 'ヘッダー', hint: '変数: {{date}}' },
+              { key: 'mdTaskTpl', label: 'タスク行', hint: '変数: {{title}} {{category}} {{task_min}}' },
+              { key: 'mdEntryTpl', label: 'エントリー行', hint: '変数: {{start}} {{end}} {{min}} {{note}}' },
+              { key: 'mdFooterTpl', label: 'フッター', hint: '変数: {{total_min}}' }
+            ] as { key: keyof MdTemplates; label: string; hint: string }[]
+          ).map(({ key, label, hint }) => (
+            <div key={key} style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'block', marginBottom: 2 }}>
+                {label} <span style={{ color: '#475569', fontWeight: 'normal' }}>— {hint}</span>
+              </label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <textarea
+                  value={mdTemplates[key]}
+                  onChange={(e) => setMdTemplates((prev) => ({ ...prev, [key]: e.target.value }))}
+                  rows={2}
+                  style={{ ...textareaStyle, flex: 1 }}
+                />
+                <button
+                  onClick={async () => {
+                    await window.api.settingsSet(key, mdTemplates[key])
+                    onShowToast('保存しました')
+                  }}
+                  style={{ ...secondaryBtn, alignSelf: 'flex-start' }}
+                >保存</button>
+              </div>
+            </div>
+          ))}
+        </section>
 
         {/* ─── 4. 保持期間 ─── */}
         {!serverManaged && <section>
@@ -731,43 +892,6 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           </div>
         </section>}
 
-        {/* ─── 4. Markdownテンプレート ─── */}
-        <section>
-          <h3 style={sectionHead}>Markdownテンプレート</h3>
-          <p style={{ fontSize: '0.75rem', color: '#475569', margin: '6px 0 14px' }}>
-            Markdownエクスポートの出力形式を変更します。変数: <code style={codeStyle}>{'{{date}}'}</code> <code style={codeStyle}>{'{{title}}'}</code> <code style={codeStyle}>{'{{category}}'}</code> <code style={codeStyle}>{'{{task_min}}'}</code> <code style={codeStyle}>{'{{start}}'}</code> <code style={codeStyle}>{'{{end}}'}</code> <code style={codeStyle}>{'{{min}}'}</code> <code style={codeStyle}>{'{{note}}'}</code> <code style={codeStyle}>{'{{total_min}}'}</code>
-          </p>
-          {(
-            [
-              { key: 'mdHeaderTpl', label: 'ヘッダー', hint: '変数: {{date}}' },
-              { key: 'mdTaskTpl', label: 'タスク行', hint: '変数: {{title}} {{category}} {{task_min}}' },
-              { key: 'mdEntryTpl', label: 'エントリー行', hint: '変数: {{start}} {{end}} {{min}} {{note}}' },
-              { key: 'mdFooterTpl', label: 'フッター', hint: '変数: {{total_min}}' }
-            ] as { key: keyof MdTemplates; label: string; hint: string }[]
-          ).map(({ key, label, hint }) => (
-            <div key={key} style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'block', marginBottom: 2 }}>
-                {label} <span style={{ color: '#475569', fontWeight: 'normal' }}>— {hint}</span>
-              </label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <textarea
-                  value={mdTemplates[key]}
-                  onChange={(e) => setMdTemplates((prev) => ({ ...prev, [key]: e.target.value }))}
-                  rows={2}
-                  style={{ ...textareaStyle, flex: 1 }}
-                />
-                <button
-                  onClick={async () => {
-                    await window.api.settingsSet(key, mdTemplates[key])
-                    onShowToast('保存しました')
-                  }}
-                  style={{ ...secondaryBtn, alignSelf: 'flex-start' }}
-                >保存</button>
-              </div>
-            </div>
-          ))}
-        </section>
-
         {/* ─── 5. データ保存場所 ─── */}
         {!serverManaged && <section>
           <h3 style={sectionHead}>データ保存場所</h3>
@@ -809,6 +933,13 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             ))}
           </div>
         </section>}
+
+        {serverManaged && <section>
+          <h3 style={sectionHead}>旧版の下書き</h3>
+          <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '8px 0 12px', lineHeight: 1.6 }}>更新前にこのPCで入力した進捗やコメントが見つからない場合は、内容を確認して自分のアカウントへ復元できます。</p>
+          <button type="button" onClick={() => setShowDraftRecovery(true)} style={secondaryBtn}>旧版の下書きを確認・復元</button>
+        </section>}
+        </>}
       </div>
     </div>
     {serverManaged && showDraftRecovery && <LegacyDraftRecoveryModal onClose={() => setShowDraftRecovery(false)} onShowToast={onShowToast} />}</>
@@ -847,6 +978,21 @@ const kbdStyle: React.CSSProperties = {
   display: 'inline-block', background: '#0f172a', border: '1px solid #475569',
   borderRadius: 5, padding: '4px 12px', fontSize: '0.8rem',
   color: '#e2e8f0', fontFamily: 'monospace', whiteSpace: 'nowrap'
+}
+
+const detailsSummary: React.CSSProperties = {
+  cursor: 'pointer',
+  fontSize: '0.75rem',
+  color: '#94a3b8'
+}
+
+const passwordInput: React.CSSProperties = {
+  padding: '7px 10px',
+  borderRadius: 7,
+  border: '1px solid #334155',
+  background: '#0f172a',
+  color: '#e2e8f0',
+  fontSize: '0.85rem'
 }
 
 const pathBox: React.CSSProperties = {

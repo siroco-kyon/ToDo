@@ -21,6 +21,19 @@ export interface UserDeletePreview {
   coAssignedTaskCount: number
 }
 
+/** サーバーのバックアップの状態（サーバー版の管理者だけ） */
+export interface AdminBackupInfo {
+  /** 今の DB をダウンロードする URL */
+  downloadUrl: string
+  /** 自動バックアップの置き場所（サーバーのパス） */
+  directory: string
+  /** 自動バックアップを残す数。0 なら自動バックアップをしない */
+  keep: number
+  count: number
+  latestName: string | null
+  latestAt: string | null
+}
+
 export interface PublicUser {
   id: string
   username: string

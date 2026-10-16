@@ -9,6 +9,7 @@ import { attachUser, cleanupExpiredSessions, seedAdminUser } from './auth'
 import { broadcastDataChanged, initRealtime, sendNotificationChanged } from './realtime'
 import { resetRecurringSubTasks } from './db/subtasks'
 import { countUnreadNotifications, runReportReminders } from './db/notifications'
+import { runDailyBackup } from './backup'
 import { toLocalDateKey } from './shared/recurring-period'
 import { authRouter } from './routes/auth'
 import { dataRouter } from './routes/data'
@@ -48,10 +49,19 @@ if (fs.existsSync(WEB_DIST_DIR)) {
 const server = http.createServer(app)
 initRealtime(server)
 
+// 1日1回の自動バックアップ。今日の分がなければ取る（起動したときと、1分ごとの点検で確かめる）
+function backupIfNeeded(): void {
+  runDailyBackup()
+    .then((file) => { if (file) console.log(`[backup] 自動バックアップを取りました: ${file}`) })
+    .catch((error) => console.error('[backup] 自動バックアップを取れませんでした', error))
+}
+backupIfNeeded()
+
 // ToDoリストの繰り返しの項目は、日付が変わったら未チェックに戻して各画面に取り直してもらう。
 // 報告のリマインド（定例の前日の17時）も、アプリを開いていない人のデスクトップ版に届くよう1分ごとに確かめる
 let lastDayKey = toLocalDateKey(new Date())
 setInterval(() => {
+  backupIfNeeded()
   try {
     for (const userId of runReportReminders()) sendNotificationChanged(userId, countUnreadNotifications(userId))
   } catch (error) {

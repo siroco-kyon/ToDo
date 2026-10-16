@@ -20,6 +20,7 @@ import type {
   AddDailyPlanItemOptions,
   PublicUser,
   UserDeletePreview,
+  AdminBackupInfo,
   UserRole,
   CreateUserInput,
   UpdateUserInput,
@@ -67,6 +68,7 @@ export type {
   AddDailyPlanItemOptions,
   PublicUser,
   UserDeletePreview,
+  AdminBackupInfo,
   UserRole,
   CreateUserInput,
   UpdateUserInput,
@@ -180,6 +182,9 @@ const api = {
   authGetCurrentUser: (): Promise<PublicUser | null> => ipcRenderer.invoke('auth:getCurrentUser'),
   /** サーバー版: セッションを破棄してログイン画面へ戻る。デスクトップ版では何もしない */
   authLogout: (): Promise<void> => ipcRenderer.invoke('auth:logout'),
+  /** サーバー版: 自分のパスワードを変える。デスクトップ版ではエラー */
+  authChangePassword: (currentPassword: string, newPassword: string): Promise<void> =>
+    ipcRenderer.invoke('auth:changePassword', currentPassword, newPassword),
   userCreate: (input: CreateUserInput): Promise<PublicUser> => ipcRenderer.invoke('user:create', input),
   userUpdate: (id: string, input: UpdateUserInput): Promise<PublicUser> =>
     ipcRenderer.invoke('user:update', id, input),
@@ -190,6 +195,8 @@ const api = {
   /** デスクトップ版 todo.db を取り込む（サーバー版の管理者専用。デスクトップ版ではエラー） */
   adminImportDesktopDb: (data: ArrayBuffer, targetUserId: string, dryRun: boolean): Promise<DesktopImportResult> =>
     ipcRenderer.invoke('admin:importDesktopDb', data, targetUserId, dryRun),
+  /** サーバーのバックアップの状態（サーバー版の管理者だけ。デスクトップ版は null） */
+  adminBackupInfo: async (): Promise<AdminBackupInfo | null> => null,
 
   // Notifications are server-only; desktop has no per-account notification inbox.
   notificationList: async (): Promise<UserNotification[]> => [],
@@ -296,6 +303,10 @@ const api = {
   },
   // Only the team desktop opens notifications from the OS; personal mode has no inbox.
   onOpenNotification: (_cb: (notificationId: string | null) => void): (() => void) => {
+    return () => {}
+  },
+  // サーバーとのつながり（サーバー版だけ）。デスクトップ版はサーバーを使わないので、切れたとは知らせない
+  onConnectionChange: (_cb: (connected: boolean) => void): (() => void) => {
     return () => {}
   }
 }

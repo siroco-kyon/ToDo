@@ -4,7 +4,7 @@ const path = require('path')
 const DEFAULT_SERVICE_NAME = 'TodoTeamServer'
 const PASS_THROUGH_ENV = [
   'PORT', 'TODO_DATA_DIR', 'TODO_WEB_DIST', 'TODO_DESKTOP_DIST', 'ADMIN_USERNAME', 'ADMIN_PASSWORD',
-  'SESSION_COOKIE', 'SESSION_TTL_DAYS'
+  'SESSION_COOKIE', 'SESSION_TTL_DAYS', 'TODO_BACKUP_DIR', 'TODO_BACKUP_KEEP'
 ]
 
 function readEnvFile(envPath, required) {

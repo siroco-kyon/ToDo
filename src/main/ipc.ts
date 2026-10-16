@@ -181,6 +181,9 @@ export function registerIpcHandlers(
   ipcMain.handle('user:deletePreview', userManagementUnavailable)
   ipcMain.handle('user:delete', userManagementUnavailable)
   ipcMain.handle('user:resetPassword', userManagementUnavailable)
+  ipcMain.handle('auth:changePassword', (): never => {
+    throw new Error('パスワードの変更はサーバー版でのみ利用できます')
+  })
   ipcMain.handle('admin:importDesktopDb', (): never => {
     throw new Error('デスクトップDBの取り込みはサーバー版でのみ利用できます')
   })

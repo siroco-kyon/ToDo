@@ -156,7 +156,7 @@
 - [x] ⑤ URL 連動と Ctrl+K（`lib/urlState.ts`・`CommandPalette.tsx`・`npm run test:url`）
 - [x] ⑥ 定例を早く終わらせる仕組み（`MeetingMode.tsx`・`ProgressNoteHelpers.tsx`・サーバーの `ensureReportReminder`・`npm --prefix server run test:report-reminder`）
 - [x] ⑧ 速さ（画面の分割読み込み・計測中の秒の描き直しを表示部品だけに・ガントと一覧の行の memo 化）
-- [ ] ⑨ 管理者向け
+- [x] ⑨ 管理者向け（パスワードの変更・バックアップ（`server/src/backup.ts`・`npm --prefix server run test:backup`）・設定のタブ・接続が切れたときの帯）
 - [ ] ⑦ デザイントークンとライトテーマ
 
 ## 8. 見送り・気づき
@@ -190,3 +190,8 @@
 - ⑧: 計測中の経過秒数は `useTimer` から外し、表示する部品が `useElapsedSeconds(startTime)` で数える。計測中の App の描き直しは 5秒で5回 → 0回（一時的に数を数えるビルドで確認）。
 - ⑧: 測ってみると、タスクを選ぶたびにガントの全行（全員表示で343行）を描き直していて、選択に 150〜200ms かかっていた。ガントを `React.memo` にし、App から渡す関数・絞り込みの表示を固定した。一覧の行も memo にした。全員表示（257件・343行）でのタスクの選択は、ガント画面 約170ms → 約40ms、詳細画面 約35ms。
 - ⑧: `content-visibility: auto` は、一覧の行では効果がなかった（全員表示への切り替え 約480ms のまま）。ガントの行では 約480ms → 約275ms になったが、依存関係の線と線を引くときの当たり判定が行の DOM の位置から測るので、まだ描いていない行の高さの見積もりがずれると線がずれる恐れがある。プレビューのペインでは requestAnimationFrame が動かず線を確かめられないので、今回は入れない（入れるなら、行の種類ごとに高さを指定し、線の位置を実物で確かめてから）。
+- ⑥（Codex の指摘から）: 定例の曜日の保存は管理者だけ（以前はどのメンバーも `/api/settings/reportMeetingWeekday` を書き換えられた）。通知設定の API が「報告のリマインド」を受け付けていなかった。定例モードを閉じていた時間を議事録の会議時間から除く。
+- ⑨: パスワードの変更は Api 契約に `authChangePassword` を足した（サーバーの `/api/users/me/password` は前からある）。デスクトップ版はエラー。新しいパスワードは6文字以上（サーバーと同じ）。
+- ⑨: バックアップは SQLite のバックアップ機能で一時ファイルに書き、`journal_mode = DELETE` にしてから名前を変える（1つのファイルで開ける）。自動は1日1つ `hakobi-YYYY-MM-DD.db` を `TODO_BACKUP_DIR`（既定はデータフォルダの backups）に置き、`TODO_BACKUP_KEEP`（既定14、0で止める）を超えたら古いものから消す。ほかのファイルは消さない。管理者のダウンロードは `/api/admin/backup`、状態は `/api/admin/backup/info`（Api 契約は `adminBackupInfo`。デスクトップ版は null）。戻し方は docs/HAKOBI.md。
+- ⑨: 設定は「個人／チーム管理（管理者だけ）／データ」のタブ。配布の案内は、管理者ならチーム管理、それ以外は個人に出す。配布できない理由（配布フォルダのパスを含む）と npm のコマンドは「詳しく」に畳んだ。`tests/hakobi-electron.cjs` はタブを切り替える手順に直した。
+- ⑨: 接続の帯は、一度つながったあとに2秒以上切れていたら出す（一瞬の切断や起動直後には出さない）。Api 契約に `onConnectionChange` を足した（デスクトップ版は何もしない）。つながり直すと消え、各画面は前からの仕組みで取り直す。プレビューのペインの `preview_start` は自分のタブを読み込み直すので、別のタブで確かめた。

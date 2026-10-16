@@ -20,6 +20,7 @@ import type {
   UpdateDailyPlanItemInput,
   PublicUser,
   UserDeletePreview,
+  AdminBackupInfo,
   CreateUserInput,
   UpdateUserInput,
   UserNotification,
@@ -458,6 +459,13 @@ export const api: Api = {
   userUpdate: (id: string, input: UpdateUserInput) => put<PublicUser>(`/users/${id}`, input),
   userResetPassword: (id: string, password: string) =>
     post<void>(`/users/${id}/password`, { password }),
+  authChangePassword: async (currentPassword: string, newPassword: string) => {
+    await post<{ ok: true }>('/users/me/password', { currentPassword, newPassword })
+  },
+  adminBackupInfo: async (): Promise<AdminBackupInfo | null> => {
+    const info = await get<Omit<AdminBackupInfo, 'downloadUrl'>>('/admin/backup/info')
+    return { ...info, downloadUrl: buildUrl('/admin/backup') }
+  },
   adminImportDesktopDb: async (data: ArrayBuffer, targetUserId: string, dryRun: boolean) => {
     // JSONではなく todo.db のバイト列をそのまま送る
     const res = await fetch(
@@ -536,6 +544,7 @@ export const api: Api = {
     dataChangedListeners.add(cb)
     return () => dataChangedListeners.delete(cb)
   },
+  onConnectionChange: (cb) => subscribeConnection(cb),
   onNotificationsChanged: (cb) => {
     notificationListeners.add(cb)
     return () => notificationListeners.delete(cb)
