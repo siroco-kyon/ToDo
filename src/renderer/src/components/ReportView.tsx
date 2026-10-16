@@ -761,7 +761,7 @@ function listProgressText(row: ReportRow, period: DateRange): string {
 }
 
 function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, period: DateRange): string {
-  const headers = ['担当', 'カテゴリ', 'タスク', 'サブタスク', '状態', '保留開始', '保留期間', '開始', '期限', '進捗(%)', '期間中の進捗', '期限の変更', '最終報告', '要相談', '期間内の進捗コメント', 'メモ']
+  const headers = ['担当', 'カテゴリ', 'タスク', 'サブタスク', '状態', '保留開始', '保留期間', '開始', '期限', '進捗(%)', '期間中の進捗', '期限の変更', '最終報告', '要相談', '期間内の進捗ログ', 'メモ']
   const rows: Array<Array<string | number | null>> = []
   for (const group of groups) {
     for (const row of group.rows) {
@@ -1298,7 +1298,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     }
   }
 
-  const renderCard = (row: ReportRow): React.JSX.Element => (
+  const renderCard = (row: ReportRow, inMeeting = false): React.JSX.Element => (
     <ReportTaskCard
       key={row.todo.id}
       row={row}
@@ -1310,6 +1310,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       showAssignee={selectedUserId != null}
       multiUser={multiUser}
       isMine={currentUser != null && isMyTask(row.todo, row.subTasks, currentUser.id)}
+      showOnTrackHelper={!inMeeting}
       onSelectTodo={onSelectTodo}
       actions={actions}
     />
@@ -1338,7 +1339,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
             {discussions.map((note) => <InteractiveNote key={`meeting-discussion-${note.id}`} note={note} actions={actions} showTask />)}
           </div>
         )}
-        {group.rows.map(renderCard)}
+        {group.rows.map((row) => renderCard(row, true))}
       </>
     )
   }
@@ -1652,7 +1653,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                   ))}
                 </div>
               )}
-              {!collapsed && !subGroupMode && group.rows.map(renderCard)}
+              {!collapsed && !subGroupMode && group.rows.map((row) => renderCard(row))}
               {!collapsed && subGroupMode && subGroupRows(group.rows, subGroupMode, categories, users).map((subGroup) => {
                 const subCollapsed = collapsedSubGroupSet.has(subGroup.key)
                 const subNeeds = subGroup.rows.filter((row) => needsReport(row.freshness)).length
@@ -1677,7 +1678,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                       {subNeeds > 0 && <span style={{ fontSize: '0.74rem', color: '#fde68a', fontWeight: 700 }}>報告なし {subNeeds}</span>}
                       {subDiscussions > 0 && <span style={{ fontSize: '0.74rem', color: '#d6b38a' }}>要相談 {subDiscussions}</span>}
                     </div>
-                    {!subCollapsed && subGroup.rows.map(renderCard)}
+                    {!subCollapsed && subGroup.rows.map((row) => renderCard(row))}
                   </div>
                 )
               })}
@@ -2106,6 +2107,7 @@ function ReportTaskCard({
   showAssignee,
   multiUser,
   isMine,
+  showOnTrackHelper,
   onSelectTodo,
   actions
 }: {
@@ -2118,6 +2120,7 @@ function ReportTaskCard({
   showAssignee: boolean
   multiUser: boolean
   isMine: boolean
+  showOnTrackHelper: boolean
   onSelectTodo: (id: string) => void
   actions: ReportCardActions
 }): React.JSX.Element {
@@ -2403,6 +2406,7 @@ function ReportTaskCard({
               <ProgressNoteHelpers
                 draft={draft}
                 disabled={posting}
+                showOnTrack={showOnTrackHelper}
                 onInsertTemplate={() => setDraft(withProgressNoteTemplate(draft))}
                 onPostOnTrack={() => void (async () => {
                   setPosting(true)

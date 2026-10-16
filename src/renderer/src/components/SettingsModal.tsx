@@ -190,7 +190,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
       if (kind === 'todos') {
         const todos = await window.api.todoGetAll()
         downloadCsv(`tasks_${dateStamp()}.csv`, toCsv(
-          ['ID', 'タイトル', '説明', 'メモ', 'カテゴリ', '担当者', '状態', '優先度', '進捗(%)', '開始日', '締切日', '繰り返し', '作成日時', '更新日時'],
+          ['ID', 'タイトル', '説明', 'メモ', 'カテゴリ', '担当者', '状態', '優先度', '進捗(%)', '開始日', '期限', '繰り返し', '作成日時', '更新日時'],
           todos.map((todo) => [
             todo.id, todo.title, todo.description, todo.memo,
             todo.category_name, todo.assignee_name,
@@ -204,7 +204,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         const [todos, subTasks] = await Promise.all([window.api.todoGetAll(), window.api.subtaskGetAll()])
         const titleById = new Map(todos.map((todo) => [todo.id, todo.title]))
         downloadCsv(`subtasks_${dateStamp()}.csv`, toCsv(
-          ['ID', 'タスク', 'サブタスク', 'メモ', '開始日', '締切日', '進捗(%)', '完了', '完了日時', '作成日時'],
+          ['ID', 'タスク', 'サブタスク', 'メモ', '開始日', '期限', '進捗(%)', '完了', '完了日時', '作成日時'],
           subTasks.map((sub) => [
             sub.id, titleById.get(sub.todo_id) ?? sub.todo_id, sub.title, sub.description,
             sub.start_date, sub.due_date, sub.done ? 100 : sub.progress ?? 0, sub.done ? '済' : '',

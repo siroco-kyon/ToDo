@@ -118,7 +118,7 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
                 <ResultRow label="依存関係" value={result.dependencies} />
                 <ResultRow label="作業ログ" value={result.workLogs} />
                 <ResultRow label="予定（レール）" value={result.planItems} />
-                <ResultRow label="進捗メモ" value={result.progressNotes ?? 0} />
+                <ResultRow label="進捗ログ" value={result.progressNotes ?? 0} />
                 <ResultRow label="コメント・返信" value={result.progressComments ?? 0} />
                 <ResultRow label="リアクション" value={result.progressReactions ?? 0} />
                 <ResultRow label="タスクの変更履歴" value={result.todoChanges ?? 0} />

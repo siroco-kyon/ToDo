@@ -1,5 +1,6 @@
 import { LinkedText } from './LinkedText'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ReactionBar, countReactions } from './LikeButton'
 import { MentionTextarea } from './MentionTextarea'
 import type { ProgressNote, ProgressNoteComment, PublicUser } from '../types'
@@ -325,21 +326,54 @@ export interface NoteMenuItem {
 /** 要相談・編集・削除など、ふだんは見せなくてよい操作をまとめる「⋯」メニュー（報告タブ・進捗タブで共通） */
 export function NoteMenu({ items }: { items: NoteMenuItem[] }): React.JSX.Element | null {
   const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState({ left: 0, top: 0 })
   const rootRef = useRef<HTMLSpanElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current || !menuRef.current) return
+    const anchor = rootRef.current.getBoundingClientRect()
+    const menu = menuRef.current.getBoundingClientRect()
+    const margin = 8
+    const below = anchor.bottom + 4
+    const top = below + menu.height <= window.innerHeight - margin ? below : anchor.top - menu.height - 4
+    setPosition({
+      left: Math.max(margin, Math.min(anchor.left, window.innerWidth - menu.width - margin)),
+      top: Math.max(margin, Math.min(top, window.innerHeight - menu.height - margin))
+    })
+  }, [open, items.length])
+
+  useLayoutEffect(() => {
+    if (open) menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus({ preventScroll: true })
+  }, [open])
 
   useEffect(() => {
     if (!open) return
     const handlePointerDown = (event: PointerEvent): void => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+      if (!rootRef.current?.contains(event.target as Node) && !menuRef.current?.contains(event.target as Node)) setOpen(false)
     }
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        setOpen(false)
+        buttonRef.current?.focus({ preventScroll: true })
+      }
     }
+    const handleScroll = (event: Event): void => {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const handleResize = (): void => setOpen(false)
     document.addEventListener('pointerdown', handlePointerDown)
     document.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('scroll', handleScroll, true)
+    window.addEventListener('resize', handleResize)
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown)
       document.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('scroll', handleScroll, true)
+      window.removeEventListener('resize', handleResize)
     }
   }, [open])
 
@@ -348,6 +382,7 @@ export function NoteMenu({ items }: { items: NoteMenuItem[] }): React.JSX.Elemen
   return (
     <span ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
       <button
+        ref={buttonRef}
         onClick={() => setOpen((value) => !value)}
         aria-label="その他の操作"
         aria-haspopup="menu"
@@ -357,19 +392,21 @@ export function NoteMenu({ items }: { items: NoteMenuItem[] }): React.JSX.Elemen
       >
         ⋯
       </button>
-      {open && (
-        <div role="menu" style={menuStyle}>
+      {open && createPortal(
+        <div ref={menuRef} role="menu" style={{ ...menuStyle, ...position }}>
           {items.map((item) => (
             <NoteMenuButton
               key={item.label}
               item={item}
               onSelect={() => {
                 setOpen(false)
+                buttonRef.current?.focus({ preventScroll: true })
                 item.onSelect()
               }}
             />
           ))}
-        </div>
+        </div>,
+        document.getElementById('root') ?? document.body
       )}
     </span>
   )
@@ -405,11 +442,13 @@ function moreButtonStyle(active: boolean): React.CSSProperties {
 }
 
 const menuStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: 'calc(100% + 4px)',
-  left: 0,
-  zIndex: 40,
+  // 詳細欄のスクロール範囲で切れないよう、画面内に配置する。
+  position: 'fixed',
+  zIndex: 960,
   minWidth: 120,
+  maxWidth: 'calc(100vw - 16px)',
+  maxHeight: 'calc(100vh - 16px)',
+  overflowY: 'auto',
   display: 'flex',
   flexDirection: 'column',
   padding: 4,

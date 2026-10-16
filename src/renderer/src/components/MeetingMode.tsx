@@ -205,7 +205,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
   const copyMinutes = async (): Promise<void> => {
     try {
       await copyTextToClipboard(meetingMinutesMarkdown(groups, state, periodLabel))
-      onShowToast('議事録をコピーしました')
+      onShowToast('定例の内容をコピーしました')
     } catch {
       onShowToast('クリップボードへのコピーに失敗しました', 'error')
     }
@@ -260,7 +260,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
         </label>
         <button onClick={() => goTo(index - 1)} disabled={index === 0} title="前の人（←）" style={navButtonStyle(index === 0)}>◀ 前の人</button>
         <button onClick={() => goTo(index + 1)} disabled={index >= groups.length - 1} title="次の人（→）" style={navButtonStyle(index >= groups.length - 1, true)}>次の人 ▶</button>
-        <button onClick={() => void copyMinutes()} title="話した人・メモ・その場で作ったタスクを Markdown でコピーします" style={navButtonStyle(false)}>議事録をコピー</button>
+        <button onClick={() => void copyMinutes()} title="メモ・追加したタスク・時間をまとめてコピーします" style={navButtonStyle(false)}>定例の内容をコピー</button>
         <button onClick={close} title="定例モードを閉じます（Esc）。進み具合は残ります" style={navButtonStyle(false)}>閉じる</button>
       </div>
 
@@ -297,18 +297,21 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
               </section>
             )}
             <section style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0' }}>メモ（議事録に入ります）</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0' }}>定例メモ</div>
               <textarea
                 value={state.notes[group.key] ?? ''}
                 onChange={(event) => {
                   const value = event.target.value
                   onStateChange((previous) => ({ ...previous, notes: { ...previous.notes, [group.key]: value } }))
                 }}
-                aria-label={`${group.label}のメモ`}
+                aria-label={`${group.label}の定例メモ`}
                 rows={8}
                 placeholder="話したこと・決まったこと"
                 style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0', fontSize: '0.82rem', lineHeight: 1.6, resize: 'vertical' }}
               />
+              <div style={{ fontSize: '0.75rem', color: '#94a3b8', lineHeight: 1.6 }}>
+                このメモは報告画面を離れると消えます。残す場合は「定例の内容をコピー」でコピーしてください。
+              </div>
             </section>
             <section style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0' }}>順番</div>
