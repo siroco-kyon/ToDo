@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProgressNote, ProgressNoteComment, PublicUser, Todo } from '../types'
 import { ReactionBar, countReactions } from './LikeButton'
 import { MentionTextarea } from './MentionTextarea'
+import { ON_TRACK_NOTE, ProgressNoteHelpers, withProgressNoteTemplate } from './ProgressNoteHelpers'
 import { isAddressedToUser, isUnseen, noteHasUnseen, readProgressSeenAt, writeProgressSeenAt } from '../lib/progressActivity'
 import { serverNow } from '../lib/serverClock'
 import { NoteMenu, discussionBadgeStyle } from './ProgressNoteThread'
@@ -374,14 +375,15 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   const canModifyComment = (comment: ProgressNoteComment): boolean =>
     currentUser == null || currentUser.role === 'admin' || comment.user_id === currentUser.id
 
-  const handleCreateNote = async (): Promise<void> => {
-    const body = noteDraft.trim()
+  // bodyOverride を渡すと（「予定どおり」）、入力中の文には触らずにその文を投稿する
+  const handleCreateNote = async (bodyOverride?: string): Promise<void> => {
+    const body = (bodyOverride ?? noteDraft).trim()
     if (!selectedTodoId || !body || savingNote) return
 
     try {
       setSavingNote(true)
       const created = await window.api.progressNoteCreate(selectedTodoId, body)
-      setNoteDraft('')
+      if (bodyOverride === undefined) setNoteDraft('')
       try { window.localStorage.setItem(lastTodoKey, selectedTodoId) } catch { /* 記憶できなくても投稿は済んでいる */ }
       if (isInRange(getDateKeyFromIso(created.created_at), range)) {
         setNotes((previous) => [normalizeNote(created), ...previous])
@@ -786,7 +788,15 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                 style={{ ...postInputStyle, minHeight: 88 }}
               />
               <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ color: '#64748b', fontSize: '0.74rem' }}>{noteDraft.length}文字</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <ProgressNoteHelpers
+                    draft={noteDraft}
+                    disabled={!selectedTodoId || savingNote}
+                    onInsertTemplate={() => setNoteDraft(withProgressNoteTemplate(noteDraft))}
+                    onPostOnTrack={() => void handleCreateNote(ON_TRACK_NOTE)}
+                  />
+                  <span style={{ color: '#94a3b8', fontSize: '0.74rem' }}>{noteDraft.length}文字</span>
+                </span>
                 <button onClick={() => void handleCreateNote()} disabled={!selectedTodoId || !noteDraft.trim() || savingNote} style={primaryPostButtonStyle(Boolean(selectedTodoId && noteDraft.trim() && !savingNote))}>
                   {savingNote ? '投稿中' : '投稿'}
                 </button>

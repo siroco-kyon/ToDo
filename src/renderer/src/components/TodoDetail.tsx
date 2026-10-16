@@ -9,6 +9,7 @@ import { buildEditPatch } from '../lib/editChanges'
 import { ProgressSlider } from './ProgressSlider'
 import { NoteMenu, ProgressNoteThread } from './ProgressNoteThread'
 import { MentionTextarea } from './MentionTextarea'
+import { ON_TRACK_NOTE, ProgressNoteHelpers, withProgressNoteTemplate } from './ProgressNoteHelpers'
 import { TodoChecklist } from './TodoChecklist'
 import { isListTodo } from '../lib/todoList'
 import { autoScrollNearEdge, dropTargetAt, moveIdBy, moveIdTo, scrollParentOf, type DropPosition } from '../lib/reorder'
@@ -754,16 +755,19 @@ export function TodoDetail({
     setDependencyDraft((previous) => ({ ...previous, relatedTodoId: '', lagDays: String(lagDays) }))
   }
 
-  const handleAddProgressNote = async (): Promise<void> => {
+  // bodyOverride を渡すと（「予定どおり」）、入力中の文には触らずにその文を投稿する
+  const handleAddProgressNote = async (bodyOverride?: string): Promise<void> => {
     if (!todoId || noteSaving) return
-    const body = noteDraft.trim()
+    const body = (bodyOverride ?? noteDraft).trim()
     if (!body) return
     try {
       setNoteSaving(true)
       const created = await window.api.progressNoteCreate(todoId, body)
       setProgressNotes((previous) => [created, ...previous])
-      setNoteDraft('')
-      window.localStorage.removeItem(progressDraftKey)
+      if (bodyOverride === undefined) {
+        setNoteDraft('')
+        window.localStorage.removeItem(progressDraftKey)
+      }
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '進捗ログを追加できませんでした', 'error')
     } finally {
@@ -1227,8 +1231,20 @@ export function TodoDetail({
                   rows={3}
                   style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: 72 }}
                 />
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{noteDraft.length}文字</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ marginRight: 'auto' }}>
+                    <ProgressNoteHelpers
+                      draft={noteDraft}
+                      disabled={noteSaving}
+                      onInsertTemplate={() => {
+                        const next = withProgressNoteTemplate(noteDraft)
+                        setNoteDraft(next)
+                        if (todoId) window.localStorage.setItem(progressDraftKey, next)
+                      }}
+                      onPostOnTrack={() => void handleAddProgressNote(ON_TRACK_NOTE)}
+                    />
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{noteDraft.length}文字</div>
                   <button
                     onClick={() => void handleAddProgressNote()}
                     disabled={!noteDraft.trim() || noteSaving}

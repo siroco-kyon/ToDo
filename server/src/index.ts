@@ -6,8 +6,9 @@ import cookieParser from 'cookie-parser'
 import { DESKTOP_DIST_DIR, PORT, WEB_DIST_DIR } from './config'
 import { initDb } from './db/connection'
 import { attachUser, cleanupExpiredSessions, seedAdminUser } from './auth'
-import { broadcastDataChanged, initRealtime } from './realtime'
+import { broadcastDataChanged, initRealtime, sendNotificationChanged } from './realtime'
 import { resetRecurringSubTasks } from './db/subtasks'
+import { countUnreadNotifications, runReportReminders } from './db/notifications'
 import { toLocalDateKey } from './shared/recurring-period'
 import { authRouter } from './routes/auth'
 import { dataRouter } from './routes/data'
@@ -47,9 +48,15 @@ if (fs.existsSync(WEB_DIST_DIR)) {
 const server = http.createServer(app)
 initRealtime(server)
 
-// ToDoリストの繰り返しの項目は、日付が変わったら未チェックに戻して各画面に取り直してもらう
+// ToDoリストの繰り返しの項目は、日付が変わったら未チェックに戻して各画面に取り直してもらう。
+// 報告のリマインド（定例の前日の17時）も、アプリを開いていない人のデスクトップ版に届くよう1分ごとに確かめる
 let lastDayKey = toLocalDateKey(new Date())
 setInterval(() => {
+  try {
+    for (const userId of runReportReminders()) sendNotificationChanged(userId, countUnreadNotifications(userId))
+  } catch (error) {
+    console.error('[server] 報告のリマインドを確かめられませんでした', error)
+  }
   const dayKey = toLocalDateKey(new Date())
   if (dayKey === lastDayKey) return
   lastDayKey = dayKey

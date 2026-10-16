@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import { getDb } from './connection'
+import { getSetting } from './settings'
 import type { NotificationType, UserNotification } from './types'
 
 interface CreateNotificationInput {
@@ -34,16 +35,65 @@ function getNotificationForUser(userId: string, id: string): UserNotification | 
     .get(userId, id) as UserNotification | undefined
 }
 
-function localDateKey(offsetDays = 0): string {
-  const date = new Date()
+function localDateKey(offsetDays = 0, base = new Date()): string {
+  const date = new Date(base)
   date.setDate(date.getDate() + offsetDays)
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-function localDayStartIso(): string {
-  const date = new Date()
+function localDayStartIso(base = new Date()): string {
+  const date = new Date(base)
   date.setHours(0, 0, 0, 0)
   return date.toISOString()
+}
+
+/** 定例の曜日（0=日〜6=土）の設定のキー。管理者が設定画面で選ぶ。空なら報告のリマインドを出さない */
+export const REPORT_MEETING_WEEKDAY_SETTING = 'reportMeetingWeekday'
+/** 定例の前日の、この時刻（サーバーの時計の時）を過ぎたらリマインドを出す */
+export const REPORT_REMINDER_HOUR = 17
+/** この日数のあいだ進捗ログもメモの更新もない担当タスクを「報告がまだ」とする */
+const REPORT_REMINDER_LOOKBACK_DAYS = 7
+
+/**
+ * 報告のリマインド。定例の前日の17時を過ぎたら、直近7日に進捗ログもメモの更新もない担当タスク
+ * （未着手・進行中。保留中・完了・ToDoリスト・まだ始まらないタスクは除く）がある人に1日1回知らせる
+ */
+export function ensureReportReminder(userId: string, now = new Date()): UserNotification | null {
+  const setting = getSetting(REPORT_MEETING_WEEKDAY_SETTING)
+  if (setting == null || !/^[0-6]$/.test(setting)) return null
+  const reminderWeekday = (Number(setting) + 6) % 7
+  if (now.getDay() !== reminderWeekday || now.getHours() < REPORT_REMINDER_HOUR) return null
+
+  const db = getDb()
+  const sent = db.prepare("SELECT 1 FROM Notifications WHERE user_id = ? AND type = 'report_reminder' AND created_at >= ? LIMIT 1")
+    .get(userId, localDayStartIso(now))
+  if (sent) return null
+
+  const since = new Date(now)
+  since.setDate(since.getDate() - REPORT_REMINDER_LOOKBACK_DAYS)
+  const sinceIso = since.toISOString()
+  const rows = db.prepare(
+    `SELECT t.id, t.title FROM Todos t
+     WHERE t.assignee_id = ? AND t.status IN ('not_started', 'active') AND COALESCE(t.list_mode, 0) = 0
+       AND (t.start_date IS NULL OR substr(t.start_date, 1, 10) <= ?)
+       AND NOT EXISTS (SELECT 1 FROM ProgressNotes n WHERE n.todo_id = t.id AND n.created_at >= ?)
+       AND NOT EXISTS (SELECT 1 FROM TodoChangeLogs l WHERE l.todo_id = t.id AND l.field = 'memo' AND l.created_at >= ?)
+     ORDER BY t.due_date IS NULL, t.due_date, t.title`
+  ).all(userId, localDateKey(0, now), sinceIso, sinceIso) as Array<{ id: string; title: string }>
+  if (rows.length === 0) return null
+
+  return createNotification({
+    userId,
+    type: 'report_reminder',
+    title: '明日は定例です',
+    body: `報告がまだのタスクが${rows.length}件あります（「${rows[0].title}」${rows.length > 1 ? 'ほか' : ''}）`
+  })
+}
+
+/** 有効なメンバー全員の報告のリマインドを確かめ、出した人の ID を返す（サーバーの1分ごとの点検から呼ぶ） */
+export function runReportReminders(now = new Date()): string[] {
+  const userIds = (getDb().prepare('SELECT id FROM Users WHERE is_active = 1').all() as Array<{ id: string }>).map((row) => row.id)
+  return userIds.filter((userId) => ensureReportReminder(userId, now) != null)
 }
 
 function ensureDueNotifications(userId: string): void {
@@ -68,6 +118,7 @@ function ensureDueNotifications(userId: string): void {
 
 export function listNotifications(userId: string, limit = 50): UserNotification[] {
   ensureDueNotifications(userId)
+  ensureReportReminder(userId)
   const db = getDb()
   const unread = db
     .prepare(`${NOTIFICATION_SELECT} WHERE n.user_id = ? AND n.read_at IS NULL ORDER BY n.created_at DESC`)
@@ -81,6 +132,7 @@ export function listNotifications(userId: string, limit = 50): UserNotification[
 
 export function countUnreadNotifications(userId: string): number {
   ensureDueNotifications(userId)
+  ensureReportReminder(userId)
   return (
     getDb()
       .prepare('SELECT COUNT(*) AS count FROM Notifications WHERE user_id = ? AND read_at IS NULL')

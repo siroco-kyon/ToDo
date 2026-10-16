@@ -4,9 +4,11 @@ import { copyTextToClipboard } from '../lib/clipboard'
 import { dateStamp, downloadCsv, toCsv } from '../lib/csv'
 import { diffDaysFromToday, getDueDateColor, isoToDateKey, toDateKey } from '../lib/dueDate'
 import { MentionTextarea } from './MentionTextarea'
+import { ON_TRACK_NOTE, ProgressNoteHelpers, withProgressNoteTemplate } from './ProgressNoteHelpers'
 import { ProgressNoteThread, discussionBadgeStyle } from './ProgressNoteThread'
 import { ProgressSlider } from './ProgressSlider'
 import { ReportSettingsPanel } from './ReportSettingsPanel'
+import { MeetingMode, createMeetingState, type MeetingGroup, type MeetingState } from './MeetingMode'
 import { getOnHoldInfo } from '../lib/onHold'
 import {
   DEFAULT_REPORT_VIEW_SETTINGS,
@@ -35,6 +37,7 @@ import {
 import type {
   Category,
   CreateSubTaskInput,
+  CreateTodoInput,
   ProgressNote,
   ProgressNoteComment,
   PublicUser,
@@ -67,6 +70,8 @@ interface Props {
   onShowToast: ShowToast
   /** タスク一覧の絞り込み（カテゴリ・検索）の表示。見出しの横に出す */
   listFilters?: React.ReactNode
+  /** 定例モードで、決まったことをタスクにする */
+  onCreateTodo?: (data: CreateTodoInput) => Promise<Todo>
 }
 
 type ShowToast = (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
@@ -827,7 +832,7 @@ function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, peri
 
 // ─── 画面 ─────────────────────────────────────────────────────
 
-export function ReportView({ todos, subTasks, categories, users, currentUser, onSelectTodo, onUpdateTodo, onUpdateSubTask, onCreateSubTask, onShowToast, listFilters }: Props): React.JSX.Element {
+export function ReportView({ todos, subTasks, categories, users, currentUser, onSelectTodo, onUpdateTodo, onUpdateSubTask, onCreateSubTask, onShowToast, listFilters, onCreateTodo }: Props): React.JSX.Element {
   const multiUser = users.length > 0
   const settingsUserId = currentUser?.id ?? null
   const [preset, setPreset] = useState<PeriodPreset>(loadPreset)
@@ -840,6 +845,9 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const [settingsState, setSettingsState] = useState(() => ({ userId: settingsUserId, settings: loadReportViewSettings(settingsUserId) }))
   const settings = settingsState.userId === settingsUserId ? settingsState.settings : loadReportViewSettings(settingsUserId)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // 定例モード（担当者を1人ずつ大きく表示する）。閉じても、この画面を開いている間は進み具合を残す
+  const [meetingOpen, setMeetingOpen] = useState(false)
+  const [meetingState, setMeetingState] = useState<MeetingState | null>(null)
   // 折りたたんだ担当者（カテゴリ）の見出しキー。定例で話し終えた人を畳んでおける
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
   const [notes, setNotes] = useState<ProgressNote[]>([])
@@ -1307,6 +1315,58 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     />
   )
 
+  // 定例モードで見せるまとまりと、その中身（要相談 → タスクのカード）
+  const meetingGroups: MeetingGroup[] = groups.map((group) => {
+    const needs = group.rows.filter((row) => needsReport(row.freshness)).length
+    const discussions = group.rows.reduce((sum, row) => sum + row.discussions.length, 0)
+    return {
+      key: group.key,
+      label: group.label,
+      color: group.color,
+      summary: [`${group.rows.length}件`, needs > 0 ? `報告なし ${needs}` : null, discussions > 0 ? `要相談 ${discussions}` : null].filter(Boolean).join('・')
+    }
+  })
+  const renderMeetingBody = (groupKey: string): React.ReactNode => {
+    const group = groups.find((item) => item.key === groupKey)
+    if (!group) return null
+    const discussions = group.rows.flatMap((row) => row.discussions).sort((a, b) => b.created_at.localeCompare(a.created_at))
+    return (
+      <>
+        {discussions.length > 0 && (
+          <div style={discussionBoxStyle}>
+            <div style={{ fontSize: '0.8rem', color: '#cbd5e1', fontWeight: 700 }}>要相談（{discussions.length}件）</div>
+            {discussions.map((note) => <InteractiveNote key={`meeting-discussion-${note.id}`} note={note} actions={actions} showTask />)}
+          </div>
+        )}
+        {group.rows.map(renderCard)}
+      </>
+    )
+  }
+  const meetingTaskInput = (groupKey: string, title: string): CreateTodoInput => effectiveGroupMode === 'assignee'
+    ? { title, status: 'not_started', start_date: toDateKey(new Date()), assignee_id: users.some((user) => user.id === groupKey) ? groupKey : null }
+    : { title, status: 'not_started', start_date: toDateKey(new Date()), category_id: categories.some((category) => category.id === groupKey) ? groupKey : null, assignee_id: currentUser?.id ?? null }
+  const createMeetingTask = onCreateTodo
+    ? async (groupKey: string, title: string): Promise<boolean> => {
+        try {
+          await onCreateTodo(meetingTaskInput(groupKey, title))
+          onShowToast(`タスク「${title}」を作りました`)
+          return true
+        } catch (error) {
+          onShowToast(error instanceof Error ? error.message : 'タスクを作れませんでした', 'error')
+          return false
+        }
+      }
+    : undefined
+  const meetingTaskHint = (groupKey: string): string => {
+    const label = groups.find((group) => group.key === groupKey)?.label ?? ''
+    if (effectiveGroupMode === 'assignee') return groupKey ? `担当: ${label}` : '担当: なし'
+    return `カテゴリ: ${groupKey ? label : 'なし'}・担当: 自分`
+  }
+  const openMeeting = (): void => {
+    setMeetingState((previous) => previous ? { ...previous, personStartedAt: Date.now() } : createMeetingState())
+    setMeetingOpen(true)
+  }
+
   const handleDownloadCsv = (): void => {
     downloadCsv(`report-${range.from}_${range.to}-${dateStamp()}.csv`, reportToCsv(groups, settings.subTaskMode, range))
   }
@@ -1365,6 +1425,17 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               <button onClick={() => void load()} disabled={loading} style={secondaryButtonStyle}>{loading ? '更新中…' : '更新'}</button>
               <button onClick={() => void handleCopyMarkdown()} title="表示中の内容をMarkdownでコピーします（議事録などに貼れます）" style={secondaryButtonStyle}>Markdownをコピー</button>
               <button onClick={handleDownloadCsv} title="表示中の内容をCSVで保存します（Excelで開けます）" style={secondaryButtonStyle}>CSV</button>
+              <button
+                onClick={openMeeting}
+                disabled={!loaded || groups.length === 0}
+                title="担当者を1人ずつ大きく表示し、持ち時間を計りながら進めます。決まったことはその場でタスクにでき、終わったら議事録をコピーできます"
+                style={{ ...secondaryButtonStyle, borderColor: '#4f46e5', color: '#c7d2fe' }}
+              >
+                {meetingState ? '定例モードに戻る' : '定例モード'}
+              </button>
+              {meetingState && !meetingOpen && (
+                <button onClick={() => setMeetingState(null)} title="定例モードの進み具合（時間・メモ）を消して、最初からにします" style={secondaryButtonStyle}>定例をリセット</button>
+              )}
             </div>
           </div>
 
@@ -1522,6 +1593,20 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                 ? '表示できるタスクがありません。「表示設定」の横に出ている条件も確認してください。'
                 : '表示できるタスクがありません。見出しの横の「絞り込み中」も確認してください。'}
           </div>
+        )}
+
+        {meetingOpen && meetingState && (
+          <MeetingMode
+            groups={meetingGroups}
+            state={meetingState}
+            onStateChange={(updater) => setMeetingState((previous) => previous ? updater(previous) : previous)}
+            periodLabel={`${formatShortDate(range.from)}（${weekdayLabel(range.from)}）〜${formatShortDate(range.to)}（${weekdayLabel(range.to)}）`}
+            renderBody={renderMeetingBody}
+            onCreateTask={createMeetingTask}
+            createTaskHint={meetingTaskHint}
+            onShowToast={onShowToast}
+            onClose={() => setMeetingOpen(false)}
+          />
         )}
 
         {loaded && groups.map((group) => {
@@ -2314,6 +2399,17 @@ function ReportTaskCard({
               style={{ ...inputStyle, width: '100%', resize: 'vertical', lineHeight: 1.55, minHeight: 72 }}
             />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+              <ProgressNoteHelpers
+                draft={draft}
+                disabled={posting}
+                onInsertTemplate={() => setDraft(withProgressNoteTemplate(draft))}
+                onPostOnTrack={() => void (async () => {
+                  setPosting(true)
+                  const ok = await actions.onCreateNote(todo, ON_TRACK_NOTE, false)
+                  setPosting(false)
+                  if (ok) setComposerOpen(false)
+                })()}
+              />
               <label style={{ ...checkboxLabelStyle, marginRight: 'auto', color: draftNeedsDiscussion ? '#d6b38a' : '#94a3b8' }}>
                 <input type="checkbox" checked={draftNeedsDiscussion} onChange={(event) => setDraftNeedsDiscussion(event.target.checked)} style={{ accentColor: '#6366f1' }} />
                 要相談として投稿（定例で話したいこと）

@@ -49,7 +49,7 @@ export interface UpdateUserInput {
   is_active?: boolean
 }
 
-export type NotificationType = 'progress_reply' | 'task_assigned' | 'progress_reaction' | 'task_due' | 'mention'
+export type NotificationType = 'progress_reply' | 'task_assigned' | 'progress_reaction' | 'task_due' | 'mention' | 'report_reminder'
 
 export interface UserNotification {
   id: string
