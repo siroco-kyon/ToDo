@@ -1915,13 +1915,9 @@ export function GanttView({
     chartSections.flatMap((section) => section.collapsed ? [] : section.groups)
   ), [chartSections])
 
-  const canStartReorderMode = !healthFilter && ((Boolean(onReorderTodos) && chartGroups.length > 1)
-    || chartGroups.some((group) => group.datedSubTasks.length > 1))
-
-  // 並べ替えモード中に遅れ・期限超過で絞り込んだら、並べ替えモードを終える
-  useEffect(() => {
-    if (healthFilter) setIsReorderMode(false)
-  }, [healthFilter])
+  // 絞り込み中に並べ替えても、App 側で隠れているタスクの位置を保ったまま保存する
+  const canStartReorderMode = (Boolean(onReorderTodos) && chartGroups.length > 1)
+    || chartGroups.some((group) => group.datedSubTasks.length > 1)
 
   const handleReorderDragStart = useCallback((todoId: string, event: React.DragEvent<HTMLDivElement>): void => {
     if (!isReorderMode || reorderPending || !onReorderTodos) return
@@ -3192,7 +3188,7 @@ export function GanttView({
               cursor: reorderPending || (!isReorderMode && !canStartReorderMode) ? 'not-allowed' : 'pointer',
               opacity: reorderPending || (!isReorderMode && !canStartReorderMode) ? 0.55 : 1
             }}
-            title={!isReorderMode && healthFilter ? '遅れ・期限超過で絞り込んでいる間は並べ替えできません（絞り込みを外すと使えます）' : !isReorderMode && !canStartReorderMode ? '並べ替え対象のタスクが2件以上あるときに有効です。' : isReorderMode ? '並べ替えモード中です。押すと終わります（Esc でも終わります）' : 'タスクの行をドラッグして並べ替えます'}
+            title={!isReorderMode && !canStartReorderMode ? '並べ替え対象のタスクが2件以上あるときに有効です。' : isReorderMode ? '並べ替えモード中です。押すと終わります（Esc でも終わります）' : 'タスクの行をドラッグして並べ替えます'}
           >
             {reorderPending ? '並べ替えを保存中...' : isReorderMode ? '並べ替え完了' : '並べ替え'}
           </button>

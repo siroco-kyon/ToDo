@@ -39,6 +39,18 @@ export function moveIdBy(ids: string[], id: string, delta: -1 | 1): string[] | n
   return next
 }
 
+/**
+ * 見えている分（絞り込み中など）の新しい並びを、全体の並びの中で見えている分が占めていた位置に入れ直す。
+ * 隠れている項目の位置は動かさない（全体を渡して番号を振り直す保存で、隠れている項目と番号が重ならないように）
+ */
+export function mergeSubsetOrder(allIds: string[], subsetOrderedIds: string[]): string[] {
+  const allIdSet = new Set(allIds)
+  const subset = subsetOrderedIds.filter((id) => allIdSet.has(id))
+  const subsetIdSet = new Set(subset)
+  let next = 0
+  return allIds.map((id) => subsetIdSet.has(id) ? subset[next++] : id)
+}
+
 /** 縦にスクロールできるいちばん近い親要素 */
 export function scrollParentOf(element: Element | null): HTMLElement | null {
   let node = element?.parentElement ?? null

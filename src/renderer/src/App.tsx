@@ -29,6 +29,7 @@ import { ListFilterChips, type ListFilterChip } from './components/ListFilterChi
 import { buildChecklistSummaries, buildTodayGroups, countRemaining, groupListItems, isActiveList, isMyList } from './lib/todoList'
 import { TodoListsView } from './components/TodoListsView'
 import { TodayTodoCard } from './components/TodayTodo'
+import { mergeSubsetOrder } from './lib/reorder'
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
 type CenterView = 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban' | 'todo'
@@ -993,10 +994,13 @@ export function App(): React.JSX.Element {
     showToast(result.message, result.success ? 'success' : 'error')
   }, [showToast])
 
+  // 一覧・ガントの並べ替えは、見えているタスクだけの並びで呼ばれる（絞り込み中など）。DB は渡した順に番号を振り直すので、
+  // 全タスクの並びの中で見えている分が占めていた位置に入れ直してから保存し、隠れているタスクと番号が重ならないようにする
   const handleReorder = useCallback(async (orderedIds: string[]) => {
-    await window.api.todoReorder(orderedIds)
+    const allIds = todos.slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).map((todo) => todo.id)
+    await window.api.todoReorder(mergeSubsetOrder(allIds, orderedIds))
     await loadTodos()
-  }, [loadTodos])
+  }, [loadTodos, todos])
 
   const handleAddToTodayPlan = useCallback(async (todoId: string) => {
     const planItem = await window.api.dailyPlanAdd(getTodayKey(), todoId)
