@@ -139,6 +139,9 @@ export function TodoDetail({
   const [noteDraft, setNoteDraft] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
   const [editing, setEditing] = useState(false)
+  // 説明の自動保存が終わったときに、全体の編集を始めていたかを見る（保存の途中で「編集」を押すことがある）
+  const editingRef = useRef(false)
+  editingRef.current = editing
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const [saveError, setSaveError] = useState('')
@@ -636,13 +639,20 @@ export function TodoDetail({
     if (!todoId || descriptionSavingRef.current || descriptionDraft === descriptionBase) return
 
     const draft = descriptionDraft
+    const previousBase = descriptionBase
     descriptionSavingRef.current = true
     try {
       setDescriptionSaving(true)
-      await onUpdate(todoId, { description: draft, expected_values: { description: descriptionBase } })
+      await onUpdate(todoId, { description: draft, expected_values: { description: previousBase } })
       setDescriptionBase(draft)
       setDescriptionFailedDraft(null)
-      setEditData((previous) => ({ ...previous, description: draft }))
+      if (editingRef.current) {
+        // 保存の途中で全体の編集を始めていたら、編集中の内容は上書きしない。
+        // 変更前の値（基準）だけを保存した値に合わせ、あとで全体を保存したときにぶつからないようにする
+        if (editBaseRef.current.description === previousBase) editBaseRef.current = { ...editBaseRef.current, description: draft }
+      } else {
+        setEditData((previous) => ({ ...previous, description: draft }))
+      }
     } catch (error) {
       setDescriptionFailedDraft(draft)
       onShowToast(error instanceof Error ? error.message : '説明を保存できませんでした', 'error')
