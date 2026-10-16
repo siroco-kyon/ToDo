@@ -22,10 +22,30 @@ export interface MeetingState {
   /** その場で作ったタスクの名前 */
   createdTasks: Record<string, string[]>
   targetMinutes: number
+  /** 閉じていた時間の合計（議事録の会議時間に入れない） */
+  pausedMs: number
+  /** 閉じた時刻（開いているあいだは null） */
+  pausedAt: number | null
 }
 
 export function createMeetingState(now = Date.now()): MeetingState {
-  return { startedAt: now, index: 0, personStartedAt: now, spentSeconds: {}, notes: {}, createdTasks: {}, targetMinutes: 3 }
+  return { startedAt: now, index: 0, personStartedAt: now, spentSeconds: {}, notes: {}, createdTasks: {}, targetMinutes: 3, pausedMs: 0, pausedAt: null }
+}
+
+/** 開き直すとき: 閉じていた時間を会議時間から外し、今の人の時間はここから数え直す */
+export function resumeMeetingState(state: MeetingState, now = Date.now()): MeetingState {
+  return {
+    ...state,
+    personStartedAt: now,
+    pausedMs: state.pausedMs + (state.pausedAt != null ? Math.max(0, now - state.pausedAt) : 0),
+    pausedAt: null
+  }
+}
+
+/** 会議の時間（閉じていた時間を除く） */
+function activeMeetingMs(state: MeetingState, now: number): number {
+  const pausing = state.pausedAt != null ? Math.max(0, now - state.pausedAt) : 0
+  return Math.max(0, now - state.startedAt - state.pausedMs - pausing)
 }
 
 interface Props {
@@ -77,7 +97,7 @@ export function meetingMinutesMarkdown(groups: MeetingGroup[], state: MeetingSta
     `# 定例 ${started.getMonth() + 1}/${started.getDate()}（${['日', '月', '火', '水', '木', '金', '土'][started.getDay()]}）`,
     '',
     `- 報告の期間: ${periodLabel}`,
-    `- 時間: ${formatClock(state.startedAt)}〜${formatClock(now)}（${formatMinutes((now - state.startedAt) / 1000)}）`
+    `- 時間: ${formatClock(state.startedAt)}〜${formatClock(now)}（${formatMinutes(activeMeetingMs(state, now) / 1000)}${state.pausedMs > 0 || state.pausedAt != null ? '。中断した時間を除く' : ''}）`
   ]
   for (const group of groups) {
     const seconds = spent[group.key] ?? 0
@@ -140,7 +160,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
   // 閉じている間は今の人の時間を止める（ここまでの時間を足しておき、開き直した時刻から数え直す）
   const close = (): void => {
     const at = Date.now()
-    onStateChange((previous) => ({ ...previous, spentSeconds: spentWithCurrent(previous, groups, at), personStartedAt: at }))
+    onStateChange((previous) => ({ ...previous, spentSeconds: spentWithCurrent(previous, groups, at), personStartedAt: at, pausedAt: at }))
     onClose()
   }
 

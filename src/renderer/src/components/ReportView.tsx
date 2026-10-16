@@ -8,7 +8,7 @@ import { ON_TRACK_NOTE, ProgressNoteHelpers, withProgressNoteTemplate } from './
 import { ProgressNoteThread, discussionBadgeStyle } from './ProgressNoteThread'
 import { ProgressSlider } from './ProgressSlider'
 import { ReportSettingsPanel } from './ReportSettingsPanel'
-import { MeetingMode, createMeetingState, type MeetingGroup, type MeetingState } from './MeetingMode'
+import { MeetingMode, createMeetingState, resumeMeetingState, type MeetingGroup, type MeetingState } from './MeetingMode'
 import { getOnHoldInfo } from '../lib/onHold'
 import {
   DEFAULT_REPORT_VIEW_SETTINGS,
@@ -1363,7 +1363,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     return `カテゴリ: ${groupKey ? label : 'なし'}・担当: 自分`
   }
   const openMeeting = (): void => {
-    setMeetingState((previous) => previous ? { ...previous, personStartedAt: Date.now() } : createMeetingState())
+    setMeetingState((previous) => previous ? resumeMeetingState(previous) : createMeetingState())
     setMeetingOpen(true)
   }
 
