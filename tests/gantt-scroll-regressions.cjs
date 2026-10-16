@@ -120,7 +120,7 @@ async function main() {
 
       win.setContentSize(1300,850);await settle()
       assert.equal((await snapshot()).leftDate,future.leftDate,'Window stretching cannot return to today')
-      await click('表示設定を開く');await click('コンパクト')
+      await click('表示設定');await click('コンパクト')
       assert.equal((await snapshot()).leftDate,future.leftDate,'Zoom preserves the viewed date')
       const scaled=await snapshot()
       assert.ok(Math.abs(scaled.leftOffset/scaled.unitWidth-future.leftOffset/future.unitWidth)<0.04,'Zoom retains the position within the day')
@@ -130,7 +130,7 @@ async function main() {
       await click('日')
       const day=await snapshot()
       assert.ok(Math.abs(Date.parse(day.leftDate)-Date.parse(future.leftDate))<=86400000,'Changing units back retains the future date')
-      await click('今日に戻る');await delay(600)
+      await click('今日');await delay(600)
       const today=await snapshot()
       assert.ok(today.leftDate<='2026-10-09'&&today.leftDate>='2026-09-01','Explicit today button still jumps to today')
 
@@ -138,7 +138,7 @@ async function main() {
       await js('window.click("カスタム")');await settle()
       await js('Array.from(document.querySelectorAll("input[type=date]")).forEach((input,index)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,index?"2027-08-31":"2027-01-01");input.dispatchEvent(new Event("input",{bubbles:true}));input.dispatchEvent(new Event("change",{bubbles:true}));})');await settle()
       assert.ok((await snapshot()).leftDate>='2027-01-01')
-      await click('今日に戻る');await delay(600)
+      await click('今日');await delay(600)
       assert.ok((await snapshot()).leftDate<='2026-10-09','Today outside the range is restored by explicit request')
 
       const stored={timeScale:'day',leftDate:'2027-03-12',leftOffset:11,scrollLeft:0,scrollTop:0,unitWidth:96}

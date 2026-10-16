@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useEffect, useId, useRef, useState } from 'react'
 import type { PublicUser } from '../types'
+import './Toolbar.css'
 
 interface Props {
   isTimerRunning: boolean
@@ -22,7 +23,7 @@ interface Props {
   /** ToDo タブに出す、今日やる項目のうちまだの数 */
   todoRemainingCount?: number
   onToggleTodoView: () => void
-  /** サーバー版のログイン中ユーザー。デスクトップ版は null で何も表示しない */
+  /** サーバー版のログイン中ユーザー。デスクトップ版は null で、名前の代わりに「メニュー」を出す */
   currentUser?: PublicUser | null
   notificationUnreadCount?: number
   onLogout?: () => void
@@ -49,6 +50,23 @@ interface ViewButton {
   onClick: () => void
 }
 
+interface MenuItem {
+  key: string
+  label: string
+  /** ホバーで出す説明 */
+  description?: string
+  /** 切り替えの項目は true / false。押してもメニューを閉じない。undefined は押すと閉じる操作の項目 */
+  checked?: boolean
+  onSelect: () => void
+}
+
+interface MenuSection {
+  key: string
+  title?: string
+  items: MenuItem[]
+}
+
+// 上部バーは1段に収める。画面の切り替えだけを並べ、パネルの表示やアカウントの操作はメニューにまとめる
 export function Toolbar({
   isTimerRunning,
   onOpenQuickAdd,
@@ -95,10 +113,49 @@ export function Toolbar({
     { key: 'log', label: '記録', description: 'タイマーで計測した作業時間の記録を表示します', active: activeView === 'log', onClick: onToggleLogView }
   ]
 
+  const isGantt = activeView === 'gantt'
+  const displaySections: MenuSection[] = [
+    ...(showScopeLens ? [{
+      key: 'lens',
+      items: [{
+        key: 'hide-private',
+        label: '集計外のカテゴリを隠す',
+        description: '「集計から外す」にしたカテゴリのタスクを、この画面だけで隠せます（ほかの人の画面には影響しません）',
+        checked: scopeLens === 'team',
+        onSelect: () => onSetScopeLens(scopeLens === 'team' ? 'personal' : 'team')
+      }]
+    }] : []),
+    {
+      key: 'panes',
+      // ガントは横に広く使えるよう、パネルの開閉をほかの画面とは別に覚える
+      title: isGantt ? 'パネル（ガントの画面）' : 'パネル',
+      items: [
+        { key: 'category', label: 'カテゴリ一覧', description: '左のカテゴリ一覧を表示／非表示', checked: showCategoryPane, onSelect: onToggleCategoryPane },
+        { key: 'task', label: 'タスク一覧', description: '左のタスク一覧を表示／非表示', checked: showTaskPane, onSelect: onToggleTaskPane },
+        { key: 'today', label: '今日の予定', description: '右側の「今日の予定」を表示／非表示', checked: showPlanRail, onSelect: onTogglePlanRail }
+      ]
+    },
+    {
+      key: 'archive',
+      items: [{ key: 'archived', label: 'アーカイブしたタスクも表示', description: 'アーカイブしたタスクも一覧に表示します', checked: showArchived, onSelect: onToggleArchived }]
+    }
+  ]
+
+  const accountSections: MenuSection[] = [{
+    key: 'account',
+    items: [
+      { key: 'report', label: '進捗レポート', description: '期間を指定して、進捗ログや作業時間をまとめます', onSelect: onOpenProgressReport },
+      { key: 'settings', label: '設定', onSelect: onOpenSettings },
+      ...(onLogout ? [{ key: 'logout', label: 'ログアウト', onSelect: onLogout }] : [])
+    ]
+  }]
+
   return (
     <div
       style={{
-        padding: '10px 16px',
+        position: 'relative',
+        zIndex: 30,
+        padding: '8px 16px',
         background: '#0f172a',
         borderBottom: '1px solid #1e293b',
         display: 'flex',
@@ -111,104 +168,183 @@ export function Toolbar({
         ＋ タスクを追加
       </button>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', flexWrap: 'wrap' }}>
-        {isTimerRunning && (
-          <span
-            style={{
-              fontSize: '0.74rem',
-              color: '#4ade80',
-              padding: '5px 10px',
-              background: '#052e16',
-              border: '1px solid #14532d',
-              borderRadius: 999
-            }}
+      <div style={groupStyle} role="tablist" aria-label="画面の切り替え">
+        {viewButtons.map((button) => (
+          <button
+            key={button.key}
+            role="tab"
+            aria-selected={button.active}
+            onClick={button.onClick}
+            title={button.key === 'progress' && progressUnseenCount > 0
+              ? `${button.description}（新着 ${progressUnseenCount}件）`
+              : button.key === 'todo' && todoRemainingCount > 0 ? `${button.description}（今日の残り ${todoRemainingCount}件）` : button.description}
+            style={viewButtonStyle(button.active)}
           >
+            {button.label}
+            {button.key === 'progress' && progressUnseenCount > 0 && (
+              <span aria-label={`新着 ${progressUnseenCount}件`} style={tabBadgeStyle}>{progressUnseenCount > 99 ? '99+' : progressUnseenCount}</span>
+            )}
+            {button.key === 'todo' && todoRemainingCount > 0 && (
+              <span aria-label={`今日の残り ${todoRemainingCount}件`} style={todoBadgeStyle}>{todoRemainingCount > 99 ? '99+' : todoRemainingCount}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
+        {isTimerRunning && (
+          <span style={{ fontSize: '0.74rem', color: '#4ade80', padding: '5px 10px', background: '#052e16', border: '1px solid #14532d', borderRadius: 999, whiteSpace: 'nowrap' }}>
             計測中
           </span>
         )}
 
-        {showScopeLens && (
-          <div style={groupStyle} title="「集計から外す」にしたカテゴリのタスクを、この画面だけで隠せます（ほかの人の画面には影響しません）">
-            <button onClick={() => onSetScopeLens('personal')} aria-pressed={scopeLens === 'personal'} style={viewButtonStyle(scopeLens === 'personal')}>すべて表示</button>
-            <button onClick={() => onSetScopeLens('team')} aria-pressed={scopeLens === 'team'} style={viewButtonStyle(scopeLens === 'team')}>集計外を隠す</button>
-          </div>
+        {/* ふだんと違う表示にしているときだけ、外せる印を出す（メニューにしまうと気付けないため） */}
+        {showScopeLens && scopeLens === 'team' && (
+          <button onClick={() => onSetScopeLens('personal')} title="押すと集計外のカテゴリのタスクも表示します" style={stateChipStyle}>集計外を非表示 ×</button>
+        )}
+        {showArchived && (
+          <button onClick={onToggleArchived} title="押すとアーカイブしたタスクを一覧から外します" style={stateChipStyle}>アーカイブを表示中 ×</button>
         )}
 
-        <div style={groupStyle} role="tablist" aria-label="画面の切り替え">
-          {viewButtons.map((button) => (
-            <button
-              key={button.key}
-              role="tab"
-              aria-selected={button.active}
-              onClick={button.onClick}
-              title={button.key === 'progress' && progressUnseenCount > 0
-                ? `${button.description}（新着 ${progressUnseenCount}件）`
-                : button.key === 'todo' && todoRemainingCount > 0 ? `${button.description}（今日の残り ${todoRemainingCount}件）` : button.description}
-              style={viewButtonStyle(button.active)}
-            >
-              {button.label}
-              {button.key === 'progress' && progressUnseenCount > 0 && (
-                <span aria-label={`新着 ${progressUnseenCount}件`} style={tabBadgeStyle}>{progressUnseenCount > 99 ? '99+' : progressUnseenCount}</span>
-              )}
-              {button.key === 'todo' && todoRemainingCount > 0 && (
-                <span aria-label={`今日の残り ${todoRemainingCount}件`} style={todoBadgeStyle}>{todoRemainingCount > 99 ? '99+' : todoRemainingCount}</span>
-              )}
-            </button>
-          ))}
-        </div>
+        <ToolbarMenu
+          menuKey="display"
+          label="表示"
+          buttonContent="表示"
+          title="パネルの表示や、アーカイブ・集計外のタスクを出すかを切り替えます"
+          sections={displaySections}
+          footer={isGantt ? 'ガントの画面では、ほかの画面とは別に開閉を覚えます' : undefined}
+        />
 
-        <div style={groupStyle}>
-          <button onClick={onToggleCategoryPane} aria-pressed={showCategoryPane} title="左のカテゴリ一覧を表示／非表示" style={utilityButtonStyle(showCategoryPane)}>
-            カテゴリ
-          </button>
-          <button onClick={onToggleTaskPane} aria-pressed={showTaskPane} title="左のタスク一覧を表示／非表示" style={utilityButtonStyle(showTaskPane)}>
-            タスク一覧
-          </button>
-          <button onClick={onTogglePlanRail} aria-pressed={showPlanRail} title="右側の「今日の予定」を表示／非表示" style={utilityButtonStyle(showPlanRail)}>
-            今日の予定
-          </button>
-          <button onClick={onToggleArchived} aria-pressed={showArchived} title="アーカイブしたタスクも一覧に表示します" style={utilityButtonStyle(showArchived)}>
-            {showArchived ? 'アーカイブ表示中' : 'アーカイブ'}
-          </button>
-          <button onClick={onOpenProgressReport} title="期間を指定して、進捗ログや作業時間をまとめます" style={utilityButtonStyle(false)}>進捗レポート</button>
-          <button onClick={onOpenSettings} style={utilityButtonStyle(false)}>設定</button>
-        </div>
-
-        {currentUser && (
-          <div style={groupStyle}>
-            {onOpenNotifications && (
-              <button onClick={onOpenNotifications} style={notificationButtonStyle(notificationUnreadCount > 0)}>
-                通知
-                {notificationUnreadCount > 0 && (
-                  <span style={notificationBadgeStyle}>{notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}</span>
-                )}
-              </button>
+        {currentUser && onOpenNotifications && (
+          <button onClick={onOpenNotifications} style={notificationButtonStyle(notificationUnreadCount > 0)}>
+            通知
+            {notificationUnreadCount > 0 && (
+              <span style={notificationBadgeStyle}>{notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}</span>
             )}
-            <span
-              title={`${currentUser.display_name}（${currentUser.username}）でログイン中`}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 10px',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                color: '#e2e8f0',
-                whiteSpace: 'nowrap'
-              }}
-            >
+          </button>
+        )}
+
+        <ToolbarMenu
+          menuKey="account"
+          label={currentUser ? `${currentUser.display_name}のメニュー` : 'メニュー'}
+          title={currentUser ? `${currentUser.display_name}（${currentUser.username}）でログイン中` : undefined}
+          buttonContent={currentUser ? (
+            <>
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: currentUser.color, flexShrink: 0 }} />
               {currentUser.display_name}
               {currentUser.role === 'admin' && (
                 <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#fbbf24', background: '#451a03', borderRadius: 6, padding: '1px 6px' }}>管理者</span>
               )}
-            </span>
-            {onLogout && (
-              <button onClick={onLogout} style={utilityButtonStyle(false)}>ログアウト</button>
-            )}
-          </div>
-        )}
+            </>
+          ) : 'メニュー'}
+          sections={accountSections}
+          align="right"
+        />
       </div>
+    </div>
+  )
+}
+
+// 上部バーのメニュー。外を押すか Esc で閉じ、↑↓ で項目を移れる
+function ToolbarMenu({ menuKey, label, buttonContent, title, sections, footer, align = 'right' }: {
+  menuKey: string
+  label: string
+  buttonContent: React.ReactNode
+  title?: string
+  sections: MenuSection[]
+  footer?: string
+  align?: 'left' | 'right'
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const menuId = useId()
+  const rootRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    menuRef.current?.querySelector<HTMLButtonElement>('[role^="menuitem"]')?.focus()
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setOpen(false)
+      buttonRef.current?.focus()
+    }
+    window.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
+
+  const moveFocus = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]') ?? [])
+    if (items.length === 0) return
+    event.preventDefault()
+    const current = items.indexOf(document.activeElement as HTMLButtonElement)
+    const next = event.key === 'Home' ? 0
+      : event.key === 'End' ? items.length - 1
+        : event.key === 'ArrowDown' ? (current + 1) % items.length
+          : (current - 1 + items.length) % items.length
+    items[next].focus()
+  }
+
+  return (
+    <div ref={rootRef} style={{ position: 'relative' }}>
+      <button
+        ref={buttonRef}
+        data-toolbar-menu={menuKey}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        aria-label={label}
+        title={title}
+        onClick={() => setOpen((previous) => !previous)}
+        style={menuButtonStyle(open)}
+      >
+        {buttonContent}
+        <span aria-hidden="true" style={{ fontSize: '0.62rem', color: '#64748b', marginLeft: 2 }}>▼</span>
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          id={menuId}
+          role="menu"
+          aria-label={label}
+          onKeyDown={moveFocus}
+          style={{ ...menuPopoverStyle, [align === 'right' ? 'right' : 'left']: 0 }}
+        >
+          {sections.map((section, sectionIndex) => (
+            <div key={section.key} role="group" aria-label={section.title} style={{ borderTop: sectionIndex > 0 ? '1px solid #1e293b' : 'none', paddingTop: sectionIndex > 0 ? 4 : 0, marginTop: sectionIndex > 0 ? 4 : 0 }}>
+              {section.title && <div style={{ padding: '4px 10px 2px', fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8' }}>{section.title}</div>}
+              {section.items.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+                  aria-checked={item.checked}
+                  tabIndex={-1}
+                  title={item.description}
+                  className="hakobi-toolbar-menu-item"
+                  onClick={() => {
+                    item.onSelect()
+                    if (item.checked === undefined) setOpen(false)
+                  }}
+                >
+                  {item.checked !== undefined && <span aria-hidden="true" className="hakobi-toolbar-menu-check">{item.checked ? '✓' : ''}</span>}
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ))}
+          {footer && <div style={{ borderTop: '1px solid #1e293b', marginTop: 4, padding: '6px 10px 2px', fontSize: '0.72rem', color: '#94a3b8', lineHeight: 1.5 }}>{footer}</div>}
+        </div>
+      )}
     </div>
   )
 }
@@ -216,8 +352,8 @@ export function Toolbar({
 const groupStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 4,
-  padding: 4,
+  gap: 2,
+  padding: 3,
   background: '#111827',
   border: '1px solid #1f2937',
   borderRadius: 12,
@@ -236,12 +372,54 @@ const primaryButtonStyle: React.CSSProperties = {
   whiteSpace: 'nowrap'
 }
 
+const menuPopoverStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 'calc(100% + 6px)',
+  minWidth: 220,
+  padding: 6,
+  background: '#0f172a',
+  border: '1px solid #334155',
+  borderRadius: 10,
+  boxShadow: '0 16px 40px rgba(2, 6, 23, 0.6)',
+  zIndex: 40
+}
+
+function menuButtonStyle(open: boolean): React.CSSProperties {
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 32,
+    padding: '6px 10px',
+    background: open ? '#1e293b' : 'transparent',
+    border: `1px solid ${open ? '#475569' : '#334155'}`,
+    borderRadius: 8,
+    color: '#e2e8f0',
+    cursor: 'pointer',
+    fontSize: '0.78rem',
+    fontWeight: 700,
+    whiteSpace: 'nowrap'
+  }
+}
+
+const stateChipStyle: React.CSSProperties = {
+  padding: '4px 9px',
+  borderRadius: 999,
+  border: '1px solid #4f46e5',
+  background: '#1e1b4b',
+  color: '#c7d2fe',
+  cursor: 'pointer',
+  fontSize: '0.72rem',
+  fontWeight: 700,
+  whiteSpace: 'nowrap'
+}
+
 function notificationButtonStyle(active: boolean): React.CSSProperties {
   return {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 6,
-    minHeight: 30,
+    minHeight: 32,
     padding: '6px 10px',
     background: active ? '#172554' : '#0f172a',
     border: `1px solid ${active ? '#2563eb' : '#334155'}`,
@@ -295,27 +473,13 @@ const todoBadgeStyle: React.CSSProperties = {
 
 function viewButtonStyle(active: boolean): React.CSSProperties {
   return {
-    padding: '7px 10px',
+    padding: '6px 10px',
     background: active ? '#2563eb' : 'transparent',
     border: '1px solid transparent',
     borderRadius: 8,
     color: active ? '#eff6ff' : '#94a3b8',
     cursor: 'pointer',
     fontSize: '0.8rem',
-    fontWeight: 700,
-    whiteSpace: 'nowrap'
-  }
-}
-
-function utilityButtonStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: '7px 10px',
-    background: active ? '#172554' : 'transparent',
-    border: `1px solid ${active ? '#2563eb' : 'transparent'}`,
-    borderRadius: 8,
-    color: active ? '#dbeafe' : '#94a3b8',
-    cursor: 'pointer',
-    fontSize: '0.78rem',
     fontWeight: 700,
     whiteSpace: 'nowrap'
   }

@@ -78,6 +78,43 @@ function loadPaneWidths(): PaneWidths {
   }
 }
 
+/** 左の2つのパネルと右の「今日の予定」を出すかどうか */
+interface PaneVisibility {
+  category: boolean
+  task: boolean
+  side: boolean
+}
+
+const GANTT_PANES_STORAGE_KEY = 'gantt-pane-visibility'
+/** この幅より狭い画面では、ガントを初めて開いたときにパネルを畳んで時間軸を広く見せる */
+const GANTT_WIDE_SCREEN_MIN_WIDTH = 1600
+
+// ガントの画面のパネルの開閉は、ほかの画面とは別に覚える（ガントは横に広いほど見やすいため）。
+// まだ覚えていないときは、画面が狭ければすべて畳み、広ければほかの画面と同じにする
+function loadGanttPanes(otherViews: PaneVisibility): { panes: PaneVisibility; collapsedForNarrowScreen: boolean } {
+  try {
+    const raw = window.localStorage.getItem(GANTT_PANES_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<PaneVisibility>
+      return {
+        panes: {
+          category: typeof parsed.category === 'boolean' ? parsed.category : otherViews.category,
+          task: typeof parsed.task === 'boolean' ? parsed.task : otherViews.task,
+          side: typeof parsed.side === 'boolean' ? parsed.side : otherViews.side
+        },
+        collapsedForNarrowScreen: false
+      }
+    }
+  } catch {
+    // 読めなければ初めて開いたときと同じにする
+  }
+  const narrow = window.innerWidth < GANTT_WIDE_SCREEN_MIN_WIDTH
+  const anyOpen = otherViews.category || otherViews.task || otherViews.side
+  return narrow
+    ? { panes: { category: false, task: false, side: false }, collapsedForNarrowScreen: anyOpen }
+    : { panes: otherViews, collapsedForNarrowScreen: false }
+}
+
 function getTodayKey(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -159,6 +196,10 @@ export function App(): React.JSX.Element {
     const saved = window.localStorage.getItem('show-task-pane')
     return saved == null ? true : saved === 'true'
   })
+  // ガントの画面のパネルは、ほかの画面とは別に覚える。初めてで画面が狭いときは畳んで始め、そのことを一度だけ知らせる
+  const [initialGanttPanes] = useState(() => loadGanttPanes({ category: showCategoryPane, task: showTaskPane, side: showPlanRail }))
+  const [ganttPanes, setGanttPanes] = useState<PaneVisibility>(initialGanttPanes.panes)
+  const ganttPanesNoticePendingRef = useRef(initialGanttPanes.collapsedForNarrowScreen)
   const [assigneeDefaultApplied, setAssigneeDefaultApplied] = useState(false)
   const [paneWidths, setPaneWidths] = useState<PaneWidths>(() => loadPaneWidths())
   const [toasts, setToasts] = useState<ToastMessage[]>([])
@@ -383,6 +424,20 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     window.localStorage.setItem('show-task-pane', String(showTaskPane))
   }, [showTaskPane])
+
+  useEffect(() => {
+    window.localStorage.setItem(GANTT_PANES_STORAGE_KEY, JSON.stringify(ganttPanes))
+  }, [ganttPanes])
+
+  // 画面が狭いのでガントのパネルを畳んで始めたときは、一覧が消えたと思われないよう一度だけ知らせる
+  useEffect(() => {
+    if (isFirstLaunch !== false || activeView !== 'gantt' || !ganttPanesNoticePendingRef.current) return
+    ganttPanesNoticePendingRef.current = false
+    showToast('ガントを広く見せるため、左右のパネルを畳みました。上の「表示」から開けます', 'success', {
+      label: 'パネルを開く',
+      run: () => setGanttPanes({ category: true, task: true, side: true })
+    })
+  }, [activeView, isFirstLaunch, showToast])
 
   useEffect(() => {
     if (assigneeDefaultApplied || !currentUser || users.length === 0) return
@@ -716,7 +771,7 @@ export function App(): React.JSX.Element {
   const hideGanttSidePanel = useCallback(() => {
     if (detailDirty && !window.confirm('未保存の変更があります。詳細を閉じますか？')) return
     setGanttSidePanelMode('today')
-    setShowPlanRail(false)
+    setGanttPanes((previous) => ({ ...previous, side: false }))
   }, [detailDirty])
 
   const handleAdd = useCallback(async (data: CreateTodoInput) => {
@@ -1146,6 +1201,20 @@ export function App(): React.JSX.Element {
   const listFilters = listFilterChips.length > 0 ? <ListFilterChips chips={listFilterChips} /> : null
 
   const isManualSort = sortField === 'sort_order'
+  // ガントの画面だけ、パネルの開閉をほかの画面とは別に持つ
+  const isGanttView = activeView === 'gantt'
+  const categoryPaneVisible = isGanttView ? ganttPanes.category : showCategoryPane
+  const taskPaneVisible = isGanttView ? ganttPanes.task : showTaskPane
+  const planRailVisible = isGanttView ? ganttPanes.side : showPlanRail
+  const togglePane = (key: keyof PaneVisibility): void => {
+    if (isGanttView) {
+      setGanttPanes((previous) => ({ ...previous, [key]: !previous[key] }))
+      return
+    }
+    if (key === 'category') setShowCategoryPane((previous) => !previous)
+    else if (key === 'task') setShowTaskPane((previous) => !previous)
+    else setShowPlanRail((previous) => !previous)
+  }
   const showRightPlanRail = showPlanRail && activeView !== 'plan' && activeView !== 'team' && activeView !== 'progress' && activeView !== 'report' && activeView !== 'todo'
   // 右の「今日の予定」の上に出す「今日のToDo」（ToDoリストを使う人だけ）
   const todayTodoCard = usesTodoLists ? (
@@ -1158,7 +1227,7 @@ export function App(): React.JSX.Element {
       onOpenTab={() => toggleCenterView('todo')}
     />
   ) : null
-  const showGanttSidePanel = activeView === 'gantt' && (ganttSidePanelMode === 'detail' || showPlanRail)
+  const showGanttSidePanel = activeView === 'gantt' && (ganttSidePanelMode === 'detail' || ganttPanes.side)
   const showAuxiliaryPanel = activeView === 'gantt' ? showGanttSidePanel : showRightPlanRail
   const SORT_FIELDS: { key: SortField; label: string }[] = [
     { key: 'sort_order', label: '手動' },
@@ -1186,9 +1255,9 @@ export function App(): React.JSX.Element {
         scopeLens={scopeLens}
         onSetScopeLens={setScopeLens}
         showScopeLens={privateCategoryIds.size > 0}
-        showPlanRail={showPlanRail}
-        showCategoryPane={showCategoryPane}
-        showTaskPane={showTaskPane}
+        showPlanRail={planRailVisible}
+        showCategoryPane={categoryPaneVisible}
+        showTaskPane={taskPaneVisible}
         showTeamButton={multiUser}
         progressUnseenCount={progressUnseenCount}
         todoRemainingCount={todoRemainingCount}
@@ -1205,13 +1274,13 @@ export function App(): React.JSX.Element {
         onToggleGanttView={() => toggleCenterView('gantt')}
         onToggleKanbanView={() => toggleCenterView('kanban')}
         onToggleTeamView={() => toggleCenterView('team')}
-        onTogglePlanRail={() => setShowPlanRail((prev) => !prev)}
-        onToggleCategoryPane={() => setShowCategoryPane((prev) => !prev)}
-        onToggleTaskPane={() => setShowTaskPane((prev) => !prev)}
+        onTogglePlanRail={() => togglePane('side')}
+        onToggleCategoryPane={() => togglePane('category')}
+        onToggleTaskPane={() => togglePane('task')}
       />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minWidth: 0 }}>
-        <div style={{ width: paneWidths.category, flexShrink: 0, background: '#0a0f1a', borderRight: '1px solid #1e293b', overflow: 'hidden', display: showCategoryPane ? 'block' : 'none' }}>
+        <div style={{ width: paneWidths.category, flexShrink: 0, background: '#0a0f1a', borderRight: '1px solid #1e293b', overflow: 'hidden', display: categoryPaneVisible ? 'block' : 'none' }}>
           <CategoryList
             categories={categories}
             selectedId={selectedCategoryId}
@@ -1225,10 +1294,10 @@ export function App(): React.JSX.Element {
 
         <div
           onPointerDown={(event) => beginResize('category', paneWidths.category, event)}
-          style={{ ...resizeHandleStyle, display: showCategoryPane ? 'block' : 'none' }}
+          style={{ ...resizeHandleStyle, display: categoryPaneVisible ? 'block' : 'none' }}
         />
 
-        <div style={{ width: paneWidths.list, flexShrink: 0, background: '#0d1525', borderRight: '1px solid #1e293b', overflow: 'hidden', display: showTaskPane ? 'flex' : 'none', flexDirection: 'column' }}>
+        <div style={{ width: paneWidths.list, flexShrink: 0, background: '#0d1525', borderRight: '1px solid #1e293b', overflow: 'hidden', display: taskPaneVisible ? 'flex' : 'none', flexDirection: 'column' }}>
           <div style={{ padding: '6px 8px', borderBottom: '1px solid #1e293b' }}>
             <input
               value={searchQuery}
@@ -1355,7 +1424,7 @@ export function App(): React.JSX.Element {
 
         <div
           onPointerDown={(event) => beginResize('list', paneWidths.list, event)}
-          style={{ ...resizeHandleStyle, display: showTaskPane ? 'block' : 'none' }}
+          style={{ ...resizeHandleStyle, display: taskPaneVisible ? 'block' : 'none' }}
         />
 
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: '#0f172a' }}>
@@ -1513,7 +1582,7 @@ export function App(): React.JSX.Element {
                         onClick={() => {
                           if (detailDirty && !window.confirm('未保存の変更があります。今日の予定へ移動しますか？')) return
                           setGanttSidePanelMode('today')
-                          if (!showPlanRail) setShowPlanRail(true)
+                          if (!ganttPanes.side) setGanttPanes((previous) => ({ ...previous, side: true }))
                         }}
                         style={sideTabButtonStyle(ganttSidePanelMode === 'today')}
                       >

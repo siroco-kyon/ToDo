@@ -1,0 +1,31 @@
+/* 上部バーのメニュー（表示・ユーザー）。項目はマウスを乗せたとき・キーボードで選んだときに明るくする */
+.hakobi-toolbar-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #e2e8f0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.hakobi-toolbar-menu-item:hover,
+.hakobi-toolbar-menu-item:focus-visible {
+  background: #1e293b;
+  outline: none;
+}
+
+.hakobi-toolbar-menu-check {
+  width: 14px;
+  flex-shrink: 0;
+  color: #60a5fa;
+  font-weight: 800;
+  text-align: center;
+}

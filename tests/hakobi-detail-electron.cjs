@@ -206,6 +206,13 @@ async function runElectron() {
 
     // Same-ID navigation from a Gantt side editor changes the mounted detail too.
     await click('ガント')
+    // 画面幅が 1600px 未満だと、ガントは左右のパネルを畳んで始まる。「表示」メニューから右のパネルを開く
+    if (!(await js('Array.from(document.querySelectorAll("button")).some(e=>e.textContent==="詳細")'))) {
+      await js('document.querySelector("[data-toolbar-menu=display]").click()')
+      await until('Array.from(document.querySelectorAll("[role=menu] [role=menuitemcheckbox]")).some(e=>e.textContent==="今日の予定")', 'Display menu did not open')
+      await js('Array.from(document.querySelectorAll("[role=menu] [role=menuitemcheckbox]")).find(e=>e.textContent==="今日の予定").click()')
+      await js('window.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"}))')
+    }
     await until('Array.from(document.querySelectorAll("button")).some(e=>e.textContent==="詳細")', 'Gantt side tabs did not render')
     await click('詳細')
     await until('Array.from(document.querySelectorAll("h2")).some(e=>e.textContent==="失敗しても残すA")', 'Gantt side detail did not open')

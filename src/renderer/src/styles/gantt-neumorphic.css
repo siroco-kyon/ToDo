@@ -126,6 +126,15 @@ body.theme-light .tarbo-gantt {
   opacity: 1;
 }
 
+/* 左の表の行は「タスク名・開始・期限・進捗・担当」の順に5つの欄を並べている。表示設定で出さない列は隠す
+   （欄にはインラインの display が付いているので !important で上書きする） */
+.tarbo-gantt .tarbo-gantt-left-grid[data-hidden-columns~="start"] > :nth-child(2),
+.tarbo-gantt .tarbo-gantt-left-grid[data-hidden-columns~="due"] > :nth-child(3),
+.tarbo-gantt .tarbo-gantt-left-grid[data-hidden-columns~="progress"] > :nth-child(4),
+.tarbo-gantt .tarbo-gantt-left-grid[data-hidden-columns~="assignee"] > :nth-child(5) {
+  display: none !important;
+}
+
 /* サブタスクを並べ替えるつかみ（⠿）。保留ボタンと同じく、行にマウスを乗せたとき・キーボードで選んだときだけ出す */
 .tarbo-gantt .tarbo-gantt-subtask-grip {
   color: #94a3b8;
