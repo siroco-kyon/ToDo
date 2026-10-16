@@ -230,21 +230,22 @@ const GANTT_SURFACE_DARK = 'var(--c-1d2030)'
 const GANTT_LINE = 'color-mix(in srgb, var(--c-a3b1c6) 22%, transparent)'
 const GANTT_TEXT = 'var(--c-edf2f7)'
 const GANTT_MUTED = 'var(--c-bac5d8)'
+// バーの塗り（--gantt-*）は、ライトでは明るい色にして、上に載せる名前（ライトでは濃い文字）を読めるようにする
 const STATUS_TONE: Record<TodoStatus, { background: string; border: string; text: string; fill: string; label: string }> = {
   not_started: { background: 'var(--gantt-bar-idle)', border: 'var(--slate-300)', text: 'var(--white)', fill: 'var(--c-647181)', label: '未着手' },
   on_hold: { background: 'var(--purple-800)', border: 'var(--purple-300)', text: 'var(--purple-50)', fill: 'var(--purple-400)', label: '保留中' },
-  active: { background: 'var(--indigo-700)', border: 'var(--indigo-300)', text: 'var(--white)', fill: 'var(--indigo-400)', label: '進行中' },
-  done: { background: 'var(--emerald-700)', border: 'var(--emerald-300)', text: 'var(--white)', fill: 'var(--emerald-400)', label: '完了' },
-  archived: { background: 'var(--slate-600)', border: 'var(--slate-400)', text: 'var(--slate-200)', fill: 'var(--slate-400)', label: 'アーカイブ' }
+  active: { background: 'var(--gantt-bar-active)', border: 'var(--indigo-300)', text: 'var(--white)', fill: 'var(--indigo-400)', label: '進行中' },
+  done: { background: 'var(--gantt-bar-done)', border: 'var(--emerald-300)', text: 'var(--white)', fill: 'var(--emerald-400)', label: '完了' },
+  archived: { background: 'var(--gantt-bar-archived)', border: 'var(--slate-400)', text: 'var(--slate-200)', fill: 'var(--slate-400)', label: 'アーカイブ' }
 }
 /** 進捗シグナルごとのバーの色（順調=青、遅れ=橙、期限超過=赤、完了=緑、開始前=灰） */
 const HEALTH_BAR_TONE: Record<ScheduleHealthStatus, { fill: string; track: string; border: string; text: string }> = {
-  onTrack: { fill: 'var(--blue-600)', track: 'color-mix(in srgb, var(--blue-900) 50.2%, transparent)', border: 'var(--blue-400)', text: 'var(--blue-50)' },
-  ahead: { fill: 'var(--blue-600)', track: 'color-mix(in srgb, var(--blue-900) 50.2%, transparent)', border: 'var(--blue-400)', text: 'var(--blue-50)' },
-  behind: { fill: 'var(--amber-600)', track: 'color-mix(in srgb, var(--amber-900) 50.2%, transparent)', border: 'var(--amber-400)', text: 'var(--amber-50)' },
-  overdue: { fill: 'var(--red-600)', track: 'color-mix(in srgb, var(--red-900) 50.2%, transparent)', border: 'var(--red-400)', text: 'var(--red-50)' },
-  done: { fill: 'var(--green-700)', track: 'color-mix(in srgb, var(--green-900) 50.2%, transparent)', border: 'var(--green-400)', text: 'var(--green-50)' },
-  future: { fill: 'var(--slate-600)', track: 'color-mix(in srgb, var(--slate-700) 50.2%, transparent)', border: 'var(--slate-400)', text: 'var(--slate-50)' }
+  onTrack: { fill: 'var(--gantt-fill-blue)', track: 'color-mix(in srgb, var(--blue-900) 50.2%, transparent)', border: 'var(--blue-400)', text: 'var(--blue-50)' },
+  ahead: { fill: 'var(--gantt-fill-blue)', track: 'color-mix(in srgb, var(--blue-900) 50.2%, transparent)', border: 'var(--blue-400)', text: 'var(--blue-50)' },
+  behind: { fill: 'var(--gantt-fill-amber)', track: 'color-mix(in srgb, var(--amber-900) 50.2%, transparent)', border: 'var(--amber-400)', text: 'var(--amber-50)' },
+  overdue: { fill: 'var(--gantt-fill-red)', track: 'color-mix(in srgb, var(--red-900) 50.2%, transparent)', border: 'var(--red-400)', text: 'var(--red-50)' },
+  done: { fill: 'var(--gantt-fill-green)', track: 'color-mix(in srgb, var(--green-900) 50.2%, transparent)', border: 'var(--green-400)', text: 'var(--green-50)' },
+  future: { fill: 'var(--gantt-fill-slate)', track: 'color-mix(in srgb, var(--slate-700) 50.2%, transparent)', border: 'var(--slate-400)', text: 'var(--slate-50)' }
 }
 const OVERDUE_HATCH = 'repeating-linear-gradient(135deg, color-mix(in srgb, var(--red-500) 45%, transparent) 0 4px, transparent 4px 8px)'
 const TODAY_LINE_COLOR = 'var(--rose-500)'
@@ -850,7 +851,7 @@ function subTaskTone(subTask: SubTask, todayKey: string): {
 } {
   if (Boolean(subTask.done)) {
     return {
-      background: 'linear-gradient(90deg, var(--green-800), var(--green-700))',
+      background: 'linear-gradient(90deg, var(--gantt-sub-done-from), var(--gantt-sub-done-to))',
       border: 'var(--green-300)',
       text: 'var(--green-50)',
       rowBackground: 'var(--c-102016)',
@@ -2280,11 +2281,12 @@ function GanttViewContent({
   const todayUnitDays = diffCalendarDays(endOfUnit(todayKey, timeScale), todayUnitStart) + 1
   const todayOffsetInUnit = ((diffCalendarDays(todayKey, todayUnitStart) + 0.5) / todayUnitDays) * unitWidth
   const todayX = todayIndex < 0 ? null : todayIndex >= totalUnits ? timelineWidth : todayIndex * unitWidth + todayOffsetInUnit
-  // 土日・祝日の列の塗り。全行で同じ1枚の SVG を背景に敷く（行ごとに要素を増やさない）
+  // 土日・祝日の列の塗り。全行で同じ1枚の SVG を背景に敷く（行ごとに要素を増やさない）。
+  // 画像の中では CSS の変数が効かないので色は直書きする（薄い色なのでダーク・ライトのどちらでも使える）
   const nonWorkingBackground = useMemo(() => {
     const rects = timelineUnits
       .map((unit, index) => unit.dayKind
-        ? `<rect x='${index * unitWidth}' y='0' width='${unitWidth}' height='10' fill='${unit.dayKind === 'saturday' ? 'var(--sky-400)' : 'var(--red-400)'}' fill-opacity='0.08'/>`
+        ? `<rect x='${index * unitWidth}' y='0' width='${unitWidth}' height='10' fill='${unit.dayKind === 'saturday' ? '#38bdf8' : '#f87171'}' fill-opacity='0.08'/>`
         : '')
       .join('')
     if (!rects) return null
@@ -3811,7 +3813,7 @@ function GanttViewContent({
                     : displayStartIndex * unitWidth + 4
                 const trackBackground = group.todo.status === 'not_started'
                   ? `linear-gradient(90deg, ${tone.fill}, var(--c-596474))`
-                  : `linear-gradient(90deg, color-mix(in srgb, ${tone.fill} 40%, transparent), color-mix(in srgb, ${tone.border} 40%, transparent))`
+                  : `linear-gradient(90deg, color-mix(in srgb, ${tone.fill} var(--gantt-track-mix), transparent), color-mix(in srgb, ${tone.border} var(--gantt-track-mix), transparent))`
                 const baselineVisible = baselineBar
                   ? intersectsRange(baselineBar.startDate, baselineBar.endDate, normalizedRange.start, normalizedRange.end)
                   : false
@@ -4417,8 +4419,8 @@ function GanttViewContent({
                                     left: 0,
                                     width: `${subTaskProgress}%`,
                                     background: Boolean(subTask.done)
-                                      ? 'linear-gradient(90deg, var(--green-800), var(--green-700))'
-                                      : 'linear-gradient(90deg, var(--green-500), var(--emerald-500))'
+                                      ? 'linear-gradient(90deg, var(--gantt-sub-done-from), var(--gantt-sub-done-to))'
+                                      : 'linear-gradient(90deg, var(--gantt-sub-fill-from), var(--gantt-sub-fill-to))'
                                   }}
                                 />
                               </div>

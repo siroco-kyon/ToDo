@@ -30,14 +30,27 @@
       }
     </style>
     <script>
-      // ライトテーマの人が開いたときに、一瞬暗い画面が出ないよう、描く前にテーマを決めておく（App が同じ規則で付け直す）
-      try {
-        var savedTheme = window.localStorage.getItem('app-theme-mode')
-        var light = savedTheme === 'light' || (savedTheme === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches)
-        document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark')
-      } catch (error) {
-        // 読めないときはダークのまま
-      }
+      // ライトテーマの人が開いたときに、一瞬暗い画面が出ないよう、描く前にテーマを決めておく（App が同じ規則で付け直す）。
+      // 「OS に合わせる」のときは、OS の切り替えにもついていく（App を出さないタイマーなどの窓も同じ）
+      (function () {
+        function applyTheme() {
+          try {
+            var savedTheme = window.localStorage.getItem('app-theme-mode')
+            var light = savedTheme === 'light' || (savedTheme === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches)
+            document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark')
+          } catch (error) {
+            // 読めないときはダークのまま
+          }
+        }
+        applyTheme()
+        try {
+          window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', function () {
+            if (window.localStorage.getItem('app-theme-mode') === 'system') applyTheme()
+          })
+        } catch (error) {
+          // matchMedia を使えないときは、開いたときのテーマのまま
+        }
+      })()
     </script>
   </head>
   <body>
