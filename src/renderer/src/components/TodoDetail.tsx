@@ -12,6 +12,8 @@ import { MentionTextarea } from './MentionTextarea'
 import { TodoChecklist } from './TodoChecklist'
 import { isListTodo } from '../lib/todoList'
 import { autoScrollNearEdge, dropTargetAt, moveIdBy, moveIdTo, scrollParentOf, type DropPosition } from '../lib/reorder'
+import { copyTextToClipboard } from '../lib/clipboard'
+import { taskLinkFor } from '../lib/urlState'
 
 interface Props {
   todo: Todo | null
@@ -904,6 +906,16 @@ export function TodoDetail({
     onShowToast(`「${created.title}」を作成しました`)
   }
 
+  const copyTaskLink = async (): Promise<void> => {
+    if (!todo) return
+    try {
+      await copyTextToClipboard(taskLinkFor(window.location.origin, window.location.pathname, todo.id))
+      onShowToast('タスクのリンクをコピーしました')
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : 'リンクをコピーできませんでした', 'error')
+    }
+  }
+
   const saveAsTemplate = (): void => {
     const name = window.prompt('テンプレート名を入力してください', todo.title)?.trim()
     if (!name) return
@@ -1475,6 +1487,8 @@ export function TodoDetail({
           {!editing && (
             <NoteMenu
               items={[
+                // サーバー版だけ。チャットなどに貼ると、このタスクの詳細を開ける（個人用のデスクトップ版はファイルの URL なので出さない）
+                ...(users.length > 0 ? [{ label: 'リンクをコピー', onSelect: () => void copyTaskLink() }] : []),
                 { label: '複製する（サブタスクも一緒に）', onSelect: () => void duplicateTodo() },
                 { label: 'テンプレートとして保存', onSelect: saveAsTemplate }
               ]}

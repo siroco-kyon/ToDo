@@ -30,6 +30,8 @@ import { buildChecklistSummaries, buildTodayGroups, countRemaining, groupListIte
 import { TodoListsView } from './components/TodoListsView'
 import { TodayTodoCard } from './components/TodayTodo'
 import { mergeSubsetOrder } from './lib/reorder'
+import { buildUrlSearch, parseUrlState } from './lib/urlState'
+import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
 type CenterView = 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban' | 'todo'
@@ -131,6 +133,10 @@ function getDateKeyFromIso(iso: string | null | undefined): string {
 export function App(): React.JSX.Element {
   const isStandaloneGanttWindow = window.location.hash === '#gantt-only'
   const isStandaloneTaskReportWindow = window.location.hash === '#task-report-only'
+  // 画面と開いているタスクは URL（?view=…&task=…）にも出す。開いた URL の画面とタスクで始める（ほかの窓では使わない）
+  const [initialUrlState] = useState(() => isStandaloneGanttWindow || isStandaloneTaskReportWindow
+    ? { view: null, taskId: null }
+    : parseUrlState(window.location.search))
   const [isFirstLaunch, setIsFirstLaunch] = useState<boolean | null>(null)
   const [todos, setTodos] = useState<Todo[]>([])
   const [allSubTasks, setAllSubTasks] = useState<SubTask[]>([])
@@ -152,7 +158,7 @@ export function App(): React.JSX.Element {
   const [progressTimelineFocus, setProgressTimelineFocus] = useState<ProgressTimelineFocusTarget | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null)
-  const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
+  const [selectedTodoId, setSelectedTodoId] = useState<string | null>(initialUrlState.taskId)
   const [detailDirty, setDetailDirty] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [sortField, setSortField] = useState<SortField>('created_at')
@@ -178,13 +184,16 @@ export function App(): React.JSX.Element {
   const [fontScale, setFontScale] = useState<string>(() => (
     window.localStorage.getItem('app-font-scale') ?? FONT_SCALE_DEFAULT
   ))
-  const [activeView, setActiveView] = useState<CenterView>(() => 'gantt')
+  const [activeView, setActiveView] = useState<CenterView>(() => initialUrlState.view ?? (initialUrlState.taskId ? 'detail' : 'gantt'))
   // 表示レンズ（個人=全部 / 全体=プライベート除外）。クライアント側のみで保持し、
   // 他ユーザーの画面には影響しない（サーバーに送らない）。
   const [scopeLens, setScopeLens] = useState<ScopeLens>(() => {
     return window.localStorage.getItem('app-scope-lens') === 'team' ? 'team' : 'personal'
   })
-  const [ganttSidePanelMode, setGanttSidePanelMode] = useState<GanttSidePanelMode>('today')
+  const [ganttSidePanelMode, setGanttSidePanelMode] = useState<GanttSidePanelMode>(
+    initialUrlState.view === 'gantt' && initialUrlState.taskId ? 'detail' : 'today'
+  )
+  const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [showPlanRail, setShowPlanRail] = useState<boolean>(() => {
     const saved = window.localStorage.getItem('show-plan-rail')
     return saved == null ? true : saved === 'true'
@@ -353,6 +362,61 @@ export function App(): React.JSX.Element {
     })
     return () => unsubscribe()
   }, [])
+
+  // 画面と開いているタスクを URL に書く。画面を変えるたびに履歴を積み、ブラウザの「戻る」「進む」で戻れるようにする。
+  // 最初の1回と「戻る」で変わったときは履歴を積まない。個人用のデスクトップ版（file://）など履歴を変えられないときは何もしない
+  const urlTaskId = activeView === 'detail' || (activeView === 'gantt' && ganttSidePanelMode === 'detail') ? selectedTodoId : null
+  const replaceNextUrlRef = useRef(true)
+  const lastUrlRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (isStandaloneGanttWindow || isStandaloneTaskReportWindow) return
+    const search = buildUrlSearch(window.location.search, { view: activeView, taskId: urlTaskId })
+    const url = `${window.location.pathname}${search}${window.location.hash}`
+    const replace = replaceNextUrlRef.current
+    replaceNextUrlRef.current = false
+    if (search !== window.location.search) {
+      try {
+        if (replace) window.history.replaceState(null, '', url)
+        else window.history.pushState(null, '', url)
+      } catch {
+        // 履歴を変えられない環境では URL に出さない
+      }
+    }
+    lastUrlRef.current = `${window.location.pathname}${window.location.search}${window.location.hash}`
+  }, [activeView, isStandaloneGanttWindow, isStandaloneTaskReportWindow, urlTaskId])
+
+  useEffect(() => {
+    if (isStandaloneGanttWindow || isStandaloneTaskReportWindow) return
+    const handlePopState = (): void => {
+      const state = parseUrlState(window.location.search)
+      if (navigationStateRef.current.detailDirty && !window.confirm('未保存の変更があります。移動しますか？')) {
+        // 移動をやめたら URL を元に戻す
+        if (lastUrlRef.current) {
+          try { window.history.pushState(null, '', lastUrlRef.current) } catch { /* 何もしない */ }
+        }
+        return
+      }
+      replaceNextUrlRef.current = true
+      const view = state.view ?? (state.taskId ? 'detail' : 'gantt')
+      if (state.taskId) setSelectedTodoId(state.taskId)
+      setGanttSidePanelMode(view === 'gantt' && state.taskId ? 'detail' : 'today')
+      setActiveView(view)
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [isStandaloneGanttWindow, isStandaloneTaskReportWindow])
+
+  // Ctrl+K（Mac は ⌘K）で移動・操作のパレットを開く
+  useEffect(() => {
+    if (isStandaloneGanttWindow || isStandaloneTaskReportWindow) return
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'k') return
+      event.preventDefault()
+      setShowCommandPalette((previous) => !previous)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isStandaloneGanttWindow, isStandaloneTaskReportWindow])
 
   useEffect(() => {
     if (isFirstLaunch !== false) return
@@ -1238,6 +1302,31 @@ export function App(): React.JSX.Element {
     else setShowPlanRail((previous) => !previous)
   }
   const showRightPlanRail = showPlanRail && activeView !== 'plan' && activeView !== 'team' && activeView !== 'progress' && activeView !== 'report' && activeView !== 'todo'
+  // Ctrl+K のパレットの項目（画面・操作）
+  const paletteViews: { view: CenterView; label: string; keywords: string }[] = [
+    { view: 'overview', label: '概要', keywords: 'overview ダッシュボード' },
+    { view: 'gantt', label: 'ガント', keywords: 'gantt チャート 日程' },
+    { view: 'kanban', label: 'カンバン', keywords: 'kanban ボード' },
+    ...(multiUser ? [{ view: 'team' as const, label: 'チーム', keywords: 'team メンバー 計測中' }] : []),
+    { view: 'progress', label: '進捗', keywords: 'progress タイムライン 進捗ログ' },
+    { view: 'report', label: '報告', keywords: 'report 定例' },
+    { view: 'plan', label: '計画', keywords: 'plan 予定 時間割' },
+    { view: 'todo', label: 'ToDo', keywords: 'todo リスト チェック' },
+    { view: 'log', label: '記録', keywords: 'log 作業時間' }
+  ]
+  const paletteCommands: PaletteCommand[] = [
+    ...paletteViews.map(({ view, label, keywords }) => ({ key: `view:${view}`, group: '画面' as const, label: `${label}を開く`, keywords, run: () => toggleCenterView(view) })),
+    { key: 'add', group: '操作', label: 'タスクを追加', keywords: 'new add 新規', run: () => openQuickAdd() },
+    ...(currentUser ? [{ key: 'mine', group: '操作' as const, label: '自分の担当だけを表示', keywords: '担当 絞り込み 自分', run: () => setSelectedAssigneeId(currentUser.id) }] : []),
+    { key: 'clear-filters', group: '操作', label: '一覧の絞り込みを解除', keywords: '絞り込み 解除 全員', run: clearListFilters },
+    { key: 'pane-category', group: '操作', label: categoryPaneVisible ? 'カテゴリ一覧を隠す' : 'カテゴリ一覧を表示', keywords: 'パネル 表示', run: () => togglePane('category') },
+    { key: 'pane-task', group: '操作', label: taskPaneVisible ? 'タスク一覧を隠す' : 'タスク一覧を表示', keywords: 'パネル 表示', run: () => togglePane('task') },
+    { key: 'pane-today', group: '操作', label: planRailVisible ? '今日の予定を隠す' : '今日の予定を表示', keywords: 'パネル 表示', run: () => togglePane('side') },
+    { key: 'archived', group: '操作', label: showArchived ? 'アーカイブしたタスクを隠す' : 'アーカイブしたタスクも表示', keywords: 'アーカイブ', run: () => setShowArchived((previous) => !previous) },
+    ...(currentUser && multiUser ? [{ key: 'notifications', group: '操作' as const, label: '通知を開く', keywords: 'notification', run: () => openNotifications() }] : []),
+    { key: 'report', group: '操作', label: '進捗レポートを開く', keywords: 'レポート 週報', run: () => { if (isAdmin && multiUser) setShowProgressReport(true); else setShowMySummary(true) } },
+    { key: 'settings', group: '操作', label: '設定を開く', keywords: 'settings テーマ フォント', run: () => setShowSettings(true) }
+  ]
   // 右の「今日の予定」の上に出す「今日のToDo」（ToDoリストを使う人だけ）
   const todayTodoCard = usesTodoLists ? (
     <TodayTodoCard
@@ -1273,6 +1362,7 @@ export function App(): React.JSX.Element {
         showArchived={showArchived}
         onToggleArchived={() => setShowArchived((prev) => !prev)}
         onOpenSettings={() => setShowSettings(true)}
+        onOpenCommandPalette={() => setShowCommandPalette(true)}
         activeView={activeView}
         scopeLens={scopeLens}
         onSetScopeLens={setScopeLens}
@@ -1681,6 +1771,15 @@ export function App(): React.JSX.Element {
       )}
 
       <Toast toasts={toasts} onRemove={removeToast} />
+
+      {showCommandPalette && (
+        <CommandPalette
+          commands={paletteCommands}
+          todos={lensTodos}
+          onOpenTodo={openTodoDetail}
+          onClose={() => setShowCommandPalette(false)}
+        />
+      )}
 
       {showSettings && (
         <SettingsModal
