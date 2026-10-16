@@ -4,6 +4,7 @@ import type { Todo } from '../types'
 import type { DesktopContext, DesktopPreferences } from '../../../shared/desktop'
 import { desktopDownloadPageUrl, fetchDesktopRelease, isLoopbackOrigin, isNewerDesktopRelease, type DesktopReleaseStatus } from '../lib/desktopRelease'
 import { LegacyDraftRecoveryModal } from './LegacyDraftRecoveryModal'
+import { FONT_PRESETS, FONT_SCALE_PRESETS } from '../lib/fontSettings'
 
 interface Props {
   onClose: () => void
@@ -42,29 +43,6 @@ function formatLocal(iso: string): string {
 }
 
 type ThemeMode = 'dark' | 'light'
-
-export const FONT_FAMILY_DEFAULT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-
-export const FONT_PRESETS: Array<{ value: string; label: string }> = [
-  { value: FONT_FAMILY_DEFAULT, label: 'デフォルト' },
-  { value: '"Yu Gothic UI", "Yu Gothic", sans-serif', label: '游ゴシック' },
-  { value: '"Meiryo", "Meiryo UI", sans-serif', label: 'メイリオ' },
-  { value: '"BIZ UDGothic", sans-serif', label: 'BIZ UDゴシック' },
-  { value: '"BIZ UDPGothic", sans-serif', label: 'BIZ UDPゴシック' },
-  { value: '"UD Digi Kyokasho N-R", sans-serif', label: 'UDデジタル教科書体' },
-  { value: '"Yu Mincho", "YuMincho", serif', label: '游明朝' },
-  { value: '"MS PGothic", sans-serif', label: 'MS Pゴシック' },
-  { value: '"Noto Sans JP", sans-serif', label: 'Noto Sans JP' }
-]
-
-export const FONT_SCALE_DEFAULT = '100%'
-
-export const FONT_SCALE_PRESETS: Array<{ value: string; label: string }> = [
-  { value: '87.5%', label: '小' },
-  { value: FONT_SCALE_DEFAULT, label: '標準' },
-  { value: '112.5%', label: '大' },
-  { value: '125%', label: '特大' }
-]
 
 interface ShortcutConfig {
   key: string       // Settings DBのキー

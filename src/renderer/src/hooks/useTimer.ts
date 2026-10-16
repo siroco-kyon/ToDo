@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { RunningState } from '../types'
-import { serverNow, subscribeServerClock } from '../lib/serverClock'
 
+// 経過秒数はここでは持たない。表示する部品が useElapsedSeconds(startTime) で数える
+// （ここで毎秒 state を変えると、これを使う App 全体が毎秒描き直される）
 interface TimerState {
   isRunning: boolean
   runningTodoId: string | null
-  elapsedSeconds: number
   startTime: string | null
 }
 
@@ -20,38 +20,14 @@ export function useTimer(onStopped?: () => void | Promise<void>): UseTimerReturn
   const [state, setState] = useState<TimerState>({
     isRunning: false,
     runningTodoId: null,
-    elapsedSeconds: 0,
     startTime: null
   })
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const mountedRef = useRef(true)
   const generationRef = useRef(0)
   const lifecycleRef = useRef(0)
   const mutationsRef = useRef(0)
   const mutationQueueRef = useRef<Promise<void>>(Promise.resolve())
   const syncNeededRef = useRef(false)
-
-  const tick = useCallback((startTime: string) => {
-    if (!mountedRef.current) return
-    const elapsed = Math.max(0, Math.floor((serverNow() - new Date(startTime).getTime()) / 1000))
-    setState((prev) => prev.isRunning && prev.startTime === startTime ? { ...prev, elapsedSeconds: elapsed } : prev)
-  }, [])
-
-  const startInterval = useCallback(
-    (startTime: string) => {
-      if (!mountedRef.current) return
-      if (intervalRef.current) clearInterval(intervalRef.current)
-      intervalRef.current = setInterval(() => tick(startTime), 1000)
-    },
-    [tick]
-  )
-
-  const stopInterval = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
-    }
-  }, [])
 
   useEffect(() => {
     mountedRef.current = true
@@ -62,31 +38,16 @@ export function useTimer(onStopped?: () => void | Promise<void>): UseTimerReturn
       mutationsRef.current = 0
       mutationQueueRef.current = Promise.resolve()
       syncNeededRef.current = false
-      stopInterval()
     }
-  }, [stopInterval])
+  }, [])
 
-  useEffect(() => subscribeServerClock(() => {
+  const applyRunning = useCallback((running: RunningState) => {
     if (!mountedRef.current) return
-    setState((prev) => prev.startTime ? {
-      ...prev,
-      elapsedSeconds: Math.max(0, Math.floor((serverNow() - Date.parse(prev.startTime)) / 1000))
-    } : prev)
-  }), [])
-
-  const applyRunning = useCallback(
-    (running: RunningState) => {
-      if (!mountedRef.current) return
-      setState({
-        isRunning: true,
-        runningTodoId: running.todo_id,
-        elapsedSeconds: Math.max(0, Math.floor((serverNow() - new Date(running.start_time).getTime()) / 1000)),
-        startTime: running.start_time
-      })
-      startInterval(running.start_time)
-    },
-    [startInterval]
-  )
+    // 同じ計測を読み直しただけなら state を変えない（App を描き直さない）
+    setState((prev) => prev.isRunning && prev.runningTodoId === running.todo_id && prev.startTime === running.start_time
+      ? prev
+      : { isRunning: true, runningTodoId: running.todo_id, startTime: running.start_time })
+  }, [])
 
   const restore = useCallback((running: RunningState) => {
     generationRef.current += 1
@@ -95,9 +56,8 @@ export function useTimer(onStopped?: () => void | Promise<void>): UseTimerReturn
 
   const clearRunning = useCallback(() => {
     if (!mountedRef.current) return
-    stopInterval()
-    setState({ isRunning: false, runningTodoId: null, elapsedSeconds: 0, startTime: null })
-  }, [stopInterval])
+    setState((prev) => prev.isRunning ? { isRunning: false, runningTodoId: null, startTime: null } : prev)
+  }, [])
 
   const notifyStopped = useCallback(() => {
     try {

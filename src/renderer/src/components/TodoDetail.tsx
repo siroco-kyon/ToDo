@@ -1,7 +1,8 @@
 import { LinkedText, TextLinks } from './LinkedText'
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { Category, CreateSubTaskInput, DailyPlanItem, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, TodoHistoryEntry, UpdateSubTaskInput, UpdateTodoInput, WorkLog } from '../types'
-import { TimerDisplay } from './TimerDisplay'
+import { RunningTimerDisplay, TimerDisplay } from './TimerDisplay'
+import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
 import { AssigneeChip, AssigneePicker } from './AssigneePicker'
 import { diffDaysFromToday, getDueDateColor, toDateKey } from '../lib/dueDate'
 import { subscribeProgressDraftChanges } from '../lib/legacyProgressDrafts'
@@ -24,7 +25,8 @@ interface Props {
   currentUser?: PublicUser | null
   todayPlanItems: DailyPlanItem[]
   runningTodoId: string | null
-  elapsedSeconds: number
+  /** 計測を始めた時刻（計測中でなければ null） */
+  timerStartTime: string | null
   onUpdate: (id: string, data: UpdateTodoInput) => Promise<void>
   onStartTimer: (todoId: string) => Promise<void>
   onStopTimer: (note?: string) => Promise<void>
@@ -127,7 +129,7 @@ export function TodoDetail({
   currentUser = null,
   todayPlanItems,
   runningTodoId,
-  elapsedSeconds,
+  timerStartTime,
   onUpdate,
   onStartTimer,
   onStopTimer,
@@ -844,7 +846,7 @@ export function TodoDetail({
 
   const isRunning = runningTodoId === todo.id
   const isInTodayPlan = todayPlanItems.some((item) => item.todo_id === todo.id)
-  const totalMinutes = Math.round((logs.reduce((sum, log) => sum + log.duration_seconds, 0) + (isRunning ? elapsedSeconds : 0)) / 60)
+  const loggedSeconds = logs.reduce((sum, log) => sum + log.duration_seconds, 0)
   const isDone = todo.status === 'done'
   const isArchived = todo.status === 'archived'
   const listMode = isListTodo(todo)
@@ -972,8 +974,8 @@ export function TodoDetail({
           <div style={{ background: '#1e293b', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <div>
               <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 4 }}>計測時間</div>
-              <TimerDisplay elapsedSeconds={isRunning ? elapsedSeconds : 0} isRunning={isRunning} />
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>合計 {totalMinutes}分</div>
+              {isRunning ? <RunningTimerDisplay startTime={timerStartTime} /> : <TimerDisplay elapsedSeconds={0} isRunning={false} />}
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>合計 <TotalMinutes loggedSeconds={loggedSeconds} startTime={isRunning ? timerStartTime : null} />分</div>
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
               {isRunning ? (
@@ -2223,4 +2225,10 @@ function clampLag(value: number): number {
 
 function formatTime(date: Date): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+// 記録済みの時間＋計測中の時間（分）。計測中は毎秒描き直すが、詳細の全体は描き直さない
+function TotalMinutes({ loggedSeconds, startTime }: { loggedSeconds: number; startTime: string | null }): React.JSX.Element {
+  const runningSeconds = useElapsedSeconds(startTime)
+  return <>{Math.round((loggedSeconds + runningSeconds) / 60)}</>
 }

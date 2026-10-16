@@ -1,4 +1,5 @@
 import React from 'react'
+import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
 
 interface Props {
   elapsedSeconds: number
@@ -28,4 +29,9 @@ export function TimerDisplay({ elapsedSeconds, isRunning }: Props): React.JSX.El
       {formatted}
     </span>
   )
+}
+
+/** 計測中の時間。毎秒描き直すのはこの部品だけ */
+export function RunningTimerDisplay({ startTime }: { startTime: string | null }): React.JSX.Element {
+  return <TimerDisplay elapsedSeconds={useElapsedSeconds(startTime)} isRunning />
 }

@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react'
+import React, { useMemo, useState, useRef } from 'react'
 import type { SubTask, Todo } from '../types'
-import { TimerDisplay } from './TimerDisplay'
+import { RunningTimerDisplay } from './TimerDisplay'
 import { QuickCheckItem } from './TodoChecklist'
 import { diffDaysFromToday, getDueDateColor, toDateKey } from '../lib/dueDate'
 import { checklistBadgeText, checklistBadgeTitle, type ChecklistSummary } from '../lib/todoList'
@@ -28,7 +28,8 @@ interface Props {
   todos: Todo[]
   selectedId: string | null
   runningTodoId: string | null
-  elapsedSeconds: number
+  /** 計測を始めた時刻（計測中でなければ null） */
+  timerStartTime: string | null
   isManualSort: boolean
   searchQuery: string
   /** 検索以外（担当・カテゴリ）の絞り込みがかかっている */
@@ -90,13 +91,13 @@ function Highlight({ text, query }: { text: string; query: string }): React.JSX.
 }
 
 function TodoItem({
-  todo, isSelected, isRunning, elapsedSeconds, isManualSort, searchQuery, checklist,
+  todo, isSelected, isRunning, timerStartTime, isManualSort, searchQuery, checklist,
   listItems, expanded, pendingItemIds, onToggleExpanded, onToggleListItem,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete,
   onStartTimer, onStopTimer,
   onDragStart, onDragOver, onDrop, isDragOver
 }: {
-  todo: Todo; isSelected: boolean; isRunning: boolean; elapsedSeconds: number
+  todo: Todo; isSelected: boolean; isRunning: boolean; timerStartTime: string | null
   isManualSort: boolean; searchQuery: string
   /** ToDoリストのときだけ渡す */
   checklist?: ChecklistSummary
@@ -209,7 +210,7 @@ function TodoItem({
               </span>
               {isRunning && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', background: '#4ade8020', color: '#4ade80', padding: '1px 5px', borderRadius: 99, flexShrink: 0 }}>
-                  ●<TimerDisplay elapsedSeconds={elapsedSeconds} isRunning />
+                  ●<RunningTimerDisplay startTime={timerStartTime} />
                 </span>
               )}
               {todo.recurrence && !isArchived && (
@@ -345,8 +346,48 @@ function TodoItem({
   )
 }
 
+/** 行に渡す操作。どれもタスクの ID（またはタスク）を受け取り、一覧を描き直しても同じ関数のままにする */
+interface RowHandlers {
+  select: (id: string) => void
+  toggleDone: (todo: Todo) => void
+  archive: (id: string) => void
+  unarchive: (id: string) => void
+  remove: (id: string) => void
+  startTimer: (id: string) => void
+  stopTimer: () => void
+  toggleExpanded: (id: string) => void
+  dragStart: (id: string) => void
+  dragOver: (id: string) => void
+  drop: (id: string) => void
+}
+
+type TodoRowProps = Omit<React.ComponentProps<typeof TodoItem>,
+  'onToggleExpanded' | 'onSelect' | 'onToggleDone' | 'onArchive' | 'onUnarchive' | 'onDelete' | 'onStartTimer' | 'onStopTimer' | 'onDragStart' | 'onDragOver' | 'onDrop'
+> & { handlers: RowHandlers }
+
+// 渡すものが変わった行だけ描き直す（タスクを選ぶたびに数百行を描き直さない）
+const TodoRow = React.memo(function TodoRow({ handlers, ...props }: TodoRowProps): React.JSX.Element {
+  const { todo } = props
+  return (
+    <TodoItem
+      {...props}
+      onToggleExpanded={() => handlers.toggleExpanded(todo.id)}
+      onSelect={() => handlers.select(todo.id)}
+      onToggleDone={() => handlers.toggleDone(todo)}
+      onArchive={() => handlers.archive(todo.id)}
+      onUnarchive={() => handlers.unarchive(todo.id)}
+      onDelete={() => handlers.remove(todo.id)}
+      onStartTimer={() => handlers.startTimer(todo.id)}
+      onStopTimer={handlers.stopTimer}
+      onDragStart={() => handlers.dragStart(todo.id)}
+      onDragOver={() => handlers.dragOver(todo.id)}
+      onDrop={() => handlers.drop(todo.id)}
+    />
+  )
+})
+
 export function TodoList({
-  todos, selectedId, runningTodoId, elapsedSeconds, isManualSort, searchQuery,
+  todos, selectedId, runningTodoId, timerStartTime, isManualSort, searchQuery,
   hasOtherFilters = false, hasAnyTodos = true, onClearSearch, onClearFilters, onAddTodo,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete, onReorder,
   onStartTimer, onStopTimer, checklistSummaries, listItemsByTodo, pendingItemIds, onToggleListItem
@@ -383,6 +424,23 @@ export function TodoList({
     dragging.current = false
     await onReorder(newIds)
   }
+
+  // 行に渡す操作は1回だけ作り、中から最新の props を呼ぶ（行の memo を効かせるため）
+  const latestRef = useRef({ onSelect, onToggleDone, onArchive, onUnarchive, onDelete, onStartTimer, onStopTimer, handleDrop, toggleExpanded })
+  latestRef.current = { onSelect, onToggleDone, onArchive, onUnarchive, onDelete, onStartTimer, onStopTimer, handleDrop, toggleExpanded }
+  const handlers = useMemo<RowHandlers>(() => ({
+    select: (id) => latestRef.current.onSelect(id),
+    toggleDone: (todo) => latestRef.current.onToggleDone(todo),
+    archive: (id) => latestRef.current.onArchive(id),
+    unarchive: (id) => latestRef.current.onUnarchive(id),
+    remove: (id) => latestRef.current.onDelete(id),
+    startTimer: (id) => { void latestRef.current.onStartTimer(id) },
+    stopTimer: () => { void latestRef.current.onStopTimer().catch(() => { /* App displays the error. */ }) },
+    toggleExpanded: (id) => latestRef.current.toggleExpanded(id),
+    dragStart: (id) => { setDraggedId(id); dragging.current = true },
+    dragOver: (id) => { if (dragging.current) setDragOverId(id) },
+    drop: (id) => { void latestRef.current.handleDrop(id) }
+  }), [])
 
   if (todos.length === 0 && !hasAnyTodos) {
     return (
@@ -424,31 +482,22 @@ export function TodoList({
       onDragEnd={() => { setDraggedId(null); setDragOverId(null); dragging.current = false }}
     >
       {todos.map((todo) => (
-        <TodoItem
+        <TodoRow
           key={todo.id}
           todo={todo}
           isSelected={selectedId === todo.id}
           isRunning={runningTodoId === todo.id}
-          elapsedSeconds={runningTodoId === todo.id ? elapsedSeconds : 0}
+          timerStartTime={runningTodoId === todo.id ? timerStartTime : null}
           isManualSort={isManualSort}
           searchQuery={searchQuery}
           checklist={checklistSummaries?.get(todo.id)}
           listItems={listItemsByTodo?.get(todo.id)}
           expanded={expandedLists.has(todo.id)}
-          pendingItemIds={pendingItemIds}
-          onToggleExpanded={() => toggleExpanded(todo.id)}
+          // ToDoリストの行だけが使う。ほかの行は項目のチェック中に描き直さない
+          pendingItemIds={todo.list_mode ? pendingItemIds : undefined}
           onToggleListItem={onToggleListItem}
           isDragOver={dragOverId === todo.id}
-          onSelect={() => onSelect(todo.id)}
-          onToggleDone={() => onToggleDone(todo)}
-          onArchive={() => onArchive(todo.id)}
-          onUnarchive={() => onUnarchive(todo.id)}
-          onDelete={() => onDelete(todo.id)}
-          onStartTimer={() => { void onStartTimer(todo.id) }}
-          onStopTimer={() => { void onStopTimer().catch(() => { /* App displays the error. */ }) }}
-          onDragStart={() => { setDraggedId(todo.id); dragging.current = true }}
-          onDragOver={() => { if (dragging.current) setDragOverId(todo.id) }}
-          onDrop={() => handleDrop(todo.id)}
+          handlers={handlers}
         />
       ))}
     </div>

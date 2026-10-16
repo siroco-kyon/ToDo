@@ -1,6 +1,7 @@
 import { LinkedText } from './LinkedText'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ProgressNoteThread } from './ProgressNoteThread'
+import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
 import type {
   OverviewCategoryStat,
   OverviewCompletedSubTaskItem,
@@ -20,7 +21,8 @@ interface Props {
   selectedAssigneeId: string | null
   includePrivate: boolean
   runningTodoId: string | null
-  elapsedSeconds: number
+  /** 計測を始めた時刻（計測中でなければ null） */
+  timerStartTime: string | null
   /** タスク一覧の絞り込みの表示（見出しの横に出す） */
   listFilters?: React.ReactNode
   onSelectTodo: (id: string) => void
@@ -47,6 +49,11 @@ function formatMinutes(minutes: number): string {
   if (hours === 0) return `${mins}分`
   if (mins === 0) return `${hours}時間`
   return `${hours}時間${mins}分`
+}
+
+// 計測中の時間。毎秒描き直すのはこの部品だけ
+function RunningElapsed({ startTime }: { startTime: string | null }): React.JSX.Element {
+  return <>{formatElapsed(useElapsedSeconds(startTime))}</>
 }
 
 function formatElapsed(seconds: number): string {
@@ -566,7 +573,7 @@ export function OverviewDashboard({
   selectedAssigneeId,
   includePrivate,
   runningTodoId,
-  elapsedSeconds,
+  timerStartTime,
   listFilters,
   onSelectTodo
 }: Props): React.JSX.Element {
@@ -820,7 +827,7 @@ export function OverviewDashboard({
                       {runningTodo.title}
                     </div>
                     <div style={{ marginTop: 10, fontSize: '1.3rem', color: '#4ade80', fontWeight: 700 }}>
-                      {formatElapsed(elapsedSeconds)}
+                      <RunningElapsed startTime={timerStartTime} />
                     </div>
                   </button>
                 ) : (
