@@ -30,6 +30,7 @@ import type {
   TeamMemberWorkload,
   TodoReportActivity,
   TodoChangeEntry,
+  TodoHistoryEntry,
   SubTaskCheckSummary,
   ProgressNote,
   ProgressNoteComment,
@@ -76,6 +77,7 @@ export type {
   TeamMemberWorkload,
   TodoReportActivity,
   TodoChangeEntry,
+  TodoHistoryEntry,
   SubTaskCheckSummary,
   ProgressNote,
   ProgressNoteComment,
@@ -216,6 +218,9 @@ const api = {
     ipcRenderer.invoke('progressNote:setNeedsDiscussion', id, value),
   todoChangeGetByRange: (from: string, to: string): Promise<TodoChangeEntry[]> =>
     ipcRenderer.invoke('todoChange:getByRange', from, to),
+  /** タスク詳細の変更履歴（新しい順。limit 件、offset 件目から） */
+  todoChangeGetByTodo: (todoId: string, options?: { limit?: number; offset?: number }): Promise<TodoHistoryEntry[]> =>
+    ipcRenderer.invoke('todoChange:getByTodo', todoId, options),
   /** ToDoリストの繰り返しの項目の、期間中の実施状況（報告タブ用） */
   subtaskCheckSummaryGetByRange: (from: string, to: string): Promise<SubTaskCheckSummary[]> =>
     ipcRenderer.invoke('subtaskCheck:getSummary', from, to),

@@ -63,6 +63,7 @@ import {
   getOpenDiscussionNotes,
   setProgressNoteNeedsDiscussion,
   getTodoChangesByRange,
+  getTodoChangeHistory,
   getProgressNote,
   createProgressNote,
   updateProgressNote,
@@ -437,6 +438,9 @@ dataRouter.get('/progress-notes/discussions', (req, res) =>
 // 要相談の付け外しは会議で誰でも行えるようにする（投稿者以外が「相談済み」にすることがある）
 dataRouter.put('/progress-notes/:id/discussion', (req, res) =>
   run(res, () => setProgressNoteNeedsDiscussion(req.params.id, Boolean(req.body.value), req.user!.id), 'progress'))
+// タスク詳細の変更履歴（新しい順）
+dataRouter.get('/todos/:id/changes', (req, res) =>
+  run(res, () => getTodoChangeHistory(req.params.id, { limit: Number(req.query.limit ?? 20), offset: Number(req.query.offset ?? 0) })))
 dataRouter.get('/todo-changes', (req, res) =>
   run(res, () => getTodoChangesByRange(String(req.query.from ?? ''), String(req.query.to ?? ''))))
 dataRouter.post('/todos/:todoId/progress-notes', (req, res) =>

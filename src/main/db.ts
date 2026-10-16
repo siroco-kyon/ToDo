@@ -2065,6 +2065,24 @@ export function setProgressNoteNeedsDiscussion(id: string, value: boolean): Prog
 }
 
 /** 期間内（ローカル日付）のタスク・サブタスクの進捗率・期限の変更履歴。古い順 */
+// タスク詳細の変更履歴（新しい順）。説明・メモは長い本文になるので値を返さない
+export function getTodoChangeHistory(todoId: string, options: { limit?: number; offset?: number } = {}): TodoHistoryEntry[] {
+  const limit = Math.min(Math.max(Math.floor(options.limit ?? 20), 1), 200)
+  const offset = Math.max(Math.floor(options.offset ?? 0), 0)
+  return db
+    .prepare(
+      `SELECT id, field,
+              CASE WHEN field IN ('description', 'memo') THEN NULL ELSE old_value END AS old_value,
+              CASE WHEN field IN ('description', 'memo') THEN NULL ELSE new_value END AS new_value,
+              created_at, NULL AS user_name
+       FROM TodoChangeLogs
+       WHERE todo_id = ?
+       ORDER BY created_at DESC, rowid DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(todoId, limit, offset) as TodoHistoryEntry[]
+}
+
 export function getTodoChangesByRange(from: string, to: string): TodoChangeEntry[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
     throw new Error('変更履歴の期間が不正です')
@@ -2441,6 +2459,19 @@ export interface TodoChangeEntry {
   old_value: string | null
   new_value: string | null
   created_at: string
+}
+
+/**
+ * タスク詳細の「変更履歴」の1件（タスク自体の変更。新しい順）。
+ * user_name はサーバー版で変えた人（デスクトップ版・記録のない古い変更は null）。説明・メモは本文を返さず、変えたことだけを出す
+ */
+export interface TodoHistoryEntry {
+  id: string
+  field: string
+  old_value: string | null
+  new_value: string | null
+  created_at: string
+  user_name: string | null
 }
 
 /** タスクごとの最終報告日時（報告タブの鮮度判定用）。進捗ログの最新投稿とメモの最終変更 */

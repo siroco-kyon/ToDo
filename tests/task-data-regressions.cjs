@@ -33,11 +33,12 @@ try {
     const subtasks=await import(${importPath('server/src/db/subtasks.ts')});
     const timer=await import(${importPath('server/src/db/timer.ts')});
     const logs=await import(${importPath('server/src/db/worklogs.ts')});
+    const progress=await import(${importPath('server/src/db/progress.ts')});
     conn.initDb();
     try {
       const now=new Date().toISOString();
       conn.getDb().prepare('INSERT INTO Users(id,username,display_name,password_hash,created_at,updated_at) VALUES(?,?,?,?,?,?)').run('test-user','test','Test','unused',now,now);
-      require(${JSON.stringify(path.join(__dirname, 'task-data-scenarios.cjs'))})({...conn,...todos,...subtasks,...logs,startTimer:(id)=>timer.startTimer('test-user',id),stopTimer:()=>timer.stopTimer('test-user')});
+      require(${JSON.stringify(path.join(__dirname, 'task-data-scenarios.cjs'))})({...conn,...todos,...subtasks,...logs,getTodoChangeHistory:progress.getTodoChangeHistory,startTimer:(id)=>timer.startTimer('test-user',id),stopTimer:()=>timer.stopTimer('test-user')});
       console.log('Server task data regressions passed');
     } finally {conn.getDb().close()}
   `)

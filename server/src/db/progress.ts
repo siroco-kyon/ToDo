@@ -14,6 +14,7 @@ import type {
   ProgressDigestTodo,
   ProgressDigestUser,
   TodoChangeEntry,
+  TodoHistoryEntry,
   TodoReportActivity
 } from './types'
 
@@ -215,6 +216,25 @@ export function setProgressNoteNeedsDiscussion(id: string, value: boolean, curre
 }
 
 /** 期間内（ローカル日付）のタスク・サブタスクの進捗率・期限の変更履歴。古い順 */
+// タスク詳細の変更履歴（新しい順）。説明・メモは長い本文になるので値を返さない。変えた人の表示名も返す
+export function getTodoChangeHistory(todoId: string, options: { limit?: number; offset?: number } = {}): TodoHistoryEntry[] {
+  const limit = Math.min(Math.max(Math.floor(options.limit ?? 20), 1), 200)
+  const offset = Math.max(Math.floor(options.offset ?? 0), 0)
+  return getDb()
+    .prepare(
+      `SELECT l.id, l.field,
+              CASE WHEN l.field IN ('description', 'memo') THEN NULL ELSE l.old_value END AS old_value,
+              CASE WHEN l.field IN ('description', 'memo') THEN NULL ELSE l.new_value END AS new_value,
+              l.created_at, u.display_name AS user_name
+       FROM TodoChangeLogs l
+       LEFT JOIN Users u ON u.id = l.user_id
+       WHERE l.todo_id = ?
+       ORDER BY l.created_at DESC, l.rowid DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(todoId, limit, offset) as TodoHistoryEntry[]
+}
+
 export function getTodoChangesByRange(from: string, to: string): TodoChangeEntry[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
     throw new Error('変更履歴の期間が不正です')

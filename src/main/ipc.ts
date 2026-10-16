@@ -48,6 +48,7 @@ import {
   getOpenDiscussionNotes,
   setProgressNoteNeedsDiscussion,
   getTodoChangesByRange,
+  getTodoChangeHistory,
   createProgressNote,
   updateProgressNote,
   deleteProgressNote,
@@ -193,6 +194,7 @@ export function registerIpcHandlers(
   ipcMain.handle('progressNote:getOpenDiscussions', () => getOpenDiscussionNotes())
   ipcMain.handle('progressNote:setNeedsDiscussion', handleMutation('progress', (id: string, value: boolean) => setProgressNoteNeedsDiscussion(id, value)))
   ipcMain.handle('todoChange:getByRange', (_, from: string, to: string) => getTodoChangesByRange(from, to))
+  ipcMain.handle('todoChange:getByTodo', (_, todoId: string, options?: { limit?: number; offset?: number }) => getTodoChangeHistory(todoId, options ?? {}))
   ipcMain.handle('subtaskCheck:getSummary', (_, from: string, to: string) => getSubTaskCheckSummaries(from, to))
   ipcMain.handle('progressNote:create', handleMutation('progress', (todoId: string, body: string) => createProgressNote(todoId, body)))
   ipcMain.handle('progressNote:update', handleMutation('progress', (id: string, body: string) => updateProgressNote(id, body)))

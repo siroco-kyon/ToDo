@@ -462,6 +462,19 @@ export interface TodoChangeEntry {
   created_at: string
 }
 
+/**
+ * タスク詳細の「変更履歴」の1件（タスク自体の変更。新しい順）。
+ * user_name はサーバー版で変えた人（デスクトップ版・記録のない古い変更は null）。説明・メモは本文を返さず、変えたことだけを出す
+ */
+export interface TodoHistoryEntry {
+  id: string
+  field: string
+  old_value: string | null
+  new_value: string | null
+  created_at: string
+  user_name: string | null
+}
+
 /** タスクごとの最終報告日時（報告タブの鮮度判定用）。進捗ログの最新投稿とメモの最終変更 */
 export interface TodoReportActivity {
   todo_id: string
