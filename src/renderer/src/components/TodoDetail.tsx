@@ -1251,7 +1251,7 @@ export function TodoDetail({
                   <button
                     onClick={() => void handleAddProgressNote()}
                     disabled={!noteDraft.trim() || noteSaving}
-                    style={buttonStyle(!noteDraft.trim() || noteSaving ? 'var(--slate-800)' : 'var(--indigo-500)', !noteDraft.trim() || noteSaving ? 'var(--slate-500)' : 'var(--white)')}
+                    style={buttonStyle(!noteDraft.trim() || noteSaving ? 'var(--slate-800)' : 'var(--indigo-500)', !noteDraft.trim() || noteSaving ? 'var(--slate-500)' : 'var(--on-fill-white)')}
                   >
                     {noteSaving ? '投稿中...' : '投稿'}
                   </button>
@@ -1336,7 +1336,7 @@ export function TodoDetail({
                   rows={newSubTask.title.includes('\n') ? Math.min(6, newSubTask.title.split('\n').length + 1) : 1}
                   style={{ ...inputStyle, fontSize: '0.84rem', padding: '7px 9px', resize: 'vertical', flex: 1 }}
                 />
-                <button type="submit" disabled={!newSubTask.title.trim()} style={buttonStyle(newSubTask.title.trim() ? 'var(--blue-600)' : 'var(--slate-800)', newSubTask.title.trim() ? 'var(--white)' : 'var(--slate-500)')}>追加</button>
+                <button type="submit" disabled={!newSubTask.title.trim()} style={buttonStyle(newSubTask.title.trim() ? 'var(--blue-600)' : 'var(--slate-800)', newSubTask.title.trim() ? 'var(--on-fill-white)' : 'var(--slate-500)')}>追加</button>
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--slate-400)' }}>
                 {users.length > 0 && (

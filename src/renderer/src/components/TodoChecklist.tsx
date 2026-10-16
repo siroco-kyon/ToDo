@@ -374,7 +374,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
               rows={title.includes('\n') ? Math.min(6, title.split('\n').length + 1) : 1}
               style={{ ...inputStyle, flex: 1, resize: 'vertical' }}
             />
-            <button type="submit" disabled={!title.trim() || adding} style={buttonStyle(title.trim() && !adding ? 'var(--blue-600)' : 'var(--slate-800)', title.trim() && !adding ? 'var(--white)' : 'var(--slate-500)')}>
+            <button type="submit" disabled={!title.trim() || adding} style={buttonStyle(title.trim() && !adding ? 'var(--blue-600)' : 'var(--slate-800)', title.trim() && !adding ? 'var(--on-fill-white)' : 'var(--slate-500)')}>
               {adding ? '追加中…' : '追加'}
             </button>
             {compact && (
