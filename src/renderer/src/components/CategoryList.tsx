@@ -85,7 +85,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
       onDragEnd={() => { setDraggedId(null); setDragOverId(null); dragging.current = false }}
     >
-      <div style={{ padding: '16px 12px 8px', fontSize: '0.75rem', color: '#64748b', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+      <div style={{ padding: '16px 12px 8px', fontSize: '0.75rem', color: '#94a3b8', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
         カテゴリ
       </div>
 
@@ -163,12 +163,12 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                     {cat.name}
                   </span>
                   {cat.is_private ? (
-                    <span title="チームの集計・レポートに含めないカテゴリです（ほかの人にも見えます）" style={{ marginLeft: 4, fontSize: '0.62rem', flexShrink: 0, color: '#94a3b8', border: '1px solid #334155', borderRadius: 99, padding: '0 5px' }}>集計外</span>
+                    <span title="チームの集計・レポートに含めないカテゴリです（ほかの人にも見えます）" style={{ marginLeft: 4, fontSize: '0.75rem', flexShrink: 0, color: '#94a3b8', border: '1px solid #334155', borderRadius: 99, padding: '0 5px' }}>集計外</span>
                   ) : null}
                 </button>
                 {cat.description && hoveredId !== cat.id && (
                   <div style={{
-                    fontSize: '0.68rem', color: '#475569', padding: '0 12px 4px 34px',
+                    fontSize: '0.75rem', color: '#94a3b8', padding: '0 12px 4px 34px',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     lineHeight: 1.4
                   }}>
@@ -240,7 +240,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 'calc(100% - 16px)', margin: '8px', padding: '7px',
             background: '#1e293b', border: '1px dashed #334155',
-            borderRadius: 6, color: '#6366f1', cursor: 'pointer',
+            borderRadius: 6, color: '#a5b4fc', cursor: 'pointer',
             fontSize: '0.85rem', fontWeight: 'bold'
           }}
         >

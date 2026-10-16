@@ -18,6 +18,8 @@ interface Props {
   listFilters?: React.ReactNode
   standalone?: boolean
   groupByCategory?: boolean
+  /** 絞り込む前にタスクが1件でもあるか。1件もないときは、絞り込みの案内ではなく最初のタスクを作る案内を出す */
+  hasAnyTodos?: boolean
 }
 
 interface TodoBar {
@@ -1010,7 +1012,8 @@ export function GanttView({
   onAddTodo,
   listFilters,
   standalone = false,
-  groupByCategory = false
+  groupByCategory = false,
+  hasAnyTodos = true
 }: Props): React.JSX.Element {
   const unscheduledSectionRef = useRef<HTMLDivElement>(null)
   const initialSettings = useMemo(() => loadGanttViewSettings(), [])
@@ -3559,6 +3562,16 @@ export function GanttView({
       <div style={{ flex: '0 0 auto', minHeight: controlsCollapsed ? 540 : 460, height: controlsCollapsed ? '74vh' : '60vh', border: '1px solid #1e293b', borderRadius: 8, background: '#0b1220', overflow: 'hidden' }}>
         {loading ? (
           <div style={centerEmptyStyle}>タスクを読み込み中...</div>
+        ) : !hasAnyTodos ? (
+          <div style={{ ...centerEmptyStyle, flexDirection: 'column' }}>
+            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#e2e8f0' }}>まだタスクがありません</div>
+            <div style={{ marginTop: 6, fontSize: '0.8rem', color: '#94a3b8' }}>
+              タスクを追加すると、開始日から期限までが横棒で表示されます。バーをドラッグすると日程を変えられます。
+            </div>
+            {onAddTodo && (
+              <button onClick={() => onAddTodo()} style={{ ...headerActionButtonStyle, marginTop: 12, background: '#1d4ed8', borderColor: '#2563eb', color: '#eff6ff' }}>＋ 最初のタスクを追加</button>
+            )}
+          </div>
         ) : displayedRangeGroups.length === 0 ? (
           <div style={{ ...centerEmptyStyle, flexDirection: 'column' }}>
             <div>この条件で表示できる予定タスクはありません。</div>

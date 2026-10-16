@@ -99,6 +99,13 @@ body.theme-light .tarbo-gantt {
   color-scheme: dark;
 }
 
+/* ライトテーマではチェックボックスを反転の対象から外している（index.html）が、ガントの中は color-scheme: dark で
+   暗いチェックボックスを描くので、反転したままのほうが明るい画面になじむ */
+body.theme-light #root .tarbo-gantt input[type="checkbox"],
+body.theme-light #root .tarbo-gantt input[type="radio"] {
+  filter: none;
+}
+
 /* マウスを乗せた行を、左の一覧からバーまで横一列で薄く光らせる（長い行を目で追いやすくする） */
 .tarbo-gantt .tarbo-gantt-row {
   position: relative;
