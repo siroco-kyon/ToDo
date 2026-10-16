@@ -1,5 +1,5 @@
 import { LinkedText, TextLinks } from './LinkedText'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { Category, CreateSubTaskInput, DailyPlanItem, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, UpdateSubTaskInput, UpdateTodoInput, WorkLog } from '../types'
 import { TimerDisplay } from './TimerDisplay'
 import { AssigneeChip, AssigneePicker } from './AssigneePicker'
@@ -68,10 +68,39 @@ function SectionHeading({ title, summary, detail }: { title: React.ReactNode; su
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
       <span style={{ ...sectionTitleStyle, marginBottom: 0 }}>{title}</span>
       {summary && <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{summary}</span>}
-      {detail && (
-        <span role="note" tabIndex={0} aria-label={detail} title={detail} style={{ fontSize: '0.8rem', color: '#94a3b8', cursor: 'help', lineHeight: 1 }}>ⓘ</span>
-      )}
+      {detail && <InfoTip text={detail} />}
     </div>
+  )
+}
+
+// ⓘ にマウスを乗せたとき・キーボードで選んだときに出す吹き出し（title のヒントはマウスでしか出ないため）
+function InfoTip({ text }: { text: string }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const tipId = useId()
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <span
+        tabIndex={0}
+        aria-label="説明"
+        aria-describedby={tipId}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onKeyDown={(event) => { if (event.key === 'Escape') setOpen(false) }}
+        style={{ fontSize: '0.8rem', color: open ? '#e2e8f0' : '#94a3b8', cursor: 'help', lineHeight: 1 }}
+      >
+        ⓘ
+      </span>
+      <span
+        id={tipId}
+        role="tooltip"
+        hidden={!open}
+        style={{ position: 'absolute', top: 'calc(100% + 6px)', left: -8, zIndex: 20, width: 280, padding: '8px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', fontSize: '0.78rem', lineHeight: 1.6, boxShadow: '0 10px 24px rgba(2, 6, 23, 0.5)', textTransform: 'none', letterSpacing: 0 }}
+      >
+        {text}
+      </span>
+    </span>
   )
 }
 

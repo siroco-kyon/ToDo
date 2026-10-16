@@ -830,10 +830,12 @@ export function App(): React.JSX.Element {
     setShowQuickAdd(true)
   }
 
+  // 一覧が空のときの「絞り込みを解除」。集計外を隠していてタスクが見えないこともあるので、それも戻す
   const clearListFilters = useCallback((): void => {
     setSearchQuery('')
     setSelectedCategoryId(null)
     setSelectedAssigneeId(null)
+    setScopeLens('personal')
   }, [])
 
   const handleUpdate = useCallback(async (id: string, data: UpdateTodoInput) => {
@@ -1418,8 +1420,9 @@ export function App(): React.JSX.Element {
               elapsedSeconds={elapsedSeconds}
               isManualSort={isManualSort}
               searchQuery={q}
-              hasOtherFilters={selectedAssigneeId !== null || selectedCategoryId !== null}
-              hasAnyTodos={lensTodos.length > 0}
+              hasOtherFilters={selectedAssigneeId !== null || selectedCategoryId !== null || hiddenPrivateTodoIds.size > 0}
+              // 「まだタスクがありません」は、集計外を隠しているだけのときには出さない（隠す前のタスクで判定する）
+              hasAnyTodos={todos.length > 0}
               onClearSearch={() => setSearchQuery('')}
               onClearFilters={clearListFilters}
               onAddTodo={() => openQuickAdd()}
@@ -1474,7 +1477,7 @@ export function App(): React.JSX.Element {
               onOpenSeparateWindow={handleOpenGanttWindow}
               onAddTodo={(defaults) => openQuickAdd(defaults)}
               listFilters={listFilters}
-              hasAnyTodos={lensTodos.length > 0}
+              hasAnyTodos={todos.length > 0}
               groupByCategory={selectedCategoryId === null}
             />
           ) : activeView === 'kanban' ? (
