@@ -32,6 +32,8 @@ try {
     TODO_DATA_DIR: path.join(tempDir, 'group-b-data'),
     TODO_WEB_DIST: path.join(tempDir, 'dist-web'),
     TODO_DESKTOP_DIST: path.join(tempDir, 'dist-desktop'),
+    TODO_BACKUP_DIR: path.join(tempDir, 'group-b-backups'),
+    TODO_BACKUP_KEEP: '0',
     SESSION_COOKIE: 'hakobi_group_b'
   })
   assert.equal(groupA.description, 'HAKOBI Aグループ')
@@ -45,6 +47,9 @@ try {
   assert.equal(groupB.env.find((entry) => entry.name === 'TODO_WEB_DIST').value, path.join(tempDir, 'dist-web'))
   assert.equal(groupB.env.find((entry) => entry.name === 'TODO_DESKTOP_DIST').value, path.join(tempDir, 'dist-desktop'))
   assert.equal(groupA.env.some((entry) => entry.name === 'TODO_DESKTOP_DIST'), false)
+  // 自動バックアップの置き場所と残す数（0 = 止める）も、シェルで決めた値をサービスに渡す
+  assert.equal(groupB.env.find((entry) => entry.name === 'TODO_BACKUP_DIR').value, path.join(tempDir, 'group-b-backups'))
+  assert.equal(groupB.env.find((entry) => entry.name === 'TODO_BACKUP_KEEP').value, '0')
   for (const config of [groupA, groupB]) {
     const service = new Service(config)
     service.directory(config.directory)
