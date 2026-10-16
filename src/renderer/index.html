@@ -30,9 +30,13 @@
       body.theme-light #root {
         filter: invert(1) hue-rotate(180deg);
       }
+      /* 画面全体を色反転してライトにしているので、反転させたくないものは2回反転して元の見た目に戻す。
+         チェックボックス・ラジオボタンは反転すると、チェックしていないのに黒く塗りつぶして見える */
       body.theme-light #root img,
       body.theme-light #root video,
-      body.theme-light #root canvas {
+      body.theme-light #root canvas,
+      body.theme-light #root input[type="checkbox"],
+      body.theme-light #root input[type="radio"] {
         filter: invert(1) hue-rotate(180deg);
       }
     </style>

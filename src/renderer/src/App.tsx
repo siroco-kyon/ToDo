@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { AddDailyPlanItemOptions, Category, CreateSubTaskInput, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateSubTaskInput, UpdateTodoInput, UserNotification } from './types'
 import { useTimer } from './hooks/useTimer'
 import { useProgressUnseenCount } from './hooks/useProgressUnseenCount'
@@ -551,7 +551,9 @@ export function App(): React.JSX.Element {
     }
   }, [handleExportClipboard])
 
-  const q = searchQuery.trim().toLowerCase()
+  // 検索の絞り込みは入力より少し遅れて反映してよい。1文字ごとに全画面を描き直すと入力が重くなるため
+  const deferredSearchQuery = useDeferredValue(searchQuery)
+  const q = deferredSearchQuery.trim().toLowerCase()
   const multiUser = users.length > 0
   const isAdmin = currentUser?.role === 'admin'
   const privateCategoryIds = useMemo(
@@ -584,9 +586,19 @@ export function App(): React.JSX.Element {
     [privateCategoryIds, scopeLens, selectedPlanItems]
   )
 
+  // サブタスクの検索用の文字列（タスクごと）。検索のたびに全サブタスクを見直さないよう、先にまとめておく
+  const subTaskSearchTextByTodo = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const subTask of allSubTasks) {
+      const text = `${subTask.title}\n${subTask.description}\n${subTask.assignee_name ?? ''}`.toLowerCase()
+      map.set(subTask.todo_id, `${map.get(subTask.todo_id) ?? ''}\n${text}`)
+    }
+    return map
+  }, [allSubTasks])
+
   // タスク一覧の絞り込み（アーカイブ・カテゴリ・担当・検索）。
   // 報告タブは独自の担当絞り込みを持つので、ignoreAssignee で一覧の担当絞り込みを外して使う。
-  const matchesListFilters = (todo: Todo, ignoreAssignee = false): boolean => {
+  const matchesListFilters = useCallback((todo: Todo, ignoreAssignee = false): boolean => {
     if (!showArchived && todo.status === 'archived') return false
     if (selectedCategoryId && todo.category_id !== selectedCategoryId) return false
     if (!ignoreAssignee && selectedAssigneeId !== null) {
@@ -606,19 +618,15 @@ export function App(): React.JSX.Element {
         || (todo.category_name?.toLowerCase().includes(q) ?? false)
         || (todo.assignee_name?.toLowerCase().includes(q) ?? false)
         || (todo.co_assignees ?? []).some((assignee) => assignee.display_name.toLowerCase().includes(q))
-        || allSubTasks.some((subTask) => subTask.todo_id === todo.id && (
-          subTask.title.toLowerCase().includes(q)
-          || subTask.description.toLowerCase().includes(q)
-          || (subTask.assignee_name?.toLowerCase().includes(q) ?? false)
-        ))
+        || (subTaskSearchTextByTodo.get(todo.id)?.includes(q) ?? false)
 
       if (!hit) return false
     }
 
     return true
-  }
+  }, [q, selectedAssigneeId, selectedCategoryId, showArchived, subTaskSearchTextByTodo])
 
-  const compareTodos = (a: Todo, b: Todo): number => {
+  const compareTodos = useCallback((a: Todo, b: Todo): number => {
     if (a.status === 'archived' && b.status !== 'archived') return 1
     if (a.status !== 'archived' && b.status === 'archived') return -1
 
@@ -643,9 +651,14 @@ export function App(): React.JSX.Element {
     if (aVal < bVal) return sortDir === 'asc' ? -1 : 1
     if (aVal > bVal) return sortDir === 'asc' ? 1 : -1
     return 0
-  }
+  }, [sortDir, sortField])
 
-  const filteredTodos = lensTodos.filter((todo) => matchesListFilters(todo)).sort(compareTodos)
+  // 計測中は App が毎秒描き直されるので、絞り込みと並べ替えは元のデータが変わったときだけ計算し直す
+  const filteredTodos = useMemo(
+    () => lensTodos.filter((todo) => matchesListFilters(todo)).sort(compareTodos),
+    [compareTodos, lensTodos, matchesListFilters]
+  )
+  const sortedLensTodos = useMemo(() => lensTodos.slice().sort(compareTodos), [compareTodos, lensTodos])
   // ToDoリスト（中の項目をチェックして使うタスク）の項目の進み具合。一覧・カンバンのバッジに使う
   const checklistSummaries = useMemo(() => buildChecklistSummaries(todos, allSubTasks), [allSubTasks, todos])
   // ToDoリストの項目（リストごと・並び順どおり）と、自分の「今日やること」。ToDoリストを使う人だけに ToDo タブ・右の「今日のToDo」を出す
@@ -665,7 +678,10 @@ export function App(): React.JSX.Element {
   )
   const todoRemainingCount = countRemaining(myTodayGroups)
   const usesTodoLists = myListTodos.length > 0
-  const reportTodos = lensTodos.filter((todo) => matchesListFilters(todo, true)).sort(compareTodos)
+  const reportTodos = useMemo(
+    () => lensTodos.filter((todo) => matchesListFilters(todo, true)).sort(compareTodos),
+    [compareTodos, lensTodos, matchesListFilters]
+  )
 
   // タイマーの秒更新では変化せず、概要の集計元が実際に変わったときだけ更新されるキー。
   const overviewDataRevision = useMemo(() => JSON.stringify({
@@ -814,10 +830,12 @@ export function App(): React.JSX.Element {
     setShowQuickAdd(true)
   }
 
+  // 一覧が空のときの「絞り込みを解除」。集計外を隠していてタスクが見えないこともあるので、それも戻す
   const clearListFilters = useCallback((): void => {
     setSearchQuery('')
     setSelectedCategoryId(null)
     setSelectedAssigneeId(null)
+    setScopeLens('personal')
   }, [])
 
   const handleUpdate = useCallback(async (id: string, data: UpdateTodoInput) => {
@@ -1377,12 +1395,12 @@ export function App(): React.JSX.Element {
                     }
                   }}
                   style={{
-                    fontSize: '0.68rem',
-                    padding: '2px 6px',
+                    fontSize: '0.75rem',
+                    padding: '2px 7px',
                     borderRadius: 99,
                     background: active ? '#6366f120' : 'transparent',
-                    border: `1px solid ${active ? '#6366f1' : '#1e293b'}`,
-                    color: active ? '#818cf8' : '#475569',
+                    border: `1px solid ${active ? '#6366f1' : '#334155'}`,
+                    color: active ? '#a5b4fc' : '#94a3b8',
                     cursor: 'pointer',
                     whiteSpace: 'nowrap'
                   }}
@@ -1402,7 +1420,9 @@ export function App(): React.JSX.Element {
               elapsedSeconds={elapsedSeconds}
               isManualSort={isManualSort}
               searchQuery={q}
-              hasOtherFilters={selectedAssigneeId !== null || selectedCategoryId !== null}
+              hasOtherFilters={selectedAssigneeId !== null || selectedCategoryId !== null || hiddenPrivateTodoIds.size > 0}
+              // 「まだタスクがありません」は、集計外を隠しているだけのときには出さない（隠す前のタスクで判定する）
+              hasAnyTodos={todos.length > 0}
               onClearSearch={() => setSearchQuery('')}
               onClearFilters={clearListFilters}
               onAddTodo={() => openQuickAdd()}
@@ -1457,6 +1477,7 @@ export function App(): React.JSX.Element {
               onOpenSeparateWindow={handleOpenGanttWindow}
               onAddTodo={(defaults) => openQuickAdd(defaults)}
               listFilters={listFilters}
+              hasAnyTodos={todos.length > 0}
               groupByCategory={selectedCategoryId === null}
             />
           ) : activeView === 'kanban' ? (
@@ -1501,7 +1522,7 @@ export function App(): React.JSX.Element {
           ) : activeView === 'progress' ? (
             <ProgressTimeline
               // 投稿先の選択肢。タイムライン自体はタスク一覧の絞り込みと関係ないので、絞り込み前のタスクから選べるようにする
-              todos={lensTodos.slice().sort(compareTodos)}
+              todos={sortedLensTodos}
               users={users}
               currentUser={currentUser}
               focusTarget={progressTimelineFocus}
@@ -1525,7 +1546,7 @@ export function App(): React.JSX.Element {
             />
           ) : activeView === 'todo' ? (
             <TodoListsView
-              todos={lensTodos.slice().sort(compareTodos)}
+              todos={sortedLensTodos}
               itemsByTodo={listItemsByTodo}
               users={users}
               currentUser={currentUser}
@@ -1741,7 +1762,7 @@ const resizeHandleStyle: React.CSSProperties = {
 
 const filterChipStyle: React.CSSProperties = {
   maxWidth: '100%', padding: '2px 6px', borderRadius: 999, border: '1px solid #4f46e5',
-  background: '#1e1b4b', color: '#c7d2fe', cursor: 'pointer', fontSize: '0.68rem',
+  background: '#1e1b4b', color: '#c7d2fe', cursor: 'pointer', fontSize: '0.75rem',
   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
 }
 

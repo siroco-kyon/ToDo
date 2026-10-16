@@ -1,5 +1,5 @@
 import { LinkedText, TextLinks } from './LinkedText'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { Category, CreateSubTaskInput, DailyPlanItem, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, UpdateSubTaskInput, UpdateTodoInput, WorkLog } from '../types'
 import { TimerDisplay } from './TimerDisplay'
 import { AssigneeChip, AssigneePicker } from './AssigneePicker'
@@ -55,10 +55,53 @@ const inputStyle: React.CSSProperties = {
 
 const sectionTitleStyle: React.CSSProperties = {
   fontSize: '0.75rem',
-  color: '#64748b',
+  color: '#94a3b8',
   marginBottom: 8,
   textTransform: 'uppercase',
   letterSpacing: '0.05em'
+}
+
+// 欄の見出し。何を書く欄かを短く添え、詳しい説明は ⓘ（マウスを乗せる・キーボードで選ぶ）で出す。
+// 以前は欄の上に毎回長い説明文を出していたが、慣れた人には縦の場所を取るだけだった
+function SectionHeading({ title, summary, detail }: { title: React.ReactNode; summary?: string; detail?: string }): React.JSX.Element {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+      <span style={{ ...sectionTitleStyle, marginBottom: 0 }}>{title}</span>
+      {summary && <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{summary}</span>}
+      {detail && <InfoTip text={detail} />}
+    </div>
+  )
+}
+
+// ⓘ にマウスを乗せたとき・キーボードで選んだときに出す吹き出し（title のヒントはマウスでしか出ないため）
+function InfoTip({ text }: { text: string }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const tipId = useId()
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <span
+        tabIndex={0}
+        aria-label="説明"
+        aria-describedby={tipId}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onKeyDown={(event) => { if (event.key === 'Escape') setOpen(false) }}
+        style={{ fontSize: '0.8rem', color: open ? '#e2e8f0' : '#94a3b8', cursor: 'help', lineHeight: 1 }}
+      >
+        ⓘ
+      </span>
+      <span
+        id={tipId}
+        role="tooltip"
+        hidden={!open}
+        style={{ position: 'absolute', top: 'calc(100% + 6px)', left: -8, zIndex: 20, width: 280, padding: '8px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', fontSize: '0.78rem', lineHeight: 1.6, boxShadow: '0 10px 24px rgba(2, 6, 23, 0.5)', textTransform: 'none', letterSpacing: 0 }}
+      >
+        {text}
+      </span>
+    </span>
+  )
 }
 
 const labelStyle: React.CSSProperties = {
@@ -1081,11 +1124,8 @@ export function TodoDetail({
 
       {!editing && (
         <section>
-          <div style={sectionTitleStyle}>説明</div>
+          <SectionHeading title="説明" summary="目的・やること（あまり変わらない内容）" />
           <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.5 }}>
-              このタスクの目的・やること（あまり変わらない内容）。Ctrl+Enter でも保存できます。
-            </div>
             <textarea
               value={descriptionDraft}
               disabled={descriptionSaving}
@@ -1111,6 +1151,7 @@ export function TodoDetail({
                 <button
                   onClick={() => void handleDescriptionSave()}
                   disabled={descriptionDraft === descriptionBase || descriptionSaving}
+                  title="Ctrl+Enter でも保存できます"
                   style={buttonStyle(descriptionDraft === descriptionBase || descriptionSaving ? '#1e293b' : '#2563eb', descriptionDraft === descriptionBase || descriptionSaving ? '#64748b' : '#dbeafe')}
                 >
                   {descriptionSaving ? '保存中...' : '説明を保存'}
@@ -1123,18 +1164,15 @@ export function TodoDetail({
 
       {!editing && (
         <section>
-          <div style={sectionTitleStyle}>メモ</div>
+          <SectionHeading title="メモ" summary="今の状況・次にやること（上書き。履歴は残りません）" detail="引き継ぎにも使えます。日付つきで残したい報告は、下の進捗ログに書きます。" />
           <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.5 }}>
-              今の状況・次にやること・引き継ぎ。上書きして最新に保つ欄です（履歴は残りません）。Ctrl+Enter でも保存できます。
-            </div>
             <textarea disabled={memoSaving} value={memoDraft} onChange={(event) => setMemoDraft(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void handleMemoSave() } }} aria-label="メモ" placeholder="例: 〇〇待ち。返事が来たら△△に進む" rows={memoDraft ? 5 : 2} style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: memoDraft ? 120 : 56 }} />
             <TextLinks text={memoDraft} />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
               <div style={{ fontSize: '0.72rem', color: memoDraft !== memoBase ? '#93c5fd' : '#64748b' }}>{memoDraft !== memoBase ? '未保存の変更があります' : '保存済み'}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{memoDraft.length}文字</div>
-                <button onClick={() => void handleMemoSave()} disabled={memoDraft === memoBase || memoSaving} style={buttonStyle(memoDraft === memoBase || memoSaving ? '#1e293b' : '#2563eb', memoDraft === memoBase || memoSaving ? '#64748b' : '#dbeafe')}>
+                <button onClick={() => void handleMemoSave()} disabled={memoDraft === memoBase || memoSaving} title="Ctrl+Enter でも保存できます" style={buttonStyle(memoDraft === memoBase || memoSaving ? '#1e293b' : '#2563eb', memoDraft === memoBase || memoSaving ? '#64748b' : '#dbeafe')}>
                   {memoSaving ? '保存中...' : 'メモを保存'}
                 </button>
               </div>
@@ -1145,11 +1183,12 @@ export function TodoDetail({
 
       {!editing && (
         <section>
-          <div style={sectionTitleStyle}>進捗ログ {progressNotes.length > 0 && `(${progressNotes.length})`}</div>
+          <SectionHeading
+            title={<>進捗ログ {progressNotes.length > 0 && `(${progressNotes.length})`}</>}
+            summary="日付つきで積み上がる報告"
+            detail={`報告タブ・進捗タブに表示され、返信やリアクションが付きます。${users.length > 0 ? '「@名前」で呼ぶと相手に通知が届きます。' : ''}Ctrl+Enter でも投稿できます。`}
+          />
           <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.5 }}>
-              日時・名前つきで積み上がる報告です。報告タブ・進捗タブに表示され、返信やリアクションが付きます。{users.length > 0 ? '「@名前」で呼ぶと相手に通知が届きます。' : ''}Ctrl+Enter でも投稿できます。
-            </div>
             <MentionTextarea
               value={noteDraft}
               users={mentionUsers}
@@ -1309,11 +1348,8 @@ export function TodoDetail({
       {/* ToDoリストは日程を持たないので、依存関係はすでにあるときだけ出す */}
       {(!listMode || dependencies.length > 0) && (
       <section>
-        <div style={sectionTitleStyle}>依存関係</div>
+        <SectionHeading title="依存関係" summary="前後のタスク" detail="先行タスクが終わってから、このタスクを始めます。待機日数を増やすと、先行タスクの完了後に間を空けられます。" />
         <div style={{ background: '#1e293b', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.5 }}>
-            このタスクの前後関係を設定できます。待機日数を増やすと、先行タスク完了後に間を空けられます。
-          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 0.9fr) minmax(0, 1.4fr) 88px auto', gap: 6 }}>
             <select value={dependencyDraft.mode} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, mode: event.target.value as 'predecessor' | 'successor', relatedTodoId: '' }))} style={inputStyle}>
               <option value="predecessor">先行タスクを追加</option>

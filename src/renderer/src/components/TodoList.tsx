@@ -33,6 +33,8 @@ interface Props {
   searchQuery: string
   /** 検索以外（担当・カテゴリ）の絞り込みがかかっている */
   hasOtherFilters?: boolean
+  /** 絞り込む前にタスクが1件でもあるか。1件もないときは、絞り込みの案内ではなく最初のタスクを作る案内を出す */
+  hasAnyTodos?: boolean
   onClearSearch?: () => void
   onClearFilters?: () => void
   onAddTodo?: () => void
@@ -67,9 +69,9 @@ function formatDueLabel(dueDate: string, done: boolean): string {
 
 function progressColor(p: number): string {
   if (p >= 100) return '#4ade80'
-  if (p >= 70) return '#6366f1'
+  if (p >= 70) return '#a5b4fc'
   if (p >= 30) return '#818cf8'
-  return '#475569'
+  return '#94a3b8'
 }
 
 function Highlight({ text, query }: { text: string; query: string }): React.JSX.Element {
@@ -110,6 +112,9 @@ function TodoItem({
   isDragOver: boolean
 }): React.JSX.Element {
   const [hovered, setHovered] = useState(false)
+  // 行の中（行そのものやボタン）にフォーカスがあるとき。マウスを使わない人にも操作ボタンを出す
+  const [focusWithin, setFocusWithin] = useState(false)
+  const showActions = hovered || focusWithin || isSelected
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
   const isArchived = todo.status === 'archived'
   const listMode = Boolean(todo.list_mode)
@@ -127,8 +132,29 @@ function TodoItem({
       onClick={onSelect}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      // Tab で行に入り、Enter（Space）で開く、↑↓で前後の行へ移る。中のボタンのキー操作はそのまま
+      data-todo-row=""
+      role="listitem"
+      tabIndex={0}
+      aria-current={isSelected ? 'true' : undefined}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect()
+          return
+        }
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+        event.preventDefault()
+        const rows = Array.from(event.currentTarget.parentElement?.querySelectorAll<HTMLElement>(':scope > [data-todo-row]') ?? [])
+        rows[rows.indexOf(event.currentTarget) + (event.key === 'ArrowDown' ? 1 : -1)]?.focus()
+      }}
+      onFocus={() => setFocusWithin(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false)
+      }}
       style={{
-        cursor: 'pointer', position: 'relative',
+        cursor: 'pointer', position: 'relative', outlineOffset: -3,
         background: isDragOver ? '#6366f115' : isSelected ? '#1e293b' : hovered ? '#111827' : 'transparent',
         borderLeft: `3px solid ${isRunning ? '#4ade80' : isSelected ? '#6366f1' : 'transparent'}`,
         borderBottom: `1px solid ${isDragOver ? '#6366f140' : '#0f172a'}`,
@@ -140,7 +166,7 @@ function TodoItem({
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
           {/* ドラッグハンドル */}
           {isManualSort && !isArchived && (
-            <span style={{ color: '#334155', fontSize: '0.8rem', cursor: 'grab', flexShrink: 0, marginTop: 2, userSelect: 'none' }}>⠿</span>
+            <span style={{ color: '#64748b', fontSize: '0.8rem', cursor: 'grab', flexShrink: 0, marginTop: 2, userSelect: 'none' }}>⠿</span>
           )}
 
           {/* 完了チェック。ToDoリストは中の項目をチェックして使うので、一覧からは終えられないようにする */}
@@ -175,23 +201,23 @@ function TodoItem({
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <span style={{
                 fontSize: '0.88rem',
-                color: isArchived || todo.status === 'done' ? '#64748b' : '#e2e8f0',
+                color: isArchived || todo.status === 'done' ? '#94a3b8' : '#e2e8f0',
                 textDecoration: todo.status === 'done' || isArchived ? 'line-through' : 'none',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0
               }}>
                 <Highlight text={todo.title} query={searchQuery} />
               </span>
               {isRunning && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.65rem', background: '#4ade8020', color: '#4ade80', padding: '1px 5px', borderRadius: 99, flexShrink: 0 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', background: '#4ade8020', color: '#4ade80', padding: '1px 5px', borderRadius: 99, flexShrink: 0 }}>
                   ●<TimerDisplay elapsedSeconds={elapsedSeconds} isRunning />
                 </span>
               )}
               {todo.recurrence && !isArchived && (
                 <span title={`繰り返し: ${todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : '毎月'}`}
-                  style={{ fontSize: '0.65rem', color: '#818cf8', flexShrink: 0 }}>🔁</span>
+                  style={{ fontSize: '0.75rem', color: '#818cf8', flexShrink: 0 }}>🔁</span>
               )}
               {listMode && checklist && !isArchived && (
-                <span title={checklistBadgeTitle(checklist)} style={{ fontSize: '0.65rem', color: '#a5b4fc', border: '1px solid #4338ca', borderRadius: 99, padding: '0 6px', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                <span title={checklistBadgeTitle(checklist)} style={{ fontSize: '0.75rem', color: '#a5b4fc', border: '1px solid #4338ca', borderRadius: 99, padding: '0 6px', flexShrink: 0, whiteSpace: 'nowrap' }}>
                   {checklistBadgeText(checklist)}
                 </span>
               )}
@@ -206,26 +232,52 @@ function TodoItem({
                   ▸
                 </button>
               )}
+              {/* 操作ボタン（マウスを乗せたとき・キーボードで選んだとき・選択中）。タイトルの行の右端に置き、2行目（カテゴリ・期限など）の幅は減らさない */}
+              {showActions && (
+                <div style={{ display: 'flex', gap: 2, flexShrink: 0, marginLeft: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                  {isArchived ? (
+                    <>
+                      <button onClick={onUnarchive} title="アーカイブから戻す" aria-label="アーカイブから戻す" style={actionBtn('#10b981')}>↩</button>
+                      <button
+                        onClick={() => { if (window.confirm(`「${todo.title}」を完全に削除しますか？`)) onDelete() }}
+                        title="完全に削除（元に戻せません）" aria-label="完全に削除" style={actionBtn('#ef4444')}
+                      >🗑</button>
+                    </>
+                  ) : (
+                    <>
+                      {todo.status !== 'done' && (
+                        isRunning
+                          ? <button onClick={onStopTimer} title="計測を停止" aria-label="計測を停止" style={actionBtn('#ef4444')}>■</button>
+                          : <button onClick={onStartTimer} title="作業時間の計測を開始" aria-label="計測を開始" style={actionBtn('#4ade80')}>▶</button>
+                      )}
+                      <button onClick={onArchive} title="アーカイブ（一覧から片付ける。あとで戻せます）" aria-label="アーカイブ" style={actionBtn('#64748b')}>📦</button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
-              {todo.status === 'on_hold' && <span style={{ fontSize: '0.68rem', color: '#d8b4fe' }}>保留中</span>}
+            {/* 幅が足りないときは詰めずに折り返す（カテゴリ名や期限を読めることを優先する） */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, rowGap: 2, marginTop: 3, minWidth: 0, flexWrap: 'wrap' }}>
+              {todo.status === 'on_hold' && <span style={{ fontSize: '0.75rem', color: '#d8b4fe', flexShrink: 0, whiteSpace: 'nowrap' }}>保留中</span>}
               {todo.category_name && (
-                <span style={{
-                  fontSize: '0.68rem', padding: '1px 5px', borderRadius: 99,
+                <span title={todo.category_name} style={{
+                  fontSize: '0.75rem', padding: '1px 5px', borderRadius: 99,
                   background: `${todo.category_color ?? '#6366f1'}30`,
-                  color: todo.category_color ?? '#6366f1'
+                  color: todo.category_color ?? '#6366f1',
+                  // 1文字ずつ縦に折れないようにする。とても長い名前だけ「…」で切る
+                  maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
                 }}>
                   {todo.category_name}
                 </span>
               )}
               {todo.priority >= 4 && !isArchived && (
-                <span style={{ fontSize: '0.68rem', color: todo.priority === 5 ? '#ef4444' : '#f59e0b' }}>
+                <span style={{ fontSize: '0.75rem', color: todo.priority === 5 ? '#ef4444' : '#f59e0b', flexShrink: 0 }}>
                   {'!'.repeat(todo.priority - 3)}
                 </span>
               )}
               {todo.due_date && !isArchived && (
-                <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: '0.68rem', color: dueColor || '#64748b', fontWeight: dueColor ? 700 : 400, whiteSpace: 'nowrap' }}>
+                <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: '0.75rem', color: dueColor || '#94a3b8', fontWeight: dueColor ? 700 : 400, whiteSpace: 'nowrap', flexShrink: 0 }}>
                   {formatDueLabel(todo.due_date, todo.status === 'done')}
                 </span>
               )}
@@ -253,36 +305,13 @@ function TodoItem({
                 </span>
               )}
               {!isArchived && prog > 0 && (
-                <span style={{ fontSize: '0.68rem', color: progressColor(prog), marginLeft: 'auto' }}>
+                <span style={{ fontSize: '0.75rem', color: progressColor(prog), marginLeft: 'auto', flexShrink: 0 }}>
                   {prog}%
                 </span>
               )}
             </div>
           </div>
 
-          {/* ホバー時アクション */}
-          {hovered && (
-            <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-              {isArchived ? (
-                <>
-                  <button onClick={onUnarchive} title="アーカイブから戻す" aria-label="アーカイブから戻す" style={actionBtn('#10b981')}>↩</button>
-                  <button
-                    onClick={() => { if (window.confirm(`「${todo.title}」を完全に削除しますか？`)) onDelete() }}
-                    title="完全に削除（元に戻せません）" aria-label="完全に削除" style={actionBtn('#ef4444')}
-                  >🗑</button>
-                </>
-              ) : (
-                <>
-                  {todo.status !== 'done' && (
-                    isRunning
-                      ? <button onClick={onStopTimer} title="計測を停止" aria-label="計測を停止" style={actionBtn('#ef4444')}>■</button>
-                      : <button onClick={onStartTimer} title="作業時間の計測を開始" aria-label="計測を開始" style={actionBtn('#4ade80')}>▶</button>
-                  )}
-                  <button onClick={onArchive} title="アーカイブ（一覧から片付ける。あとで戻せます）" aria-label="アーカイブ" style={actionBtn('#64748b')}>📦</button>
-                </>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
@@ -303,7 +332,7 @@ function TodoItem({
         </div>
       )}
       {canExpand && expanded && shownItems.length === 0 && (
-        <div style={{ padding: '0 12px 8px 37px', fontSize: '0.72rem', color: '#64748b' }}>まだのやることはありません</div>
+        <div style={{ padding: '0 12px 8px 37px', fontSize: '0.75rem', color: '#94a3b8' }}>まだのやることはありません</div>
       )}
 
       {/* プログレスバー（ToDoリストは進捗率を使わない） */}
@@ -318,7 +347,7 @@ function TodoItem({
 
 export function TodoList({
   todos, selectedId, runningTodoId, elapsedSeconds, isManualSort, searchQuery,
-  hasOtherFilters = false, onClearSearch, onClearFilters, onAddTodo,
+  hasOtherFilters = false, hasAnyTodos = true, onClearSearch, onClearFilters, onAddTodo,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete, onReorder,
   onStartTimer, onStopTimer, checklistSummaries, listItemsByTodo, pendingItemIds, onToggleListItem
 }: Props): React.JSX.Element {
@@ -355,12 +384,28 @@ export function TodoList({
     await onReorder(newIds)
   }
 
+  if (todos.length === 0 && !hasAnyTodos) {
+    return (
+      <div style={{ padding: '28px 18px', color: '#cbd5e1', textAlign: 'center' }}>
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#e2e8f0' }}>まだタスクがありません</div>
+        <div style={{ marginTop: 8, fontSize: '0.8rem', lineHeight: 1.6, color: '#94a3b8' }}>
+          追加したタスクはここに並び、ガントでは開始日から期限までの横棒で表示されます。
+        </div>
+        {onAddTodo && (
+          <button onClick={onAddTodo} style={{ marginTop: 14, padding: '8px 14px', borderRadius: 8, border: '1px solid #2563eb', background: '#1d4ed8', color: '#eff6ff', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700 }}>
+            ＋ 最初のタスクを追加
+          </button>
+        )}
+      </div>
+    )
+  }
+
   if (todos.length === 0) {
     // 絞り込みで隠れているだけなのに「タスクがありません」と出すと、消えたと思われる
     const filtered = Boolean(searchQuery) || hasOtherFilters
     const emptyButtonStyle: React.CSSProperties = { padding: '6px 10px', borderRadius: 7, border: '1px solid #334155', background: '#172554', color: '#dbeafe', cursor: 'pointer', fontSize: '0.8rem' }
     return (
-      <div style={{ padding: 24, color: '#64748b', textAlign: 'center', fontSize: '0.9rem' }}>
+      <div style={{ padding: 24, color: '#94a3b8', textAlign: 'center', fontSize: '0.9rem' }}>
         <div>{searchQuery ? '検索に合うタスクはありません' : filtered ? '絞り込み条件に合うタスクはありません' : 'タスクがありません'}</div>
         <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', marginTop: 10 }}>
           {searchQuery && <button onClick={onClearSearch} style={emptyButtonStyle}>検索をクリア</button>}
@@ -373,6 +418,8 @@ export function TodoList({
 
   return (
     <div
+      role="list"
+      aria-label="タスク一覧"
       style={{ overflowY: 'auto', height: '100%' }}
       onDragEnd={() => { setDraggedId(null); setDragOverId(null); dragging.current = false }}
     >
