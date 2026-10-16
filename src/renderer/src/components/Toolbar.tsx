@@ -9,6 +9,8 @@ interface Props {
   showArchived: boolean
   onToggleArchived: () => void
   onOpenSettings: () => void
+  /** Ctrl+K の移動・操作のパレットを開く */
+  onOpenCommandPalette?: () => void
   activeView: 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban' | 'todo'
   scopeLens: 'personal' | 'team'
   onSetScopeLens: (lens: 'personal' | 'team') => void
@@ -74,6 +76,7 @@ export function Toolbar({
   showArchived,
   onToggleArchived,
   onOpenSettings,
+  onOpenCommandPalette,
   activeView,
   scopeLens,
   onSetScopeLens,
@@ -204,6 +207,13 @@ export function Toolbar({
         )}
         {showArchived && (
           <button onClick={onToggleArchived} title="押すとアーカイブしたタスクを一覧から外します" style={stateChipStyle}>アーカイブを表示中 ×</button>
+        )}
+
+        {onOpenCommandPalette && (
+          <button onClick={onOpenCommandPalette} title="タスクや画面へすぐ移動します（Ctrl+K）" aria-keyshortcuts="Control+K" style={menuButtonStyle(false)}>
+            🔍 移動
+            <span aria-hidden="true" style={{ fontSize: '0.66rem', color: '#94a3b8', border: '1px solid #334155', borderRadius: 4, padding: '0 4px' }}>Ctrl+K</span>
+          </button>
         )}
 
         <ToolbarMenu
