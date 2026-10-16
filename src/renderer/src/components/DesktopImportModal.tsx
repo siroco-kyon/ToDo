@@ -100,7 +100,7 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
           <button onClick={() => void runImport(true)} disabled={busy} style={btn('var(--slate-700)', 'var(--slate-300)')}>
             {busy ? '処理中...' : 'ドライラン（確認のみ）'}
           </button>
-          <button onClick={() => void runImport(false)} disabled={busy} style={btn('var(--indigo-500)', 'var(--white)')}>
+          <button onClick={() => void runImport(false)} disabled={busy} style={btn('var(--indigo-500)', 'var(--on-fill-white)')}>
             {busy ? '処理中...' : '取り込みを実行'}
           </button>
         </div>
@@ -118,7 +118,7 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
                 <ResultRow label="依存関係" value={result.dependencies} />
                 <ResultRow label="作業ログ" value={result.workLogs} />
                 <ResultRow label="予定（レール）" value={result.planItems} />
-                <ResultRow label="進捗メモ" value={result.progressNotes ?? 0} />
+                <ResultRow label="進捗ログ" value={result.progressNotes ?? 0} />
                 <ResultRow label="コメント・返信" value={result.progressComments ?? 0} />
                 <ResultRow label="リアクション" value={result.progressReactions ?? 0} />
                 <ResultRow label="タスクの変更履歴" value={result.todoChanges ?? 0} />

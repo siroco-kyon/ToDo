@@ -16,7 +16,7 @@ import { isListTodo } from '../lib/todoList'
 import { autoScrollNearEdge, dropTargetAt, moveIdBy, moveIdTo, scrollParentOf, type DropPosition } from '../lib/reorder'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { taskLinkFor } from '../lib/urlState'
-import { dataInk } from '../lib/theme'
+import { dataInk, textOnFill } from '../lib/theme'
 
 interface Props {
   todo: Todo | null
@@ -1469,7 +1469,7 @@ export function TodoDetail({
             <button
               onClick={() => void toggleDone()}
               title={isDone ? '完了を取り消して、未完了に戻します' : listMode ? 'このToDoリストを使い終えたときに押します（中の項目のチェックとは別です）' : 'このタスクを完了にします'}
-              style={isDone ? buttonStyle('var(--slate-700)', 'var(--slate-300)') : listMode ? buttonStyle('var(--slate-700)', 'var(--slate-300)') : buttonStyle('var(--green-700)', 'var(--green-50)')}
+              style={isDone ? buttonStyle('var(--slate-700)', 'var(--slate-300)') : listMode ? buttonStyle('var(--slate-700)', 'var(--slate-300)') : buttonStyle('var(--green-700)', 'var(--on-fill-green-50)')}
             >
               {isDone ? '完了を取り消す' : listMode ? 'リストを終える' : '✓ 完了にする'}
             </button>
@@ -2203,7 +2203,7 @@ function Badge({ children, color }: { children: React.ReactNode; color: string }
   return <div style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 999, background: 'var(--slate-900)', color, fontSize: '0.74rem', fontWeight: 600 }}>{children}</div>
 }
 
-function buttonStyle(background: string, color = 'var(--white)'): React.CSSProperties {
+function buttonStyle(background: string, color = textOnFill(background)): React.CSSProperties {
   return { padding: '6px 12px', background, border: 'none', borderRadius: 6, color, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap' }
 }
 

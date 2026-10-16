@@ -50,6 +50,10 @@
         } catch (error) {
           // matchMedia を使えないときは、開いたときのテーマのまま
         }
+        // ほかの窓（メイン画面など）でテーマを変えたら、開いている窓も合わせる
+        window.addEventListener('storage', function (event) {
+          if (event.key === 'app-theme-mode') applyTheme()
+        })
       })()
     </script>
   </head>

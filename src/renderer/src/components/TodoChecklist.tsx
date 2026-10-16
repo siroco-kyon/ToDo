@@ -18,7 +18,7 @@ import {
   summarizeChecklist,
   type ItemRepeatChoice
 } from '../lib/todoList'
-import { dataInk } from '../lib/theme'
+import { dataInk, textOnFill } from '../lib/theme'
 
 // ToDoリスト（中の項目をチェックして使うタスク。期限はなしでもよい）の中身。項目＝サブタスク。
 // 繰り返しの項目は周期が変わると未チェックに戻り、繰り返さない項目はチェックすると「済み」に移る。
@@ -788,6 +788,6 @@ function presetStyle(active: boolean): React.CSSProperties {
   }
 }
 
-function buttonStyle(background: string, color = 'var(--white)'): React.CSSProperties {
+function buttonStyle(background: string, color = textOnFill(background)): React.CSSProperties {
   return { padding: '5px 11px', background, border: 'none', borderRadius: 6, color, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap' }
 }

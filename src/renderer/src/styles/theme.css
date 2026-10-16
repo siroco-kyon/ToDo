@@ -177,6 +177,8 @@
   --gantt-track-mix: 40%;
   --gantt-sub-fill-from: #22c55e;
   --gantt-sub-fill-to: #10b981;
+  --on-fill-green-50: #f0fdf4;
+  --on-fill-slate-200: #e2e8f0;
 }
 
 :root[data-theme="light"] {
@@ -342,4 +344,6 @@
   --gantt-track-mix: 18%;
   --gantt-sub-fill-from: #86efac;
   --gantt-sub-fill-to: #6ee7b7;
+  --on-fill-green-50: #f0fdf4;
+  --on-fill-slate-200: #e2e8f0;
 }

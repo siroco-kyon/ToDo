@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react'
 import type { Category } from '../types'
+import { textOnFill } from '../lib/theme'
 
 interface Props {
   categories: Category[]
@@ -277,7 +278,7 @@ const inputStyle: React.CSSProperties = {
 function btnStyle(bg: string): React.CSSProperties {
   return {
     flex: 1, padding: '4px 8px', background: bg, border: 'none',
-    borderRadius: 6, color: 'var(--white)', cursor: 'pointer', fontSize: '0.8rem'
+    borderRadius: 6, color: textOnFill(bg), cursor: 'pointer', fontSize: '0.8rem'
   }
 }
 

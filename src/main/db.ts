@@ -2124,7 +2124,7 @@ export function getProgressNote(id: string): ProgressNote | undefined {
 
 export function createProgressNote(todoId: string, body: string): ProgressNote {
   const trimmed = body.trim()
-  if (!trimmed) throw new Error('進捗メモの内容を入力してください')
+  if (!trimmed) throw new Error('進捗ログの内容を入力してください')
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
   db.prepare('INSERT INTO ProgressNotes (id, todo_id, user_id, body, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?)').run(
