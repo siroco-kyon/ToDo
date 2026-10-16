@@ -27,6 +27,12 @@ async function runElectron() {
     throw new Error(label + ': ' + (await js('document.body.innerText')).slice(0, 1700))
   }
   const click = (text) => js('Array.from(document.querySelectorAll("button")).find(b => b.textContent === ' + JSON.stringify(text) + ').click()')
+  async function clickProgressMenuItem(label) {
+    const point = await js('(function(){const button=Array.from(document.querySelectorAll("[role=menuitem]")).find(e=>e.textContent===' + JSON.stringify(label) + ');const r=button.getBoundingClientRect();const x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height/2);if(r.top<0||r.bottom>innerHeight||r.left<0||r.right>innerWidth||!button.contains(document.elementFromPoint(x,y)))throw new Error("Progress menu item cannot be clicked within the viewport");return {x,y};})()')
+    main.webContents.sendInputEvent({ type: 'mouseMove', ...point })
+    main.webContents.sendInputEvent({ type: 'mouseDown', button: 'left', clickCount: 1, ...point })
+    main.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...point })
+  }
   async function editTitle(title) {
     await click('編集')
     await until('Array.from(document.querySelectorAll("button")).some(e=>e.textContent==="編集をやめる")', 'Full editor did not open')
@@ -51,6 +57,73 @@ async function runElectron() {
     await until('document.body.innerText.includes("ガント") && !document.querySelector("input[autocomplete=username]")', 'App did not start')
     const tasks = await js('(async()=>{ const a=await window.api.todoCreate({title:"詳細テストA",start_date:"2026-10-09",due_date:"2026-10-20"}); const b=await window.api.todoCreate({title:"詳細テストB",start_date:"2026-10-09",due_date:"2026-10-20"});const ca=await window.api.subtaskCreate(a.id,{title:"Aだけの子",progress:0});const cb=await window.api.subtaskCreate(b.id,{title:"Bだけの子",progress:0}); window.tasks={a,b,ca,cb,currentTitle:b.title};return window.tasks; })()')
     await js('window.originalFetch=window.fetch; window.unhandled=[]; window.addEventListener("unhandledrejection",event=>{window.unhandled.push(String(event.reason));event.preventDefault()});')
+
+    // A progress log's menu must remain clickable at the bottom of task detail.
+    await currentTask(tasks.b.id, tasks.b.title)
+    await js('(async()=>{window.deletionNote=await window.api.progressNoteCreate(window.tasks.b.id,"削除確認用の進捗ログ");await window.api.progressNoteCommentCreate(window.deletionNote.id,"一緒に削除する返信",null);await window.api.progressNoteReactionToggle(window.deletionNote.id,"👍");})()')
+    await until('Array.from(document.querySelectorAll("article")).some(e=>e.textContent.includes("削除確認用の進捗ログ")&&e.textContent.includes("一緒に削除する返信"))', 'Progress deletion fixture did not render')
+    async function openProgressMenu() {
+      await js('(function(){const note=Array.from(document.querySelectorAll("article")).find(e=>e.textContent.includes("削除確認用の進捗ログ"));note.querySelector("button[aria-label=\'その他の操作\']").scrollIntoView({block:"end"});})()')
+      await delay(75)
+      await js('Array.from(document.querySelectorAll("article")).find(e=>e.textContent.includes("削除確認用の進捗ログ")).querySelector("button[aria-label=\'その他の操作\']").click()')
+      await until('Array.from(document.querySelectorAll("[role=menuitem]")).some(e=>e.textContent==="削除")', 'Progress menu did not open')
+    }
+    await js('(function(){const more=Array.from(document.querySelectorAll("article")).find(e=>e.textContent.includes("削除確認用の進捗ログ")).querySelector("button[aria-label=\'その他の操作\']");more.scrollIntoView({block:"end"});more.focus({preventScroll:true});})()')
+    await delay(75)
+    main.webContents.focus()
+    main.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' })
+    main.webContents.sendInputEvent({ type: 'char', keyCode: '\r' })
+    main.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' })
+    await until('document.activeElement?.getAttribute("role")==="menuitem"', 'Keyboard open did not focus the first progress menu item')
+    assert.equal(await js('document.activeElement.textContent'), '要相談にする')
+    main.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' })
+    main.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' })
+    await until('document.activeElement?.textContent==="編集"', 'Tab did not move to the next progress menu item')
+    main.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
+    main.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' })
+    await until('!document.querySelector("[role=menu]")', 'Keyboard Escape did not dismiss the progress menu')
+    assert.equal(await js('document.activeElement?.closest("article")?.textContent.includes("削除確認用の進捗ログ")&&document.activeElement?.getAttribute("aria-label")==="その他の操作"'), true, 'Escape did not restore focus to the progress menu trigger')
+    await openProgressMenu()
+    await js('document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));void 0;')
+    await until('!document.querySelector("[role=menu]")', 'Escape did not dismiss the progress menu')
+    await openProgressMenu()
+    await js('document.body.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true}));void 0;')
+    await until('!document.querySelector("[role=menu]")', 'Outside click did not dismiss the progress menu')
+    await openProgressMenu()
+    await js('window.dispatchEvent(new Event("resize"));void 0;')
+    await until('!document.querySelector("[role=menu]")', 'Resize did not dismiss the progress menu')
+    await openProgressMenu()
+    await js('document.querySelector("textarea[aria-label=\'進捗ログを書く\']").parentElement.dispatchEvent(new Event("scroll"));void 0;')
+    await until('!document.querySelector("[role=menu]")', 'Detail scroll did not dismiss the progress menu')
+
+    // A portalled menu must keep the light theme's ancestor filters and remain clickable.
+    const originalBodyClass = await js('document.body.className')
+    try {
+      await js('document.body.classList.add("theme-light");void 0;')
+      await openProgressMenu()
+      const filters = await js('(function(){const trigger=Array.from(document.querySelectorAll("article")).find(e=>e.textContent.includes("削除確認用の進捗ログ")).querySelector("button[aria-label=\'その他の操作\']");const chain=element=>{const result=[];for(let node=element;node;node=node.parentElement){const filter=getComputedStyle(node).filter;if(filter!=="none")result.push({id:node.id,filter});}return result;};return {trigger:chain(trigger),menu:chain(document.querySelector("[role=menu]"))};})()')
+      assert.ok(filters.trigger.some(item=>item.id==='root'&&item.filter.includes('invert')), 'Light theme filter was not active for the progress menu trigger')
+      assert.deepEqual(filters.menu, filters.trigger, 'Portalled progress menu bypassed the light theme ancestor filters')
+      await js('window.confirmCount=0;window.confirm=()=>{window.confirmCount++;return false};void 0;')
+      await clickProgressMenuItem('削除')
+      await until('window.confirmCount===1', 'Light-theme progress delete did not request confirmation')
+      assert.equal((await js('window.api.progressNoteGetByTodo(window.tasks.b.id)')).length, 1, 'Cancel removed the progress log')
+    } finally {
+      await js('document.body.className='+JSON.stringify(originalBodyClass))
+    }
+
+    // Failed DELETE and retry keep their existing confirmation semantics.
+    await js('window.confirm=()=>true;window.deleteRequests=0;window.fetch=(...args)=>{if(args[1]?.method==="DELETE"&&String(args[0]).endsWith("/progress-notes/"+window.deletionNote.id)){window.deleteRequests++;return Promise.resolve(new Response(JSON.stringify({error:"進捗削除テスト失敗"}),{status:500,headers:{"Content-Type":"application/json"}}));}return window.originalFetch(...args);};void 0;')
+    await openProgressMenu()
+    await clickProgressMenuItem('削除')
+    await until('document.body.innerText.includes("進捗削除テスト失敗")', 'Failed progress delete was not explained')
+    assert.equal(await js('window.deleteRequests'), 1)
+    assert.equal((await js('window.api.progressNoteGetByTodo(window.tasks.b.id)')).length, 1, 'Failed delete removed the progress log')
+    await js('void(window.fetch=window.originalFetch)')
+    await openProgressMenu()
+    await clickProgressMenuItem('削除')
+    await until('!Array.from(document.querySelectorAll("article")).some(e=>e.textContent.includes("削除確認用の進捗ログ"))', 'Deleted progress log remained in task detail')
+    assert.deepEqual(await js('window.api.progressNoteGetByTodo(window.tasks.b.id)'), [], 'Deleted log with replies and reactions was not removed from the server')
 
     // A's older subsection response must never appear under B.
     await js('window.held=[];window.fetch=async (...args)=>{const response=await window.originalFetch(...args);if(String(args[0]).endsWith("/todos/"+window.tasks.a.id+"/subtasks")){return await new Promise(resolve=>window.held.push(()=>resolve(response)));}return response;};void 0;')
@@ -283,7 +356,7 @@ async function runElectron() {
     assert.equal(await js('Array.from(document.querySelectorAll("input")).some(e=>e.value==="通知から移動しても残す下書き")'), true)
     await js('window.api.notificationList=window.originalNotificationList;window.api.notificationUnreadCount=window.originalUnread;Array.from(document.querySelectorAll("section[aria-labelledby=notification-title] button")).find(e=>e.textContent==="閉じる").click();void 0;')
     assert.deepEqual(await js('window.unhandled'), [])
-    console.log('HAKOBI detail Electron checks passed: target/same-task/global response ordering, subscription ordering, concurrent member edits, inline conflicts, native dirty navigation, drag cleanup, failed/partial save, stop retry and background sync failures')
+    console.log('HAKOBI detail Electron checks passed: progress menu visibility/light-theme filters/dismissal and delete cancel/failure/retry, target/same-task/global response ordering, subscription ordering, concurrent member edits, inline conflicts, native dirty navigation, drag cleanup, failed/partial save, stop retry and background sync failures')
     main.destroy()
     app.exit(0)
   } catch (error) {

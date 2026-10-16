@@ -365,13 +365,13 @@ export function QuickAddModal({
             aria-expanded={showDetails}
             style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, color: '#93c5fd', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}
           >
-            {showDetails ? '▾ 詳しい設定を閉じる' : '▸ 詳しく設定（内容・メモ・状態・優先度）'}
+            {showDetails ? '▾ 詳しい設定を閉じる' : '▸ 詳しく設定（説明・メモ・状態・優先度）'}
           </button>
 
           {showDetails && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: 10, background: '#162033', border: '1px solid #334155' }}>
               <div>
-                <label htmlFor="quick-add-description" style={labelStyle}>内容（このタスクでやること・目的）</label>
+                <label htmlFor="quick-add-description" style={labelStyle}>説明（目的・やること）</label>
                 <textarea
                   id="quick-add-description"
                   value={description}

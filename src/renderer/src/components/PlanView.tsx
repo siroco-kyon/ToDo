@@ -1009,7 +1009,7 @@ export function PlanView({
 
           <Section
             title="時間割"
-            subtitle="ドラッグで時刻、下端のドラッグで長さを変えられます。候補や未割り当てのタスクは、ドラッグかクリックで置けます。"
+            subtitle="ドラッグで時刻、下端のドラッグで長さを変えられます。候補や時刻が未定のタスクは、ドラッグかクリックで置けます。"
           >
             {placementDraft && (
               <div
@@ -1429,10 +1429,10 @@ export function PlanView({
           </Section>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
-          <Section title="未割り当ての今日タスク" subtitle="まだ時刻を決めていないタスクです。ドラッグかクリックで時間割に置けます。">
+          <Section title="時刻が未定のタスク" subtitle="まだ時刻を決めていないタスクです。ドラッグかクリックで時間割に置けます。">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {unscheduledItems.length === 0 ? (
-                <EmptyState label="未割り当てのタスクはありません。候補やバックログから追加して時間を決めてください。" />
+                <EmptyState label="時刻が未定のタスクはありません。候補や「タスクを探す」から追加して時刻を決めてください。" />
               ) : (
                 unscheduledItems.map((item) => (
                   <UnscheduledCard
@@ -1456,7 +1456,7 @@ export function PlanView({
           <Section title="候補" subtitle="おすすめのタスクをそのまま時間割へ置けます。">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {suggestions.length === 0 ? (
-                <EmptyState label="おすすめ候補はありません。バックログから今日の計画に入れてください。" />
+                <EmptyState label="おすすめのタスクはありません。「タスクを探す」から計画に追加してください。" />
               ) : (
                 suggestions.map((group) => (
                   <div key={group.title} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1482,7 +1482,7 @@ export function PlanView({
             </div>
           </Section>
 
-          <Section title="タスクを探す" subtitle={`${availableTodos.length}件のアクティブタスクから検索できます。配置済みのタスクも、もう一度置けます。`}>
+          <Section title="タスクを探す" subtitle={`未着手・進行中のタスク${availableTodos.length}件から検索できます。配置済みのタスクも、もう一度置けます。`}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <input
                 value={searchQuery}
@@ -1491,7 +1491,7 @@ export function PlanView({
                 style={inputStyle}
               />
               {filteredBacklog.length === 0 ? (
-                <EmptyState label={searchQuery ? '検索条件に合うタスクはありません。' : 'アクティブなタスクはありません。'} />
+                <EmptyState label={searchQuery ? '検索条件に合うタスクはありません。' : '未着手・進行中のタスクはありません。'} />
               ) : (
                 filteredBacklog.map((todo) => (
                   <CandidateCard
@@ -1514,7 +1514,7 @@ export function PlanView({
 
           <Section title="使い方">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, color: '#94a3b8', fontSize: '0.8rem', lineHeight: 1.6 }}>
-              <div>候補や未割り当てのカードは、ドラッグして時間割へ落とすか、「時間に置く」を押してから空き時間をクリックすると配置できます。</div>
+              <div>候補や時刻が未定のタスクは、ドラッグして時間割へ落とすか、「時間に置く」を押してから空き時間をクリックすると配置できます。</div>
               <div>時間割のブロックは、ドラッグで開始時刻、下端ドラッグで長さを調整できます。</div>
               <div>同じタスクは1日に何個でも置けます。ブロックの「複製」を押すか、「タスクを探す」から同じタスクをもう一度ドラッグしてください。</div>
               <div>クリックで置いている途中は、Esc でキャンセルできます。</div>

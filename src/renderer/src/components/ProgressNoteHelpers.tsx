@@ -13,9 +13,10 @@ export function withProgressNoteTemplate(draft: string): string {
 
 // 進捗ログの投稿欄に置く「ひな形」「予定どおり」（詳細・報告タブ・進捗タブで共通）。
 // 変化がない週でも一言で報告でき、書き出しに迷う人は枠から書き始められる
-export function ProgressNoteHelpers({ draft, disabled = false, onInsertTemplate, onPostOnTrack }: {
+export function ProgressNoteHelpers({ draft, disabled = false, showOnTrack = true, onInsertTemplate, onPostOnTrack }: {
   draft: string
   disabled?: boolean
+  showOnTrack?: boolean
   onInsertTemplate: () => void
   onPostOnTrack: () => void
 }): React.JSX.Element {
@@ -31,15 +32,17 @@ export function ProgressNoteHelpers({ draft, disabled = false, onInsertTemplate,
       >
         ひな形
       </button>
-      <button
-        type="button"
-        disabled={disabled || hasDraft}
-        onClick={onPostOnTrack}
-        title={hasDraft ? '書きかけの文があるときは使えません' : `「${ON_TRACK_NOTE}」をそのまま投稿します`}
-        style={helperButtonStyle(disabled || hasDraft)}
-      >
-        予定どおり
-      </button>
+      {showOnTrack && (
+        <button
+          type="button"
+          disabled={disabled || hasDraft}
+          onClick={onPostOnTrack}
+          title={hasDraft ? '書きかけの文があるときは使えません' : `「${ON_TRACK_NOTE}」をそのまま投稿します`}
+          style={helperButtonStyle(disabled || hasDraft)}
+        >
+          予定どおり
+        </button>
+      )}
     </div>
   )
 }
