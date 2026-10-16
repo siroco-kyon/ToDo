@@ -96,20 +96,21 @@ async function runElectron() {
     await js('document.querySelector("textarea[aria-label=\'進捗ログを書く\']").parentElement.dispatchEvent(new Event("scroll"));void 0;')
     await until('!document.querySelector("[role=menu]")', 'Detail scroll did not dismiss the progress menu')
 
-    // A portalled menu must keep the light theme's ancestor filters and remain clickable.
-    const originalBodyClass = await js('document.body.className')
+    // A portalled menu must use the light theme's colors and remain clickable.
+    // Colors come from CSS variables on :root[data-theme], so a menu outside #root gets them too.
+    const originalTheme = await js('document.documentElement.getAttribute("data-theme")')
     try {
-      await js('document.body.classList.add("theme-light");void 0;')
+      await js('document.documentElement.setAttribute("data-theme","light");void 0;')
       await openProgressMenu()
-      const filters = await js('(function(){const trigger=Array.from(document.querySelectorAll("article")).find(e=>e.textContent.includes("削除確認用の進捗ログ")).querySelector("button[aria-label=\'その他の操作\']");const chain=element=>{const result=[];for(let node=element;node;node=node.parentElement){const filter=getComputedStyle(node).filter;if(filter!=="none")result.push({id:node.id,filter});}return result;};return {trigger:chain(trigger),menu:chain(document.querySelector("[role=menu]"))};})()')
-      assert.ok(filters.trigger.some(item=>item.id==='root'&&item.filter.includes('invert')), 'Light theme filter was not active for the progress menu trigger')
-      assert.deepEqual(filters.menu, filters.trigger, 'Portalled progress menu bypassed the light theme ancestor filters')
+      const colors = await js('(function(){document.getAnimations().forEach(a=>a.finish());const luminance=value=>{const scale=value.startsWith("color(")?255:1;const [r,g,b]=value.match(/[0-9.]+/g).map(Number).map(v=>v*scale/255);const f=v=>v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);return 0.2126*f(r)+0.7152*f(g)+0.0722*f(b)};const menu=document.querySelector("[role=menu]");return {menuInRoot:Boolean(menu.closest("#root")),menu:luminance(getComputedStyle(menu).backgroundColor),item:luminance(getComputedStyle(menu.querySelector("[role=menuitem]")).color)};})()')
+      assert.ok(colors.menu > 0.6, 'Portalled progress menu did not use the light theme background')
+      assert.ok(colors.item < 0.2, 'Portalled progress menu items did not use the light theme text color')
       await js('window.confirmCount=0;window.confirm=()=>{window.confirmCount++;return false};void 0;')
       await clickProgressMenuItem('削除')
       await until('window.confirmCount===1', 'Light-theme progress delete did not request confirmation')
       assert.equal((await js('window.api.progressNoteGetByTodo(window.tasks.b.id)')).length, 1, 'Cancel removed the progress log')
     } finally {
-      await js('document.body.className='+JSON.stringify(originalBodyClass))
+      await js(originalTheme === null ? 'document.documentElement.removeAttribute("data-theme");void 0;' : 'document.documentElement.setAttribute("data-theme",'+JSON.stringify(originalTheme)+');void 0;')
     }
 
     // Failed DELETE and retry keep their existing confirmation semantics.
@@ -356,7 +357,7 @@ async function runElectron() {
     assert.equal(await js('Array.from(document.querySelectorAll("input")).some(e=>e.value==="通知から移動しても残す下書き")'), true)
     await js('window.api.notificationList=window.originalNotificationList;window.api.notificationUnreadCount=window.originalUnread;Array.from(document.querySelectorAll("section[aria-labelledby=notification-title] button")).find(e=>e.textContent==="閉じる").click();void 0;')
     assert.deepEqual(await js('window.unhandled'), [])
-    console.log('HAKOBI detail Electron checks passed: progress menu visibility/light-theme filters/dismissal and delete cancel/failure/retry, target/same-task/global response ordering, subscription ordering, concurrent member edits, inline conflicts, native dirty navigation, drag cleanup, failed/partial save, stop retry and background sync failures')
+    console.log('HAKOBI detail Electron checks passed: progress menu visibility/light-theme colors/dismissal and delete cancel/failure/retry, target/same-task/global response ordering, subscription ordering, concurrent member edits, inline conflicts, native dirty navigation, drag cleanup, failed/partial save, stop retry and background sync failures')
     main.destroy()
     app.exit(0)
   } catch (error) {
