@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="520" viewBox="0 0 1800 520" role="img"><title>週報の下書きを作る流れ</title><rect width="1800" height="520" fill="white"/>
+<rect x="40" y="200" width="400" height="230" rx="16" fill="#E7F5F3" stroke="#0E8C80" stroke-width="3"/>
+<text x="240.0" y="298.0" font-family="Yu Gothic, Meiryo, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" fill="#0F1B2D">報告タブ</text>
+<text x="240.0" y="362.0" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#1E2B37">期間と担当を選ぶ</text>
+<path d="M442 315 L478 315" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="478.0,315.0 457.9,324.0 457.9,306.0" fill="#6B7C86"/>
+<rect x="480" y="200" width="400" height="230" rx="16" fill="#E7F5F3" stroke="#0E8C80" stroke-width="3"/>
+<text x="680.0" y="298.0" font-family="Yu Gothic, Meiryo, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" fill="#0F1B2D">Markdownをコピー</text>
+<text x="680.0" y="362.0" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#1E2B37">見出しつきの文章</text>
+<path d="M882 315 L918 315" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="918.0,315.0 897.9,324.0 897.9,306.0" fill="#6B7C86"/>
+<rect x="920" y="200" width="400" height="230" rx="16" fill="#EEF2F7" stroke="#6B7C86" stroke-width="3"/>
+<text x="1120.0" y="298.0" font-family="Yu Gothic, Meiryo, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" fill="#0F1B2D">週報用エージェント</text>
+<text x="1120.0" y="362.0" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#1E2B37">記録から下書き</text>
+<path d="M1322 315 L1358 315" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="1358.0,315.0 1337.9,324.0 1337.9,306.0" fill="#6B7C86"/>
+<rect x="1360" y="200" width="400" height="230" rx="16" fill="#FFF6E0" stroke="#E9A21B" stroke-width="3"/>
+<text x="1560.0" y="298.0" font-family="Yu Gothic, Meiryo, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" fill="#0F1B2D">本人が確認</text>
+<text x="1560.0" y="362.0" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#1E2B37">整えて提出</text>
+<path d="M40 140 L880 140" stroke="#0B6E66" stroke-width="4" stroke-linecap="round"/>
+<path d="M40 140 L40 162" stroke="#0B6E66" stroke-width="4" stroke-linecap="round"/>
+<path d="M880 140 L880 162" stroke="#0B6E66" stroke-width="4" stroke-linecap="round"/>
+<text x="460.0" y="118" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" font-weight="bold" text-anchor="middle" fill="#0B6E66">HAKOBI</text>
+<path d="M920 140 L1320 140" stroke="#6B7C86" stroke-width="4" stroke-linecap="round"/>
+<path d="M920 140 L920 162" stroke="#6B7C86" stroke-width="4" stroke-linecap="round"/>
+<path d="M1320 140 L1320 162" stroke="#6B7C86" stroke-width="4" stroke-linecap="round"/>
+<text x="1120.0" y="118" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" font-weight="bold" text-anchor="middle" fill="#6B7C86">Microsoft 365 Copilot</text>
+<path d="M1360 140 L1760 140" stroke="#8A5A00" stroke-width="4" stroke-linecap="round"/>
+<path d="M1360 140 L1360 162" stroke="#8A5A00" stroke-width="4" stroke-linecap="round"/>
+<path d="M1760 140 L1760 162" stroke="#8A5A00" stroke-width="4" stroke-linecap="round"/>
+<text x="1560.0" y="118" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" font-weight="bold" text-anchor="middle" fill="#8A5A00">担当者</text>
+</svg>

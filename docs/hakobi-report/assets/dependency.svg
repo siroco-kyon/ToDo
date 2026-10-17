@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="820" viewBox="0 0 1800 820" role="img"><title>分岐と合流がある依存関係の再計算</title><rect width="1800" height="820" fill="white"/>
+<rect x="60" y="300" width="300" height="170" rx="16" fill="#FFF6E0" stroke="#E9A21B" stroke-width="3"/>
+<text x="210.0" y="371.8" font-family="Yu Gothic, Meiryo, sans-serif" font-size="48" font-weight="bold" text-anchor="middle" fill="#0F1B2D">A</text>
+<text x="210.0" y="436.6" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">期限を延ばす</text>
+<rect x="470" y="110" width="300" height="170" rx="16" fill="#F1F4F6" stroke="#A8B6C5" stroke-width="3"/>
+<text x="620.0" y="211.8" font-family="Yu Gothic, Meiryo, sans-serif" font-size="48" font-weight="bold" text-anchor="middle" fill="#0F1B2D">B</text>
+<rect x="470" y="490" width="300" height="170" rx="16" fill="#E7F5F3" stroke="#0E8C80" stroke-width="3"/>
+<text x="620.0" y="561.8" font-family="Yu Gothic, Meiryo, sans-serif" font-size="48" font-weight="bold" text-anchor="middle" fill="#0F1B2D">C</text>
+<text x="620.0" y="626.5999999999999" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">10月7〜11日へ</text>
+<rect x="880" y="300" width="300" height="170" rx="16" fill="#E7F5F3" stroke="#0E8C80" stroke-width="3"/>
+<text x="1030.0" y="371.8" font-family="Yu Gothic, Meiryo, sans-serif" font-size="48" font-weight="bold" text-anchor="middle" fill="#0F1B2D">D</text>
+<text x="1030.0" y="436.6" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">10月12〜13日へ</text>
+<rect x="1290" y="300" width="300" height="170" rx="16" fill="#E7F5F3" stroke="#0E8C80" stroke-width="3"/>
+<text x="1440.0" y="371.8" font-family="Yu Gothic, Meiryo, sans-serif" font-size="48" font-weight="bold" text-anchor="middle" fill="#0F1B2D">E</text>
+<text x="1440.0" y="436.6" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">10月14日へ</text>
+<path d="M364 385 L464 195" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="464.0,195.0 462.6,217.0 446.7,208.6" fill="#6B7C86"/>
+<path d="M364 385 L464 575" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="464.0,575.0 446.7,561.4 462.6,553.0" fill="#6B7C86"/>
+<path d="M774 195 L874 385" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="874.0,385.0 856.7,371.4 872.6,363.0" fill="#6B7C86"/>
+<path d="M774 575 L874 385" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="874.0,385.0 872.6,407.0 856.7,398.6" fill="#6B7C86"/>
+<path d="M1184 385 L1284 385" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="1284.0,385.0 1263.9,394.0 1263.9,376.0" fill="#6B7C86"/>
+<text x="60" y="730" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="start" fill="#5B6B78">矢印は「前の仕事が終わってから次を始める」（Finish to Start）。待機日数も足せる。</text>
+<text x="60" y="790" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="start" fill="#5B6B78">すべての前工程を計算してから後工程を計算するので、合流するDとその後ろのEにも正しく伝わる。</text>
+</svg>

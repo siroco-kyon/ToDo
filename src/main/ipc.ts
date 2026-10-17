@@ -101,9 +101,10 @@ export function registerIpcHandlers(
     return result
   }
 
-  // ToDoリストの繰り返しの項目は、日付が変わったら未チェックに戻して画面に取り直してもらう
+  // ToDoリストの繰り返しの項目は、日付が変わったら未チェックに戻して画面に取り直してもらう。
+  // unref: アプリはウィンドウとトレイで動き続けるので、この点検でプロセスの終了を引き止めない（テストのプロセスも終われる）
   let lastDayKey = toLocalDateKey(new Date())
-  setInterval(() => {
+  const dayCheck = setInterval(() => {
     const dayKey = toLocalDateKey(new Date())
     if (dayKey === lastDayKey) return
     lastDayKey = dayKey
@@ -114,6 +115,7 @@ export function registerIpcHandlers(
       console.error('ToDoリストの項目を未チェックに戻せませんでした', error)
     }
   }, 60 * 1000)
+  dayCheck.unref()
 
   // Categories
   ipcMain.handle('category:getAll', () => getAllCategories())
