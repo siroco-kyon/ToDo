@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1000" viewBox="0 0 1800 1000" role="img"><title>個人用とチーム用の構成</title><rect width="1800" height="1000" fill="white"/>
+<text x="60" y="70" font-family="Yu Gothic, Meiryo, sans-serif" font-size="44" font-weight="bold" text-anchor="start" fill="#0F1B2D">個人用</text>
+<text x="760" y="70" font-family="Yu Gothic, Meiryo, sans-serif" font-size="44" font-weight="bold" text-anchor="start" fill="#0F1B2D">チーム用</text>
+<path d="M700 40 L700 960" stroke="#A8B6C5" stroke-width="4" stroke-linecap="round"/>
+<rect x="60" y="120" width="560" height="640" rx="16" fill="#F1F4F6" stroke="#A8B6C5" stroke-width="3"/>
+<text x="340" y="180" font-family="Yu Gothic, Meiryo, sans-serif" font-size="38" font-weight="bold" text-anchor="middle" fill="#0F1B2D">デスクトップ版（Electron）</text>
+<rect x="110" y="230" width="460" height="170" rx="16" fill="#E7F5F3" stroke="#0E8C80" stroke-width="3"/>
+<text x="340.0" y="298.7" font-family="Yu Gothic, Meiryo, sans-serif" font-size="42" font-weight="bold" text-anchor="middle" fill="#0F1B2D">共通の画面</text>
+<text x="340.0" y="363.4" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#1E2B37">React・TypeScript</text>
+<path d="M340 400 L340 540" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="340.0,540.0 331.0,519.9 349.0,519.9" fill="#6B7C86"/>
+<polygon points="340.0,400.0 349.0,420.1 331.0,420.1" fill="#6B7C86"/>
+<text x="370" y="482" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="start" fill="#5B6B78">IPC</text>
+<rect x="110" y="540" width="460" height="170" rx="16" fill="#F1F4F6" stroke="#A8B6C5" stroke-width="3"/>
+<text x="340.0" y="608.7" font-family="Yu Gothic, Meiryo, sans-serif" font-size="42" font-weight="bold" text-anchor="middle" fill="#0F1B2D">main プロセス</text>
+<text x="340.0" y="673.4000000000001" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#1E2B37">PC内のSQLiteに保存</text>
+<text x="340" y="840" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#5B6B78">1人で使う。データは自分のPC内</text>
+<rect x="760" y="140" width="440" height="230" rx="16" fill="#E7F5F3" stroke="#0E8C80" stroke-width="3"/>
+<text x="980.0" y="238.7" font-family="Yu Gothic, Meiryo, sans-serif" font-size="42" font-weight="bold" text-anchor="middle" fill="#0F1B2D">ブラウザ</text>
+<text x="980.0" y="303.4" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#1E2B37">共通の画面</text>
+<rect x="1290" y="140" width="450" height="230" rx="16" fill="#E7F5F3" stroke="#0E8C80" stroke-width="3"/>
+<text x="1515.0" y="213.7" font-family="Yu Gothic, Meiryo, sans-serif" font-size="42" font-weight="bold" text-anchor="middle" fill="#0F1B2D">デスクトップ版</text>
+<text x="1515.0" y="278.4" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#1E2B37">共通の画面＋</text>
+<text x="1515.0" y="328.4" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#1E2B37">タイマー・通知・トレイ</text>
+<rect x="900" y="560" width="700" height="230" rx="16" fill="#0E8C80" stroke="#0E8C80" stroke-width="3"/>
+<text x="1250.0" y="633.7" font-family="Yu Gothic, Meiryo, sans-serif" font-size="42" font-weight="bold" text-anchor="middle" fill="white">社内LANのサーバー</text>
+<text x="1250.0" y="698.4000000000001" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="white">Express・WebSocket</text>
+<text x="1250.0" y="748.4000000000001" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="white">SQLite（チームのデータ）</text>
+<path d="M980 372 L1120 556" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="1120.0,556.0 1100.7,545.4 1115.0,534.6" fill="#6B7C86"/>
+<polygon points="980.0,372.0 999.3,382.6 985.0,393.4" fill="#6B7C86"/>
+<path d="M1515 372 L1380 556" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="1380.0,556.0 1384.7,534.5 1399.1,545.1" fill="#6B7C86"/>
+<polygon points="1515.0,372.0 1510.3,393.5 1495.9,382.9" fill="#6B7C86"/>
+<text x="1250" y="470" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#5B6B78">HTTP・WebSocket</text>
+<text x="1250" y="870" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#5B6B78">同じ画面が window.api の実装だけを切り替える</text>
+</svg>

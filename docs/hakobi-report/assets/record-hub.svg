@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="760" viewBox="0 0 1800 760" role="img"><title>一度残した記録を、確認と報告に使う</title><rect width="1800" height="760" fill="white"/>
+<text x="330" y="70" font-family="Yu Gothic, Meiryo, sans-serif" font-size="38" font-weight="bold" text-anchor="middle" fill="#0B6E66">作業の区切りに1回残す</text>
+<rect x="60" y="160" width="540" height="420" rx="16" fill="#0E8C80" stroke="#0E8C80" stroke-width="3"/>
+<text x="330.0" y="328.9" font-family="Yu Gothic, Meiryo, sans-serif" font-size="54" font-weight="bold" text-anchor="middle" fill="white">日々の記録</text>
+<text x="330.0" y="401.79999999999995" font-family="Yu Gothic, Meiryo, sans-serif" font-size="40" text-anchor="middle" fill="white">進捗率・進捗ログ</text>
+<text x="330.0" y="455.79999999999995" font-family="Yu Gothic, Meiryo, sans-serif" font-size="40" text-anchor="middle" fill="white">メモ・作業時間</text>
+<text x="1290" y="70" font-family="Yu Gothic, Meiryo, sans-serif" font-size="38" font-weight="bold" text-anchor="middle" fill="#0B6E66">チームの確認と報告に何度も使う</text>
+<rect x="860" y="110" width="860" height="170" rx="16" fill="#E7F5F3" stroke="#0E8C80" stroke-width="3"/>
+<text x="1290.0" y="178.7" font-family="Yu Gothic, Meiryo, sans-serif" font-size="42" font-weight="bold" text-anchor="middle" fill="#0F1B2D">チームの状況確認</text>
+<text x="1290.0" y="243.39999999999998" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#1E2B37">ガント・チーム画面</text>
+<path d="M604 370 L854 195" stroke="#0E8C80" stroke-width="4"/>
+<polygon points="854.0,195.0 842.7,213.9 832.4,199.2" fill="#0E8C80"/>
+<rect x="860" y="320" width="860" height="170" rx="16" fill="#E7F5F3" stroke="#0E8C80" stroke-width="3"/>
+<text x="1290.0" y="388.7" font-family="Yu Gothic, Meiryo, sans-serif" font-size="42" font-weight="bold" text-anchor="middle" fill="#0F1B2D">定例での相談</text>
+<text x="1290.0" y="453.4" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#1E2B37">報告タブ・定例モード</text>
+<path d="M604 370 L854 405" stroke="#0E8C80" stroke-width="4"/>
+<polygon points="854.0,405.0 832.9,411.1 835.3,393.3" fill="#0E8C80"/>
+<rect x="860" y="530" width="860" height="170" rx="16" fill="#E7F5F3" stroke="#0E8C80" stroke-width="3"/>
+<text x="1290.0" y="598.7" font-family="Yu Gothic, Meiryo, sans-serif" font-size="42" font-weight="bold" text-anchor="middle" fill="#0F1B2D">週報の下書き</text>
+<text x="1290.0" y="663.4000000000001" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#1E2B37">報告の文章をCopilotへ</text>
+<path d="M604 370 L854 615" stroke="#0E8C80" stroke-width="4"/>
+<polygon points="854.0,615.0 833.4,607.3 845.9,594.5" fill="#0E8C80"/>
+</svg>

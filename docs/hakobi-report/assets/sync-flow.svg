@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="500" viewBox="0 0 1800 500" role="img"><title>チームでの変更が全員の画面に届くまで</title><rect width="1800" height="500" fill="white"/>
+<rect x="30" y="30" width="318" height="280" rx="16" fill="#F1F4F6" stroke="#A8B6C5" stroke-width="3"/>
+<text x="189.0" y="129.3" font-family="Yu Gothic, Meiryo, sans-serif" font-size="38" font-weight="bold" text-anchor="middle" fill="#0F1B2D">1 画面で保存</text>
+<text x="189.0" y="190.60000000000002" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">変更した</text>
+<text x="189.0" y="238.60000000000002" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">項目だけ送る</text>
+<path d="M350 170 L382 170" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="382.0,170.0 361.9,179.0 361.9,161.0" fill="#6B7C86"/>
+<rect x="384" y="30" width="318" height="280" rx="16" fill="#F1F4F6" stroke="#A8B6C5" stroke-width="3"/>
+<text x="543.0" y="129.3" font-family="Yu Gothic, Meiryo, sans-serif" font-size="38" font-weight="bold" text-anchor="middle" fill="#0F1B2D">2 サーバー</text>
+<text x="543.0" y="190.60000000000002" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">ログインと</text>
+<text x="543.0" y="238.60000000000002" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">競合を確かめる</text>
+<path d="M704 170 L736 170" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="736.0,170.0 715.9,179.0 715.9,161.0" fill="#6B7C86"/>
+<rect x="738" y="30" width="318" height="280" rx="16" fill="#F1F4F6" stroke="#A8B6C5" stroke-width="3"/>
+<text x="897.0" y="129.3" font-family="Yu Gothic, Meiryo, sans-serif" font-size="38" font-weight="bold" text-anchor="middle" fill="#0F1B2D">3 DBを更新</text>
+<text x="897.0" y="190.60000000000002" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">変更履歴も</text>
+<text x="897.0" y="238.60000000000002" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">残す</text>
+<path d="M1058 170 L1090 170" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="1090.0,170.0 1069.9,179.0 1069.9,161.0" fill="#6B7C86"/>
+<rect x="1092" y="30" width="318" height="280" rx="16" fill="#E7F5F3" stroke="#0E8C80" stroke-width="3"/>
+<text x="1251.0" y="129.3" font-family="Yu Gothic, Meiryo, sans-serif" font-size="38" font-weight="bold" text-anchor="middle" fill="#0F1B2D">4 変更を通知</text>
+<text x="1251.0" y="190.60000000000002" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">WebSocketで</text>
+<text x="1251.0" y="238.60000000000002" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">全員へ</text>
+<path d="M1412 170 L1444 170" stroke="#6B7C86" stroke-width="4"/>
+<polygon points="1444.0,170.0 1423.9,179.0 1423.9,161.0" fill="#6B7C86"/>
+<rect x="1446" y="30" width="318" height="280" rx="16" fill="#F1F4F6" stroke="#A8B6C5" stroke-width="3"/>
+<text x="1605.0" y="129.3" font-family="Yu Gothic, Meiryo, sans-serif" font-size="38" font-weight="bold" text-anchor="middle" fill="#0F1B2D">5 画面が更新</text>
+<text x="1605.0" y="190.60000000000002" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">最新の内容を</text>
+<text x="1605.0" y="238.60000000000002" font-family="Yu Gothic, Meiryo, sans-serif" font-size="34" text-anchor="middle" fill="#1E2B37">取り直す</text>
+<text x="900" y="390" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#5B6B78">画面は、選んでいるタスクと要求の順番を確かめ、古い応答を表示しない</text>
+<text x="900" y="455" font-family="Yu Gothic, Meiryo, sans-serif" font-size="36" text-anchor="middle" fill="#5B6B78">通知は「どの種類のデータが変わったか」だけで、本文は各画面が取り直す</text>
+</svg>

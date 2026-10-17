@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1060" viewBox="0 0 1800 1060" role="img"><title>HAKOBIの開発の歩み（2026年）</title><rect width="1800" height="1060" fill="white"/>
+<rect x="60" y="40" width="300" height="150" rx="16" fill="#F1F4F6" stroke="#A8B6C5" stroke-width="3"/>
+<text x="210" y="130" font-family="Yu Gothic, Meiryo, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" fill="#0F1B2D">3〜4月</text>
+<text x="410" y="90" font-family="Yu Gothic, Meiryo, sans-serif" font-size="42" font-weight="bold" text-anchor="start" fill="#0F1B2D">1人で使うデスクトップアプリ</text>
+<text x="410" y="144" font-family="Yu Gothic, Meiryo, sans-serif" font-size="35" text-anchor="start" fill="#1E2B37">ガント、依存関係、今日の計画、作業ログ</text>
+<text x="410" y="193" font-family="Yu Gothic, Meiryo, sans-serif" font-size="35" text-anchor="start" fill="#1E2B37">タスクの並べ替え、説明とメモの分離</text>
+<path d="M210 190 L210 240" stroke="#A8B6C5" stroke-width="5" stroke-linecap="round"/>
+<rect x="60" y="240" width="300" height="150" rx="16" fill="#E7F5F3" stroke="#0E8C80" stroke-width="5"/>
+<text x="210" y="330" font-family="Yu Gothic, Meiryo, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" fill="#0F1B2D">5〜6月</text>
+<text x="410" y="290" font-family="Yu Gothic, Meiryo, sans-serif" font-size="42" font-weight="bold" text-anchor="start" fill="#0B6E66">チーム用サーバーの追加</text>
+<text x="410" y="344" font-family="Yu Gothic, Meiryo, sans-serif" font-size="35" text-anchor="start" fill="#1E2B37">5月30日 複数人で使うWeb版とサーバー</text>
+<text x="410" y="393" font-family="Yu Gothic, Meiryo, sans-serif" font-size="35" text-anchor="start" fill="#1E2B37">担当者、チーム画面、アカウント発行、リアルタイム同期</text>
+<path d="M210 390 L210 440" stroke="#A8B6C5" stroke-width="5" stroke-linecap="round"/>
+<rect x="60" y="440" width="300" height="150" rx="16" fill="#F1F4F6" stroke="#A8B6C5" stroke-width="3"/>
+<text x="210" y="530" font-family="Yu Gothic, Meiryo, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" fill="#0F1B2D">6〜9月</text>
+<text x="410" y="490" font-family="Yu Gothic, Meiryo, sans-serif" font-size="42" font-weight="bold" text-anchor="start" fill="#0F1B2D">進捗の共有と見やすさ</text>
+<text x="410" y="544" font-family="Yu Gothic, Meiryo, sans-serif" font-size="35" text-anchor="start" fill="#1E2B37">進捗ログの返信・いいね・通知、カンバン、タスク別レポート</text>
+<text x="410" y="593" font-family="Yu Gothic, Meiryo, sans-serif" font-size="35" text-anchor="start" fill="#1E2B37">9月25日 報告タブ、ガントの見やすさの改善</text>
+<path d="M210 590 L210 640" stroke="#A8B6C5" stroke-width="5" stroke-linecap="round"/>
+<rect x="60" y="640" width="300" height="150" rx="16" fill="#F1F4F6" stroke="#A8B6C5" stroke-width="3"/>
+<text x="210" y="704" font-family="Yu Gothic, Meiryo, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" fill="#0F1B2D">10月9日</text>
+<text x="210" y="758" font-family="Yu Gothic, Meiryo, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" fill="#0F1B2D">〜13日</text>
+<text x="410" y="690" font-family="Yu Gothic, Meiryo, sans-serif" font-size="42" font-weight="bold" text-anchor="start" fill="#0F1B2D">チーム接続のデスクトップ版</text>
+<text x="410" y="744" font-family="Yu Gothic, Meiryo, sans-serif" font-size="35" text-anchor="start" fill="#1E2B37">デスクトップ版からチームのサーバーへ接続</text>
+<text x="410" y="793" font-family="Yu Gothic, Meiryo, sans-serif" font-size="35" text-anchor="start" fill="#1E2B37">OS通知・未読バッジ、配布とお知らせ（1.0.5）</text>
+<path d="M210 790 L210 840" stroke="#A8B6C5" stroke-width="5" stroke-linecap="round"/>
+<rect x="60" y="840" width="300" height="150" rx="16" fill="#F1F4F6" stroke="#A8B6C5" stroke-width="3"/>
+<text x="210" y="904" font-family="Yu Gothic, Meiryo, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" fill="#0F1B2D">10月14日</text>
+<text x="210" y="958" font-family="Yu Gothic, Meiryo, sans-serif" font-size="40" font-weight="bold" text-anchor="middle" fill="#0F1B2D">〜17日</text>
+<text x="410" y="890" font-family="Yu Gothic, Meiryo, sans-serif" font-size="42" font-weight="bold" text-anchor="start" fill="#0F1B2D">定例と日々の作業の改善</text>
+<text x="410" y="944" font-family="Yu Gothic, Meiryo, sans-serif" font-size="35" text-anchor="start" fill="#1E2B37">ToDoリスト、定例モード、報告のリマインド</text>
+<text x="410" y="993" font-family="Yu Gothic, Meiryo, sans-serif" font-size="35" text-anchor="start" fill="#1E2B37">Ctrl＋Kのパレット、管理者の機能、ライトテーマ</text>
+</svg>

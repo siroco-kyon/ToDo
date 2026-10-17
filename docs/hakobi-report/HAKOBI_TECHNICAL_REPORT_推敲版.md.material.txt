@@ -1,0 +1,18 @@
+<<<yomiyasu:material 依頼（2026-10-17 利用者）>>>
+/yomiyasu 読みやすくして（直前に作った技術レポート HAKOBI_TECHNICAL_REPORT.md が対象）。ERチェックシートに沿った社内の技術レポートで、常体で書く。対象読者は担当外または経験1〜2年程度のエンジニアを含む技術者・審議者。
+
+<<<yomiyasu:material README.md>>>
+進捗シグナル表示（バーの色で区別。期間のうち今日までに過ぎた日数の割合を「予定の進捗」とし、実際の進捗が予定より何日分遅れているかで判定。「何日分遅れたら遅れにするか」と「土日・祝日を除いて数えるか」は表示設定で変更できる）
+
+<<<yomiyasu:material CLAUDE.md>>>
+チーム接続のデスクトップ版の OS 通知・未読バッジ・トレイのタスク一覧は、非表示のメイン画面の DesktopCompanion が判定して window.desktop へ渡す。main 側はサーバー API を呼ばない。新着かどうかは端末の localStorage（hakobi-desktop-notified:<userId>）で判定し、初回は既存の通知を出さない。
+サーバーが配信する画面とインストール済みのデスクトップ版は別々に更新される。DesktopBridge に足したメソッドは任意（notify?）にして存在を確かめてから呼び、DesktopState に足した項目は古い画面が送らない前提で扱う。
+サーバー版の完了タスクは完了にした人（completed_at と同じ時刻の TodoChangeLogs の status → done の操作者）で数える。
+server: Express + ws + better-sqlite3。server/ は自前の node_modules を持つ独立パッケージ（Electron ABI と Node ABI の競合回避）。
+web/lib/client.ts で window.api を HTTP/WS 実装で差し替え、React の画面はほぼそのまま使う（Api 契約 = typeof api）。
+
+<<<yomiyasu:material docs/HAKOBI_FULL_REVIEW_2026-10-09.md>>>
+R5 遅れた応答で、別タスクのサブタスクを表示・変更できる。R6 タイトルだけの保存でも他メンバーの更新を古い値へ戻す。R7 分岐後に合流する依存関係の日程を正しく再計算できない（同じタスクを一度しか処理しない。一方の枝の更新前に合流先を処理する）。確認した13件を修正し、配布用インストーラーは1.0.1へ更新しました。
+
+<<<yomiyasu:material Electron Process Model>>>
+Each Electron app has a single main process, which acts as the application's entry point.
