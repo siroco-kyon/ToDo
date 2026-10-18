@@ -1452,7 +1452,7 @@ function GanttViewContent({
       }))
 
     if (todos.some((todo) => !todo.category_id)) {
-      next.push({ key: NO_CATEGORY_KEY, label: '未分類', color: 'var(--slate-500)' })
+      next.push({ key: NO_CATEGORY_KEY, label: '未分類', color: 'var(--text-subtle)' })
     }
 
     return next
@@ -3411,7 +3411,7 @@ function GanttViewContent({
                 <input type="checkbox" checked={workingDaysOnly} onChange={(event) => setWorkingDaysOnly(event.target.checked)} />
                 <span>土日・祝日を除いて数える</span>
               </label>
-              <div style={{ fontSize: '0.7rem', color: 'var(--slate-500)', lineHeight: 1.6 }}>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', lineHeight: 1.6 }}>
                 例: 10日間のタスクの5日目なら予定は45%。実際が20%なら約2.5日分の遅れです。
                 期限を過ぎて100%未満は「期限超過」、開始日前で0%は「開始前」になります。
               </div>
@@ -3438,7 +3438,7 @@ function GanttViewContent({
             <div style={settingsSectionStyle}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                 <label style={controlLabelStyle}>表示タスク</label>
-                <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{taskSelectionSummary}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>{taskSelectionSummary}</div>
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button onClick={() => setSelectedTodoIds([])} style={chipStyle(selectedTodoIds.length === 0)}>すべて</button>
@@ -3502,10 +3502,10 @@ function GanttViewContent({
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button onClick={() => void createDependency()} style={chipStyle(false)}>依存関係を追加</button>
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>タスクバー右端の丸をドラッグしても依存関係を追加できます。</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>タスクバー右端の丸をドラッグしても依存関係を追加できます。</div>
               {dependencyFeedback && <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>{dependencyFeedback}</div>}
               {dependencyList.length === 0 ? (
-                <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>依存関係はまだありません。</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>依存関係はまだありません。</div>
               ) : (
                 <div style={dependencyListStyle}>
                   {dependencyList.map((dependency) => (
@@ -3514,7 +3514,7 @@ function GanttViewContent({
                         <span style={{ color: 'var(--slate-200)', fontSize: '0.78rem', fontWeight: 700 }}>
                           {todoById.get(dependency.predecessor_todo_id)?.title ?? '不明なタスク'}
                         </span>
-                        <span style={{ color: 'var(--slate-500)', fontSize: '0.72rem' }}>-&gt;</span>
+                        <span style={{ color: 'var(--text-subtle)', fontSize: '0.72rem' }}>-&gt;</span>
                         <span style={{ color: 'var(--slate-300)', fontSize: '0.76rem' }}>
                           {todoById.get(dependency.successor_todo_id)?.title ?? '不明なタスク'}
                         </span>
@@ -3551,7 +3551,7 @@ function GanttViewContent({
                   </button>
                 )}
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
                 {baselineSnapshot
                   ? `保存日時 ${baselineSnapshot.capturedAt.slice(0, 10)} ${baselineSnapshot.capturedAt.slice(11, 16)}`
                   : '保存済みの基準線はありません。'}
@@ -3577,7 +3577,7 @@ function GanttViewContent({
         ) : displayedRangeGroups.length === 0 ? (
           <div style={{ ...centerEmptyStyle, flexDirection: 'column' }}>
             <div>この条件で表示できる予定タスクはありません。</div>
-            <div style={{ marginTop: 6, fontSize: '0.74rem', color: 'var(--slate-500)' }}>
+            <div style={{ marginTop: 6, fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
               {unscheduledGroups.length > 0 ? `日付のないタスクが${unscheduledGroups.length}件あります（下の「未配置タスク」）。` : ''}
               画面上部に「タスク一覧の絞り込み」が出ているときは、そこでも解除できます。
             </div>
@@ -4279,7 +4279,7 @@ function GanttViewContent({
                                   />
                                 ) : (
                                 <>
-                                <span aria-hidden="true" style={{ color: 'var(--slate-500)', fontSize: '0.74rem', flexShrink: 0, width: 12, textAlign: 'center' }}>
+                                <span aria-hidden="true" style={{ color: 'var(--text-subtle)', fontSize: '0.74rem', flexShrink: 0, width: 12, textAlign: 'center' }}>
                                   {isLastSubTask ? '└' : '├'}
                                 </span>
                                 <button
@@ -4411,7 +4411,7 @@ function GanttViewContent({
                                 }}
                               />
                             )}
-                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTaskOutsideRange ? `${subTaskOutsideRange === 'before' ? '期間前' : '期間後'}: ` : ''}${subTask.title} ${subTaskProgress}% (${displayedBar.startDate}${displayedBar.startDate === displayedBar.endDate ? '' : ` - ${displayedBar.endDate}`})`} style={{ position: 'absolute', left: subTaskBarLeft, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: subTaskBarWidth, height: SUBTASK_BAR_HEIGHT, borderRadius: 3, background: tone.background, border: `1px ${subTaskOutsideRange ? 'dashed' : tone.borderStyle} ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: subTaskOutsideRange || !isTimelineEditable ? 'pointer' : 'grab', boxShadow: subTaskActiveState ? '0 0 0 2px color-mix(in srgb, var(--blue-500) 22%, transparent)' : Boolean(subTask.done) ? '0 0 0 1px color-mix(in srgb, var(--green-300) 18%, transparent) inset' : 'none' }}>
+                            <div onClick={() => handleChartItemSelect(group.todo.id)} title={`${subTaskOutsideRange ? `${subTaskOutsideRange === 'before' ? '期間前' : '期間後'}: ` : ''}${!subTask.done && tone.statusLabel === '期限超過' ? '期限超過: ' : ''}${subTask.title} ${subTaskProgress}% (${displayedBar.startDate}${displayedBar.startDate === displayedBar.endDate ? '' : ` - ${displayedBar.endDate}`})`} style={{ position: 'absolute', left: subTaskBarLeft, top: (SUBTASK_ROW_HEIGHT - SUBTASK_BAR_HEIGHT) / 2, width: subTaskBarWidth, height: SUBTASK_BAR_HEIGHT, borderRadius: 3, background: tone.background, border: `1px ${subTaskOutsideRange ? 'dashed' : tone.borderStyle} ${tone.border}`, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', color: tone.text, cursor: subTaskOutsideRange || !isTimelineEditable ? 'pointer' : 'grab', boxShadow: subTaskActiveState ? '0 0 0 2px color-mix(in srgb, var(--blue-500) 22%, transparent)' : Boolean(subTask.done) ? '0 0 0 1px color-mix(in srgb, var(--green-300) 18%, transparent) inset' : 'none' }}>
                               {/* 塗りは内側で切り取る。バー自体は overflow を切らない（名前を sticky で左端に留めるため） */}
                               <div style={{ position: 'absolute', inset: 0, borderRadius: 2, overflow: 'hidden', pointerEvents: 'none' }}>
                                 <div
@@ -4437,7 +4437,7 @@ function GanttViewContent({
                                 <span style={{ position: subTaskOutsideRange ? undefined : 'sticky', left: leftTableWidth + 10, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.6rem', fontWeight: 700, padding: '0 2px', whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
                                   {subTaskOutsideRange
                                     ? subTaskOutsideRange === 'before' ? '← 期間前' : '期間後 →'
-                                    : <>{Boolean(subTask.done) && unitWidth >= UNIT_WIDTH[timeScale].normal ? '完了 ' : ''}{unitWidth >= UNIT_WIDTH[timeScale].normal ? `${subTaskProgress}% ${subTask.title}` : barStartLabel(displayedBar.startDate, timeScale)}</>}
+                                    : <>{!subTask.done && tone.statusLabel === '期限超過' ? '⚠ ' : ''}{Boolean(subTask.done) && unitWidth >= UNIT_WIDTH[timeScale].normal ? '完了 ' : ''}{unitWidth >= UNIT_WIDTH[timeScale].normal ? `${subTaskProgress}% ${subTask.title}` : barStartLabel(displayedBar.startDate, timeScale)}</>}
                                 </span>
                               </div>
                               {isTimelineEditable && !subTaskOutsideRange && (
@@ -4564,11 +4564,11 @@ function GanttViewContent({
         <div ref={unscheduledSectionRef} style={{ background: 'var(--gray-900)', border: '1px solid var(--gray-800)', borderRadius: 16, padding: 16, scrollMarginTop: 8 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ fontSize: '0.92rem', color: 'var(--slate-50)', fontWeight: 700 }}>未配置タスク（日付なし）{unscheduledGroups.length > 0 ? ` ${unscheduledGroups.length}件` : ''}</div>
-            <div style={{ fontSize: '0.76rem', color: 'var(--slate-500)' }}>開始日も期限もないタスクです。「今日に配置」を押すか、詳細で日程を入れるとチャートに出ます。</div>
+            <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>開始日も期限もないタスクです。「今日に配置」を押すか、詳細で日程を入れるとチャートに出ます。</div>
           </div>
 
           {unscheduledGroups.length === 0 ? (
-            <div style={{ marginTop: 12, fontSize: '0.82rem', color: 'var(--slate-500)' }}>未配置タスクはありません。</div>
+            <div style={{ marginTop: 12, fontSize: '0.82rem', color: 'var(--text-subtle)' }}>未配置タスクはありません。</div>
           ) : (
             <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
               {unscheduledGroups.map((group) => (
@@ -4952,7 +4952,7 @@ const dependencyLagButtonStyle: React.CSSProperties = {
 
 const selectionEmptyStyle: React.CSSProperties = {
   fontSize: '0.78rem',
-  color: 'var(--slate-500)'
+  color: 'var(--text-subtle)'
 }
 
 const collapsedSummaryChipStyle: React.CSSProperties = {
@@ -5051,7 +5051,7 @@ const centerEmptyStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: 'var(--slate-500)',
+  color: 'var(--text-subtle)',
   padding: 24,
   textAlign: 'center'
 }

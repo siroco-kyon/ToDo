@@ -301,7 +301,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
   return (
     <section>
       {!compact && (
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.75rem', color: 'var(--slate-500)', fontWeight: 700, marginBottom: 8, letterSpacing: '0.05em' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: 700, marginBottom: 8, letterSpacing: '0.05em' }}>
           ToDoリスト
           <span style={{ letterSpacing: 0, color: 'var(--indigo-300)', fontWeight: 700 }}>{checklistBadgeText(summary)}</span>
         </div>
@@ -324,7 +324,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
           </ItemGroup>
         )}
         {items.length === 0 && (
-          <div style={{ fontSize: '0.8rem', color: 'var(--slate-500)' }}>まだ項目がありません。下の欄から追加してください。</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>まだ項目がありません。下の欄から追加してください。</div>
         )}
         {doneItems.length > 0 && (
           <details>
@@ -333,9 +333,9 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
             </summary>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 6 }}>
               {recentDone.map((item, index) => renderItem(item, index, recentDone))}
-              {recentDone.length === 0 && <div style={{ fontSize: '0.74rem', color: 'var(--slate-500)' }}>この{RECENT_DONE_DAYS}日に済んだやることはありません。</div>}
+              {recentDone.length === 0 && <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>この{RECENT_DONE_DAYS}日に済んだやることはありません。</div>}
               {oldDone.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 4, fontSize: '0.72rem', color: 'var(--slate-500)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 4, fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
                   {RECENT_DONE_DAYS}日より前に済んだもの {oldDone.length}件
                   <button onClick={() => setShowOldDone((open) => !open)} style={linkButtonStyle}>{showOldDone ? '隠す' : '表示する'}</button>
                   <button onClick={() => void clearOldDone()} disabled={clearing} style={{ ...linkButtonStyle, color: 'var(--red-300)' }}>{clearing ? '削除中…' : 'まとめて削除'}</button>
@@ -508,7 +508,7 @@ function StartPicker({ value, onChange, label }: { value: string; onChange: (val
 function ItemGroup({ label, note, children }: { label: string; note?: string; children: React.ReactNode }): React.JSX.Element {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.7rem', color: 'var(--slate-500)', fontWeight: 700, paddingBottom: 2 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.7rem', color: 'var(--text-subtle)', fontWeight: 700, paddingBottom: 2 }}>
         {label}
         {note && <span style={{ fontWeight: 400 }}>{note}</span>}
       </div>
@@ -569,7 +569,7 @@ function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
           onClick={onEdit}
           aria-label={`${item.title}を編集`}
           title="編集（名前・繰り返し・開始日・期限・担当・メモ・並べ替え・削除）"
-          style={{ background: 'none', border: 'none', padding: '0 2px', color: 'var(--slate-500)', cursor: 'pointer', fontSize: '0.78rem' }}
+          style={{ background: 'none', border: 'none', padding: '0 2px', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: '0.78rem' }}
         >
           ✎
         </button>

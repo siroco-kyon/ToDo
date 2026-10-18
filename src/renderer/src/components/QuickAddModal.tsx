@@ -278,7 +278,7 @@ export function QuickAddModal({
               rows={titles.length > 1 ? Math.min(6, titles.length + 1) : 2}
               style={{ ...selectStyle, fontSize: '1rem', resize: 'vertical', lineHeight: 1.5 }}
             />
-            <div style={{ marginTop: 4, fontSize: '0.7rem', color: 'var(--slate-500)' }}>
+            <div style={{ marginTop: 4, fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
               Enter で追加・Shift+Enter で改行。複数行にすると1行ずつ別のタスクになります
               {titles.length > 1 && <span style={{ color: 'var(--blue-300)', fontWeight: 700 }}>（{titles.length}件）</span>}
             </div>
@@ -337,7 +337,7 @@ export function QuickAddModal({
                   ))}
                 </select>
               ) : (
-                <div style={{ ...selectStyle, color: 'var(--slate-500)' }}>カテゴリ未登録</div>
+                <div style={{ ...selectStyle, color: 'var(--text-subtle)' }}>カテゴリ未登録</div>
               )}
             </div>
           </div>

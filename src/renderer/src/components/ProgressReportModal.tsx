@@ -536,7 +536,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
           <h3 style={sectionHead}>期間</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={dateInputStyle} />
-            <span style={{ color: 'var(--slate-500)' }}>〜</span>
+            <span style={{ color: 'var(--text-subtle)' }}>〜</span>
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={dateInputStyle} />
             <div style={{ display: 'flex', gap: 6, marginLeft: 4 }}>
               <button onClick={() => applyPreset(1)} style={presetBtn}>今日</button>
@@ -616,14 +616,14 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
               </div>
             </div>
             {authorFiltered && (
-              <div style={{ color: 'var(--slate-500)', fontSize: '0.76rem' }}>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.76rem' }}>
                 {selfOnly
                   ? '自分が書いた進捗ログ・返信だけを載せています（副担当など他の人のログは含みません）。'
                   : '選択したメンバーが書いた進捗ログ・返信だけを載せています。'}
               </div>
             )}
             {displayedTaskReport.length === 0 ? (
-              <div style={{ color: 'var(--slate-500)', fontSize: '0.84rem' }}>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.84rem' }}>
                 {showOnlyActiveTasks
                   ? selfOnly && authorFiltered
                     ? 'この期間に自分が書いた進捗ログがあるタスクはありません。'
@@ -654,10 +654,10 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
         <section style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <h3 style={sectionHead}>メンバー別の活動集計</h3>
           {loading && !digest && (
-            <div style={{ color: 'var(--slate-500)', fontSize: '0.84rem' }}>読み込み中…</div>
+            <div style={{ color: 'var(--text-subtle)', fontSize: '0.84rem' }}>読み込み中…</div>
           )}
           {digest && digest.users.length === 0 && (
-            <div style={{ color: 'var(--slate-500)', fontSize: '0.84rem' }}>対象メンバーがいません。</div>
+            <div style={{ color: 'var(--text-subtle)', fontSize: '0.84rem' }}>対象メンバーがいません。</div>
           )}
           {digest && digest.users.map((user) => (
             <UserDigestCard key={user.user_id ?? user.display_name} user={user} />
@@ -707,11 +707,11 @@ export function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Eleme
       )}
       <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {notes.length === 0 ? (
-          <div style={{ color: 'var(--slate-600)', fontSize: '0.78rem' }}>進捗記録なし</div>
+          <div style={{ color: 'var(--text-subtle)', fontSize: '0.78rem' }}>進捗記録なし</div>
         ) : (
           notes.map((note) => (
             <div key={note.id} style={{ background: 'var(--slate-800)', borderRadius: 8, padding: '7px 9px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.72rem', color: 'var(--slate-500)', marginBottom: 3 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.72rem', color: 'var(--text-subtle)', marginBottom: 3 }}>
                 <span>{formatDateTime(note.created_at)}</span>
                 <span style={{ color: 'var(--blue-300)' }}>{note.author_name ?? '不明'}</span>
               </div>
@@ -772,7 +772,7 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
       </div>
 
       {!hasActivity ? (
-        <div style={{ color: 'var(--slate-600)', fontSize: '0.8rem', marginTop: 10 }}>この期間の活動はありません。</div>
+        <div style={{ color: 'var(--text-subtle)', fontSize: '0.8rem', marginTop: 10 }}>この期間の活動はありません。</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 14 }}>
           {user.added_todos.length > 0 && (
@@ -830,10 +830,10 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
                     <span style={{ color: sub.done ? 'var(--green-500)' : 'var(--slate-600)', fontSize: '0.82rem', flexShrink: 0 }}>
                       {sub.done ? '✓' : '○'}
                     </span>
-                    <span style={{ fontSize: '0.74rem', color: 'var(--slate-500)', flexShrink: 0, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', flexShrink: 0, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {sub.todo_title}
                     </span>
-                    <span style={{ color: 'var(--slate-600)', flexShrink: 0 }}>›</span>
+                    <span style={{ color: 'var(--text-subtle)', flexShrink: 0 }}>›</span>
                     <span style={rowTitle}>{sub.title}</span>
                     <span style={rowMeta}>{formatDateTime(sub.created_at)}</span>
                   </div>
@@ -853,12 +853,12 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.category_color ?? 'var(--slate-500)' }} />
                       )}
                       <span style={{ fontSize: '0.78rem', color: 'var(--blue-300)', fontWeight: 700 }}>{group.todo_title}</span>
-                      {group.category_name && <span style={{ fontSize: '0.68rem', color: 'var(--slate-500)' }}>{group.category_name}</span>}
+                      {group.category_name && <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>{group.category_name}</span>}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                       {group.events.map((event) => (
                         <div key={event.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, fontSize: '0.78rem', lineHeight: 1.45 }}>
-                          <span style={{ color: 'var(--slate-500)', flexShrink: 0 }}>{formatDateTime(event.created_at)}</span>
+                          <span style={{ color: 'var(--text-subtle)', flexShrink: 0 }}>{formatDateTime(event.created_at)}</span>
                           <span style={{ color: event.kind === 'change' ? 'var(--amber-400)' : 'var(--green-400)', flexShrink: 0 }}>
                             {event.kind === 'change' ? '変更' : '進捗'}
                           </span>
@@ -887,7 +887,7 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
                       <span style={{ fontSize: '0.74rem', color: 'var(--blue-300)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360 }}>
                         {comment.todo_title}
                       </span>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>{formatDateTime(comment.created_at)}</span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>{formatDateTime(comment.created_at)}</span>
                     </div>
                     <div style={{ fontSize: '0.82rem', color: 'var(--slate-300)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}><LinkedText text={comment.body} /></div>
                   </div>
@@ -902,12 +902,12 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
 }
 
 const sectionHead: React.CSSProperties = {
-  fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase',
+  fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase',
   letterSpacing: '0.08em', fontWeight: 'bold', margin: 0
 }
 
 const closeBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: 'var(--slate-500)',
+  background: 'none', border: 'none', color: 'var(--text-subtle)',
   cursor: 'pointer', fontSize: '1.2rem', padding: '2px 6px'
 }
 
@@ -956,7 +956,7 @@ const rowTitle: React.CSSProperties = {
 }
 
 const rowMeta: React.CSSProperties = {
-  fontSize: '0.72rem', color: 'var(--slate-500)', whiteSpace: 'nowrap', flexShrink: 0
+  fontSize: '0.72rem', color: 'var(--text-subtle)', whiteSpace: 'nowrap', flexShrink: 0
 }
 
 const statusPill: React.CSSProperties = {

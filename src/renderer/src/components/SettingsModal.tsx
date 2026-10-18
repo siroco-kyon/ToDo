@@ -431,7 +431,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         <a href={desktopDownloadPageUrl()} target="_blank" rel="noopener noreferrer" style={linkBtn}>ダウンロードページを開く</a>
       </>}
       {showReleaseAdmin && (offeredRelease ? <>
-        <p style={{ fontSize: '0.75rem', color: 'var(--slate-500)', margin: offerDesktopApp ? '14px 0 4px' : '8px 0 4px' }}>メンバーに案内するダウンロードページ（管理者のみ表示）</p>
+        <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: offerDesktopApp ? '14px 0 4px' : '8px 0 4px' }}>メンバーに案内するダウンロードページ（管理者のみ表示）</p>
         <div style={pathBox}>{desktopDownloadPageUrl()}</div>
         {isLoopbackOrigin(window.location.origin) && <p style={{ fontSize: '0.72rem', color: 'var(--amber-400)', marginTop: 6, lineHeight: 1.6 }}>
           このPC（サーバー）から開いているため、ほかのPCではこのURLを使えません。メンバーには {`http://<サーバーのIPアドレス>:${window.location.port || '80'}/download`} を案内してください。
@@ -442,7 +442,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         <details style={{ marginTop: 4 }}>
           <summary style={detailsSummary}>詳しく</summary>
           {desktopRelease?.reason && <p style={{ fontSize: '0.75rem', color: 'var(--amber-400)', overflowWrap: 'anywhere' }}>{desktopRelease.reason}</p>}
-          <p style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}><code style={codeStyle}>npm run publish:desktop</code> で公開できます。</p>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}><code style={codeStyle}>npm run publish:desktop</code> で公開できます。</p>
         </details>
       </div>)}
     </section>) : null
@@ -543,7 +543,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {onMySummary && (
           <section>
             <h3 style={sectionHead}>進捗サマリー</h3>
-            <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
               期間を指定して、追加タスク・タスク変更・進捗ログ・作業時間を振り返ります。タスク別のMarkdownをコピーして日報・週報に貼れます。
             </p>
             <button onClick={onMySummary} style={secondaryBtn}>📊 自分の進捗サマリーを開く</button>
@@ -553,7 +553,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── 1. キーボードショートカット ─── */}
         <section>
           <h3 style={sectionHead}>表示テーマ</h3>
-          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
             アプリの色をライト／ダークで切り替えます。「OS に合わせる」は Windows の設定に合わせて切り替わります。
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -578,7 +578,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── フォント ─── */}
         <section>
           <h3 style={sectionHead}>フォント</h3>
-          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
             アプリ全体の表示フォントを切り替えます。
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -603,7 +603,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── 文字サイズ ─── */}
         <section>
           <h3 style={sectionHead}>文字サイズ</h3>
-          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
             アプリ全体の文字サイズを切り替えます。
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -626,7 +626,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
 
         {(!serverManaged || window.desktop) && <section>
           <h3 style={sectionHead}>キーボードショートカット</h3>
-          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
             キーをクリックして新しいキーを押すと変更できます。Escでキャンセル。<br/>
             グローバルショートカットは、アプリを隠したり最小化したりしていても使えます。
           </p>
@@ -650,7 +650,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               }}>
                 <div>
                   <div style={{ fontSize: '0.88rem', color: 'var(--slate-200)' }}>{s.label}</div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--slate-600)', marginTop: 2 }}>グローバル</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: 2 }}>グローバル</div>
                 </div>
                 <button
                   onClick={() => s.editing ? cancelEdit() : startEdit(i)}
@@ -674,7 +674,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             }}>
               <div>
                 <div style={{ fontSize: '0.88rem', color: 'var(--slate-200)' }}>モーダルを閉じる</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--slate-600)', marginTop: 2 }}>アプリ内</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: 2 }}>アプリ内</div>
               </div>
               <kbd style={kbdStyle}>Esc</kbd>
             </div>
@@ -702,7 +702,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── 3. 通知 ─── */}
         {!serverManaged && <section>
           <h3 style={sectionHead}>期限通知</h3>
-          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
             起動時・1時間ごとに期限が近いタスクを通知します。-1で通知しない。
           </p>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -723,7 +723,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               style={secondaryBtn}
             >保存</button>
           </div>
-          <p style={{ fontSize: '0.72rem', color: 'var(--slate-600)', marginTop: 4 }}>0 = 当日のみ　1 = 前日から　-1 = 通知しない</p>
+          <p style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: 4 }}>0 = 当日のみ　1 = 前日から　-1 = 通知しない</p>
         </section>}
         </>}
 
@@ -732,7 +732,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {canManageUsers && onManageUsers && (
           <section>
             <h3 style={sectionHead}>管理者</h3>
-            <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
               メンバーの追加・編集・削除、権限の変更、パスワードの再設定ができます。
             </p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -771,9 +771,9 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             </p>
             <details style={{ marginTop: 6 }}>
               <summary style={detailsSummary}>詳しく</summary>
-              <p style={{ fontSize: '0.75rem', color: 'var(--slate-500)', margin: '8px 0 4px' }}>自動のバックアップの置き場所（サーバーのフォルダ）</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '8px 0 4px' }}>自動のバックアップの置き場所（サーバーのフォルダ）</p>
               <div style={pathBox}>{backupInfo.directory}</div>
-              <p style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginTop: 8, lineHeight: 1.6 }}>戻すときは、サーバーを止めてから DB を差し替えます。手順は docs/HAKOBI.md の「バックアップから戻す」にあります。</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: 8, lineHeight: 1.6 }}>戻すときは、サーバーを止めてから DB を差し替えます。手順は docs/HAKOBI.md の「バックアップから戻す」にあります。</p>
             </details>
           </> : <p style={{ fontSize: '0.8rem', color: backupError ? 'var(--red-300)' : 'var(--slate-400)' }}>{backupError ?? '読み込み中…'}</p>}
         </section>}
@@ -785,7 +785,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── データのエクスポート ─── */}
         <section>
           <h3 style={sectionHead}>データのエクスポート</h3>
-          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
             CSV（UTF-8 BOM付き・Excel対応）でダウンロードします。
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -793,7 +793,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             <button onClick={() => void exportCsv('subtasks')} disabled={exporting} style={secondaryBtn}>📑 サブタスクCSV</button>
             <button onClick={() => void exportCsv('worklogs')} disabled={exporting} style={secondaryBtn}>⏱ 作業ログCSV</button>
           </div>
-          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '14px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '14px 0 12px' }}>
             Markdown形式でタスク一覧を出力します（クリップボードへのコピーは Ctrl+Alt+E でも可能）。
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -805,7 +805,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── 4. Markdownテンプレート ─── */}
         <section>
           <h3 style={sectionHead}>Markdownテンプレート</h3>
-          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 14px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 14px' }}>
             Markdownエクスポートの出力形式を変更します。変数: <code style={codeStyle}>{'{{date}}'}</code> <code style={codeStyle}>{'{{title}}'}</code> <code style={codeStyle}>{'{{category}}'}</code> <code style={codeStyle}>{'{{task_min}}'}</code> <code style={codeStyle}>{'{{start}}'}</code> <code style={codeStyle}>{'{{end}}'}</code> <code style={codeStyle}>{'{{min}}'}</code> <code style={codeStyle}>{'{{note}}'}</code> <code style={codeStyle}>{'{{total_min}}'}</code>
           </p>
           {(
@@ -818,7 +818,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
           ).map(({ key, label, hint }) => (
             <div key={key} style={{ marginBottom: 14 }}>
               <label style={{ fontSize: '0.78rem', color: 'var(--slate-400)', display: 'block', marginBottom: 2 }}>
-                {label} <span style={{ color: 'var(--slate-600)', fontWeight: 'normal' }}>— {hint}</span>
+                {label} <span style={{ color: 'var(--text-subtle)', fontWeight: 'normal' }}>— {hint}</span>
               </label>
               <div style={{ display: 'flex', gap: 8 }}>
                 <textarea
@@ -863,7 +863,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
                   style={secondaryBtn}
                 >保存</button>
               </div>
-              <p style={{ fontSize: '0.72rem', color: 'var(--slate-600)', marginTop: 4 }}>0 = 自動削除しない</p>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: 4 }}>0 = 自動削除しない</p>
             </div>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: '0.78rem', color: 'var(--slate-400)', display: 'block', marginBottom: 4 }}>
@@ -885,7 +885,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
                   style={secondaryBtn}
                 >保存</button>
               </div>
-              <p style={{ fontSize: '0.72rem', color: 'var(--slate-600)', marginTop: 4 }}>0 = 無期限保持</p>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: 4 }}>0 = 無期限保持</p>
             </div>
           </div>
         </section>}
@@ -893,15 +893,15 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── 5. データ保存場所 ─── */}
         {!serverManaged && <section>
           <h3 style={sectionHead}>データ保存場所</h3>
-          <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', margin: '6px 0 12px' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
             変更すると既存データを新しいフォルダにコピーします。<br/>
             保存先はすぐに切り替わり、元のフォルダにもバックアップを残します。<br/>
             データが入っているフォルダは選択できません。
           </p>
-          <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', marginBottom: 4 }}>現在の場所</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginBottom: 4 }}>現在の場所</div>
           <div style={pathBox}>{dataDir || '読み込み中…'}</div>
 
-          <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', margin: '12px 0 4px' }}>変更先</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', margin: '12px 0 4px' }}>変更先</div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <div style={{ ...pathBox, flex: 1, cursor: 'default', color: newDataDir !== dataDir ? 'var(--indigo-300)' : 'var(--slate-400)' }}>
               {newDataDir || '…'}
@@ -925,7 +925,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
               { label: 'アイコン画像', path: dataDir ? `${dataDir}\\icons\\` : '…' }
             ].map(({ label, path: p }) => (
               <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ fontSize: '0.72rem', color: 'var(--slate-500)', whiteSpace: 'nowrap', width: 80 }}>{label}</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', whiteSpace: 'nowrap', width: 80 }}>{label}</span>
                 <span style={{ ...pathBox, flex: 1, fontSize: '0.75rem' }}>{p}</span>
               </div>
             ))}
@@ -947,12 +947,12 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
 // ─── スタイル定数 ─────────────────────────────────────────────
 
 const sectionHead: React.CSSProperties = {
-  fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase',
+  fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase',
   letterSpacing: '0.08em', fontWeight: 'bold'
 }
 
 const closeBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: 'var(--slate-500)',
+  background: 'none', border: 'none', color: 'var(--text-subtle)',
   cursor: 'pointer', fontSize: '1.2rem', padding: '2px 6px'
 }
 

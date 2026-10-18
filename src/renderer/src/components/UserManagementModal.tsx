@@ -221,7 +221,7 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
         <section>
           <h3 style={sectionHead}>メンバー（{users.length}人）</h3>
           {loading ? (
-            <div style={{ color: 'var(--slate-500)', fontSize: '0.84rem', padding: '12px 0' }}>読み込み中…</div>
+            <div style={{ color: 'var(--text-subtle)', fontSize: '0.84rem', padding: '12px 0' }}>読み込み中…</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
               {users.map((user) => {
@@ -247,7 +247,7 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
                           {isSelf && <span style={selfBadge}>自分</span>}
                           {inactive && <span style={inactiveBadge}>無効</span>}
                         </div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', marginTop: 2 }}>@{user.username}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: 2 }}>@{user.username}</div>
                       </div>
                       {!isEditing && (
                         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -398,7 +398,7 @@ function ColorSwatches({ value, onChange }: { value: string; onChange: (color: s
 }
 
 const sectionHead: React.CSSProperties = {
-  fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase',
+  fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase',
   letterSpacing: '0.08em', fontWeight: 'bold', margin: 0
 }
 
@@ -413,7 +413,7 @@ const inputStyle: React.CSSProperties = {
 }
 
 const closeBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: 'var(--slate-500)',
+  background: 'none', border: 'none', color: 'var(--text-subtle)',
   cursor: 'pointer', fontSize: '1.2rem', padding: '2px 6px'
 }
 

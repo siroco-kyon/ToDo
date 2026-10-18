@@ -48,7 +48,7 @@ export function SetupWizardModal({ onComplete }: Props): React.JSX.Element {
           <h1 style={{ fontSize: '1.3rem', color: 'var(--slate-200)', marginBottom: 6 }}>
             HAKOBIへようこそ
           </h1>
-          <p style={{ fontSize: '0.85rem', color: 'var(--slate-500)', lineHeight: 1.6 }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-subtle)', lineHeight: 1.6 }}>
             データベースの保存場所を選択してください。<br />
             後から設定で変更することもできます。
           </p>
@@ -56,7 +56,7 @@ export function SetupWizardModal({ onComplete }: Props): React.JSX.Element {
 
         {/* 保存場所選択 */}
         <div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             データ保存場所
           </div>
 
@@ -71,7 +71,7 @@ export function SetupWizardModal({ onComplete }: Props): React.JSX.Element {
           </div>
 
           {!selectedDir && (
-            <p style={{ fontSize: '0.75rem', color: 'var(--slate-600)', marginBottom: 10 }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginBottom: 10 }}>
               ↑ デフォルトの保存場所（変更しない場合はこのまま）
             </p>
           )}

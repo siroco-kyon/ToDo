@@ -176,7 +176,7 @@ const listStyle: React.CSSProperties = {
 
 const emptyStyle: React.CSSProperties = {
   padding: '28px 12px',
-  color: 'var(--slate-500)',
+  color: 'var(--text-subtle)',
   textAlign: 'center',
   fontSize: '0.86rem'
 }
@@ -232,7 +232,7 @@ const metaStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   gap: 8,
-  color: 'var(--slate-500)',
+  color: 'var(--text-subtle)',
   fontSize: '0.72rem'
 }
 

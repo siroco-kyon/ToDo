@@ -154,7 +154,7 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--indigo-100)' }}>今日やること</span>
             <span style={{ fontSize: '0.76rem', color: remaining > 0 ? 'var(--indigo-200)' : 'var(--green-400)' }}>{todayGroups.length === 0 ? '' : remaining > 0 ? `残り ${remaining}` : 'すべて済み'}</span>
-            <span style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>繰り返しの項目と、開始日が来たやること・期限が今日までのやること</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>繰り返しの項目と、開始日が来たやること・期限が今日までのやること</span>
           </div>
           <TodayTodoItems
             groups={todayGroups}

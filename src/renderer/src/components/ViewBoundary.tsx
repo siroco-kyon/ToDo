@@ -63,7 +63,7 @@ class ViewErrorBoundary extends React.Component<BoundaryProps, State> {
 }
 
 export function ViewLoading(): React.JSX.Element {
-  return <div aria-busy="true" style={{ padding: 24, color: 'var(--slate-500)', fontSize: '0.85rem' }}>読み込み中…</div>
+  return <div aria-busy="true" style={{ padding: 24, color: 'var(--text-subtle)', fontSize: '0.85rem' }}>読み込み中…</div>
 }
 
 /**

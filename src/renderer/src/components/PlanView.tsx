@@ -313,7 +313,7 @@ function SummaryCard({
 }): React.JSX.Element {
   return (
     <div style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 14px' }}>
-      <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
       <div style={{ fontSize: '1.08rem', color: tone, fontWeight: 700, marginTop: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {value}
       </div>
@@ -343,7 +343,7 @@ function Section({
     >
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <div style={{ fontSize: '0.95rem', color: 'var(--slate-50)', fontWeight: 700 }}>{title}</div>
-        {subtitle && <div style={{ fontSize: '0.76rem', color: 'var(--slate-500)' }}>{subtitle}</div>}
+        {subtitle && <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>{subtitle}</div>}
       </div>
       {children}
     </section>
@@ -351,7 +351,7 @@ function Section({
 }
 
 function EmptyState({ label }: { label: string }): React.JSX.Element {
-  return <div style={{ color: 'var(--slate-500)', fontSize: '0.82rem', padding: '4px 2px', lineHeight: 1.6 }}>{label}</div>
+  return <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem', padding: '4px 2px', lineHeight: 1.6 }}>{label}</div>
 }
 
 const inputStyle: React.CSSProperties = {
@@ -999,7 +999,7 @@ export function PlanView({
             }}
             >
               <div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>日付</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>日付</div>
               <div style={{ marginTop: 6, fontSize: '1rem', color: 'var(--slate-50)', fontWeight: 700 }}>{date}</div>
               <div style={{ marginTop: 4, fontSize: '0.76rem', color: 'var(--slate-400)' }}>今日の時間割をまとめて調整できます</div>
             </div>
@@ -1064,7 +1064,7 @@ export function PlanView({
                           right: 0,
                           textAlign: 'right',
                           fontSize: '0.72rem',
-                          color: 'var(--slate-500)'
+                          color: 'var(--text-subtle)'
                         }}
                       >
                         {String(hour).padStart(2, '0')}:00

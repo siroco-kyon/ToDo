@@ -169,7 +169,7 @@ function TodoItem({
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
           {/* ドラッグハンドル */}
           {isManualSort && !isArchived && (
-            <span style={{ color: 'var(--slate-500)', fontSize: '0.8rem', cursor: 'grab', flexShrink: 0, marginTop: 2, userSelect: 'none' }}>⠿</span>
+            <span style={{ color: 'var(--text-subtle)', fontSize: '0.8rem', cursor: 'grab', flexShrink: 0, marginTop: 2, userSelect: 'none' }}>⠿</span>
           )}
 
           {/* 完了チェック。ToDoリストは中の項目をチェックして使うので、一覧からは終えられないようにする */}
@@ -185,18 +185,24 @@ function TodoItem({
             <button
               onClick={(e) => { e.stopPropagation(); onToggleDone() }}
               title={todo.status === 'done' ? '完了を取り消す' : '完了にする'}
-              aria-label={todo.status === 'done' ? '完了を取り消す' : '完了にする'}
+              aria-label={todo.status === 'done' ? `「${todo.title}」の完了を取り消す` : `「${todo.title}」を完了にする`}
+              // 見た目の丸は 17px のまま、押せる範囲を 27px に広げる（周りの余白を押しても効く）
               style={{
-                width: 17, height: 17, borderRadius: '50%', flexShrink: 0, marginTop: 2,
-                border: `2px solid ${todo.status === 'done' ? 'var(--green-400)' : 'var(--slate-600)'}`,
-                background: todo.status === 'done' ? 'var(--green-400)' : 'transparent',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                width: 27, height: 27, margin: '-3px -5px -5px', padding: 0, flexShrink: 0, border: 'none', borderRadius: '50%',
+                background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}
             >
-              {todo.status === 'done' && <span style={{ fontSize: 9, color: 'var(--slate-900)', fontWeight: 'bold' }}>✓</span>}
+              <span aria-hidden="true" style={{
+                width: 17, height: 17, borderRadius: '50%', boxSizing: 'border-box',
+                border: `2px solid ${todo.status === 'done' ? 'var(--green-400)' : 'var(--slate-500)'}`,
+                background: todo.status === 'done' ? 'var(--green-400)' : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                {todo.status === 'done' && <span style={{ fontSize: 9, color: 'var(--slate-900)', fontWeight: 'bold' }}>✓</span>}
+              </span>
             </button>
           ) : (
-            <span style={{ fontSize: '0.75rem', color: 'var(--slate-600)', flexShrink: 0, marginTop: 2 }}>📦</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', flexShrink: 0, marginTop: 2 }}>📦</span>
           )}
 
           {/* タイトル・メタ */}

@@ -147,13 +147,13 @@ function SectionHeader({ title, accent, count }: { title: string; accent: string
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
       <span style={{ width: 8, height: 8, borderRadius: '50%', background: accent }} />
       <span style={{ fontSize: '0.9rem', color: 'var(--slate-200)', fontWeight: 700 }}>{title}</span>
-      <span style={{ fontSize: '0.74rem', color: 'var(--slate-500)' }}>{count}件</span>
+      <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>{count}件</span>
     </div>
   )
 }
 
 function EmptyNote({ text }: { text: string }): React.JSX.Element {
-  return <div style={{ fontSize: '0.84rem', color: 'var(--slate-500)', padding: '8px 0' }}>{text}</div>
+  return <div style={{ fontSize: '0.84rem', color: 'var(--text-subtle)', padding: '8px 0' }}>{text}</div>
 }
 
 function NowCard({ item, extraSeconds, onSelectTodo }: { item: TeamNowItem; extraSeconds: number; onSelectTodo: (id: string) => void }): React.JSX.Element {
@@ -225,7 +225,7 @@ function WorkloadCard({ member }: { member: TeamMemberWorkload }): React.JSX.Ele
 function Metric({ label, value, color }: { label: string; value: string; color: string }): React.JSX.Element {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <span style={{ fontSize: '0.64rem', color: 'var(--slate-500)' }}>{label}</span>
+      <span style={{ fontSize: '0.64rem', color: 'var(--text-subtle)' }}>{label}</span>
       <span style={{ fontSize: '0.92rem', color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
     </div>
   )

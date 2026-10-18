@@ -306,7 +306,7 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
                 })}
 
                 {hiddenCount > 0 && (
-                  <div style={{ fontSize: '0.62rem', color: 'var(--slate-500)', padding: '0 2px' }}>
+                  <div style={{ fontSize: '0.62rem', color: 'var(--text-subtle)', padding: '0 2px' }}>
                     +{hiddenCount} 件
                   </div>
                 )}
@@ -315,7 +315,7 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
           })}
         </div>
 
-        <div style={{ display: 'flex', gap: 14, fontSize: '0.68rem', color: 'var(--slate-600)', paddingTop: 4, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 14, fontSize: '0.68rem', color: 'var(--text-subtle)', paddingTop: 4, flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--red-500)' }}>■ 期限切れ</span>
           <span style={{ color: 'var(--orange-500)' }}>■ 今日まで</span>
           <span style={{ color: 'var(--amber-500)' }}>■ 3日以内</span>
@@ -344,18 +344,18 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
             <span style={{ fontSize: '0.82rem', color: 'var(--slate-200)', fontWeight: 'bold' }}>{selectedDate}</span>
             <button
               onClick={() => setSelectedDate(null)}
-              style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--slate-600)', cursor: 'pointer', fontSize: '1rem', padding: '0 2px' }}
+              style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: '1rem', padding: '0 2px' }}
             >
               ×
             </button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               期限アイテム
             </div>
             {selectedDueItems.length === 0 ? (
-              <div style={{ color: 'var(--slate-600)', fontSize: '0.82rem' }}>この日の期限アイテムはありません</div>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem' }}>この日の期限アイテムはありません</div>
             ) : (
               selectedDueItems.map((item) => {
                 const tone = getItemTone(item)
@@ -394,7 +394,7 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
                       {item.kind === 'todo' ? item.title : item.title}
                     </div>
                     {item.kind === 'subtask' && (
-                      <div style={{ fontSize: '0.68rem', color: 'var(--slate-500)', marginTop: 3 }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', marginTop: 3 }}>
                         親タスク: {item.parentTitle}
                       </div>
                     )}
@@ -405,14 +405,14 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
           </div>
 
           <div style={{ borderTop: '1px solid var(--slate-800)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               作業ログ
             </div>
 
             {loadingLogs ? (
-              <div style={{ color: 'var(--slate-600)', fontSize: '0.82rem' }}>読み込み中…</div>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem' }}>読み込み中…</div>
             ) : logs.length === 0 ? (
-              <div style={{ color: 'var(--slate-600)', fontSize: '0.82rem' }}>この日の作業ログはありません</div>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem' }}>この日の作業ログはありません</div>
             ) : (
               <>
                 <div style={{ fontSize: '0.72rem', color: 'var(--green-400)', background: 'color-mix(in srgb, var(--green-400) 8.2%, transparent)', borderRadius: 6, padding: '4px 10px', textAlign: 'center' }}>
@@ -446,7 +446,7 @@ export function CalendarView({ todos, onSelectTodo }: Props): React.JSX.Element 
                         </span>
                       </div>
                       {log.note && (
-                        <div style={{ fontSize: '0.68rem', color: 'var(--slate-500)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           — {log.note}
                         </div>
                       )}

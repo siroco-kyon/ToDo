@@ -78,6 +78,8 @@ const SHOTS = [
     steps: "__ux.click('タスクを追加', 'button'); await __ux.sleep(800)" },
   { name: 'quickadd-1024', view: 'gantt', width: 1024, height: 768,
     steps: "__ux.click('タスクを追加', 'button'); await __ux.sleep(800)" },
+  { name: 'detail-large-font', view: 'detail', taskTitle: '試作機の設計レビュー', width: 1280, height: 800, fontScale: '150%' },
+  { name: 'kanban-light', view: 'kanban', width: 1440, height: 900, theme: 'light' },
   { name: 'palette', view: 'gantt', width: 1440, height: 900,
     steps: "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })); await __ux.sleep(600)" }
 ]
@@ -92,6 +94,21 @@ async function settle(win, ms = 1800) {
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
   await new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * テーマと文字の大きさ。端末（localStorage）と、ログインした人の設定（サーバー）の両方に書く。
+ * 画面はサーバーの設定を後から読み込んで上書きするため、片方だけだと撮る画面に効かないことがある
+ */
+async function applyLook(win, theme, fontScale) {
+  await win.webContents.executeJavaScript(`(async () => {
+    localStorage.setItem('app-theme-mode', ${JSON.stringify(theme)})
+    localStorage.setItem('app-font-scale', ${JSON.stringify(fontScale)})
+    if (window.api) {
+      await window.api.settingsSet('themeMode', ${JSON.stringify(theme)})
+      await window.api.settingsSet('fontScale', ${JSON.stringify(fontScale)})
+    }
+  })()`)
 }
 
 async function main() {
@@ -120,7 +137,7 @@ async function main() {
       if (!todo) { results.push(`${shot.name}: タスク「${shot.taskTitle}」がありません`); continue }
       params.set('task', todo.id)
     }
-    await win.webContents.executeJavaScript(`localStorage.setItem('app-theme-mode', ${JSON.stringify(shot.theme ?? 'dark')})`)
+    await applyLook(win, shot.theme ?? 'dark', shot.fontScale ?? '100%')
     await win.loadURL(`${origin}/?${params}`)
     await settle(win)
     if (shot.steps) {
@@ -136,8 +153,8 @@ async function main() {
     fs.writeFileSync(file, image.toPNG())
     results.push(`${shot.name}: ${path.relative(process.cwd(), file)}`)
   }
-  // 次に撮るときのために、テーマを既定（ダーク）に戻しておく
-  await win.webContents.executeJavaScript("localStorage.setItem('app-theme-mode', 'dark')").catch(() => {})
+  // 次に撮るときのために、テーマと文字の大きさを既定（ダーク・標準）に戻しておく
+  await applyLook(win, 'dark', '100%').catch(() => {})
   console.log(results.join('\n'))
 }
 

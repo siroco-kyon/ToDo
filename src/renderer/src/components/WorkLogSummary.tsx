@@ -105,7 +105,7 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
         <div>
           <div style={{ fontSize: '1rem', color: 'var(--slate-200)', fontWeight: 'bold' }}>作業ログ</div>
           {totalSeconds > 0 && (
-            <div style={{ fontSize: '0.78rem', color: 'var(--slate-500)', marginTop: 2 }}>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: 2 }}>
               合計 <span style={{ color: 'var(--green-400)', fontWeight: 'bold' }}>{formatDuration(totalSeconds)}</span>
               {' / '}{groups.length}タスク
             </div>
@@ -134,13 +134,13 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
       {/* コンテンツ */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
         {loading && (
-          <div style={{ color: 'var(--slate-600)', textAlign: 'center', padding: 24, fontSize: '0.9rem' }}>
+          <div style={{ color: 'var(--text-subtle)', textAlign: 'center', padding: 24, fontSize: '0.9rem' }}>
             読み込み中…
           </div>
         )}
 
         {!loading && groups.length === 0 && (
-          <div style={{ color: 'var(--slate-600)', textAlign: 'center', padding: 32, fontSize: '0.9rem' }}>
+          <div style={{ color: 'var(--text-subtle)', textAlign: 'center', padding: 32, fontSize: '0.9rem' }}>
             この期間の作業ログはありません
           </div>
         )}
@@ -173,7 +173,7 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
                   alignItems: 'center', gap: 10
                 }}
               >
-                <span style={{ color: 'var(--slate-500)', fontSize: '0.8rem', flexShrink: 0 }}>
+                <span style={{ color: 'var(--text-subtle)', fontSize: '0.8rem', flexShrink: 0 }}>
                   {expanded ? '▼' : '▶'}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -195,7 +195,7 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
                   <div style={{ fontSize: '1rem', color: 'var(--green-400)', fontWeight: 'bold' }}>
                     {formatDuration(group.total_seconds)}
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--slate-600)' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
                     {group.entries.length}件
                   </div>
                 </div>
@@ -219,7 +219,7 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
                           }}>
                             {dateLabel}
                           </span>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
                             {formatDuration(dayTotal)}
                           </span>
                         </div>
@@ -240,7 +240,7 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
                               {formatDuration(entry.duration_seconds)}
                             </span>
                             {entry.note && (
-                              <span style={{ fontSize: '0.78rem', color: 'var(--slate-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <span style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 — {entry.note}
                               </span>
                             )}

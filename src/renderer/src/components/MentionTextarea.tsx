@@ -129,7 +129,7 @@ export function MentionTextarea({ value, onValueChange, users = [], onKeyDown, o
       />
       {open && (
         <span role="listbox" aria-label="メンションする人" style={listStyle}>
-          <span style={{ display: 'block', padding: '3px 8px 4px', fontSize: '0.64rem', color: 'var(--slate-500)' }}>
+          <span style={{ display: 'block', padding: '3px 8px 4px', fontSize: '0.64rem', color: 'var(--text-subtle)' }}>
             メンションすると相手に通知が届きます（↑↓で選んで Enter）
           </span>
           {candidates.map((user, index) => (
@@ -144,7 +144,7 @@ export function MentionTextarea({ value, onValueChange, users = [], onKeyDown, o
             >
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
               <span style={{ fontWeight: 700, color: 'var(--slate-200)' }}>{user.display_name}</span>
-              <span style={{ color: 'var(--slate-500)', fontSize: '0.7rem' }}>@{user.username}</span>
+              <span style={{ color: 'var(--text-subtle)', fontSize: '0.7rem' }}>@{user.username}</span>
             </span>
           ))}
         </span>

@@ -3,7 +3,7 @@ import type { Category, Todo, TodoStatus } from '../types'
 import { checklistBadgeText, checklistBadgeTitle, type ChecklistSummary } from '../lib/todoList'
 import { dataInk } from '../lib/theme'
 import { todoRecurrenceLabel } from '../lib/recurrence'
-import { formatShortDate } from '../lib/dueDate'
+import { dueStateSuffix, formatShortDate } from '../lib/dueDate'
 
 interface Props {
   todos: Todo[]
@@ -174,7 +174,7 @@ function KanbanCard({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
         {todo.due_date && (
           <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: '0.66rem', color: isDone ? 'var(--slate-500)' : getDueColor(todo.due_date) }}>
-            期限 {formatShortDate(todo.due_date)}
+            期限 {formatShortDate(todo.due_date)}{dueStateSuffix(todo.due_date, isDone)}
           </span>
         )}
         {prog > 0 && (
@@ -273,7 +273,7 @@ export function KanbanView({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--slate-800)' }}>
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: col.accent, flexShrink: 0 }} />
               <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--slate-200)' }}>{col.label}</span>
-              <span style={{ fontSize: '0.7rem', color: 'var(--slate-500)', background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 99, padding: '1px 7px' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 99, padding: '1px 7px' }}>
                 {items.length}
               </span>
               <button
@@ -321,7 +321,7 @@ export function KanbanView({
               ))}
 
               {items.length === 0 && addingStatus !== col.status && (
-                <div style={{ padding: '16px 8px', textAlign: 'center', color: 'var(--slate-600)', fontSize: '0.76rem' }}>
+                <div style={{ padding: '16px 8px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: '0.76rem' }}>
                   カードをここにドラッグ（キーボードは Alt+← / Alt+→）
                 </div>
               )}

@@ -177,7 +177,7 @@ function pickerButtonStyle(open: boolean): React.CSSProperties {
     background: open ? 'var(--slate-800)' : 'transparent',
     border: '1px solid transparent',
     borderRadius: 999,
-    color: 'var(--slate-500)',
+    color: 'var(--text-subtle)',
     cursor: 'pointer',
     fontSize: '0.7rem',
     fontWeight: 700,

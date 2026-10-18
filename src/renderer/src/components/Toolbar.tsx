@@ -347,7 +347,7 @@ function ToolbarMenu({ menuKey, label, buttonContent, title, sections, footer, a
         style={menuButtonStyle(open)}
       >
         {buttonContent}
-        <span aria-hidden="true" style={{ fontSize: '0.62rem', color: 'var(--slate-500)', marginLeft: 2 }}>▼</span>
+        <span aria-hidden="true" style={{ fontSize: '0.62rem', color: 'var(--text-subtle)', marginLeft: 2 }}>▼</span>
       </button>
       {open && (
         <div

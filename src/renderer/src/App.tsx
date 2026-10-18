@@ -599,8 +599,11 @@ export function App(): React.JSX.Element {
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
   }, [])
-  const autoHideSidePanel = viewportWidth < (activeView === 'kanban' ? NARROW_KANBAN_SIDE_PANEL_WIDTH : NARROW_SIDE_PANEL_WIDTH)
-  const autoHideCategoryPane = viewportWidth < NARROW_CATEGORY_PANE_WIDTH
+  // 文字を大きくしているときは、同じ幅でも入る量が減るので、文字の倍率で割った幅で決める
+  const fontScaleFactor = Math.max(1, (Number.parseFloat(fontScale) || 100) / 100)
+  const effectiveViewportWidth = viewportWidth / fontScaleFactor
+  const autoHideSidePanel = effectiveViewportWidth < (activeView === 'kanban' ? NARROW_KANBAN_SIDE_PANEL_WIDTH : NARROW_SIDE_PANEL_WIDTH)
+  const autoHideCategoryPane = effectiveViewportWidth < NARROW_CATEGORY_PANE_WIDTH
   const [openedWhileNarrow, setOpenedWhileNarrow] = useState({ category: false, side: false })
   useEffect(() => {
     setOpenedWhileNarrow((previous) => {
@@ -616,7 +619,7 @@ export function App(): React.JSX.Element {
     if (autoHideSidePanel && showPlanRail && !openedWhileNarrow.side && !SIDE_PANEL_VIEWS_WITHOUT_RAIL.includes(activeView)) hidden.push('右の「今日の予定」')
     if (hidden.length === 0) return
     // カンバンだけで隠すとき（ほかの画面なら出す幅）は、4列を収めるためだと書く
-    const forKanbanOnly = activeView === 'kanban' && !autoHideCategoryPane && viewportWidth >= NARROW_SIDE_PANEL_WIDTH
+    const forKanbanOnly = activeView === 'kanban' && !autoHideCategoryPane && effectiveViewportWidth >= NARROW_SIDE_PANEL_WIDTH
     const noticeKey = `narrow-panes-notice:${forKanbanOnly ? 'kanban' : 'narrow'}`
     try {
       if (window.localStorage.getItem(noticeKey)) return
@@ -625,7 +628,7 @@ export function App(): React.JSX.Element {
     showToast(forKanbanOnly
       ? 'カンバンの4列が収まるよう、右の「今日の予定」を隠しました。上の「表示」から開けます'
       : `画面の幅に合わせて、${hidden.join('と')}を隠しました。上の「表示」から開けます`)
-  }, [activeView, autoHideCategoryPane, autoHideSidePanel, isFirstLaunch, openedWhileNarrow, showCategoryPane, showPlanRail, showToast, viewportWidth])
+  }, [activeView, autoHideCategoryPane, autoHideSidePanel, effectiveViewportWidth, isFirstLaunch, openedWhileNarrow, showCategoryPane, showPlanRail, showToast])
 
   useEffect(() => {
     if (assigneeDefaultApplied || !currentUser || users.length === 0) return
@@ -1180,10 +1183,29 @@ export function App(): React.JSX.Element {
       ? (todo.progress > 0 ? 'active' : 'not_started')
       : 'done'
     // 繰り返しタスクの次回分はDB層が完了時に自動生成する
-    await window.api.todoUpdate(todo.id, { status: newStatus })
+    try {
+      await window.api.todoUpdate(todo.id, { status: newStatus })
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '状態を変えられませんでした', 'error')
+      return
+    }
 
+    // 一覧の丸は小さく押し間違えやすいので、完了にしたときは元に戻せるようにする
     const recurrenceMessage = newStatus === 'done' ? recurrenceDoneMessage(todo) : recurrenceReopenMessage(todo)
-    if (recurrenceMessage) showToast(newStatus === 'done' ? recurrenceMessage : `完了を取り消しました。${recurrenceMessage}`)
+    if (newStatus === 'done') {
+      const previousStatus = todo.status
+      showToast(`「${todo.title}」を完了にしました${recurrenceMessage ? `。${recurrenceMessage}` : ''}`, 'success', {
+        label: '元に戻す',
+        run: () => {
+          void window.api.todoUpdate(todo.id, { status: previousStatus }).then(
+            () => { showToast(`「${todo.title}」の完了を取り消しました`); void loadTodos() },
+            (error: unknown) => showToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+          )
+        }
+      })
+    } else if (recurrenceMessage) {
+      showToast(`完了を取り消しました。${recurrenceMessage}`)
+    }
 
     await loadTodos()
   }, [loadTodos, showToast])

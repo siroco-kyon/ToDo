@@ -117,10 +117,10 @@ function CommentItem({
     <div style={{ marginLeft: Math.min(depth, MAX_INDENT_DEPTH) * 14 }}>
       <div style={{ borderLeft: `2px solid color-mix(in srgb, ${authorColor} 40%, transparent)`, paddingLeft: 9 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', fontSize: '0.72rem' }}>
-          <span style={{ color: 'var(--slate-500)' }}>↳</span>
+          <span style={{ color: 'var(--text-subtle)' }}>↳</span>
           <span style={{ color: dataInk(authorColor), fontWeight: 700 }}>{getAuthorName(comment.author_name)}</span>
-          <span style={{ color: 'var(--slate-500)' }}>{formatDateTime(comment.created_at)}</span>
-          {comment.updated_at !== comment.created_at && <span style={{ color: 'var(--slate-600)' }}>編集済み</span>}
+          <span style={{ color: 'var(--text-subtle)' }}>{formatDateTime(comment.created_at)}</span>
+          {comment.updated_at !== comment.created_at && <span style={{ color: 'var(--text-subtle)' }}>編集済み</span>}
           <ReactionBar
             reactions={comment.reactions}
             onToggle={onToggleReaction ? (emoji) => onToggleReaction(comment.id, emoji) : undefined}
@@ -215,8 +215,8 @@ export function ProgressNoteThread({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.74rem' }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: authorColor, flexShrink: 0 }} />
         <span style={{ color: 'var(--slate-200)', fontWeight: 700 }}>{getAuthorName(note.author_name)}</span>
-        <span style={{ color: 'var(--slate-500)' }}>{formatDateTime(note.created_at)}</span>
-        {note.updated_at !== note.created_at && <span style={{ color: 'var(--slate-600)' }}>編集済み</span>}
+        <span style={{ color: 'var(--text-subtle)' }}>{formatDateTime(note.created_at)}</span>
+        {note.updated_at !== note.created_at && <span style={{ color: 'var(--text-subtle)' }}>編集済み</span>}
         {needsDiscussion && <span style={discussionBadgeStyle}>要相談</span>}
         {showTask && (
           onSelectTodo ? (

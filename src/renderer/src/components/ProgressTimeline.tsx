@@ -626,7 +626,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
         <div style={{ flex: 1, minWidth: 0, paddingBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
             <span style={{ color: 'var(--slate-200)', fontSize: '0.82rem', fontWeight: 800 }}>{authorName}</span>
-            <span style={{ color: 'var(--slate-500)', fontSize: '0.72rem' }}>{formatDateTime(comment.created_at)}</span>
+            <span style={{ color: 'var(--text-subtle)', fontSize: '0.72rem' }}>{formatDateTime(comment.created_at)}</span>
             {comment.updated_at !== comment.created_at && <span style={editedStyle}>編集済み</span>}
             {userId && isUnseen(comment, userId, seenBefore) && <span style={newBadgeStyle}>新着</span>}
           </div>
@@ -679,7 +679,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       <div style={headerStyle}>
         <div>
           <div style={{ fontSize: '1rem', color: 'var(--slate-50)', fontWeight: 800 }}>進捗タイムライン</div>
-          <div style={{ marginTop: 3, color: 'var(--slate-500)', fontSize: '0.78rem' }}>
+          <div style={{ marginTop: 3, color: 'var(--text-subtle)', fontSize: '0.78rem' }}>
             {range.from === range.to ? range.from : `${range.from} ～ ${range.to}`} ・ 投稿 {visibleNotes.length}件 / コメント {totalComments}件
             {unseenCount > 0 && <span style={{ color: 'var(--blue-300)', fontWeight: 700 }}> ・ 新着 {unseenCount}件</span>}
           </div>
@@ -698,7 +698,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
             }}
             style={inputStyle}
           />
-          <span style={{ color: 'var(--slate-500)', fontSize: '0.8rem' }}>～</span>
+          <span style={{ color: 'var(--text-subtle)', fontSize: '0.8rem' }}>～</span>
           <input
             type="date"
             aria-label="表示期間の終了日"
@@ -840,7 +840,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ color: 'var(--slate-50)', fontSize: '0.9rem', fontWeight: 800 }}>{authorName}</span>
-                    <span style={{ color: 'var(--slate-500)', fontSize: '0.74rem' }}>{formatDateTime(note.created_at)}</span>
+                    <span style={{ color: 'var(--text-subtle)', fontSize: '0.74rem' }}>{formatDateTime(note.created_at)}</span>
                     {note.last_reply_at && (
                       <span style={{ color: 'var(--slate-400)', fontSize: '0.74rem' }}>最終返信：{formatDateTime(note.last_reply_at)}</span>
                     )}
@@ -1135,7 +1135,7 @@ const inlineActionStyle: React.CSSProperties = {
 }
 
 const actionMetaStyle: React.CSSProperties = {
-  color: 'var(--slate-500)',
+  color: 'var(--text-subtle)',
   fontSize: '0.72rem',
   fontWeight: 800
 }
@@ -1161,7 +1161,7 @@ const categoryPillStyle: React.CSSProperties = {
 }
 
 const editedStyle: React.CSSProperties = {
-  color: 'var(--slate-500)',
+  color: 'var(--text-subtle)',
   fontSize: '0.68rem',
   fontWeight: 700
 }
@@ -1193,7 +1193,7 @@ const verticalLineStyle: React.CSSProperties = {
 
 const emptyStyle: React.CSSProperties = {
   padding: 32,
-  color: 'var(--slate-500)',
+  color: 'var(--text-subtle)',
   fontSize: '0.9rem',
   textAlign: 'center',
   borderBottom: '1px solid var(--slate-800)'

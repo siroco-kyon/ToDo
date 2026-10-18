@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import type { SubTask, Todo } from '../types'
 import { toDateKey } from '../lib/dueDate'
+import { dataInk } from '../lib/theme'
 import { TODAY_SECTION_LABEL, buildTodaySections, countRemaining, groupEntriesByList, type TodayListGroup } from '../lib/todoList'
 import { QuickCheckItem } from './TodoChecklist'
 
@@ -20,7 +21,7 @@ interface ItemsProps {
 export function TodayTodoItems({ groups, pendingIds, onToggle, onOpenList, showAssignee = false }: ItemsProps): React.JSX.Element {
   const todayKey = toDateKey(new Date())
   if (groups.length === 0) {
-    return <div style={{ fontSize: '0.78rem', color: 'var(--slate-500)', lineHeight: 1.5 }}>今日やる項目はありません。</div>
+    return <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', lineHeight: 1.5 }}>今日やる項目はありません。</div>
   }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -71,7 +72,7 @@ function ListHeading({ todo, onOpen }: { todo: Todo; onOpen: () => void }): Reac
     >
       <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
       {todo.category_name && (
-        <span style={{ fontSize: '0.68rem', color, fontWeight: 700, flexShrink: 0, maxWidth: '45%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '0.68rem', color: dataInk(todo.category_color) ?? 'var(--text-subtle)', fontWeight: 700, flexShrink: 0, maxWidth: '45%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {todo.category_name}
         </span>
       )}

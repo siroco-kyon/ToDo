@@ -119,7 +119,7 @@ function InfoTip({ text }: { text: string }): React.JSX.Element {
 const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: '0.75rem',
-  color: 'var(--slate-500)',
+  color: 'var(--text-subtle)',
   marginBottom: 4
 }
 
@@ -880,7 +880,7 @@ export function TodoDetail({
 
   if (!todo) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--slate-600)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-subtle)' }}>
         タスクを選択してください
       </div>
     )
@@ -1015,9 +1015,9 @@ export function TodoDetail({
     <>
           <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginBottom: 4 }}>計測時間</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginBottom: 4 }}>計測時間</div>
               {isRunning ? <RunningTimerDisplay startTime={timerStartTime} /> : <TimerDisplay elapsedSeconds={0} isRunning={false} />}
-              <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginTop: 2 }}>合計 <TotalMinutes loggedSeconds={loggedSeconds} startTime={isRunning ? timerStartTime : null} />分</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: 2 }}>合計 <TotalMinutes loggedSeconds={loggedSeconds} startTime={isRunning ? timerStartTime : null} />分</div>
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
               {isRunning ? (
@@ -1167,7 +1167,7 @@ export function TodoDetail({
           {!editing && !listMode && (
             <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: '12px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>進捗 <span style={{ color: 'var(--slate-500)', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span></span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>進捗 <span style={{ color: 'var(--text-subtle)', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span></span>
                 {!isArchived && (
                   <button
                     type="button"
@@ -1186,7 +1186,7 @@ export function TodoDetail({
                 onCommit={handleProgressCommit}
               />
               {subTaskProgress !== null && (
-                <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--slate-500)' }}>
+                <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
                   サブタスク: {doneCount}/{subTasks.length} 完了
                   <div style={{ height: 4, background: 'var(--slate-900)', borderRadius: 99, marginTop: 4 }}>
                     <div style={{ height: '100%', width: `${subTaskProgress}%`, background: 'var(--indigo-500)', borderRadius: 99 }} />
@@ -1746,7 +1746,7 @@ function DependencyList({ title, items, getTodoId, getTitle, reload }: { title: 
     <div>
       <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)', marginBottom: 6 }}>{title}</div>
       {items.length === 0 ? (
-        <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)' }}>設定されていません</div>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>設定されていません</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {items.map((item) => (
@@ -2173,7 +2173,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
     setDueDraft(toDateKey(date))
   }
 
-  const fieldLabelStyle: React.CSSProperties = { fontSize: '0.68rem', color: 'var(--slate-500)', marginBottom: 3 }
+  const fieldLabelStyle: React.CSSProperties = { fontSize: '0.68rem', color: 'var(--text-subtle)', marginBottom: 3 }
   const compactSelectStyle: React.CSSProperties = { ...inputStyle, padding: '5px 8px', fontSize: '0.8rem' }
   const dueShortcutStyle: React.CSSProperties = { padding: '4px 10px', borderRadius: 999, border: '1px solid var(--slate-600)', background: 'transparent', color: 'var(--slate-300)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, minHeight: 26 }
 
@@ -2295,7 +2295,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
             </span>
             <button onClick={() => setEditingSchedule(false)} style={buttonStyle('var(--slate-700)')}>取消</button>
             <button onClick={() => void saveSchedule()} disabled={saving} style={buttonStyle('var(--blue-600)')}>{saving ? '保存中…' : '保存'}</button>
-            <span style={{ width: '100%', fontSize: '0.66rem', color: 'var(--slate-500)' }}>依存関係のある後続タスクも自動で再計算されます</span>
+            <span style={{ width: '100%', fontSize: '0.66rem', color: 'var(--text-subtle)' }}>依存関係のある後続タスクも自動で再計算されます</span>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.82rem' }}>
@@ -2304,7 +2304,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
               <span style={{ color: 'var(--indigo-300)' }} title="期限を決めるときは「変更」から入れます。使い終えたら「リストを終える」を押します">→ 期限なし</span>
             ) : (
               <>
-                <span style={{ color: 'var(--slate-600)' }}>→</span>
+                <span style={{ color: 'var(--text-subtle)' }}>→</span>
                 <span style={{ color: dueColor || 'var(--slate-300)', fontWeight: dueColor ? 700 : 400 }}>期限 {todo.due_date ? formatShortDate(todo.due_date) : '未設定'}</span>
                 {todo.due_date && todo.status !== 'done' && <span style={{ fontSize: '0.74rem', color: dueColor || 'var(--slate-500)' }}>（{dueRemainingLabel(todo.due_date)}）</span>}
               </>
