@@ -172,8 +172,8 @@ export function Toolbar({
         flexWrap: 'wrap'
       }}
     >
-      <button onClick={onOpenQuickAdd} style={primaryButtonStyle}>
-        ＋ タスクを追加
+      <button onClick={onOpenQuickAdd} aria-label="タスクを追加" title="タスクを追加" style={primaryButtonStyle}>
+        ＋ <span className="hakobi-toolbar-wide-only">タスクを</span>追加
       </button>
 
       <div style={groupStyle} role="tablist" aria-label="画面の切り替え">
@@ -243,9 +243,9 @@ export function Toolbar({
         )}
 
         {onOpenCommandPalette && (
-          <button onClick={onOpenCommandPalette} title="タスクや画面へすぐ移動します（Ctrl+K）" aria-keyshortcuts="Control+K" style={menuButtonStyle(false)}>
-            🔍 移動
-            <span aria-hidden="true" style={{ fontSize: '0.66rem', color: 'var(--slate-400)', border: '1px solid var(--slate-700)', borderRadius: 4, padding: '0 4px' }}>Ctrl+K</span>
+          <button onClick={onOpenCommandPalette} title="タスクや画面へすぐ移動します（Ctrl+K）" aria-label="移動（Ctrl+K）" aria-keyshortcuts="Control+K" style={menuButtonStyle(false)}>
+            🔍<span className="hakobi-toolbar-wide-only"> 移動</span>
+            <span aria-hidden="true" className="hakobi-toolbar-wide-only" style={{ fontSize: '0.66rem', color: 'var(--slate-400)', border: '1px solid var(--slate-700)', borderRadius: 4, padding: '0 4px' }}>Ctrl+K</span>
           </button>
         )}
 
@@ -274,9 +274,9 @@ export function Toolbar({
           buttonContent={currentUser ? (
             <>
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: currentUser.color, flexShrink: 0 }} />
-              {currentUser.display_name}
+              <span className="hakobi-toolbar-wide-only">{currentUser.display_name}</span>
               {currentUser.role === 'admin' && (
-                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--amber-400)', background: 'var(--amber-950)', borderRadius: 6, padding: '1px 6px' }}>管理者</span>
+                <span className="hakobi-toolbar-wide-only" style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--amber-400)', background: 'var(--amber-950)', borderRadius: 6, padding: '1px 6px' }}>管理者</span>
               )}
             </>
           ) : 'メニュー'}

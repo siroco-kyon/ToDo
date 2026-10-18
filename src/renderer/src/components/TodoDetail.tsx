@@ -428,9 +428,20 @@ export function TodoDetail({
   // 進捗バーは報告タブと同じスライダー（ドラッグ・←→キー）。離したときに1回だけ保存する
   const handleProgressCommit = async (progress: number): Promise<void> => {
     if (!todoId) return
+    const previous = { progress: todo?.progress ?? 0, status: todo?.status ?? 'not_started' }
     try {
-      await onUpdate(todoId, { progress, expected_values: { progress: todo?.progress ?? 0 } })
-      if (progress >= 100 && todo?.status !== 'done') onShowToast('進捗が100%になったので完了にしました')
+      await onUpdate(todoId, { progress, expected_values: { progress: previous.progress } })
+      // バーを押し間違えたときにすぐ戻せるようにする（状態が自動で変わった分も戻す）
+      const undo = {
+        label: '元に戻す',
+        run: () => {
+          void onUpdate(todoId, { progress: previous.progress, status: previous.status }).then(
+            () => onShowToast(`進捗を${previous.progress}%に戻しました`),
+            (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+          )
+        }
+      }
+      onShowToast(progress >= 100 && previous.status !== 'done' ? '進捗が100%になったので完了にしました' : `進捗を${progress}%にしました`, 'success', undo)
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '進捗を更新できませんでした', 'error')
     }

@@ -140,8 +140,9 @@ const GANTT_WIDE_SCREEN_MIN_WIDTH = 1600
 // ガント以外の画面で、右の「今日の予定」・カテゴリ一覧を自動で隠す画面の幅（これより狭いとき）。
 // カンバンは4列を並べるので、右のパネルはもっと広い画面まで隠す
 const NARROW_SIDE_PANEL_WIDTH = 1280
-const NARROW_KANBAN_SIDE_PANEL_WIDTH = GANTT_WIDE_SCREEN_MIN_WIDTH
 const NARROW_CATEGORY_PANE_WIDTH = 1100
+// カンバンの4列（1列 200px と間・余白）が収まる幅。収まらないときは、右の「今日の予定」→カテゴリ一覧→タスク一覧の順に隠す
+const KANBAN_MIN_BOARD_WIDTH = 4 * 200 + 3 * 10 + 24 + 6
 const SIDE_PANEL_VIEWS_WITHOUT_RAIL: readonly CenterView[] = ['plan', 'team', 'progress', 'report', 'todo']
 // 中央の区分けの読み上げ名（上部のタブの名前と同じ）
 const CENTER_VIEW_LABELS: Record<CenterView, string> = {
@@ -606,38 +607,56 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     const update = (): void => setViewportWidth(window.innerWidth)
     window.addEventListener('resize', update)
-    return () => window.removeEventListener('resize', update)
+    // resize が届かない環境（画面の拡大・埋め込みの表示など）でも幅の変化を拾う
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update)
+    observer?.observe(document.documentElement)
+    return () => {
+      window.removeEventListener('resize', update)
+      observer?.disconnect()
+    }
   }, [])
   // 文字を大きくしているときは、同じ幅でも入る量が減るので、文字の倍率で割った幅で決める
   const fontScaleFactor = Math.max(1, (Number.parseFloat(fontScale) || 100) / 100)
   const effectiveViewportWidth = viewportWidth / fontScaleFactor
-  const autoHideSidePanel = effectiveViewportWidth < (activeView === 'kanban' ? NARROW_KANBAN_SIDE_PANEL_WIDTH : NARROW_SIDE_PANEL_WIDTH)
-  const autoHideCategoryPane = effectiveViewportWidth < NARROW_CATEGORY_PANE_WIDTH
-  const [openedWhileNarrow, setOpenedWhileNarrow] = useState({ category: false, side: false })
+  // カンバンは、表示する設定のパネルの幅を足して、4列が収まらなければ右から順に隠す
+  const kanbanBoardWidth = (hide: { side: boolean; category: boolean }): number => viewportWidth
+    - (showTaskPane ? paneWidths.list : 0)
+    - (showCategoryPane && !hide.category ? paneWidths.category : 0)
+    - (showPlanRail && !hide.side ? paneWidths.side : 0)
+  const isKanban = activeView === 'kanban'
+  const autoHideSidePanel = isKanban
+    ? kanbanBoardWidth({ side: false, category: false }) < KANBAN_MIN_BOARD_WIDTH
+    : effectiveViewportWidth < NARROW_SIDE_PANEL_WIDTH
+  const autoHideCategoryPane = isKanban
+    ? kanbanBoardWidth({ side: true, category: false }) < KANBAN_MIN_BOARD_WIDTH
+    : effectiveViewportWidth < NARROW_CATEGORY_PANE_WIDTH
+  const autoHideTaskPane = isKanban && kanbanBoardWidth({ side: true, category: true }) < KANBAN_MIN_BOARD_WIDTH
+  const [openedWhileNarrow, setOpenedWhileNarrow] = useState({ category: false, side: false, task: false })
   useEffect(() => {
     setOpenedWhileNarrow((previous) => {
-      const next = { category: previous.category && autoHideCategoryPane, side: previous.side && autoHideSidePanel }
-      return next.category === previous.category && next.side === previous.side ? previous : next
+      const next = { category: previous.category && autoHideCategoryPane, side: previous.side && autoHideSidePanel, task: previous.task && autoHideTaskPane }
+      return next.category === previous.category && next.side === previous.side && next.task === previous.task ? previous : next
     })
-  }, [autoHideCategoryPane, autoHideSidePanel])
+  }, [autoHideCategoryPane, autoHideSidePanel, autoHideTaskPane])
   // 自動で隠したことは、パネルが消えたと思われないよう知らせる。毎回出ると邪魔なので、この端末で種類ごとに一度だけ
   useEffect(() => {
     if (isFirstLaunch !== false || activeView === 'gantt') return
     const hidden: string[] = []
     if (autoHideCategoryPane && showCategoryPane && !openedWhileNarrow.category) hidden.push('カテゴリ一覧')
     if (autoHideSidePanel && showPlanRail && !openedWhileNarrow.side && !SIDE_PANEL_VIEWS_WITHOUT_RAIL.includes(activeView)) hidden.push('右の「今日の予定」')
+    if (autoHideTaskPane && showTaskPane && !openedWhileNarrow.task) hidden.push('タスク一覧')
     if (hidden.length === 0) return
-    // カンバンだけで隠すとき（ほかの画面なら出す幅）は、4列を収めるためだと書く
-    const forKanbanOnly = activeView === 'kanban' && !autoHideCategoryPane && effectiveViewportWidth >= NARROW_SIDE_PANEL_WIDTH
+    // カンバンで隠すときは、4列を収めるためだと書く
+    const forKanbanOnly = isKanban
     const noticeKey = `narrow-panes-notice:${forKanbanOnly ? 'kanban' : 'narrow'}`
     try {
       if (window.localStorage.getItem(noticeKey)) return
       window.localStorage.setItem(noticeKey, '1')
     } catch { /* 覚えられなくても知らせる */ }
     showToast(forKanbanOnly
-      ? 'カンバンの4列が収まるよう、右の「今日の予定」を隠しました。上の「表示」から開けます'
+      ? `カンバンの4列が収まるよう、${hidden.join('と')}を隠しました。上の「表示」から開けます`
       : `画面の幅に合わせて、${hidden.join('と')}を隠しました。上の「表示」から開けます`)
-  }, [activeView, autoHideCategoryPane, autoHideSidePanel, effectiveViewportWidth, isFirstLaunch, openedWhileNarrow, showCategoryPane, showPlanRail, showToast])
+  }, [activeView, autoHideCategoryPane, autoHideSidePanel, autoHideTaskPane, isFirstLaunch, isKanban, openedWhileNarrow, showCategoryPane, showPlanRail, showTaskPane, showToast])
 
   useEffect(() => {
     if (assigneeDefaultApplied || !currentUser || users.length === 0) return
@@ -1546,21 +1565,17 @@ export function App(): React.JSX.Element {
   // ガントの画面だけ、パネルの開閉をほかの画面とは別に持つ
   const isGanttView = activeView === 'gantt'
   const categoryPaneVisible = isGanttView ? ganttPanes.category : showCategoryPane && (!autoHideCategoryPane || openedWhileNarrow.category)
-  const taskPaneVisible = isGanttView ? ganttPanes.task : showTaskPane
+  const taskPaneVisible = isGanttView ? ganttPanes.task : showTaskPane && (!autoHideTaskPane || openedWhileNarrow.task)
   const planRailVisible = isGanttView ? ganttPanes.side : showPlanRail && (!autoHideSidePanel || openedWhileNarrow.side)
   const togglePane = (key: keyof PaneVisibility): void => {
     if (isGanttView) {
       setGanttPanes((previous) => ({ ...previous, [key]: !previous[key] }))
       return
     }
-    if (key === 'task') {
-      setShowTaskPane((previous) => !previous)
-      return
-    }
     // 狭くて自動で隠しているパネルは、設定を変えずにその幅のあいだだけ開け閉めする
-    const visible = key === 'category' ? categoryPaneVisible : planRailVisible
-    const autoHidden = key === 'category' ? autoHideCategoryPane : autoHideSidePanel
-    const setPreference = key === 'category' ? setShowCategoryPane : setShowPlanRail
+    const visible = key === 'category' ? categoryPaneVisible : key === 'task' ? taskPaneVisible : planRailVisible
+    const autoHidden = key === 'category' ? autoHideCategoryPane : key === 'task' ? autoHideTaskPane : autoHideSidePanel
+    const setPreference = key === 'category' ? setShowCategoryPane : key === 'task' ? setShowTaskPane : setShowPlanRail
     if (visible) {
       if (autoHidden) setOpenedWhileNarrow((previous) => ({ ...previous, [key]: false }))
       else setPreference(false)
@@ -1853,6 +1868,7 @@ export function App(): React.JSX.Element {
               onSelectTodo={selectTodoStable}
               onUpdateTodo={handleUpdate}
               onReorderTodos={handleReorder}
+              focusTodoId={showGanttSidePanel && ganttSidePanelMode === 'detail' ? selectedTodoId : null}
               onOpenSeparateWindow={handleOpenGanttWindow}
               onAddTodo={openQuickAdd}
               listFilters={listFilters}

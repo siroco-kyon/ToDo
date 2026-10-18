@@ -1,7 +1,10 @@
 ﻿import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AddDailyPlanItemOptions, DailyPlanItem, Todo, UpdateDailyPlanItemInput } from '../types'
 import { checklistBadgeText, hasRemainingToday, type ChecklistSummary } from '../lib/todoList'
-import { dataInk } from '../lib/theme'
+import { dataInk } from '../lib/theme'
+
+// 優先度の表記（ほかの画面の「低・中・高」とそろえる）
+const PRIORITY_LABELS: Record<number, string> = { 1: '最低', 2: '低', 3: '中', 4: '高', 5: '最高' }
 
 interface Props {
   date: string
@@ -467,7 +470,7 @@ function CandidateCard({
             </span>
           )}
           <span style={{ fontSize: '0.72rem', color: 'var(--slate-300)' }}>{formatDueLabel(todo.due_date, todayKey)}</span>
-          <span style={{ fontSize: '0.72rem', color: 'var(--amber-400)' }}>P{todo.priority}</span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--amber-400)' }}>優先度 {PRIORITY_LABELS[todo.priority] ?? todo.priority}</span>
           {plannedCount > 0 && (
             <span style={{ fontSize: '0.68rem', color: 'var(--blue-300)', background: 'color-mix(in srgb, var(--blue-900) 25.1%, transparent)', borderRadius: 999, padding: '2px 8px' }}>
               配置済み ×{plannedCount}
@@ -990,7 +993,8 @@ export function PlanView({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'minmax(160px, 1.3fr) repeat(3, minmax(120px, 0.7fr))',
+                // 狭いときは折り返す（右の列の下に潜り込まないように）
+                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
               gap: 10,
               background: 'var(--gray-900)',
               border: '1px solid var(--gray-800)',

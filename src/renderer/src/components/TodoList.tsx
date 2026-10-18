@@ -213,7 +213,7 @@ function TodoItem({
                 color: isArchived || todo.status === 'done' ? 'var(--slate-400)' : 'var(--slate-200)',
                 textDecoration: todo.status === 'done' || isArchived ? 'line-through' : 'none',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0
-              }}>
+              }} title={todo.title}>
                 <Highlight text={todo.title} query={searchQuery} />
               </span>
               {isRunning && (

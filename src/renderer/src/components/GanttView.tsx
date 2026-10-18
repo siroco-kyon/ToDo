@@ -22,7 +22,12 @@ interface Props {
   groupByCategory?: boolean
   /** 絞り込む前にタスクが1件でもあるか。1件もないときは、絞り込みの案内ではなく最初のタスクを作る案内を出す */
   hasAnyTodos?: boolean
+  /** 右に詳細を開いているタスク。ガントが狭くなっても、このタスクのバーが見えるように横へ送る */
+  focusTodoId?: string | null
 }
+
+/** チャートの最小の高さ（これより低い窓では、ガントの画面ごとスクロールする） */
+const CHART_MIN_HEIGHT = 320
 
 interface TodoBar {
   startDate: string
@@ -976,7 +981,8 @@ function GanttViewContent({
   listFilters,
   standalone = false,
   groupByCategory = false,
-  hasAnyTodos = true
+  hasAnyTodos = true,
+  focusTodoId = null
 }: Props): React.JSX.Element {
   const unscheduledSectionRef = useRef<HTMLDivElement>(null)
   const initialSettings = useMemo(() => loadGanttViewSettings(), [])
@@ -2274,6 +2280,29 @@ function GanttViewContent({
 
   const hasScrollableChart = !loading && displayedRangeGroups.length > 0
 
+  // 右に詳細を開いてガントが狭くなったときも、そのタスクのバーが見えるように横へ送る
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container || !focusTodoId) return
+    const ensureVisible = (): void => {
+      const bar = chartGroups.find((group) => group.todo.id === focusTodoId)?.todoBar
+      if (!bar) return
+      const barLeft = diffUnits(bar.startDate, timelineStart, timeScale) * unitWidth
+      const barRight = (diffUnits(bar.endDate, timelineStart, timeScale) + 1) * unitWidth
+      const visibleWidth = Math.max(container.clientWidth - leftTableWidth, 0)
+      const visibleLeft = container.scrollLeft
+      if (visibleWidth === 0 || (barLeft >= visibleLeft && barRight <= visibleLeft + visibleWidth)) return
+      const margin = Math.round(visibleWidth / 8)
+      container.scrollLeft = barLeft < visibleLeft || barRight - barLeft > visibleWidth - margin
+        ? Math.max(0, barLeft - margin)
+        : barRight - visibleWidth + margin
+    }
+    ensureVisible()
+    const observer = new ResizeObserver(ensureVisible)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [chartGroups, focusTodoId, leftTableWidth, timeScale, timelineStart, unitWidth])
+
   useLayoutEffect(() => {
     if (!hasScrollableChart) return
     const container = scrollRef.current
@@ -3522,7 +3551,8 @@ function GanttViewContent({
         </div>
       )}
 
-      <div style={{ flex: '0 0 auto', minHeight: controlsCollapsed ? 540 : 460, height: controlsCollapsed ? '74vh' : '60vh', border: '1px solid var(--slate-800)', borderRadius: 8, background: 'var(--c-0b1220)', overflow: 'hidden' }}>
+      {/* チャートは、ガントの画面に残っている高さいっぱいに広げる（低い窓で横スクロールバーが窓の外に出ないように）。最小は CHART_MIN_HEIGHT */}
+      <div style={{ flex: `1 0 ${CHART_MIN_HEIGHT}px`, minHeight: CHART_MIN_HEIGHT, border: '1px solid var(--slate-800)', borderRadius: 8, background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {loading ? (
           <div style={centerEmptyStyle}>タスクを読み込み中...</div>
         ) : !hasAnyTodos ? (
@@ -3549,7 +3579,7 @@ function GanttViewContent({
             </div>
           </div>
         ) : (
-          <div ref={scrollRef} style={{ height: '100%', overflow: 'auto' }}>
+          <div ref={scrollRef} style={{ height: '100%', minHeight: 0, overflow: 'auto' }}>
             <div style={{ minWidth: leftTableWidth + timelineWidth }}>
               <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 6 }}>
                 <div style={{ position: 'sticky', left: 0, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: 'var(--slate-900)', borderRight: '1px solid var(--slate-800)', borderBottom: '1px solid var(--slate-800)', padding: '6px 8px' }}>

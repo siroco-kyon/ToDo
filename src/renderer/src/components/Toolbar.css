@@ -28,6 +28,13 @@
   outline-offset: -2px;
 }
 
+/* 狭い窓では、上部のバーを1段に収めるため、移動の文字・ユーザー名などを隠してアイコンだけにする（読み上げ名とツールチップは残す） */
+@media (max-width: 1180px) {
+  .hakobi-toolbar-wide-only {
+    display: none;
+  }
+}
+
 /* 区分けへ移るリンク（本文へ移動など）。キーボードでフォーカスしたときだけ左上に出す */
 .hakobi-skip-links button {
   position: fixed;
