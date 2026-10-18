@@ -1,5 +1,5 @@
 import { LinkedText } from './LinkedText'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { dateStamp, downloadCsv, toCsv } from '../lib/csv'
 import { diffDaysFromToday, formatShortDate as formatShortDateKey, getDueDateColor, isoToDateKey, toDateKey } from '../lib/dueDate'
@@ -198,6 +198,33 @@ function loadPreset(): Exclude<PeriodPreset, 'custom'> {
   return PRESETS.some((preset) => preset.value === stored) ? stored as Exclude<PeriodPreset, 'custom'> : '7'
 }
 
+// タブを開いているあいだだけ覚えるもの（ほかの画面へ行って戻ったときに続きから見られるように）
+const SESSION_KEYS = { quickFilter: 'report.quickFilter', scrollTop: 'report.scrollTop' }
+const QUICK_FILTERS: readonly QuickFilter[] = ['all', 'needsReport', 'discussion', 'onHold', 'overdue', 'postponed', 'myNeedsReport']
+
+function loadSessionQuickFilter(): QuickFilter {
+  try {
+    const stored = window.sessionStorage.getItem(SESSION_KEYS.quickFilter)
+    return QUICK_FILTERS.includes(stored as QuickFilter) ? stored as QuickFilter : 'all'
+  } catch {
+    return 'all'
+  }
+}
+
+function loadSessionScrollTop(): number | null {
+  try {
+    const stored = Number(window.sessionStorage.getItem(SESSION_KEYS.scrollTop))
+    return Number.isFinite(stored) && stored > 0 ? stored : null
+  } catch {
+    return null
+  }
+}
+
+/** 期間の日数（両端を含む） */
+function rangeDays(range: DateRange): number {
+  return Math.round((new Date(`${range.to}T00:00:00`).getTime() - new Date(`${range.from}T00:00:00`).getTime()) / 86400000) + 1
+}
+
 function loadAssigneeFilter(): AssigneeFilter {
   const stored = readStorage(STORAGE_KEYS.assigneeFilter)
   if (stored === 'all' || stored === 'mine' || stored === 'mineWithSubTasks') return stored
@@ -266,7 +293,7 @@ function formatDaysAgo(iso: string): string {
 function formatDueLabel(dueDate: string | null, status: TodoStatus): string | null {
   if (!dueDate || status === 'done') return null
   const diff = diffDaysFromToday(dueDate)
-  if (diff < 0) return `${Math.abs(diff)}日遅れ`
+  if (diff < 0) return `${Math.abs(diff)}日超過`
   if (diff === 0) return '今日が期限'
   return `あと${diff}日`
 }
@@ -838,7 +865,19 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const [groupMode, setGroupMode] = useState<GroupMode>(() => readStorage(STORAGE_KEYS.groupMode) === 'category' ? 'category' : 'assignee')
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>(loadAssigneeFilter)
   const [excludeCoAssigned, setExcludeCoAssigned] = useState(() => readStorage(STORAGE_KEYS.excludeCoAssigned) === '1')
-  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all')
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>(loadSessionQuickFilter)
+  useEffect(() => {
+    try { window.sessionStorage.setItem(SESSION_KEYS.quickFilter, quickFilter) } catch { /* 覚えられなくても絞り込みはできる */ }
+  }, [quickFilter])
+  // 読み込み直したときに、前に見ていた位置へ戻す（タスクを開いて報告タブへ戻ったとき）
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const lastScrollTopRef = useRef(0)
+  const scrollRestoreRef = useRef<number | null>(loadSessionScrollTop())
+  // 画面を離れるとき（DOM が消える前）に位置を覚える
+  useLayoutEffect(() => () => {
+    const top = scrollContainerRef.current?.scrollTop ?? lastScrollTopRef.current
+    try { window.sessionStorage.setItem(SESSION_KEYS.scrollTop, String(top)) } catch { /* 位置は覚えなくてもよい */ }
+  }, [])
   // 表示設定（カテゴリ・状態・対象・サブタスク・個別に隠したタスク・小見出し）。見ている人ごとに保存する
   const [settingsState, setSettingsState] = useState(() => ({ userId: settingsUserId, settings: loadReportViewSettings(settingsUserId) }))
   const settings = settingsState.userId === settingsUserId ? settingsState.settings : loadReportViewSettings(settingsUserId)
@@ -897,6 +936,15 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (!loaded || scrollRestoreRef.current == null) return
+    const top = scrollRestoreRef.current
+    scrollRestoreRef.current = null
+    lastScrollTopRef.current = top
+    // 読み込んだ内容はこの時点で描かれているので、そのまま位置を戻す
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = top
+  }, [loaded])
 
   useEffect(() => {
     const unsubscribe = window.api.onDataChanged((scope) => {
@@ -1372,7 +1420,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', background: 'var(--slate-900)' }}>
+    <div ref={scrollContainerRef} onScroll={(event) => { lastScrollTopRef.current = event.currentTarget.scrollTop }} style={{ height: '100%', overflowY: 'auto', background: 'var(--slate-900)' }}>
       <div style={{ padding: '18px 20px 40px', display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 1400, margin: '0 auto' }}>
         {/* ─── 見出し・操作 ─── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1421,6 +1469,12 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               style={inputStyle}
             />
 
+            {preset === 'thisWeek' && rangeDays(range) <= 2 && (
+              <span role="note" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.76rem', color: 'var(--amber-200)', border: '1px solid var(--yellow-700)', background: 'var(--yellow-950)', borderRadius: 999, padding: '3px 4px 3px 10px' }}>
+                今週はまだ{rangeDays(range)}日分です。報告の有無は直近7日で見るのがおすすめです
+                <button onClick={() => applyPreset('7')} style={{ ...chipStyle(false), padding: '2px 10px' }}>直近7日にする</button>
+              </span>
+            )}
             <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
               <button onClick={() => void load()} disabled={loading} style={secondaryButtonStyle}>{loading ? '更新中…' : '更新'}</button>
               <button onClick={() => void handleCopyMarkdown()} title="表示中の内容をMarkdownでコピーします（議事録などに貼れます）" style={secondaryButtonStyle}>Markdownをコピー</button>
@@ -1552,12 +1606,14 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               {groups.length > 1 && <span style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{effectiveGroupMode === 'assignee' ? '担当者へ移動:' : 'カテゴリへ移動:'}</span>}
               {groups.length > 1 && groups.map((group) => {
                 const needs = group.rows.filter((row) => needsReport(row.freshness)).length
+                const overdue = group.rows.filter((row) => isOverdue(row.todo)).length
                 return (
-                  <button key={group.key} onClick={() => jumpToGroup(group.key)} title={`${group.label}の欄へ移動`} style={jumpChipStyle}>
+                  <button key={group.key} onClick={() => jumpToGroup(group.key)} title={`${group.label}の欄へ移動（${group.rows.length}件${needs > 0 ? `・報告なし${needs}件` : ''}${overdue > 0 ? `・期限超過${overdue}件` : ''}）`} style={jumpChipStyle}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.color ?? 'var(--slate-600)', flexShrink: 0 }} />
                     {group.label}
                     <span style={{ color: 'var(--slate-500)', fontWeight: 600 }}>{group.rows.length}</span>
                     {needs > 0 && <span style={{ color: 'var(--amber-200)', fontWeight: 700 }}>報告なし{needs}</span>}
+                    {overdue > 0 && <span style={{ color: 'var(--red-300)', fontWeight: 700 }}>超過{overdue}</span>}
                   </button>
                 )
               })}

@@ -67,7 +67,7 @@ function formatElapsed(seconds: number): string {
 function formatDueLabel(dueDate: string | null): string {
   if (!dueDate) return '期限未設定'
   const diffDays = diffCalendarDays(dueDate, getTodayKey())
-  if (diffDays < 0) return `${Math.abs(diffDays)}日遅れ`
+  if (diffDays < 0) return `${Math.abs(diffDays)}日超過`
   if (diffDays === 0) return '今日が期限'
   if (diffDays === 1) return '明日が期限'
   return `あと${diffDays}日`

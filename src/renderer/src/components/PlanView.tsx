@@ -105,7 +105,7 @@ function diffCalendarDays(dateStr: string, baseDateStr: string): number {
 function formatDueLabel(dueDate: string | null, todayKey: string): string {
   if (!dueDate) return '期限なし'
   const diffDays = diffCalendarDays(dueDate, todayKey)
-  if (diffDays < 0) return `${Math.abs(diffDays)}日遅れ`
+  if (diffDays < 0) return `${Math.abs(diffDays)}日超過`
   if (diffDays === 0) return '今日が期限'
   if (diffDays === 1) return '明日が期限'
   return `あと${diffDays}日`

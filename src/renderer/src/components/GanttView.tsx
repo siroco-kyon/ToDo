@@ -944,9 +944,12 @@ function buildTodoBarTooltip(options: {
       `期間: ${shortDateLabel(bar.startDate)} → ${shortDateLabel(bar.endDate)}${outside ? `（${outside === 'before' ? '表示期間より前' : '表示期間より後'}）` : ''}`
     ]
   if (health && health.status !== 'done' && health.status !== 'future') {
-    const gap = health.behindDays >= 0.5
-      ? `（約${Math.round(health.behindDays)}日分の遅れ）`
-      : health.behindDays <= -0.5 ? `（約${Math.round(-health.behindDays)}日分の先行）` : ''
+    // 「順調」と判定した差（遅れとみなす日数未満）は「遅れ」と書かない
+    const gapDays = (value: number): number => value >= 10 ? Math.round(value) : Math.round(value * 10) / 10
+    const gap = health.status === 'behind' || (health.status === 'overdue' && health.behindDays >= 0.5)
+      ? `（約${gapDays(health.behindDays)}日分の遅れ）`
+      : health.status === 'ahead' ? `（約${gapDays(-health.behindDays)}日分の先行）`
+        : Math.abs(health.behindDays) >= 0.5 ? `（予定より約${gapDays(Math.abs(health.behindDays))}日分${health.behindDays > 0 ? '少なめ' : '多め'}）` : ''
     lines.push(`今日時点の予定 ${health.expectedProgress}% ／ 実績 ${progress}%${gap}`)
   }
   lines.push('')

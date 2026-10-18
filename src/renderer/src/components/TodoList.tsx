@@ -57,12 +57,12 @@ interface Props {
   onToggleListItem?: (item: SubTask) => void
 }
 
-/** 期限の表示。近いものは「今日まで」「3日遅れ」のように残り日数で出す（完了済みは日付だけ） */
+/** 期限の表示。近いものは「今日まで」「3日超過」のように残り日数で出す（完了済みは日付だけ） */
 function formatDueLabel(dueDate: string, done: boolean): string {
   const date = formatShortDate(dueDate)
   if (done) return date
   const diff = diffDaysFromToday(dueDate)
-  if (diff < 0) return `${date}・${Math.abs(diff)}日遅れ`
+  if (diff < 0) return `${date}・${Math.abs(diff)}日超過`
   if (diff === 0) return '今日まで'
   if (diff === 1) return '明日まで'
   if (diff <= 7) return `${date}・あと${diff}日`

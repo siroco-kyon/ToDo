@@ -2062,7 +2062,7 @@ const PRIORITY_OPTIONS = [
 
 function dueRemainingLabel(dueDate: string): string {
   const diff = diffDaysFromToday(dueDate)
-  if (diff < 0) return `${Math.abs(diff)}日遅れ`
+  if (diff < 0) return `${Math.abs(diff)}日超過`
   if (diff === 0) return '今日まで'
   return `あと${diff}日`
 }
@@ -2074,7 +2074,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
   categories: Category[]
   users: PublicUser[]
   onUpdate: (id: string, data: UpdateTodoInput) => Promise<void>
-  onShowToast: (message: string, type?: 'success' | 'error') => void
+  onShowToast: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
 }): React.JSX.Element {
   const [saving, setSaving] = useState(false)
   const [editingSchedule, setEditingSchedule] = useState(false)
@@ -2086,11 +2086,20 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
   const recurrenceLabel = listMode ? null : todoRecurrenceLabel(todo)
 
-  const save = async (data: UpdateTodoInput, message: string): Promise<boolean> => {
+  const save = async (data: UpdateTodoInput, message: string, undo?: UpdateTodoInput): Promise<boolean> => {
     setSaving(true)
     try {
       await onUpdate(todo.id, data)
-      onShowToast(message)
+      // 日程などは、知らせから元に戻せるようにする（依存関係の後続も元の日程で計算し直される）
+      onShowToast(message, 'success', undo ? {
+        label: '元に戻す',
+        run: () => {
+          void onUpdate(todo.id, undo).then(
+            () => onShowToast('元に戻しました'),
+            (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+          )
+        }
+      } : undefined)
       return true
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '変更できませんでした', 'error')
@@ -2112,17 +2121,43 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
       return
     }
     const data: UpdateTodoInput = {}
-    if ((startDraft || null) !== (todo.start_date?.slice(0, 10) ?? null)) data.start_date = startDraft || null
-    if ((dueDraft || null) !== (todo.due_date?.slice(0, 10) ?? null)) data.due_date = dueDraft || null
+    const undo: UpdateTodoInput = {}
+    if ((startDraft || null) !== (todo.start_date?.slice(0, 10) ?? null)) {
+      data.start_date = startDraft || null
+      undo.start_date = todo.start_date?.slice(0, 10) ?? null
+    }
+    if ((dueDraft || null) !== (todo.due_date?.slice(0, 10) ?? null)) {
+      data.due_date = dueDraft || null
+      undo.due_date = todo.due_date?.slice(0, 10) ?? null
+    }
     if (Object.keys(data).length === 0) {
       setEditingSchedule(false)
       return
     }
-    if (await save(data, '日程を変更しました')) setEditingSchedule(false)
+    const message = data.due_date !== undefined && data.due_date
+      ? `期限を${formatShortDate(data.due_date)}にしました`
+      : '日程を変更しました'
+    if (await save(data, message, undo)) setEditingSchedule(false)
+  }
+
+  // 期限を延ばす近道（今の期限、なければ今日から）。押すと期限の欄に入る。保存は「保存」で
+  const shiftDueDraft = (days: number): void => {
+    const base = dueDraft || toDateKey(new Date())
+    const date = new Date(`${base}T00:00:00`)
+    date.setDate(date.getDate() + days)
+    setDueDraft(toDateKey(date))
+  }
+  const nextFridayDraft = (): void => {
+    const date = new Date()
+    date.setHours(0, 0, 0, 0)
+    // 来週の金曜（今日が何曜日でも、次の週の金曜）
+    date.setDate(date.getDate() + ((5 - date.getDay() + 7) % 7) + 7)
+    setDueDraft(toDateKey(date))
   }
 
   const fieldLabelStyle: React.CSSProperties = { fontSize: '0.68rem', color: 'var(--slate-500)', marginBottom: 3 }
   const compactSelectStyle: React.CSSProperties = { ...inputStyle, padding: '5px 8px', fontSize: '0.8rem' }
+  const dueShortcutStyle: React.CSSProperties = { padding: '4px 10px', borderRadius: 999, border: '1px solid var(--slate-600)', background: 'transparent', color: 'var(--slate-300)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, minHeight: 26 }
 
   return (
     <div style={{ background: 'var(--c-162033)', border: '1px solid var(--slate-800)', borderRadius: 10, padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))', gap: '10px 12px' }}>
@@ -2223,6 +2258,20 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
             {listMode && dueDraft && (
               <button onClick={() => setDueDraft('')} title="期限を外して、期限なしのリストにします" style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: '0.74rem' }}>期限なし</button>
             )}
+            <span role="group" aria-label="期限を延ばす" style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', width: '100%' }}>
+              {[{ label: '+1日', days: 1 }, { label: '+3日', days: 3 }, { label: '+1週', days: 7 }].map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  onClick={() => shiftDueDraft(option.days)}
+                  title={`期限を${option.days}日後ろにします（${dueDraft ? '今の期限' : '今日'}から）`}
+                  style={dueShortcutStyle}
+                >
+                  {option.label}
+                </button>
+              ))}
+              <button type="button" onClick={nextFridayDraft} title="期限を来週の金曜にします" style={dueShortcutStyle}>来週金曜</button>
+            </span>
             <button onClick={() => setEditingSchedule(false)} style={buttonStyle('var(--slate-700)')}>取消</button>
             <button onClick={() => void saveSchedule()} disabled={saving} style={buttonStyle('var(--blue-600)')}>{saving ? '保存中…' : '保存'}</button>
             <span style={{ width: '100%', fontSize: '0.66rem', color: 'var(--slate-500)' }}>依存関係のある後続タスクも自動で再計算されます</span>
