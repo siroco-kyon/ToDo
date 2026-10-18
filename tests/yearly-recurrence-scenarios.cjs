@@ -39,10 +39,26 @@ module.exports = function checkYearlyRecurrence(api) {
   const nextYearEnd = completeAndNext(yearEnd)
   assert.deepEqual([dateOf(nextYearEnd.start_date), dateOf(nextYearEnd.due_date)], ['2027-12-01', '2027-12-31'])
 
+  // 完了を取り消してもう一度完了にしても、次回分を重ねて作らない
+  const reopened = api.createTodo({ title: '取り消して完了し直す', status: 'active', due_date: '2026-11-03', recurrence: 'yearly' })
+  completeAndNext(reopened)
+  api.updateTodo(reopened.id, { status: 'active' })
+  const countBeforeRedo = api.getAllTodos().length
+  api.updateTodo(reopened.id, { status: 'done' })
+  assert.equal(api.getAllTodos().length, countBeforeRedo, '同じ次回分があれば作らない')
+  assert.equal(api.getAllTodos().filter((item) => item.title === '取り消して完了し直す' && item.status !== 'done').length, 1)
+
   // 日付のないタスクは、日付なしの次回分を作る（ほかの繰り返しと同じ）
   const undated = api.createTodo({ title: '日付なしの毎年', status: 'active', recurrence: 'yearly' })
   const nextUndated = completeAndNext(undated)
   assert.deepEqual([nextUndated.start_date, nextUndated.due_date, nextUndated.recurrence], [null, null, 'yearly'])
+  // 次回分を完了すれば、その次の回を作る（前の回が残っていても重複とは見なさない）
+  completeAndNext(nextUndated)
+  // 取り消して完了し直したときは重ねない
+  api.updateTodo(undated.id, { status: 'active' })
+  const countBeforeUndatedRedo = api.getAllTodos().length
+  api.updateTodo(undated.id, { status: 'done' })
+  assert.equal(api.getAllTodos().length, countBeforeUndatedRedo)
 
   // サブタスクも引き継ぐ設定なら、サブタスクの日付も1年ずらす
   const withSubTasks = api.createTodo({

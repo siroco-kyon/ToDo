@@ -67,6 +67,13 @@ export function nextRecurrenceDue(todo: RecurrenceSource): { kind: '期限' | '�
   return { kind: base.kind, dateKey: next, holidayMayShift: Boolean(todo.recurrence_skip_holidays) }
 }
 
+/** 繰り返しのタスクの完了を取り消したときの知らせ。繰り返さないときは null */
+export function recurrenceReopenMessage(todo: Pick<Todo, 'recurrence'>): string | null {
+  return recurrenceKindLabel(todo.recurrence)
+    ? '作った次回分はそのまま残ります（もう一度完了にしても、次回分は増えません）'
+    : null
+}
+
 /** 完了にしたあとの知らせ（例: 毎年 10/20 の次回分（期限 2027/10/20）を作りました）。繰り返さないときは null */
 export function recurrenceDoneMessage(todo: RecurrenceSource, today = new Date()): string | null {
   const label = todoRecurrenceLabel(todo)

@@ -120,7 +120,8 @@ function TodoItem({
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
   const isArchived = todo.status === 'archived'
   const listMode = Boolean(todo.list_mode)
-  const prog = listMode ? 0 : todo.progress ?? 0
+  // 完了したタスクは進捗率を出さない（完了の前の 40% などが残って紛らわしいため）
+  const prog = listMode || todo.status === 'done' ? 0 : todo.progress ?? 0
   const canExpand = listMode && !isArchived && onToggleListItem != null && (listItems?.length ?? 0) > 0
   const todayKey = toDateKey(new Date())
   const shownItems = canExpand && expanded ? expandedItemsOf(listItems ?? [], todayKey) : []

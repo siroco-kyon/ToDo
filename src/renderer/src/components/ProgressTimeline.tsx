@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProgressNote, ProgressNoteComment, PublicUser, Todo } from '../types'
 import { ReactionBar, countReactions } from './LikeButton'
 import { MentionTextarea } from './MentionTextarea'
-import { ON_TRACK_NOTE, ProgressNoteHelpers, withProgressNoteTemplate } from './ProgressNoteHelpers'
+import { ON_TRACK_NOTE, ProgressNoteHelpers, cleanProgressNote, withProgressNoteTemplate } from './ProgressNoteHelpers'
 import { isAddressedToUser, isUnseen, noteHasUnseen, readProgressSeenAt, writeProgressSeenAt } from '../lib/progressActivity'
 import { serverNow } from '../lib/serverClock'
 import { NoteMenu, discussionBadgeStyle } from './ProgressNoteThread'
@@ -378,8 +378,12 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
 
   // bodyOverride を渡すと（「予定どおり」）、入力中の文には触らずにその文を投稿する
   const handleCreateNote = async (bodyOverride?: string): Promise<void> => {
-    const body = (bodyOverride ?? noteDraft).trim()
-    if (!selectedTodoId || !body || savingNote) return
+    const body = cleanProgressNote(bodyOverride ?? noteDraft)
+    if (!selectedTodoId || savingNote) return
+    if (!body) {
+      if (noteDraft.trim()) onShowToast('ひな形の見出しだけでは投稿できません。やったことなどを書いてください', 'error')
+      return
+    }
 
     try {
       setSavingNote(true)
@@ -794,7 +798,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                     draft={noteDraft}
                     disabled={!selectedTodoId || savingNote}
                     onInsertTemplate={() => setNoteDraft(withProgressNoteTemplate(noteDraft))}
-                    onPostOnTrack={() => void handleCreateNote(ON_TRACK_NOTE)}
+                    onInsertOnTrack={() => setNoteDraft(ON_TRACK_NOTE)}
                   />
                   <span style={{ color: 'var(--slate-400)', fontSize: '0.74rem' }}>{noteDraft.length}文字</span>
                 </span>

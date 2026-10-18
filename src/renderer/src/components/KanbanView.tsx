@@ -75,7 +75,8 @@ function KanbanCard({
   onSelect: () => void; onDragStart: () => void; onDragEnd: () => void
 }): React.JSX.Element {
   // ToDoリストは進捗率を使わない（中の項目のチェックで見る）
-  const prog = todo.list_mode ? 0 : todo.progress ?? 0
+  // 完了したタスクは進捗率を出さない（完了の前の 40% などが残って紛らわしいため）
+  const prog = todo.list_mode || todo.status === 'done' ? 0 : todo.progress ?? 0
   const isDone = todo.status === 'done'
   const coAssignees = todo.co_assignees ?? []
 
@@ -222,7 +223,7 @@ export function KanbanView({
             onDragLeave={() => setDragOverStatus((prev) => (prev === col.status ? null : prev))}
             onDrop={(e) => { e.preventDefault(); handleDrop(col.status) }}
             style={{
-              flex: '1 1 0', minWidth: 240, display: 'flex', flexDirection: 'column',
+              flex: '1 1 0', minWidth: 200, display: 'flex', flexDirection: 'column',
               background: isOver ? 'var(--c-13203b)' : 'var(--c-0b1220)',
               border: `1px solid ${isOver ? 'var(--blue-500)' : 'var(--slate-800)'}`,
               borderRadius: 12, overflow: 'hidden'

@@ -4,7 +4,8 @@ import { copyTextToClipboard } from '../lib/clipboard'
 import { dateStamp, downloadCsv, toCsv } from '../lib/csv'
 import { diffDaysFromToday, formatShortDate as formatShortDateKey, getDueDateColor, isoToDateKey, toDateKey } from '../lib/dueDate'
 import { MentionTextarea } from './MentionTextarea'
-import { ON_TRACK_NOTE, ProgressNoteHelpers, withProgressNoteTemplate } from './ProgressNoteHelpers'
+import { ON_TRACK_NOTE, ProgressNoteHelpers, cleanProgressNote, withProgressNoteTemplate } from './ProgressNoteHelpers'
+import { countPostponements } from '../lib/dueChanges'
 import { ProgressNoteThread, discussionBadgeStyle } from './ProgressNoteThread'
 import { ProgressSlider } from './ProgressSlider'
 import { ReportSettingsPanel } from './ReportSettingsPanel'
@@ -364,9 +365,7 @@ function summarizeChanges(changes: TodoChangeEntry[]): ChangeSummary {
   const progressChanges = changes.filter((change) => change.field === 'progress')
   const progressStart = progressChanges.length > 0 ? Number(progressChanges[0].old_value ?? 0) : null
   const dueChanges = changes.filter((change) => change.field === 'due_date')
-  const postponedCount = dueChanges.filter((change) =>
-    change.old_value != null && change.new_value != null && change.new_value.slice(0, 10) > change.old_value.slice(0, 10)
-  ).length
+  const postponedCount = countPostponements(dueChanges)
   return { progressStart, dueChanges, postponedCount }
 }
 
@@ -2143,13 +2142,13 @@ function ReportTaskCard({
   // ToDoリストは進捗率を使わないので、切り替える前の進捗の変化も出さない
   const progressDelta = todo.list_mode ? null : progressDeltaText(row, row.todo.progress)
   const dueChange = dueChangeText(row)
-  const canPost = !posting && draft.trim().length > 0
+  const canPost = !posting && cleanProgressNote(draft).length > 0
   const memoChanged = memoDraft !== todo.memo
 
   const submitNote = async (): Promise<void> => {
     if (!canPost) return
     setPosting(true)
-    const ok = await actions.onCreateNote(todo, draft, draftNeedsDiscussion)
+    const ok = await actions.onCreateNote(todo, cleanProgressNote(draft), draftNeedsDiscussion)
     setPosting(false)
     if (ok) {
       setDraft('')
@@ -2407,12 +2406,7 @@ function ReportTaskCard({
                 disabled={posting}
                 showOnTrack={showOnTrackHelper}
                 onInsertTemplate={() => setDraft(withProgressNoteTemplate(draft))}
-                onPostOnTrack={() => void (async () => {
-                  setPosting(true)
-                  const ok = await actions.onCreateNote(todo, ON_TRACK_NOTE, false)
-                  setPosting(false)
-                  if (ok) setComposerOpen(false)
-                })()}
+                onInsertOnTrack={() => setDraft(ON_TRACK_NOTE)}
               />
               <label style={{ ...checkboxLabelStyle, marginRight: 'auto', color: draftNeedsDiscussion ? 'var(--c-d6b38a)' : 'var(--slate-400)' }}>
                 <input type="checkbox" checked={draftNeedsDiscussion} onChange={(event) => setDraftNeedsDiscussion(event.target.checked)} style={{ accentColor: 'var(--indigo-500)' }} />

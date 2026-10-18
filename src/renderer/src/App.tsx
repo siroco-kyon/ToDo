@@ -21,7 +21,7 @@ import { buildChecklistSummaries, buildTodayGroups, countRemaining, groupListIte
 import { TodayTodoCard } from './components/TodayTodo'
 import { mergeSubsetOrder } from './lib/reorder'
 import { buildUrlSearch, parseUrlState } from './lib/urlState'
-import { recurrenceDoneMessage } from './lib/recurrence'
+import { recurrenceDoneMessage, recurrenceReopenMessage } from './lib/recurrence'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 
 // 最初に開くガント・タスク一覧・詳細以外の画面と、設定などの小窓は、開いたときに読み込む（起動を軽くする）
@@ -98,6 +98,12 @@ interface PaneVisibility {
 const GANTT_PANES_STORAGE_KEY = 'gantt-pane-visibility'
 /** この幅より狭い画面では、ガントを初めて開いたときにパネルを畳んで時間軸を広く見せる */
 const GANTT_WIDE_SCREEN_MIN_WIDTH = 1600
+// ガント以外の画面で、右の「今日の予定」・カテゴリ一覧を自動で隠す画面の幅（これより狭いとき）。
+// カンバンは4列を並べるので、右のパネルはもっと広い画面まで隠す
+const NARROW_SIDE_PANEL_WIDTH = 1280
+const NARROW_KANBAN_SIDE_PANEL_WIDTH = GANTT_WIDE_SCREEN_MIN_WIDTH
+const NARROW_CATEGORY_PANE_WIDTH = 1100
+const SIDE_PANEL_VIEWS_WITHOUT_RAIL: readonly CenterView[] = ['plan', 'team', 'progress', 'report', 'todo']
 
 // ガントの画面のパネルの開閉は、ほかの画面とは別に覚える（ガントは横に広いほど見やすいため）。
 // まだ覚えていないときは、画面が狭ければすべて畳み、広ければほかの画面と同じにする
@@ -511,6 +517,35 @@ export function App(): React.JSX.Element {
       run: () => setGanttPanes({ category: true, task: true, side: true })
     })
   }, [activeView, isFirstLaunch, showToast])
+
+  // 画面が狭いときは、ガント以外の画面で右の「今日の予定」とカテゴリ一覧を自動で隠す（中央が細くなりすぎないように）。
+  // 狭いあいだに「表示」から開いたものは開いたままにし、広くなったら元の設定に戻る
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
+  useEffect(() => {
+    const update = (): void => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
+  const autoHideSidePanel = viewportWidth < (activeView === 'kanban' ? NARROW_KANBAN_SIDE_PANEL_WIDTH : NARROW_SIDE_PANEL_WIDTH)
+  const autoHideCategoryPane = viewportWidth < NARROW_CATEGORY_PANE_WIDTH
+  const [openedWhileNarrow, setOpenedWhileNarrow] = useState({ category: false, side: false })
+  useEffect(() => {
+    setOpenedWhileNarrow((previous) => {
+      const next = { category: previous.category && autoHideCategoryPane, side: previous.side && autoHideSidePanel }
+      return next.category === previous.category && next.side === previous.side ? previous : next
+    })
+  }, [autoHideCategoryPane, autoHideSidePanel])
+  // 自動で隠したことは、1回の起動で一度だけ知らせる（パネルが消えたと思われないように）
+  const narrowPanesNoticeShownRef = useRef(false)
+  useEffect(() => {
+    if (isFirstLaunch !== false || activeView === 'gantt' || narrowPanesNoticeShownRef.current) return
+    const hidden: string[] = []
+    if (autoHideCategoryPane && showCategoryPane && !openedWhileNarrow.category) hidden.push('カテゴリ一覧')
+    if (autoHideSidePanel && showPlanRail && !openedWhileNarrow.side && !SIDE_PANEL_VIEWS_WITHOUT_RAIL.includes(activeView)) hidden.push('右の「今日の予定」')
+    if (hidden.length === 0) return
+    narrowPanesNoticeShownRef.current = true
+    showToast(`画面が狭いので、${hidden.join('と')}を隠しました。上の「表示」から開けます`)
+  }, [activeView, autoHideCategoryPane, autoHideSidePanel, isFirstLaunch, openedWhileNarrow, showCategoryPane, showPlanRail, showToast])
 
   useEffect(() => {
     if (assigneeDefaultApplied || !currentUser || users.length === 0) return
@@ -1064,8 +1099,8 @@ export function App(): React.JSX.Element {
     // 繰り返しタスクの次回分はDB層が完了時に自動生成する
     await window.api.todoUpdate(todo.id, { status: newStatus })
 
-    const recurrenceMessage = newStatus === 'done' ? recurrenceDoneMessage(todo) : null
-    if (recurrenceMessage) showToast(recurrenceMessage)
+    const recurrenceMessage = newStatus === 'done' ? recurrenceDoneMessage(todo) : recurrenceReopenMessage(todo)
+    if (recurrenceMessage) showToast(newStatus === 'done' ? recurrenceMessage : `完了を取り消しました。${recurrenceMessage}`)
 
     await loadTodos()
   }, [loadTodos, showToast])
@@ -1355,19 +1390,31 @@ export function App(): React.JSX.Element {
   const isManualSort = sortField === 'sort_order'
   // ガントの画面だけ、パネルの開閉をほかの画面とは別に持つ
   const isGanttView = activeView === 'gantt'
-  const categoryPaneVisible = isGanttView ? ganttPanes.category : showCategoryPane
+  const categoryPaneVisible = isGanttView ? ganttPanes.category : showCategoryPane && (!autoHideCategoryPane || openedWhileNarrow.category)
   const taskPaneVisible = isGanttView ? ganttPanes.task : showTaskPane
-  const planRailVisible = isGanttView ? ganttPanes.side : showPlanRail
+  const planRailVisible = isGanttView ? ganttPanes.side : showPlanRail && (!autoHideSidePanel || openedWhileNarrow.side)
   const togglePane = (key: keyof PaneVisibility): void => {
     if (isGanttView) {
       setGanttPanes((previous) => ({ ...previous, [key]: !previous[key] }))
       return
     }
-    if (key === 'category') setShowCategoryPane((previous) => !previous)
-    else if (key === 'task') setShowTaskPane((previous) => !previous)
-    else setShowPlanRail((previous) => !previous)
+    if (key === 'task') {
+      setShowTaskPane((previous) => !previous)
+      return
+    }
+    // 狭くて自動で隠しているパネルは、設定を変えずにその幅のあいだだけ開け閉めする
+    const visible = key === 'category' ? categoryPaneVisible : planRailVisible
+    const autoHidden = key === 'category' ? autoHideCategoryPane : autoHideSidePanel
+    const setPreference = key === 'category' ? setShowCategoryPane : setShowPlanRail
+    if (visible) {
+      if (autoHidden) setOpenedWhileNarrow((previous) => ({ ...previous, [key]: false }))
+      else setPreference(false)
+      return
+    }
+    setPreference(true)
+    if (autoHidden) setOpenedWhileNarrow((previous) => ({ ...previous, [key]: true }))
   }
-  const showRightPlanRail = showPlanRail && activeView !== 'plan' && activeView !== 'team' && activeView !== 'progress' && activeView !== 'report' && activeView !== 'todo'
+  const showRightPlanRail = planRailVisible && !SIDE_PANEL_VIEWS_WITHOUT_RAIL.includes(activeView)
   // Ctrl+K のパレットの項目（画面・操作）
   const paletteViews: { view: CenterView; label: string; keywords: string }[] = [
     { view: 'overview', label: '概要', keywords: 'overview ダッシュボード' },

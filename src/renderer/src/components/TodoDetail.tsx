@@ -10,14 +10,14 @@ import { buildEditPatch } from '../lib/editChanges'
 import { ProgressSlider } from './ProgressSlider'
 import { NoteMenu, ProgressNoteThread } from './ProgressNoteThread'
 import { MentionTextarea } from './MentionTextarea'
-import { ON_TRACK_NOTE, ProgressNoteHelpers, withProgressNoteTemplate } from './ProgressNoteHelpers'
+import { ON_TRACK_NOTE, ProgressNoteHelpers, cleanProgressNote, withProgressNoteTemplate } from './ProgressNoteHelpers'
 import { TodoChecklist } from './TodoChecklist'
 import { isListTodo } from '../lib/todoList'
 import { autoScrollNearEdge, dropTargetAt, moveIdBy, moveIdTo, scrollParentOf, type DropPosition } from '../lib/reorder'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { taskLinkFor } from '../lib/urlState'
 import { dataInk, textOnFill } from '../lib/theme'
-import { TODO_RECURRENCE_OPTIONS, nextRecurrenceDue, recurrenceDoneMessage, recurrenceKindLabel, todoRecurrenceLabel } from '../lib/recurrence'
+import { TODO_RECURRENCE_OPTIONS, nextRecurrenceDue, recurrenceDoneMessage, recurrenceKindLabel, recurrenceReopenMessage, todoRecurrenceLabel } from '../lib/recurrence'
 
 interface Props {
   todo: Todo | null
@@ -430,7 +430,8 @@ export function TodoDetail({
         const recurrenceMessage = recurrenceDoneMessage(todo)
         onShowToast(recurrenceMessage ? `完了にしました。${recurrenceMessage}` : '完了にしました')
       } else {
-        onShowToast('完了を取り消しました')
+        const reopenMessage = recurrenceReopenMessage(todo)
+        onShowToast(reopenMessage ? `完了を取り消しました。${reopenMessage}` : '完了を取り消しました')
       }
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '状態を変更できませんでした', 'error')
@@ -762,8 +763,11 @@ export function TodoDetail({
   // bodyOverride を渡すと（「予定どおり」）、入力中の文には触らずにその文を投稿する
   const handleAddProgressNote = async (bodyOverride?: string): Promise<void> => {
     if (!todoId || noteSaving) return
-    const body = (bodyOverride ?? noteDraft).trim()
-    if (!body) return
+    const body = cleanProgressNote(bodyOverride ?? noteDraft)
+    if (!body) {
+      if (noteDraft.trim()) onShowToast('ひな形の見出しだけでは投稿できません。やったことなどを書いてください', 'error')
+      return
+    }
     try {
       setNoteSaving(true)
       const created = await window.api.progressNoteCreate(todoId, body)
@@ -1254,7 +1258,10 @@ export function TodoDetail({
                         setNoteDraft(next)
                         if (todoId) window.localStorage.setItem(progressDraftKey, next)
                       }}
-                      onPostOnTrack={() => void handleAddProgressNote(ON_TRACK_NOTE)}
+                      onInsertOnTrack={() => {
+                        setNoteDraft(ON_TRACK_NOTE)
+                        if (todoId) window.localStorage.setItem(progressDraftKey, ON_TRACK_NOTE)
+                      }}
                     />
                   </div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>{noteDraft.length}文字</div>

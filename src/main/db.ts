@@ -673,6 +673,9 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
     if (data.status === undefined && data.progress >= 100 && getTodoById(id).status !== 'on_hold') {
       fields.push('status = ?'); values.push('done')
       fields.push('completed_at = COALESCE(completed_at, ?)'); values.push(updatedAt)
+    } else if (data.status === undefined && data.progress > 0 && getTodoById(id).status === 'not_started') {
+      // 進めたのに「未着手」のまま残らないよう、0% より上にしたら進行中にする
+      fields.push('status = ?'); values.push('active')
     }
   }
   // ToDoリストは繰り返し（次回分の作成）を持たない。SQL 側でも止める。
@@ -882,6 +885,18 @@ function spawnNextRecurrence(source: Todo): void {
   const skipHolidays = !!source.recurrence_skip_holidays
   const shiftAndSkip = (value: string | null): string | null =>
     applySkipRules(shiftRecurrenceDate(value, recurrence), skipWeekends, skipHolidays)
+  const nextStartDate = shiftAndSkip(source.start_date)
+  const nextDueDate = shiftAndSkip(source.due_date)
+
+  // 完了を取り消してもう一度完了にしたときなどに、同じ次回分を重ねて作らない。
+  // 次回分は元のタスクより後に追加され（rowid が大きい）、名前・繰り返し・日程が同じ（日程がなければ名前と繰り返しで見る）
+  const alreadySpawned = db.prepare(
+    `SELECT 1 FROM Todos
+     WHERE rowid > (SELECT rowid FROM Todos WHERE id = ?) AND title = ? AND recurrence = ?
+       AND COALESCE(substr(start_date, 1, 10), '') = ? AND COALESCE(substr(due_date, 1, 10), '') = ?
+     LIMIT 1`
+  ).get(source.id, source.title, recurrence, nextStartDate ?? '', nextDueDate ?? '')
+  if (alreadySpawned) return
 
   const next = createTodo({
     title: source.title,
@@ -889,8 +904,8 @@ function spawnNextRecurrence(source: Todo): void {
     memo: source.memo,
     category_id: source.category_id,
     priority: source.priority,
-    start_date: shiftAndSkip(source.start_date),
-    due_date: shiftAndSkip(source.due_date),
+    start_date: nextStartDate,
+    due_date: nextDueDate,
     recurrence,
     recurrence_copy_subtasks: source.recurrence_copy_subtasks,
     recurrence_skip_weekends: source.recurrence_skip_weekends,
