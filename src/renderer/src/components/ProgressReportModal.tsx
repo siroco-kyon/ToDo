@@ -1,5 +1,6 @@
 import { LinkedText } from './LinkedText'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { writeTaskReportSnapshot } from '../lib/taskReportSnapshot'
 import { recurrenceKindLabel } from '../lib/recurrence'
@@ -388,6 +389,8 @@ function digestToMarkdown(digest: ProgressDigest, perTaskReport: TaskReportRow[]
 }
 
 export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = false, currentUser = null, includePrivate = true, visibleTodos }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const today = new Date()
   const [from, setFrom] = useState(() => toDateInput(addDays(today, -6)))
   const [to, setTo] = useState(() => toDateInput(today))
@@ -515,7 +518,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div style={{
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="進捗レポート" style={{
         background: 'var(--slate-800)', borderRadius: 14, padding: 28, width: 680,
         maxHeight: '88vh', overflowY: 'auto',
         boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid var(--slate-700)',

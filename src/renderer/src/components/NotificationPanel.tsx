@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, useRef } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { UserNotification } from '../types'
 
 interface Props {
@@ -18,6 +19,8 @@ export function NotificationPanel({
   onMarkAllRead,
   onShowToast
 }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const [tab, setTab] = useState<'unread' | 'all'>('unread')
   const [showSettings, setShowSettings] = useState(false)
   const [preferences, setPreferences] = useState<Record<string, boolean>>({})
@@ -50,7 +53,7 @@ export function NotificationPanel({
 
   return (
     <div style={backdropStyle} onMouseDown={onClose}>
-      <section role="dialog" aria-modal="true" aria-labelledby="notification-title" style={panelStyle} onMouseDown={(event) => event.stopPropagation()}>
+      <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="notification-title" style={panelStyle} onMouseDown={(event) => event.stopPropagation()}>
         <header style={headerStyle}>
           <div>
             <h2 id="notification-title" style={titleStyle}>通知</h2>

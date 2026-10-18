@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Category, Todo, TodoStatus } from '../types'
 import { checklistBadgeText, checklistBadgeTitle, type ChecklistSummary } from '../lib/todoList'
 import { dataInk } from '../lib/theme'
@@ -68,12 +68,25 @@ function avatarStyle(color: string | null | undefined): React.CSSProperties {
 }
 
 function KanbanCard({
-  todo, isRunning, isPrivate, checklist, onSelect, onDragStart, onDragEnd
+  todo, isRunning, isPrivate, checklist, columnLabel, autoFocus, onFocused, onSelect, onMove, onDragStart, onDragEnd
 }: {
   todo: Todo; isRunning: boolean; isPrivate: boolean
   checklist?: ChecklistSummary
-  onSelect: () => void; onDragStart: () => void; onDragEnd: () => void
+  columnLabel: string
+  /** 列を移した直後のカード。移った先でもフォーカスを保つ */
+  autoFocus: boolean
+  onFocused: () => void
+  onSelect: () => void
+  /** キーボードで隣の列へ移す（-1 は左、1 は右） */
+  onMove: (direction: -1 | 1) => void
+  onDragStart: () => void; onDragEnd: () => void
 }): React.JSX.Element {
+  const cardRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!autoFocus) return
+    cardRef.current?.focus()
+    onFocused()
+  }, [autoFocus, onFocused])
   // ToDoリストは進捗率を使わない（中の項目のチェックで見る）
   // 完了したタスクは進捗率を出さない（完了の前の 40% などが残って紛らわしいため）
   const prog = todo.list_mode || todo.status === 'done' ? 0 : todo.progress ?? 0
@@ -82,10 +95,27 @@ function KanbanCard({
 
   return (
     <div
+      ref={cardRef}
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onSelect}
+      // キーボードでも開ける・列を移せるようにする（ドラッグはマウスだけなので）
+      role="button"
+      tabIndex={0}
+      aria-label={`${todo.title}（${columnLabel}）`}
+      aria-keyshortcuts="Enter Alt+ArrowLeft Alt+ArrowRight"
+      title="Enter で開く・Alt+← / Alt+→ で隣の列へ移す"
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect()
+        } else if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+          event.preventDefault()
+          onMove(event.key === 'ArrowLeft' ? -1 : 1)
+        }
+      }}
       style={{
         background: 'var(--slate-900)',
         border: `1px solid ${isRunning ? 'var(--green-900)' : 'var(--slate-800)'}`,
@@ -202,6 +232,17 @@ export function KanbanView({
     if (todo && todo.status !== status) void onChangeStatus(todo, status)
   }
 
+  // キーボードで列を移したカードは、移った先で再びフォーカスする
+  const [focusAfterMoveId, setFocusAfterMoveId] = useState<string | null>(null)
+  const clearFocusAfterMove = useCallback(() => setFocusAfterMoveId(null), [])
+  const moveByKeyboard = (todo: Todo, direction: -1 | 1): void => {
+    const index = COLUMNS.findIndex((column) => column.status === todo.status)
+    const next = COLUMNS[index + direction]
+    if (index < 0 || !next) return
+    // 移した先の列に描き直されてから、そのカードへフォーカスを戻す
+    void Promise.resolve(onChangeStatus(todo, next.status)).then(() => setFocusAfterMoveId(todo.id))
+  }
+
   const submitAdd = (status: TodoStatus): void => {
     const title = addTitle.trim()
     if (title) void onCreateInColumn(title, status)
@@ -269,6 +310,10 @@ export function KanbanView({
                   isRunning={runningTodoId === todo.id}
                   checklist={checklistSummaries?.get(todo.id)}
                   isPrivate={todo.category_id != null && privateCategoryIds.has(todo.category_id)}
+                  columnLabel={col.label}
+                  autoFocus={focusAfterMoveId === todo.id}
+                  onFocused={clearFocusAfterMove}
+                  onMove={(direction) => moveByKeyboard(todo, direction)}
                   onSelect={() => onSelectTodo(todo.id)}
                   onDragStart={() => setDraggedId(todo.id)}
                   onDragEnd={() => { setDraggedId(null); setDragOverStatus(null) }}
@@ -277,7 +322,7 @@ export function KanbanView({
 
               {items.length === 0 && addingStatus !== col.status && (
                 <div style={{ padding: '16px 8px', textAlign: 'center', color: 'var(--slate-600)', fontSize: '0.76rem' }}>
-                  カードをここにドラッグ
+                  カードをここにドラッグ（キーボードは Alt+← / Alt+→）
                 </div>
               )}
             </div>

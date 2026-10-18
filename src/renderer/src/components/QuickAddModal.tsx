@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { Category, CreateTodoInput, PublicUser, Todo } from '../types'
 import { AssigneePicker } from './AssigneePicker'
 import { toDateKey } from '../lib/dueDate'
@@ -76,6 +77,8 @@ export function QuickAddModal({
   onClose,
   onShowToast
 }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const templates = useMemo(() => {
     try {
       const parsed = JSON.parse(window.localStorage.getItem('todo-templates') ?? '[]') as unknown
@@ -225,6 +228,7 @@ export function QuickAddModal({
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="quick-add-title"
@@ -301,11 +305,11 @@ export function QuickAddModal({
             <span style={labelStyle}>期限</span>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               {duePresets.map((preset) => (
-                <button key={preset.label} type="button" onClick={() => setDueDate(preset.value)} style={presetButtonStyle(dueDate === preset.value)}>
+                <button key={preset.label} type="button" aria-pressed={dueDate === preset.value} onClick={() => setDueDate(preset.value)} style={presetButtonStyle(dueDate === preset.value)}>
                   {preset.label}
                 </button>
               ))}
-              <button type="button" onClick={() => setDueDate('')} style={presetButtonStyle(dueDate === '')}>なし</button>
+              <button type="button" aria-pressed={dueDate === ''} onClick={() => setDueDate('')} style={presetButtonStyle(dueDate === '')}>なし</button>
               <input
                 type="date"
                 aria-label="期限"
@@ -320,7 +324,7 @@ export function QuickAddModal({
             {users.length > 0 && (
               <div>
                 <label style={labelStyle}>担当者</label>
-                <AssigneePicker users={users} value={assigneeId} onChange={setAssigneeId} />
+                <AssigneePicker label="担当者" users={users} value={assigneeId} onChange={setAssigneeId} />
               </div>
             )}
             <div>

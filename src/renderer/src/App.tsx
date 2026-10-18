@@ -142,6 +142,29 @@ const NARROW_SIDE_PANEL_WIDTH = 1280
 const NARROW_KANBAN_SIDE_PANEL_WIDTH = GANTT_WIDE_SCREEN_MIN_WIDTH
 const NARROW_CATEGORY_PANE_WIDTH = 1100
 const SIDE_PANEL_VIEWS_WITHOUT_RAIL: readonly CenterView[] = ['plan', 'team', 'progress', 'report', 'todo']
+// 中央の区分けの読み上げ名（上部のタブの名前と同じ）
+const CENTER_VIEW_LABELS: Record<CenterView, string> = {
+  detail: 'タスクの詳細', overview: '概要', log: '記録', progress: '進捗', report: '報告', plan: '計画', gantt: 'ガント', team: 'チーム', kanban: 'カンバン', todo: 'ToDo'
+}
+
+/** キーボードで最初に Tab を押したときだけ出る、区分けへ移るリンク（一覧や上部のボタンを1つずつ通らずに済む） */
+function SkipLinks({ showTaskList, showSidePanel, sidePanelLabel }: { showTaskList: boolean; showSidePanel: boolean; sidePanelLabel: string }): React.JSX.Element {
+  const focusRegion = (id: string): void => {
+    const region = document.getElementById(id)
+    if (!region) return
+    // 区分けの中の最初の操作できる部品へ。なければ区分けそのものへ
+    const first = region.querySelector<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+    ;(first ?? region).focus()
+  }
+  return (
+    <div className="hakobi-skip-links">
+      <button type="button" onClick={() => focusRegion('hakobi-main')}>本文へ移動</button>
+      {showTaskList && <button type="button" onClick={() => focusRegion('hakobi-task-list')}>タスク一覧へ移動</button>}
+      {showSidePanel && <button type="button" onClick={() => focusRegion('hakobi-side-panel')}>{sidePanelLabel}へ移動</button>}
+    </div>
+  )
+}
+const KANBAN_STATUS_LABELS: Record<Todo['status'], string> = { not_started: '未着手', active: '進行中', on_hold: '保留中', done: '完了', archived: 'アーカイブ' }
 
 // ガントの画面のパネルの開閉は、ほかの画面とは別に覚える（ガントは横に広いほど見やすいため）。
 // まだ覚えていないときは、画面が狭ければすべて畳み、広ければほかの画面と同じにする
@@ -1169,9 +1192,24 @@ export function App(): React.JSX.Element {
   // 繰り返しタスクの次回分作成（DB層が自動生成）を通知する。
   const handleKanbanMove = useCallback(async (todo: Todo, status: Todo['status']) => {
     if (todo.status === status) return
-    await window.api.todoUpdate(todo.id, { status })
+    try {
+      await window.api.todoUpdate(todo.id, { status })
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '状態を変えられませんでした', 'error')
+      return
+    }
+    // 列を移したことを知らせ、その場で戻せるようにする（キーボードで移したときの読み上げにもなる）
     const recurrenceMessage = status === 'done' ? recurrenceDoneMessage(todo) : null
-    if (recurrenceMessage) showToast(recurrenceMessage)
+    const previousStatus = todo.status
+    showToast(`「${todo.title}」を${KANBAN_STATUS_LABELS[status]}にしました${recurrenceMessage ? `。${recurrenceMessage}` : ''}`, 'success', {
+      label: '元に戻す',
+      run: () => {
+        void window.api.todoUpdate(todo.id, { status: previousStatus }).then(
+          () => { showToast(`「${todo.title}」を${KANBAN_STATUS_LABELS[previousStatus]}に戻しました`); void loadTodos() },
+          (error: unknown) => showToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+        )
+      }
+    })
     await loadTodos()
   }, [loadTodos, showToast])
 
@@ -1533,6 +1571,11 @@ export function App(): React.JSX.Element {
           サーバーに再接続しています… つながるまで、変更は保存できません。
         </div>
       )}
+      <SkipLinks
+        showTaskList={taskPaneVisible}
+        showSidePanel={showAuxiliaryPanel}
+        sidePanelLabel={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? 'タスクの詳細' : '今日の予定'}
+      />
       <Toolbar
         isTimerRunning={isRunning}
         runningTask={runningTodo ? { title: runningTodo.title, startTime: timerStartTime } : null}
@@ -1576,7 +1619,7 @@ export function App(): React.JSX.Element {
       />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minWidth: 0 }}>
-        <div style={{ width: paneWidths.category, flexShrink: 0, background: 'var(--c-0a0f1a)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: categoryPaneVisible ? 'block' : 'none' }}>
+        <nav aria-label="カテゴリ" style={{ width: paneWidths.category, flexShrink: 0, background: 'var(--c-0a0f1a)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: categoryPaneVisible ? 'block' : 'none' }}>
           <CategoryList
             categories={categories}
             selectedId={selectedCategoryId}
@@ -1586,14 +1629,14 @@ export function App(): React.JSX.Element {
             onDelete={handleCategoryDelete}
             onReorder={handleCategoryReorder}
           />
-        </div>
+        </nav>
 
         <div
           onPointerDown={(event) => beginResize('category', paneWidths.category, event)}
           style={{ ...resizeHandleStyle, display: categoryPaneVisible ? 'block' : 'none' }}
         />
 
-        <div style={{ width: paneWidths.list, flexShrink: 0, background: 'var(--c-0d1525)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: taskPaneVisible ? 'flex' : 'none', flexDirection: 'column' }}>
+        <section id="hakobi-task-list" tabIndex={-1} aria-label="タスク一覧" style={{ width: paneWidths.list, flexShrink: 0, background: 'var(--c-0d1525)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: taskPaneVisible ? 'flex' : 'none', flexDirection: 'column', outline: 'none' }}>
           <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--slate-800)' }}>
             <input
               value={searchQuery}
@@ -1720,14 +1763,14 @@ export function App(): React.JSX.Element {
               onToggleListItem={handleToggleListItem}
             />
           </div>
-        </div>
+        </section>
 
         <div
           onPointerDown={(event) => beginResize('list', paneWidths.list, event)}
           style={{ ...resizeHandleStyle, display: taskPaneVisible ? 'block' : 'none' }}
         />
 
-        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: 'var(--slate-900)' }}>
+        <main id="hakobi-main" tabIndex={-1} aria-label={CENTER_VIEW_LABELS[activeView]} style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: 'var(--slate-900)', outline: 'none' }}>
           <ViewBoundary key={activeView}>
           {initialLoadError ? (
             <div role="alert" style={{ margin: 24, padding: 20, border: '1px solid var(--red-500)', borderRadius: 12, background: 'var(--red-950)', color: 'var(--red-200)' }}>
@@ -1862,7 +1905,7 @@ export function App(): React.JSX.Element {
             />
           )}
           </ViewBoundary>
-        </div>
+        </main>
 
         {showAuxiliaryPanel && (
           <>
@@ -1871,7 +1914,7 @@ export function App(): React.JSX.Element {
               style={resizeHandleStyle}
             />
 
-            <div style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <aside id="hakobi-side-panel" tabIndex={-1} aria-label={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? 'タスクの詳細' : '今日の予定'} style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column', outline: 'none' }}>
               {activeView === 'gantt' ? (
                 <>
                   <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -1940,7 +1983,7 @@ export function App(): React.JSX.Element {
                   topSlot={todayTodoCard}
                 />
               )}
-            </div>
+            </aside>
           </>
         )}
       </div>

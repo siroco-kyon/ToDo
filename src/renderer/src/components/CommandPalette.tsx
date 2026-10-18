@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { Todo } from '../types'
 
 /** パレットの1項目（画面の切り替え・操作）。タスクは別に並べる */
@@ -30,6 +31,8 @@ const MAX_TASKS = 30
 
 // Ctrl+K で開く移動・操作のパレット。タスク名で探して開く、画面の切り替え、よく使う操作をキーボードだけでできる
 export function CommandPalette({ commands, todos, onOpenTodo, onClose }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -99,7 +102,7 @@ export function CommandPalette({ commands, todos, onOpenTodo, onClose }: Props):
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'color-mix(in srgb, var(--slate-950) 60%, transparent)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '12vh' }}
     >
-      <div role="dialog" aria-modal="true" aria-label="移動・操作" style={{ width: 'min(640px, calc(100vw - 32px))', background: 'var(--slate-900)', border: '1px solid var(--slate-700)', borderRadius: 12, boxShadow: '0 24px 60px color-mix(in srgb, var(--slate-950) 70%, transparent)', overflow: 'hidden' }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="移動・操作" style={{ width: 'min(640px, calc(100vw - 32px))', background: 'var(--slate-900)', border: '1px solid var(--slate-700)', borderRadius: 12, boxShadow: '0 24px 60px color-mix(in srgb, var(--slate-950) 70%, transparent)', overflow: 'hidden' }}>
         <input
           ref={inputRef}
           value={query}

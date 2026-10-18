@@ -22,6 +22,33 @@
   outline: none;
 }
 
+/* キーボードで選んでいる項目は、色の差だけでなく枠でも示す */
+.hakobi-toolbar-menu-item:focus-visible {
+  outline: 2px solid var(--sky-400);
+  outline-offset: -2px;
+}
+
+/* 区分けへ移るリンク（本文へ移動など）。キーボードでフォーカスしたときだけ左上に出す */
+.hakobi-skip-links button {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 3000;
+  transform: translateY(-200%);
+  padding: 8px 14px;
+  border: 1px solid var(--sky-400);
+  border-radius: 8px;
+  background: var(--slate-900);
+  color: var(--slate-100);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hakobi-skip-links button:focus {
+  transform: none;
+}
+
 .hakobi-toolbar-menu-check {
   width: 14px;
   flex-shrink: 0;

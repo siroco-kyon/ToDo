@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import { copyTextToClipboard } from '../lib/clipboard'
 
 /** 定例モードで1人ずつ見せるまとまり（担当者別なら担当者、カテゴリ別ならカテゴリ） */
@@ -153,6 +154,8 @@ export function meetingMinutesMarkdown(groups: MeetingGroup[], state: MeetingSta
 // 定例モード。報告タブの担当者（カテゴリ）を1人ずつ大きく表示し、持ち時間を計りながら進める。
 // 決まったことはその場でタスクにでき、終わったら議事録をコピーできる
 export function MeetingMode({ groups, state, onStateChange, periodLabel, renderBody, onCreateTask, createTaskHint, onShowToast, onClose }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const [now, setNow] = useState(() => Date.now())
   const [taskTitle, setTaskTitle] = useState('')
   const [creatingTask, setCreatingTask] = useState(false)
@@ -229,7 +232,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
   const nearTime = !overTime && personSeconds > state.targetMinutes * 60 - 30
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="定例モード" style={{ position: 'fixed', inset: 0, zIndex: 950, background: 'var(--c-0b1220)', display: 'flex', flexDirection: 'column' }}>
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="定例モード" style={{ position: 'fixed', inset: 0, zIndex: 950, background: 'var(--c-0b1220)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 20px', borderBottom: '1px solid var(--slate-800)', background: 'var(--slate-900)' }}>
         <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--indigo-300)' }}>定例モード</span>
         {group && (

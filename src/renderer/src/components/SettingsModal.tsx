@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import { toCsv, downloadCsv, dateStamp } from '../lib/csv'
 import type { AdminBackupInfo, Todo } from '../types'
 import type { DesktopContext, DesktopPreferences } from '../../../shared/desktop'
@@ -104,6 +105,8 @@ function settingsTabStyle(active: boolean): React.CSSProperties {
 }
 
 export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, fontFamily, onFontFamilyChange, fontScale, onFontScaleChange, canManageUsers = false, serverManaged = false, onManageUsers, onProgressReport, onDesktopImport, onMySummary, onExportClipboard, onExportFile }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const [exporting, setExporting] = useState(false)
   // 定例の曜日（サーバー版の管理者だけ）。前日の17時に、報告がまだのタスクがある人へ知らせる
   const [meetingWeekday, setMeetingWeekday] = useState<string>('')
@@ -468,7 +471,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div role="dialog" aria-modal="true" aria-label="設定" style={{
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="設定" style={{
         background: 'var(--slate-800)', borderRadius: 14, padding: 28, width: 560,
         maxHeight: '85vh', overflowY: 'auto',
         boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid var(--slate-700)',

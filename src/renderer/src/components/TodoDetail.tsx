@@ -223,6 +223,15 @@ export function TodoDetail({
   const initializedTodoIdRef = useRef<string | undefined>(undefined)
 
   const todoId = todo?.id
+  // 「編集」を開いたらタスク名の欄へ、保存・やめたら「編集」ボタンへフォーカスを移す（キーボードで迷子にならないように）
+  const editTitleInputRef = useRef<HTMLInputElement>(null)
+  const editButtonRef = useRef<HTMLButtonElement>(null)
+  const wasEditingRef = useRef(false)
+  useEffect(() => {
+    if (editing) editTitleInputRef.current?.focus()
+    else if (wasEditingRef.current) editButtonRef.current?.focus()
+    wasEditingRef.current = editing
+  }, [editing])
   // 進捗バーの横の「進捗ログを書く」から、下の方にある入力欄へ移る
   const progressLogInputId = useId()
   const focusProgressLogInput = (): void => {
@@ -1064,13 +1073,13 @@ export function TodoDetail({
                   </div>
                 )}
               </div>
-              <div><label style={labelStyle}>説明</label><textarea value={editData.description ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, description: event.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} /></div>
-              <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input type="date" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div><div style={{ flex: 1 }}><label style={labelStyle}>{editingListMode ? '期限（空にすると期限なし）' : '期限'}</label><input type="date" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div></div>
-              <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最低</option><option value={2}>低</option><option value={3}>中</option><option value={4}>高</option><option value={5}>最高</option></select></div></div>
+              <div><label style={labelStyle}>説明</label><textarea aria-label="説明" value={editData.description ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, description: event.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} /></div>
+              <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input type="date" aria-label="開始日" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div><div style={{ flex: 1 }}><label style={labelStyle}>{editingListMode ? '期限（空にすると期限なし）' : '期限'}</label><input type="date" aria-label="期限" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div></div>
+              <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select aria-label="カテゴリ" value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select aria-label="優先度" value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最低</option><option value={2}>低</option><option value={3}>中</option><option value={4}>高</option><option value={5}>最高</option></select></div></div>
               {!editingListMode && (
                 <div>
                   <label style={labelStyle}>繰り返し（完了にすると次回分を自動で作ります）</label>
-                  <select value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as Todo['recurrence'] }))} style={inputStyle}>
+                  <select aria-label="繰り返し" value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as Todo['recurrence'] }))} style={inputStyle}>
                     <option value="">なし</option>
                     {TODO_RECURRENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
@@ -1110,9 +1119,9 @@ export function TodoDetail({
                   日本の祝日をスキップする
                 </label>
               )}
-              <div><label style={labelStyle}>状態</label><select value={editData.status ?? 'active'} onChange={(event) => setEditData((previous) => ({ ...previous, status: event.target.value as Todo['status'] }))} style={inputStyle}><option value="not_started">未着手</option><option value="active">進行中</option><option value="on_hold">保留中</option><option value="done">完了</option><option value="archived">アーカイブ</option></select></div>
+              <div><label style={labelStyle}>状態</label><select aria-label="状態" value={editData.status ?? 'active'} onChange={(event) => setEditData((previous) => ({ ...previous, status: event.target.value as Todo['status'] }))} style={inputStyle}><option value="not_started">未着手</option><option value="active">進行中</option><option value="on_hold">保留中</option><option value="done">完了</option><option value="archived">アーカイブ</option></select></div>
               {users.length > 0 && (
-                <div><label style={labelStyle}>担当者</label><AssigneePicker users={users} value={editData.assignee_id ?? null} onChange={(assigneeId) => setEditData((previous) => ({ ...previous, assignee_id: assigneeId, co_assignee_ids: (previous.co_assignee_ids ?? []).filter((id) => id !== assigneeId) }))} selectStyle={inputStyle} /></div>
+                <div><label style={labelStyle}>担当者</label><AssigneePicker label="担当者" users={users} value={editData.assignee_id ?? null} onChange={(assigneeId) => setEditData((previous) => ({ ...previous, assignee_id: assigneeId, co_assignee_ids: (previous.co_assignee_ids ?? []).filter((id) => id !== assigneeId) }))} selectStyle={inputStyle} /></div>
               )}
               {users.length > 0 && (
                 <div>
@@ -1146,7 +1155,7 @@ export function TodoDetail({
                   </div>
                 </div>
               )}
-              {!editingListMode && <div><label style={labelStyle}>進捗 {editData.progress ?? 0}%</label><input type="range" min={0} max={100} step={5} value={editData.progress ?? 0} onChange={(event) => setEditData((previous) => ({ ...previous, progress: Number(event.target.value) }))} style={{ width: '100%', accentColor: 'var(--indigo-500)' }} /></div>}
+              {!editingListMode && <div><label style={labelStyle}>進捗 {editData.progress ?? 0}%</label><input type="range" aria-label="進捗率" min={0} max={100} step={5} value={editData.progress ?? 0} onChange={(event) => setEditData((previous) => ({ ...previous, progress: Number(event.target.value) }))} style={{ width: '100%', accentColor: 'var(--indigo-500)' }} /></div>}
               <button onClick={() => void handleSave()} disabled={saving} style={{ ...buttonStyle('var(--indigo-500)'), alignSelf: 'flex-end' }}>{saving ? '保存中…' : '保存'}</button>
             </fieldset>
           )}
@@ -1514,7 +1523,7 @@ export function TodoDetail({
       >
         <div style={{ width: '100%', minWidth: 0 }}>
           {editing ? (
-            <input disabled={saving} value={editData.title ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, title: event.target.value }))} style={inputStyle} />
+            <input ref={editTitleInputRef} disabled={saving} aria-label="タスク名" value={editData.title ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, title: event.target.value }))} style={inputStyle} />
           ) : (
             <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)', lineHeight: 1.4, margin: 0, overflowWrap: 'anywhere' }}>{todo.title}</h2>
           )}
@@ -1544,7 +1553,7 @@ export function TodoDetail({
               {isInTodayPlan ? '今日の計画に追加済み' : '今日の計画に追加'}
             </button>
           )}
-          <button onClick={editing ? cancelEditing : startEditing} disabled={saving} title={editing ? undefined : 'タスク名・説明・繰り返し・サブ担当などをまとめて編集します'} style={buttonStyle('var(--slate-700)')}>
+          <button ref={editButtonRef} onClick={editing ? cancelEditing : startEditing} disabled={saving} title={editing ? undefined : 'タスク名・説明・繰り返し・サブ担当などをまとめて編集します'} style={buttonStyle('var(--slate-700)')}>
             {editing ? '編集をやめる' : '編集'}
           </button>
           {!editing && currentUser && (
@@ -2082,6 +2091,15 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
   const [dueDraft, setDueDraft] = useState('')
   const isArchived = todo.status === 'archived'
   const listMode = isListTodo(todo)
+  // キーボードで使う人のために、日程の欄を開いたら開始日へ、閉じたら「変更」へフォーカスを移す
+  const startInputRef = useRef<HTMLInputElement>(null)
+  const scheduleButtonRef = useRef<HTMLButtonElement>(null)
+  const wasEditingScheduleRef = useRef(false)
+  useEffect(() => {
+    if (editingSchedule) startInputRef.current?.focus()
+    else if (wasEditingScheduleRef.current) scheduleButtonRef.current?.focus()
+    wasEditingScheduleRef.current = editingSchedule
+  }, [editingSchedule])
   const statusTone = STATUS_OPTIONS.find((option) => option.value === todo.status)?.color ?? 'var(--slate-400)'
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
   const recurrenceLabel = listMode ? null : todoRecurrenceLabel(todo)
@@ -2241,7 +2259,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: '0.76rem', color: 'var(--slate-400)' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               開始
-              <input type="date" value={startDraft} onChange={(event) => setStartDraft(event.target.value)} aria-label="開始日" style={{ ...compactSelectStyle, width: 'auto' }} />
+              <input ref={startInputRef} type="date" value={startDraft} onChange={(event) => setStartDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setEditingSchedule(false) }} aria-label="開始日" style={{ ...compactSelectStyle, width: 'auto' }} />
             </label>
             <span>→</span>
             <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -2250,7 +2268,10 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
                 type="date"
                 value={dueDraft}
                 onChange={(event) => setDueDraft(event.target.value)}
-                onKeyDown={(event) => { if (event.key === 'Enter') void saveSchedule() }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void saveSchedule()
+                  if (event.key === 'Escape') setEditingSchedule(false)
+                }}
                 aria-label="期限"
                 style={{ ...compactSelectStyle, width: 'auto' }}
               />
@@ -2289,7 +2310,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
               </>
             )}
             {!isArchived && (
-              <button onClick={openScheduleEditor} style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: '0.74rem' }}>変更</button>
+              <button ref={scheduleButtonRef} onClick={openScheduleEditor} aria-label="日程を変更" style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: '0.74rem' }}>変更</button>
             )}
             {recurrenceLabel && (
               <span title="完了にすると次回分を自動で作ります。変えるときは「編集」から" style={{ fontSize: '0.74rem', color: 'var(--indigo-300)', border: '1px solid var(--indigo-700)', borderRadius: 99, padding: '1px 8px', whiteSpace: 'nowrap' }}>

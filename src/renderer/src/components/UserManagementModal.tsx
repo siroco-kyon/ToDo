@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { CreateUserInput, PublicUser, UpdateUserInput, UserRole, UserDeletePreview } from '../types'
 
 interface Props {
@@ -15,6 +16,8 @@ function roleLabel(role: UserRole): string {
 }
 
 export function UserManagementModal({ currentUserId, onClose, onShowToast, onChanged }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const [deletePreview, setDeletePreview] = useState<UserDeletePreview | null>(null)
   const actionPending = useRef(false)
   const [users, setUsers] = useState<PublicUser[]>([])
@@ -203,7 +206,7 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
       }}
       onClick={(e) => e.target === e.currentTarget && !actionPending.current && onClose()}
     >
-      <div role="dialog" aria-modal="true" aria-label="ユーザー管理" style={{
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="ユーザー管理" style={{
         background: 'var(--slate-800)', borderRadius: 14, padding: 28, width: 600,
         maxHeight: '88vh', overflowY: 'auto',
         boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid var(--slate-700)',
@@ -453,12 +456,14 @@ function DeleteMemberConfirmation({ preview, busy, onCancel, onDelete }: {
   onCancel: () => void
   onDelete: (username: string) => Promise<void>
 }): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const [confirmation, setConfirmation] = useState('')
   const { user } = preview
   const canDelete = !busy && confirmation === user.username
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="delete-member-heading" style={{ background: 'var(--slate-800)', border: '1px solid var(--red-500)', borderRadius: 14, padding: 28, width: 480, maxWidth: '90vw', maxHeight: '88vh', overflowY: 'auto', color: 'var(--slate-200)', lineHeight: 1.6 }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="delete-member-heading" style={{ background: 'var(--slate-800)', border: '1px solid var(--red-500)', borderRadius: 14, padding: 28, width: 480, maxWidth: '90vw', maxHeight: '88vh', overflowY: 'auto', color: 'var(--slate-200)', lineHeight: 1.6 }}>
         <h2 id="delete-member-heading" style={{ margin: '0 0 14px' }}>メンバーの削除を確認</h2>
         <div style={{ fontSize: '1.2rem', fontWeight: 700, overflowWrap: 'anywhere' }}>{user.display_name}</div>
         <div style={{ color: 'var(--slate-300)', fontSize: '1rem', marginTop: 6, overflowWrap: 'anywhere' }}>ログインID: {user.username}</div>

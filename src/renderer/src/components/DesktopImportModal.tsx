@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { DesktopImportResult, PublicUser } from '../types'
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
 // デスクトップ版の todo.db をアップロードしてサーバー版に取り込む管理者用モーダル。
 // まずドライランで件数を確認してから本実行する流れを想定している。
 export function DesktopImportModal({ users, onClose, onShowToast }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const [file, setFile] = useState<File | null>(null)
   const [targetUserId, setTargetUserId] = useState('')
   const [busy, setBusy] = useState(false)
@@ -58,7 +61,7 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div style={{
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="デスクトップDBの取り込み" style={{
         background: 'var(--slate-800)', borderRadius: 14, padding: 28, width: 560,
         maxHeight: '88vh', overflowY: 'auto',
         boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid var(--slate-700)',
