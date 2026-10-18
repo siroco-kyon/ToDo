@@ -22,6 +22,7 @@ import { TodayTodoCard } from './components/TodayTodo'
 import { mergeSubsetOrder } from './lib/reorder'
 import { buildUrlSearch, parseUrlState } from './lib/urlState'
 import { recurrenceDoneMessage, recurrenceReopenMessage } from './lib/recurrence'
+import { elapsedSecondsSince } from './hooks/useElapsedSeconds'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 
 // 最初に開くガント・タスク一覧・詳細以外の画面と、設定などの小窓は、開いたときに読み込む（起動を軽くする）
@@ -41,6 +42,43 @@ const ReportView = lazy(() => import('./components/ReportView').then((module) =>
 const TodoListsView = lazy(() => import('./components/TodoListsView').then((module) => ({ default: module.TodoListsView })))
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
+
+// 一覧の並べ替えは端末に覚える（毎朝並べ直さなくて済むように）
+const LIST_SORT_STORAGE_KEY = 'task-list-sort'
+const SORT_FIELD_KEYS: readonly SortField[] = ['created_at', 'updated_at', 'priority', 'progress', 'due_date', 'title', 'sort_order']
+
+/** 並べ替えの最初の向き。期限とタイトルは近い順・あいうえお順、ほかは新しい順・大きい順 */
+function defaultSortDir(field: SortField): 'asc' | 'desc' {
+  return field === 'due_date' || field === 'title' ? 'asc' : 'desc'
+}
+
+/** 並べ替えのボタンのツールチップ（↑↓が何の順かを言葉で） */
+function sortDirTitle(field: SortField, dir: 'asc' | 'desc', active: boolean): string {
+  if (field === 'sort_order') return 'ドラッグで並べた順'
+  const labels: Record<Exclude<SortField, 'sort_order'>, [string, string]> = {
+    due_date: ['期限が近い順', '期限が遠い順'],
+    title: ['タイトルの昇順', 'タイトルの降順'],
+    created_at: ['作成が古い順', '作成が新しい順'],
+    updated_at: ['更新が古い順', '更新が新しい順'],
+    priority: ['優先度が低い順', '優先度が高い順'],
+    progress: ['進捗が少ない順', '進捗が多い順']
+  }
+  const [asc, desc] = labels[field]
+  if (!active) return `${dir === 'asc' ? asc : desc}に並べます`
+  return `${dir === 'asc' ? asc : desc}（もう一度押すと${dir === 'asc' ? desc : asc}）`
+}
+
+function loadListSort(): { field: SortField; dir: 'asc' | 'desc' } {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LIST_SORT_STORAGE_KEY) ?? 'null') as { field?: unknown; dir?: unknown } | null
+    if (parsed && SORT_FIELD_KEYS.includes(parsed.field as SortField) && (parsed.dir === 'asc' || parsed.dir === 'desc')) {
+      return { field: parsed.field as SortField, dir: parsed.dir }
+    }
+  } catch {
+    // 読めなければ既定の並び
+  }
+  return { field: 'created_at', dir: 'desc' }
+}
 type CenterView = 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban' | 'todo'
 type ScopeLens = 'personal' | 'team'
 type GanttSidePanelMode = 'detail' | 'today'
@@ -174,8 +212,12 @@ export function App(): React.JSX.Element {
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(initialUrlState.taskId)
   const [detailDirty, setDetailDirty] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
-  const [sortField, setSortField] = useState<SortField>('created_at')
-  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc')
+  const [initialListSort] = useState(loadListSort)
+  const [sortField, setSortField] = useState<SortField>(initialListSort.field)
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>(initialListSort.dir)
+  useEffect(() => {
+    try { window.localStorage.setItem(LIST_SORT_STORAGE_KEY, JSON.stringify({ field: sortField, dir: sortDir })) } catch { /* 覚えられなくても並べ替えはできる */ }
+  }, [sortDir, sortField])
   const [searchQuery, setSearchQuery] = useState('')
   const [savedTaskViews] = useState<SavedTaskView[]>(() => {
     try {
@@ -314,6 +356,7 @@ export function App(): React.JSX.Element {
   }, [isFirstLaunch, loadSelectedPlan, planDate, showToast])
 
   const { isRunning, runningTodoId, startTime: timerStartTime, start: startTimer, stop: stopTimer, sync: syncTimer } = useTimer(loadTodos)
+  const runningTodo = useMemo(() => (runningTodoId ? todos.find((todo) => todo.id === runningTodoId) ?? null : null), [runningTodoId, todos])
 
   const stop = useCallback(async (note?: string) => {
     try { await stopTimer(note) }
@@ -323,6 +366,13 @@ export function App(): React.JSX.Element {
       throw error
     }
   }, [showToast, stopTimer])
+
+  // ヘッダーの■から止めたときは、記録した時間を知らせる
+  const stopFromToolbar = useCallback(() => {
+    const seconds = elapsedSecondsSince(timerStartTime)
+    const recorded = seconds < 60 ? '1分未満' : `約${Math.round(seconds / 60)}分`
+    void stop().then(() => showToast(`計測を止めました（${recorded}を記録）`), () => { /* 失敗は stop が知らせる */ })
+  }, [showToast, stop, timerStartTime])
 
   const start = useCallback(async (todoId: string) => {
     if (todos.find((todo) => todo.id === todoId)?.status === 'on_hold') {
@@ -535,17 +585,24 @@ export function App(): React.JSX.Element {
       return next.category === previous.category && next.side === previous.side ? previous : next
     })
   }, [autoHideCategoryPane, autoHideSidePanel])
-  // 自動で隠したことは、1回の起動で一度だけ知らせる（パネルが消えたと思われないように）
-  const narrowPanesNoticeShownRef = useRef(false)
+  // 自動で隠したことは、パネルが消えたと思われないよう知らせる。毎回出ると邪魔なので、この端末で種類ごとに一度だけ
   useEffect(() => {
-    if (isFirstLaunch !== false || activeView === 'gantt' || narrowPanesNoticeShownRef.current) return
+    if (isFirstLaunch !== false || activeView === 'gantt') return
     const hidden: string[] = []
     if (autoHideCategoryPane && showCategoryPane && !openedWhileNarrow.category) hidden.push('カテゴリ一覧')
     if (autoHideSidePanel && showPlanRail && !openedWhileNarrow.side && !SIDE_PANEL_VIEWS_WITHOUT_RAIL.includes(activeView)) hidden.push('右の「今日の予定」')
     if (hidden.length === 0) return
-    narrowPanesNoticeShownRef.current = true
-    showToast(`画面が狭いので、${hidden.join('と')}を隠しました。上の「表示」から開けます`)
-  }, [activeView, autoHideCategoryPane, autoHideSidePanel, isFirstLaunch, openedWhileNarrow, showCategoryPane, showPlanRail, showToast])
+    // カンバンだけで隠すとき（ほかの画面なら出す幅）は、4列を収めるためだと書く
+    const forKanbanOnly = activeView === 'kanban' && !autoHideCategoryPane && viewportWidth >= NARROW_SIDE_PANEL_WIDTH
+    const noticeKey = `narrow-panes-notice:${forKanbanOnly ? 'kanban' : 'narrow'}`
+    try {
+      if (window.localStorage.getItem(noticeKey)) return
+      window.localStorage.setItem(noticeKey, '1')
+    } catch { /* 覚えられなくても知らせる */ }
+    showToast(forKanbanOnly
+      ? 'カンバンの4列が収まるよう、右の「今日の予定」を隠しました。上の「表示」から開けます'
+      : `画面の幅に合わせて、${hidden.join('と')}を隠しました。上の「表示」から開けます`)
+  }, [activeView, autoHideCategoryPane, autoHideSidePanel, isFirstLaunch, openedWhileNarrow, showCategoryPane, showPlanRail, showToast, viewportWidth])
 
   useEffect(() => {
     if (assigneeDefaultApplied || !currentUser || users.length === 0) return
@@ -790,6 +847,9 @@ export function App(): React.JSX.Element {
     if (sortField === 'sort_order') {
       return (a.sort_order ?? 0) - (b.sort_order ?? 0)
     }
+    // 並べ替えたときは、完了したタスクを後ろにまとめる（手動の並びはそのまま）
+    if (a.status === 'done' && b.status !== 'done') return 1
+    if (a.status !== 'done' && b.status === 'done') return -1
 
     let aVal: string | number
     let bVal: string | number
@@ -1352,9 +1412,11 @@ export function App(): React.JSX.Element {
                     if (active) setSortDir((prev) => prev === 'asc' ? 'desc' : 'asc')
                     else {
                       setSortField(key)
-                      setSortDir('desc')
+                      setSortDir(defaultSortDir(key))
                     }
                   }}
+                  title={sortDirTitle(key, active ? sortDir : defaultSortDir(key), active)}
+                  aria-pressed={active}
                   style={{ padding: '6px 9px', borderRadius: 999, border: `1px solid ${active ? 'var(--blue-500)' : 'var(--slate-700)'}`, background: active ? 'var(--blue-950)' : 'var(--gray-900)', color: active ? 'var(--blue-100)' : 'var(--slate-400)', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}
                 >
                   {label}{active && key !== 'sort_order' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
@@ -1473,6 +1535,9 @@ export function App(): React.JSX.Element {
       )}
       <Toolbar
         isTimerRunning={isRunning}
+        runningTask={runningTodo ? { title: runningTodo.title, startTime: timerStartTime } : null}
+        onOpenRunningTask={runningTodoId ? () => openTodoDetail(runningTodoId) : undefined}
+        onStopTimer={stopFromToolbar}
         onOpenQuickAdd={() => openQuickAdd()}
         onOpenProgressReport={() => {
           if (isAdmin && multiUser) setShowProgressReport(true)
@@ -1604,9 +1669,11 @@ export function App(): React.JSX.Element {
                     if (active) setSortDir((prev) => prev === 'asc' ? 'desc' : 'asc')
                     else {
                       setSortField(key)
-                      setSortDir('desc')
+                      setSortDir(defaultSortDir(key))
                     }
                   }}
+                  title={sortDirTitle(key, active ? sortDir : defaultSortDir(key), active)}
+                  aria-pressed={active}
                   style={{
                     fontSize: '0.75rem',
                     padding: '2px 7px',

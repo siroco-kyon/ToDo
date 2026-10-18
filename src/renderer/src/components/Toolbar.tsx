@@ -1,9 +1,14 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
 import type { PublicUser } from '../types'
+import { RunningTimerDisplay } from './TimerDisplay'
 import './Toolbar.css'
 
 interface Props {
   isTimerRunning: boolean
+  /** 計測中のタスク（名前と開始時刻）。押すとそのタスクを開き、■で止められる */
+  runningTask?: { title: string; startTime: string | null } | null
+  onOpenRunningTask?: () => void
+  onStopTimer?: () => void
   onOpenQuickAdd: () => void
   onOpenProgressReport: () => void
   showArchived: boolean
@@ -70,7 +75,7 @@ interface MenuSection {
 
 // 上部バーは1段に収める。画面の切り替えだけを並べ、パネルの表示やアカウントの操作はメニューにまとめる
 export function Toolbar({
-  isTimerRunning,
+  isTimerRunning, runningTask = null, onOpenRunningTask, onStopTimer,
   onOpenQuickAdd,
   onOpenProgressReport,
   showArchived,
@@ -196,8 +201,32 @@ export function Toolbar({
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
         {isTimerRunning && (
-          <span style={{ fontSize: '0.74rem', color: 'var(--green-400)', padding: '5px 10px', background: 'var(--green-950)', border: '1px solid var(--green-900)', borderRadius: 999, whiteSpace: 'nowrap' }}>
-            計測中
+          <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: '0.74rem', color: 'var(--green-400)', background: 'var(--green-950)', border: '1px solid var(--green-900)', borderRadius: 999, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+            {runningTask && onOpenRunningTask ? (
+              <button
+                type="button"
+                onClick={onOpenRunningTask}
+                title={`計測中: ${runningTask.title}（押すとこのタスクを開きます）`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 8px 5px 10px', background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', font: 'inherit', minHeight: 28 }}
+              >
+                <span aria-hidden="true">●</span>
+                <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>{runningTask.title}</span>
+                <RunningTimerDisplay startTime={runningTask.startTime} />
+              </button>
+            ) : (
+              <span style={{ padding: '5px 10px' }}>計測中</span>
+            )}
+            {onStopTimer && (
+              <button
+                type="button"
+                onClick={onStopTimer}
+                aria-label="計測を止める"
+                title="計測を止める"
+                style={{ alignSelf: 'stretch', minWidth: 30, padding: '0 9px', background: 'transparent', border: 'none', borderLeft: '1px solid var(--green-900)', color: 'inherit', cursor: 'pointer', fontSize: '0.8rem' }}
+              >
+                ■
+              </button>
+            )}
           </span>
         )}
 

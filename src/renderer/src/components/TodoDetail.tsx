@@ -223,6 +223,14 @@ export function TodoDetail({
   const initializedTodoIdRef = useRef<string | undefined>(undefined)
 
   const todoId = todo?.id
+  // 進捗バーの横の「進捗ログを書く」から、下の方にある入力欄へ移る
+  const progressLogInputId = useId()
+  const focusProgressLogInput = (): void => {
+    const input = document.getElementById(progressLogInputId)
+    if (!input) return
+    input.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    input.focus({ preventScroll: true })
+  }
   const liveTodoIdRef = useRef(todoId)
   liveTodoIdRef.current = todoId
   const mountedRef = useRef(true)
@@ -703,6 +711,10 @@ export function TodoDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, memoBase, memoDraft, memoFailedDraft, memoSaving, todoId])
 
+  // Enter のすぐ後に次の名前を打っても前の名前とつながらないよう、送る前に入力欄を空にし、
+  // 保存中に押された分は順番待ちにして1件ずつ追加する
+  const subTaskQueueRef = useRef<Array<{ todoId: string; input: CreateSubTaskInput }>>([])
+  const subTaskAddingRef = useRef(false)
   const handleAddSubTask = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault()
     if (!todo || savingRef.current) return
@@ -714,34 +726,49 @@ export function TodoDetail({
       return
     }
 
-    const createdItems: SubTask[] = []
-    const remainingTitles = [...titles]
-    try {
-      for (const title of titles) {
-        const created = await window.api.subtaskCreate(todo.id, {
+    for (const title of titles) {
+      subTaskQueueRef.current.push({
+        todoId: todo.id,
+        input: {
           title,
           description: newSubTask.description?.trim() ?? '',
           assignee_id: users.length > 0 ? newSubTask.assignee_id ?? null : null,
           start_date: newSubTask.start_date ?? null,
           due_date: newSubTask.due_date ?? null,
           progress: clampProgress(newSubTask.progress ?? 0)
-        })
+        }
+      })
+    }
+    setNewSubTask((previous) => ({ ...previous, title: '' }))
+    if (subTaskAddingRef.current) return
+
+    subTaskAddingRef.current = true
+    const createdItems: SubTask[] = []
+    try {
+      while (subTaskQueueRef.current.length > 0) {
+        const next = subTaskQueueRef.current[0]
+        const created = await window.api.subtaskCreate(next.todoId, next.input)
+        subTaskQueueRef.current.shift()
         createdItems.push(created)
-        if (editing) {
+        setSubTasks((previous) => previous.some((item) => item.id === created.id) ? previous : [...previous, created])
+        if (editingRef.current) {
           const base = createEditableSubTasks([created])[0]
           subTaskBasesRef.current.set(created.id, base)
           setEditableSubTasks((previous) => previous.some((item) => item.id === created.id) ? previous : [...previous, base])
         }
-        remainingTitles.shift()
-        setNewSubTask((previous) => ({ ...previous, title: remainingTitles.join('\n') }))
       }
     } catch (error) {
-      if (createdItems.length > 0) setSubTasks((previous) => [...previous, ...createdItems])
+      // 追加できなかった分は入力欄へ戻し、そのまま再試行できるようにする
+      const failedTitles = subTaskQueueRef.current.map((item) => item.input.title)
+      subTaskQueueRef.current = []
+      setNewSubTask((previous) => ({ ...previous, title: [...failedTitles, previous.title].filter((value) => value.trim()).join('\n') }))
       onShowToast(`${createdItems.length}件は追加済みです。残りを再試行できます: ${error instanceof Error ? error.message : '追加できませんでした'}`, 'error')
       return
+    } finally {
+      subTaskAddingRef.current = false
     }
-    setNewSubTask((previous) => ({ title: '', description: '', assignee_id: previous.assignee_id ?? null, start_date: toDateKey(new Date()), due_date: null, progress: 0 }))
-    setSubTasks((previous) => [...previous, ...createdItems])
+    // 名前の欄は、保存中に打ち始めた次の名前を消さないようそのまま残す
+    setNewSubTask((previous) => ({ title: previous.title, description: '', assignee_id: previous.assignee_id ?? null, start_date: toDateKey(new Date()), due_date: null, progress: 0 }))
     const extendedTo = createdItems.map((item) => item.parent_due_date_extended_to).filter(Boolean).sort().at(-1)
     if (extendedTo) onShowToast(`サブタスクに合わせて親タスクの期限を${extendedTo}まで延長しました`)
   }
@@ -1130,8 +1157,18 @@ export function TodoDetail({
     <>
           {!editing && !listMode && (
             <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: '12px 16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>進捗 <span style={{ color: 'var(--slate-500)', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span></span>
+                {!isArchived && (
+                  <button
+                    type="button"
+                    onClick={focusProgressLogInput}
+                    title="下の進捗ログの入力欄へ移ります（Ctrl+Enter で投稿）"
+                    style={{ padding: '4px 10px', borderRadius: 999, border: '1px solid var(--indigo-700)', background: 'transparent', color: 'var(--indigo-300)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}
+                  >
+                    ✎ 進捗ログを書く
+                  </button>
+                )}
               </div>
               <ProgressSlider
                 value={todo.progress ?? 0}
@@ -1243,8 +1280,9 @@ export function TodoDetail({
                       void handleAddProgressNote()
                     }
                   }}
+                  id={progressLogInputId}
                   aria-label="進捗ログを書く"
-                  placeholder="例: 〇〇まで終わった。次は△△。□□で困っている"
+                  placeholder="例: 〇〇まで終わった。次は△△。□□で困っている（Ctrl+Enterで投稿）"
                   rows={3}
                   style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: 72 }}
                 />
