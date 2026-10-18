@@ -182,6 +182,10 @@ export function Toolbar({
             key={button.key}
             role="tab"
             aria-selected={button.active}
+            // 読み上げ名は見えている名前（音声で「ガント」と言っても押せるように）。説明はツールチップに
+            aria-label={button.key === 'progress' && progressUnseenCount > 0
+              ? `${button.label}（新着 ${progressUnseenCount}件）`
+              : button.key === 'todo' && todoRemainingCount > 0 ? `${button.label}（今日の残り ${todoRemainingCount}件）` : button.label}
             onClick={button.onClick}
             title={button.key === 'progress' && progressUnseenCount > 0
               ? `${button.description}（新着 ${progressUnseenCount}件）`

@@ -6,6 +6,7 @@ import { diffDaysFromToday, dueStateSuffix, formatShortDate as formatShortDateKe
 import { MentionTextarea } from './MentionTextarea'
 import { ON_TRACK_NOTE, ProgressNoteHelpers, cleanProgressNote, withProgressNoteTemplate } from './ProgressNoteHelpers'
 import { countPostponements } from '../lib/dueChanges'
+import { behindDaysOf, loadScheduleSettings } from '../lib/scheduleHealth'
 import { ProgressNoteThread, discussionBadgeStyle } from './ProgressNoteThread'
 import { ProgressSlider } from './ProgressSlider'
 import { ReportSettingsPanel } from './ReportSettingsPanel'
@@ -85,7 +86,7 @@ interface DateRange {
 
 type PeriodPreset = 'thisWeek' | 'lastWeek' | '7' | '14' | '30' | 'custom'
 /** 件数チップを押して絞り込む条件。myNeedsReport は「自分の未報告」の案内から使う */
-type QuickFilter = 'all' | 'needsReport' | 'discussion' | 'onHold' | 'overdue' | 'postponed' | 'myNeedsReport'
+type QuickFilter = 'all' | 'needsReport' | 'discussion' | 'onHold' | 'overdue' | 'behind' | 'postponed' | 'myNeedsReport'
 type GroupMode = 'assignee' | 'category'
 type AssigneeFilter = 'all' | 'mine' | 'mineWithSubTasks' | `user:${string}`
 /** list: ToDoリスト（中の項目をチェックして使うタスク）。報告の有無では判定しない */
@@ -106,6 +107,8 @@ interface ReportRow extends ChangeSummary {
   discussions: ProgressNote[]
   /** ToDoリストの繰り返しの項目ごとの、期間中の実施状況（項目のID → 状況） */
   checkSummaries: Map<string, SubTaskCheckSummary>
+  /** 進捗が予定より遅れている日数（ガントの「遅れ」と同じ判定。遅れていない・判定しないときは null） */
+  behind: { days: number; expectedProgress: number } | null
 }
 
 /** 期間中の進捗・期限の変化（タスク・サブタスク共通） */
@@ -200,7 +203,7 @@ function loadPreset(): Exclude<PeriodPreset, 'custom'> {
 
 // タブを開いているあいだだけ覚えるもの（ほかの画面へ行って戻ったときに続きから見られるように）
 const SESSION_KEYS = { quickFilter: 'report.quickFilter', scrollTop: 'report.scrollTop' }
-const QUICK_FILTERS: readonly QuickFilter[] = ['all', 'needsReport', 'discussion', 'onHold', 'overdue', 'postponed', 'myNeedsReport']
+const QUICK_FILTERS: readonly QuickFilter[] = ['all', 'needsReport', 'discussion', 'onHold', 'overdue', 'behind', 'postponed', 'myNeedsReport']
 
 function loadSessionQuickFilter(): QuickFilter {
   try {
@@ -223,6 +226,20 @@ function loadSessionScrollTop(): number | null {
 /** 期間の日数（両端を含む） */
 function rangeDays(range: DateRange): number {
   return Math.round((new Date(`${range.to}T00:00:00`).getTime() - new Date(`${range.from}T00:00:00`).getTime()) / 86400000) + 1
+}
+
+/** 定例の進み具合を読む。12時間より前に始めたもの（前の定例の残り）は使わない */
+const MEETING_KEEP_MS = 12 * 60 * 60 * 1000
+function loadMeetingState(key: string): MeetingState | null {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) ?? 'null') as MeetingState | null
+    if (!parsed || typeof parsed.startedAt !== 'number' || Date.now() - parsed.startedAt > MEETING_KEEP_MS) return null
+    if (typeof parsed.notes !== 'object' || typeof parsed.spentSeconds !== 'object' || typeof parsed.createdTasks !== 'object') return null
+    // 開いたまま離れた（閉じた時刻がない）ときは、読んだ時刻から止まっていたことにする
+    return parsed.pausedAt == null ? { ...parsed, pausedAt: Date.now() } : parsed
+  } catch {
+    return null
+  }
 }
 
 function loadAssigneeFilter(): AssigneeFilter {
@@ -259,6 +276,7 @@ function matchesQuickFilter(row: ReportRow, filter: QuickFilter, currentUserId: 
     case 'discussion': return row.discussions.length > 0
     case 'onHold': return row.todo.status === 'on_hold'
     case 'overdue': return isOverdue(row.todo)
+    case 'behind': return row.behind != null
     case 'postponed': return row.postponedCount > 0
     case 'myNeedsReport': return currentUserId != null && needsReport(row.freshness) && isMyTask(row.todo, [], currentUserId)
   }
@@ -344,7 +362,8 @@ function buildRow(
   range: DateRange,
   changes: TodoChangeEntry[],
   discussions: ProgressNote[],
-  checkSummaries: Map<string, SubTaskCheckSummary>
+  checkSummaries: Map<string, SubTaskCheckSummary>,
+  behind: ReportRow['behind']
 ): ReportRow {
   const lastNoteAt = activity?.last_note_at ?? null
   const lastMemoAt = activity?.last_memo_at ?? null
@@ -384,7 +403,7 @@ function buildRow(
     addedInPeriod: isInRange(isoToDateKey(subTask.created_at), range)
   }]))
 
-  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, reportedInPeriod: notes.length > 0 || memoUpdatedInPeriod, ...summary, subTaskSummaries, discussions, checkSummaries }
+  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, reportedInPeriod: notes.length > 0 || memoUpdatedInPeriod, ...summary, subTaskSummaries, discussions, checkSummaries, behind }
 }
 
 function summarizeChanges(changes: TodoChangeEntry[]): ChangeSummary {
@@ -884,7 +903,23 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const [settingsOpen, setSettingsOpen] = useState(false)
   // 定例モード（担当者を1人ずつ大きく表示する）。閉じても、この画面を開いている間は進み具合を残す
   const [meetingOpen, setMeetingOpen] = useState(false)
-  const [meetingState, setMeetingState] = useState<MeetingState | null>(null)
+  // 定例の進み具合（メモ・決まったこと・持ち時間）は、ほかの画面を見に行っても消えないよう端末に覚える（見ている人ごと）
+  const meetingStorageKey = `report.meeting:${settingsUserId ?? 'local'}`
+  const [meetingState, setMeetingState] = useState<MeetingState | null>(() => loadMeetingState(meetingStorageKey))
+  useEffect(() => {
+    try {
+      if (meetingState) window.localStorage.setItem(meetingStorageKey, JSON.stringify(meetingState))
+      else window.localStorage.removeItem(meetingStorageKey)
+    } catch { /* 覚えられなくても定例は続けられる */ }
+  }, [meetingState, meetingStorageKey])
+  // 定例モードを開いたままほかの画面へ移ったときは、その時刻を「閉じた時刻」として覚え、戻ったときに離れていた時間を除く
+  const meetingStateRef = useRef(meetingState)
+  meetingStateRef.current = meetingState
+  useEffect(() => () => {
+    const state = meetingStateRef.current
+    if (!state || state.pausedAt != null) return
+    try { window.localStorage.setItem(meetingStorageKey, JSON.stringify({ ...state, pausedAt: Date.now() })) } catch { /* 覚えられなくてもよい */ }
+  }, [meetingStorageKey])
   // 折りたたんだ担当者（カテゴリ）の見出しキー。定例で話し終えた人を畳んでおける
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
   const [notes, setNotes] = useState<ProgressNote[]>([])
@@ -1045,6 +1080,30 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     return map
   }, [checkSummaries])
 
+  // 進捗の遅れ（ガントの表示設定の「遅れとみなす日数」「土日・祝日を数えない」に合わせる）
+  const [scheduleSettings] = useState(loadScheduleSettings)
+  const [holidayNames, setHolidayNames] = useState<ReadonlyMap<string, string>>(() => new Map())
+  useEffect(() => {
+    if (!scheduleSettings.workingDaysOnly) return
+    let cancelled = false
+    void import('@holiday-jp/holiday_jp')
+      .then((module) => {
+        const library = ((module as { default?: unknown }).default ?? module) as { holidays: Record<string, { name: string }> }
+        if (!cancelled) setHolidayNames(new Map(Object.entries(library.holidays).map(([date, holiday]) => [date, holiday.name])))
+      })
+      .catch(() => { /* 祝日が読めなくても土日だけ除いて数える */ })
+    return () => { cancelled = true }
+  }, [scheduleSettings.workingDaysOnly])
+  const todayKey = toDateKey(new Date())
+  const behindOf = useCallback((todo: Todo): ReportRow['behind'] => {
+    // 期限を過ぎたものは「期限超過」で出すので、ここでは期限前のものだけ
+    if (todo.status === 'done' || todo.status === 'archived' || todo.list_mode || !todo.start_date || !todo.due_date) return null
+    const bar = { startDate: todo.start_date.slice(0, 10), endDate: todo.due_date.slice(0, 10) }
+    if (bar.endDate < bar.startDate || todayKey > bar.endDate) return null
+    const { behindDays, expectedProgress } = behindDaysOf(todo.progress, bar, todayKey, { ...scheduleSettings, holidayNames })
+    return behindDays >= scheduleSettings.behindThresholdDays ? { days: behindDays, expectedProgress } : null
+  }, [holidayNames, scheduleSettings, todayKey])
+
   const hiddenTodoIdSet = useMemo(() => new Set(settings.hiddenTodoIds), [settings.hiddenTodoIds])
   const hiddenCategoryKeySet = useMemo(() => new Set(settings.hiddenCategoryKeys), [settings.hiddenCategoryKeys])
 
@@ -1064,10 +1123,11 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       range,
       changesByTodo.get(todo.id) ?? [],
       discussionsByTodo.get(todo.id) ?? [],
-      checkSummariesByTodo.get(todo.id) ?? new Map()
+      checkSummariesByTodo.get(todo.id) ?? new Map(),
+      behindOf(todo)
     ))
     .filter((row) => matchesScopeSetting(row, settings.scope, range)),
-  [activity, changesByTodo, checkSummariesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, hiddenCategoryKeySet, hiddenTodoIdSet, notesByTodo, range, selectedUserId, settings.scope, settings.statuses, subTasksByTodo, todos])
+  [activity, behindOf, changesByTodo, checkSummariesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, hiddenCategoryKeySet, hiddenTodoIdSet, notesByTodo, range, selectedUserId, settings.scope, settings.statuses, subTasksByTodo, todos])
 
   // 表示設定のカテゴリの選択肢。検索などで今は出ていないカテゴリも選べるよう、カテゴリ一覧のすべてを並べる（未分類は最後）
   const categoryOptions = useMemo(() => {
@@ -1147,6 +1207,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     { value: 'discussion', label: '要相談', count: countOf('discussion'), color: 'var(--c-d6b38a)', title: '「要相談」が付いた進捗ログがあるタスク（期間に関係なく）' },
     { value: 'onHold', label: '保留中', count: countOf('onHold'), color: 'var(--purple-300)', title: '保留中のタスク（保留が長い順）' },
     { value: 'overdue', label: '期限超過', count: countOf('overdue'), color: 'var(--red-300)', title: '期限を過ぎて完了していないタスク' },
+    { value: 'behind', label: '進捗の遅れ', count: countOf('behind'), color: 'var(--amber-200)', title: `期限前だが、今日時点の予定の進捗より${scheduleSettings.behindThresholdDays}日分以上遅れているタスク（ガントの「遅れ」と同じ判定）` },
     { value: 'postponed', label: '期間中に延期', count: countOf('postponed'), color: 'var(--amber-200)', title: 'この期間に期限を後ろへずらしたタスク' }
   ]
   const toggleGroupCollapsed = (key: string): void => {
@@ -1393,10 +1454,10 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     ? { title, status: 'not_started', start_date: toDateKey(new Date()), assignee_id: users.some((user) => user.id === groupKey) ? groupKey : null }
     : { title, status: 'not_started', start_date: toDateKey(new Date()), category_id: categories.some((category) => category.id === groupKey) ? groupKey : null, assignee_id: currentUser?.id ?? null }
   const createMeetingTask = onCreateTodo
-    ? async (groupKey: string, title: string): Promise<boolean> => {
+    ? async (groupKey: string, title: string, dueDate: string | null): Promise<boolean> => {
         try {
-          await onCreateTodo(meetingTaskInput(groupKey, title))
-          onShowToast(`タスク「${title}」を作りました`)
+          await onCreateTodo({ ...meetingTaskInput(groupKey, title), due_date: dueDate })
+          onShowToast(`タスク「${title}」を作りました${dueDate ? `（期限 ${formatShortDate(dueDate)}）` : ''}`)
           return true
         } catch (error) {
           onShowToast(error instanceof Error ? error.message : 'タスクを作れませんでした', 'error')
@@ -1488,7 +1549,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                 {meetingState ? '定例モードに戻る' : '定例モード'}
               </button>
               {meetingState && !meetingOpen && (
-                <button onClick={() => setMeetingState(null)} title="定例モードの進み具合（時間・メモ）を消して、最初からにします" style={secondaryButtonStyle}>定例をリセット</button>
+                <button onClick={() => { if (window.confirm('定例のメモ・決まったこと・持ち時間を消して、最初からにしますか？')) setMeetingState(null) }} title="定例モードの進み具合（時間・メモ）を消して、最初からにします" style={secondaryButtonStyle}>定例をリセット</button>
               )}
             </div>
           </div>
@@ -1607,13 +1668,15 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               {groups.length > 1 && groups.map((group) => {
                 const needs = group.rows.filter((row) => needsReport(row.freshness)).length
                 const overdue = group.rows.filter((row) => isOverdue(row.todo)).length
+                const behind = group.rows.filter((row) => row.behind != null).length
                 return (
-                  <button key={group.key} onClick={() => jumpToGroup(group.key)} title={`${group.label}の欄へ移動（${group.rows.length}件${needs > 0 ? `・報告なし${needs}件` : ''}${overdue > 0 ? `・期限超過${overdue}件` : ''}）`} style={jumpChipStyle}>
+                  <button key={group.key} onClick={() => jumpToGroup(group.key)} title={`${group.label}の欄へ移動（${group.rows.length}件${needs > 0 ? `・報告なし${needs}件` : ''}${overdue > 0 ? `・期限超過${overdue}件` : ''}${behind > 0 ? `・進捗の遅れ${behind}件` : ''}）`} style={jumpChipStyle}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.color ?? 'var(--slate-600)', flexShrink: 0 }} />
                     {group.label}
                     <span style={{ color: 'var(--text-subtle)', fontWeight: 600 }}>{group.rows.length}</span>
                     {needs > 0 && <span style={{ color: 'var(--amber-200)', fontWeight: 700 }}>報告なし{needs}</span>}
                     {overdue > 0 && <span style={{ color: 'var(--red-300)', fontWeight: 700 }}>超過{overdue}</span>}
+                    {behind > 0 && <span style={{ color: 'var(--amber-300)', fontWeight: 700 }}>遅れ{behind}</span>}
                   </button>
                 )
               })}
@@ -2270,7 +2333,7 @@ function ReportTaskCard({
         padding: '14px 16px'
       }}
     >
-      {/* ─── 左: タスク情報（ステータス・日程・進捗はその場で変更できる） ─── */}
+      {/* ─── 左: タスク情報（状態・日程・進捗はその場で変更できる） ─── */}
       <div style={{ flex: '1 1 300px', maxWidth: 440, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
           <button onClick={() => onSelectTodo(todo.id)} title="タスク詳細を開く" style={taskTitleButtonStyle}>
@@ -2287,9 +2350,9 @@ function ReportTaskCard({
           <select
             value={todo.status}
             disabled={saving}
-            onChange={(event) => void updateField({ status: event.target.value as TodoStatus }, 'ステータスを更新しました')}
-            aria-label="ステータス"
-            title="ステータスを変更"
+            onChange={(event) => void updateField({ status: event.target.value as TodoStatus }, '状態を変えました')}
+            aria-label="状態"
+            title="状態を変える"
             style={{ ...pillSelectStyle, color: STATUS_COLOR[todo.status], borderColor: `color-mix(in srgb, ${STATUS_COLOR[todo.status]} 50.2%, transparent)` }}
           >
             <option value="not_started">未着手</option>
@@ -2414,6 +2477,14 @@ function ReportTaskCard({
           <span style={{ fontSize: '0.74rem', fontWeight: 700, color: tone.color, background: tone.background, border: `1px solid ${tone.border}`, borderRadius: 999, padding: '2px 9px' }}>
             {freshnessText(row)}
           </span>
+          {row.behind && (
+            <span
+              title={`今日時点の予定 ${row.behind.expectedProgress}% ／ 実績 ${todo.progress}%（ガントの「遅れ」と同じ判定）`}
+              style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--amber-200)', background: 'var(--amber-950)', border: '1px solid var(--amber-500)', borderRadius: 999, padding: '2px 9px' }}
+            >
+              進捗 約{Math.max(1, Math.round(row.behind.days))}日遅れ
+            </span>
+          )}
           <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
             {lastReportAt ? `最終報告 ${formatDateTime(lastReportAt)}（${formatDaysAgo(lastReportAt)}）` : '最終報告 なし'}
           </span>

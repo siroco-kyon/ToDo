@@ -17,6 +17,7 @@ import { autoScrollNearEdge, dropTargetAt, moveIdBy, moveIdTo, scrollParentOf, t
 import { copyTextToClipboard } from '../lib/clipboard'
 import { taskLinkFor } from '../lib/urlState'
 import { dataInk, textOnFill } from '../lib/theme'
+import { changeFieldLabel } from '../lib/changeFields'
 import { TODO_RECURRENCE_OPTIONS, nextRecurrenceDue, recurrenceDoneMessage, recurrenceKindLabel, recurrenceReopenMessage, todoRecurrenceLabel } from '../lib/recurrence'
 
 interface Props {
@@ -1640,22 +1641,6 @@ function AutosaveStatus({ saving, dirty, failed, length, onRetry }: { saving: bo
 }
 
 const HISTORY_PAGE_SIZE = 20
-const HISTORY_FIELD_LABELS: Record<string, string> = {
-  title: 'タスク名',
-  description: '説明',
-  memo: 'メモ',
-  category: 'カテゴリ',
-  assignee: '担当',
-  co_assignees: 'サブ担当',
-  status: '状態',
-  priority: '優先度',
-  progress: '進捗',
-  start_date: '開始日',
-  due_date: '期限',
-  recurrence: '繰り返し',
-  recurrence_copy_subtasks: '繰り返しでサブタスクも作る',
-  list_mode: '種類'
-}
 const HISTORY_STATUS_LABELS: Record<string, string> = { not_started: '未着手', active: '進行中', on_hold: '保留中', done: '完了', archived: 'アーカイブ' }
 
 function historyValue(field: string, value: string | null): string {
@@ -1671,7 +1656,7 @@ function historyValue(field: string, value: string | null): string {
 }
 
 function historyText(entry: TodoHistoryEntry): string {
-  const label = HISTORY_FIELD_LABELS[entry.field] ?? entry.field
+  const label = changeFieldLabel(entry.field)
   // 説明・メモは本文を返さないので、変えたことだけを出す
   if (entry.field === 'description' || entry.field === 'memo') return `${label}を変更`
   return `${label}: ${historyValue(entry.field, entry.old_value)} → ${historyValue(entry.field, entry.new_value)}`

@@ -4,6 +4,7 @@ import { useDialogFocus } from '../hooks/useDialogFocus'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { writeTaskReportSnapshot } from '../lib/taskReportSnapshot'
 import { recurrenceKindLabel } from '../lib/recurrence'
+import { changeFieldLabel } from '../lib/changeFields'
 import type {
   ProgressDigest,
   ProgressDigestNote,
@@ -46,22 +47,6 @@ const STATUS_COLOR: Record<TodoStatus, string> = {
   archived: 'var(--slate-600)'
 }
 
-const CHANGE_FIELD_LABEL: Record<string, string> = {
-  title: 'タイトル',
-  description: '説明',
-  memo: 'メモ',
-  category: 'カテゴリ',
-  assignee: '主担当',
-  co_assignees: 'サブ担当',
-  status: 'ステータス',
-  priority: '優先度',
-  progress: '進捗',
-  start_date: '開始日',
-  due_date: '期限',
-  recurrence: '繰り返し',
-  recurrence_copy_subtasks: 'サブタスク引継ぎ',
-  list_mode: '種類'
-}
 
 
 interface TaskActivityEvent {
@@ -146,7 +131,7 @@ function formatChangeValue(field: string, value: string | null): string {
 }
 
 function formatTaskChange(change: ProgressDigestTaskChange): string {
-  const label = CHANGE_FIELD_LABEL[change.field] ?? change.field
+  const label = changeFieldLabel(change.field)
   return `${label}: ${formatChangeValue(change.field, change.old_value)} → ${formatChangeValue(change.field, change.new_value)}`
 }
 

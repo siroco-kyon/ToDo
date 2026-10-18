@@ -23,6 +23,7 @@ import { mergeSubsetOrder } from './lib/reorder'
 import { buildUrlSearch, parseUrlState } from './lib/urlState'
 import { recurrenceDoneMessage, recurrenceReopenMessage } from './lib/recurrence'
 import { elapsedSecondsSince } from './hooks/useElapsedSeconds'
+import { formatShortDate } from './lib/dueDate'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 
 // 最初に開くガント・タスク一覧・詳細以外の画面と、設定などの小窓は、開いたときに読み込む（起動を軽くする）
@@ -164,6 +165,11 @@ function SkipLinks({ showTaskList, showSidePanel, sidePanelLabel }: { showTaskLi
     </div>
   )
 }
+/** 日程の比較用（開始日と期限） */
+function scheduleKeyOf(todo: Todo): string {
+  return `${todo.start_date?.slice(0, 10) ?? ''}/${todo.due_date?.slice(0, 10) ?? ''}`
+}
+
 const KANBAN_STATUS_LABELS: Record<Todo['status'], string> = { not_started: '未着手', active: '進行中', on_hold: '保留中', done: '完了', archived: 'アーカイブ' }
 
 // ガントの画面のパネルの開閉は、ほかの画面とは別に覚える（ガントは横に広いほど見やすいため）。
@@ -380,6 +386,9 @@ export function App(): React.JSX.Element {
 
   const { isRunning, runningTodoId, startTime: timerStartTime, start: startTimer, stop: stopTimer, sync: syncTimer } = useTimer(loadTodos)
   const runningTodo = useMemo(() => (runningTodoId ? todos.find((todo) => todo.id === runningTodoId) ?? null : null), [runningTodoId, todos])
+  const todosRef = useRef(todos)
+  todosRef.current = todos
+  const scheduleWatchRef = useRef<{ editedId: string; before: Map<string, string> } | null>(null)
 
   const stop = useCallback(async (note?: string) => {
     try { await stopTimer(note) }
@@ -1088,10 +1097,34 @@ export function App(): React.JSX.Element {
   }, [])
 
   const handleUpdate = useCallback(async (id: string, data: UpdateTodoInput) => {
-    await window.api.todoUpdate(id, data)
+    // 日程を変えたときは、依存関係でほかのタスクが動いたかを読み込み後に確かめて知らせる
+    if (data.start_date !== undefined || data.due_date !== undefined) {
+      scheduleWatchRef.current = { editedId: id, before: new Map(todosRef.current.map((todo) => [todo.id, scheduleKeyOf(todo)])) }
+    }
+    try {
+      await window.api.todoUpdate(id, data)
+    } catch (error) {
+      scheduleWatchRef.current = null
+      throw error
+    }
     try { await Promise.all([loadTodos(), loadSelectedPlan(planDate), syncTimer()]) }
     catch (error) { showToast(`変更は保存しましたが、表示を更新できませんでした: ${error instanceof Error ? error.message : '再読み込みしてください'}`, 'error') }
   }, [loadTodos, loadSelectedPlan, planDate, showToast, syncTimer])
+
+  // 依存関係の後続が自動で動いたことの知らせ（後続はほかの人のタスクのこともあり、気づかないと計画を読み違える）
+  useEffect(() => {
+    const watch = scheduleWatchRef.current
+    if (!watch) return
+    scheduleWatchRef.current = null
+    const moved = todos.filter((todo) => todo.id !== watch.editedId && watch.before.has(todo.id) && watch.before.get(todo.id) !== scheduleKeyOf(todo))
+    if (moved.length === 0) return
+    const first = moved[0]
+    const range = `${first.start_date ? formatShortDate(first.start_date) : '—'}〜${first.due_date ? formatShortDate(first.due_date) : '—'}`
+    const owner = first.assignee_name ? `（${first.assignee_name}）` : ''
+    showToast(moved.length === 1
+      ? `依存関係で、後続の「${first.title}」${owner}も ${range} に動きました`
+      : `依存関係で、後続の${moved.length}件（「${first.title}」${owner}ほか）の日程も動きました`)
+  }, [todos, showToast])
 
   // ToDoリストの項目のチェック（右パネル・一覧の展開・ToDo タブ）。すぐ画面に反映し、失敗したら戻す
   const [pendingListItemIds, setPendingListItemIds] = useState<Set<string>>(() => new Set())
@@ -1906,7 +1939,15 @@ export function App(): React.JSX.Element {
               onShowToast={showToast}
             />
           ) : activeView === 'team' ? (
-            <TeamDashboard onSelectTodo={openTodoDetail} includePrivate={scopeLens === 'personal'} />
+            <TeamDashboard
+              onSelectTodo={openTodoDetail}
+              onSelectMember={(userId) => {
+                setSelectedAssigneeId(userId)
+                toggleCenterView('gantt')
+                showToast(`${users.find((user) => user.id === userId)?.display_name ?? 'メンバー'}さんのタスクに絞り込みました。見出しの横のチップで解除できます`)
+              }}
+              includePrivate={scopeLens === 'personal'}
+            />
           ) : (
             <TodoDetail
               key={`${currentUser?.id ?? 'local'}:${selectedTodo?.id ?? 'none'}`}

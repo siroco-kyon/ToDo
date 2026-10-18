@@ -33,6 +33,28 @@ export interface MeetingState {
   pausedAt: number | null
 }
 
+function toKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+/** 決まったことの期限の近道（なし・今週金曜・来週金曜・2週間後） */
+export function meetingDueChoices(today = new Date()): Array<{ label: string; value: string | null }> {
+  const base = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const thisFriday = new Date(base)
+  thisFriday.setDate(base.getDate() + ((5 - base.getDay() + 7) % 7))
+  const nextFriday = new Date(thisFriday)
+  nextFriday.setDate(thisFriday.getDate() + 7)
+  const twoWeeks = new Date(base)
+  twoWeeks.setDate(base.getDate() + 14)
+  const short = (date: Date): string => `${date.getMonth() + 1}/${date.getDate()}`
+  return [
+    { label: 'なし', value: null },
+    { label: `今週金曜 ${short(thisFriday)}`, value: toKey(thisFriday) },
+    { label: `来週金曜 ${short(nextFriday)}`, value: toKey(nextFriday) },
+    { label: `2週間後 ${short(twoWeeks)}`, value: toKey(twoWeeks) }
+  ]
+}
+
 export function createMeetingState(now = Date.now(), first?: { key: string; label: string }): MeetingState {
   return {
     startedAt: now,
@@ -73,7 +95,7 @@ interface Props {
   periodLabel: string
   renderBody: (groupKey: string) => React.ReactNode
   /** 決まったことをタスクにする。作れたら true */
-  onCreateTask?: (groupKey: string, title: string) => Promise<boolean>
+  onCreateTask?: (groupKey: string, title: string, dueDate: string | null) => Promise<boolean>
   /** タスクを作るときの担当・カテゴリの説明（例: 「担当: 佐藤」） */
   createTaskHint: (groupKey: string) => string
   onShowToast: (message: string, type?: 'success' | 'error') => void
@@ -158,6 +180,9 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
   useDialogFocus(dialogRef)
   const [now, setNow] = useState(() => Date.now())
   const [taskTitle, setTaskTitle] = useState('')
+  // 決まったことの期限（その場で決めることが多いので、よく使う日を近道で選べるようにする）
+  const [taskDue, setTaskDue] = useState<string | null>(null)
+  const dueChoices = meetingDueChoices()
   const [creatingTask, setCreatingTask] = useState(false)
   // 今の人はキーで探す（並びが変わっても同じ人のまま）。一覧から外れていたら、同じ位置の人を見せる
   const keyedIndex = state.currentKey == null ? -1 : groups.findIndex((item) => item.key === state.currentKey)
@@ -184,11 +209,12 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
     setTaskTitle('')
   }
 
-  // ←→ で前の人・次の人、Esc で閉じる（入力中は除く）
+  // ←→ で前の人・次の人、Esc で閉じる（入力中の Esc は、まず入力欄から抜ける。もう一度押すと閉じる）
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       const target = event.target as HTMLElement | null
       const typing = target != null && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
+      if (event.key === 'Escape' && typing && !event.isComposing) { event.preventDefault(); target.blur(); return }
       if (event.key === 'Escape' && !typing) { event.preventDefault(); close(); return }
       if (typing || event.altKey || event.ctrlKey || event.metaKey) return
       if (event.key === 'ArrowRight') { event.preventDefault(); goTo(index + 1) }
@@ -218,10 +244,11 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
     const title = taskTitle.trim()
     if (!group || !title || !onCreateTask || creatingTask) return
     setCreatingTask(true)
-    const ok = await onCreateTask(group.key, title)
+    const ok = await onCreateTask(group.key, title, taskDue)
     setCreatingTask(false)
     if (!ok) return
     setTaskTitle('')
+    setTaskDue(null)
     onStateChange((previous) => ({ ...previous, createdTasks: { ...previous.createdTasks, [group.key]: [...(previous.createdTasks[group.key] ?? []), title] } }))
   }
 
@@ -279,6 +306,20 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
               <section style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--slate-200)' }}>決まったことをタスクにする</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>{createTaskHint(group.key)}・開始日は今日</div>
+                <div role="group" aria-label="期限" style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>期限</span>
+                  {dueChoices.map((choice) => (
+                    <button
+                      key={choice.label}
+                      type="button"
+                      aria-pressed={taskDue === choice.value}
+                      onClick={() => setTaskDue(choice.value)}
+                      style={{ padding: '3px 9px', borderRadius: 999, border: `1px solid ${taskDue === choice.value ? 'var(--blue-500)' : 'var(--slate-700)'}`, background: taskDue === choice.value ? 'var(--blue-950)' : 'transparent', color: taskDue === choice.value ? 'var(--blue-100)' : 'var(--slate-300)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}
+                    >
+                      {choice.label}
+                    </button>
+                  ))}
+                </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <input
                     value={taskTitle}

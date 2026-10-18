@@ -3,7 +3,8 @@ import type { Category, CreateSubTaskInput, ProgressNote, PublicUser, SubTask, T
 import { discussionBadgeStyle } from './ProgressNoteThread'
 import { buildChecklistSummaries, checklistBadgeText } from '../lib/todoList'
 import { autoScrollNearEdge, dropPositionOf, moveIdBy, moveIdTo, type DropPosition } from '../lib/reorder'
-import { dataInk } from '../lib/theme'
+import { dataInk } from '../lib/theme'
+import { BEHIND_THRESHOLD_OPTIONS, DEFAULT_BEHIND_THRESHOLD_DAYS, GANTT_VIEW_SETTINGS_STORAGE_KEY, calculateSchedule, type ScheduleOptions } from '../lib/scheduleHealth'
 
 interface Props {
   todos: Todo[]
@@ -159,7 +160,6 @@ const NO_CATEGORY_KEY = '__uncategorized__'
 const ASSIGNEE_SECTION_PREFIX = 'assignee:'
 /** 最新の進捗ログをツールチップに出すために読む期間（日） */
 const PROGRESS_NOTE_LOOKBACK_DAYS = 60
-const GANTT_VIEW_SETTINGS_STORAGE_KEY = 'gantt-view-settings'
 const COLLAPSED_TODO_STORAGE_KEY = 'gantt-collapsed-todo-ids'
 const GANTT_BASELINE_STORAGE_KEY = 'gantt-baseline-snapshot'
 const GANTT_SCROLL_STATE_STORAGE_KEY = 'gantt-scroll-state'
@@ -250,8 +250,6 @@ const HEALTH_BAR_TONE: Record<ScheduleHealthStatus, { fill: string; track: strin
 const OVERDUE_HATCH = 'repeating-linear-gradient(135deg, color-mix(in srgb, var(--red-500) 45%, transparent) 0 4px, transparent 4px 8px)'
 const TODAY_LINE_COLOR = 'var(--rose-500)'
 /** 「遅れ」と判定する日数の選択肢（予定より何日分以上遅れていたら遅れにするか） */
-const BEHIND_THRESHOLD_OPTIONS = [1, 2, 3, 5, 7]
-const DEFAULT_BEHIND_THRESHOLD_DAYS = 2
 /** 親タスクの行の上に引く区切り線（タスクのまとまりが分かるように、サブタスク間より濃くする） */
 const TASK_DIVIDER_COLOR = 'var(--c-3b4258)'
 const SUBTASK_DIVIDER_COLOR = 'var(--c-23283a)'
@@ -712,48 +710,8 @@ function outOfRangeDirection(bar: TodoBar, rangeStart: string, rangeEnd: string)
   return null
 }
 
-interface ScheduleHealthOptions {
-  /** 予定より何日分以上遅れていたら「遅れ」にするか */
-  behindThresholdDays: number
-  /** true のとき土日・祝日を数えない */
-  workingDaysOnly: boolean
-  holidayNames: Map<string, string>
-}
-
-function isCountedDay(dateKey: string, options: ScheduleHealthOptions): boolean {
-  if (!options.workingDaysOnly) return true
-  const day = parseDateKey(dateKey).getDay()
-  return day !== 0 && day !== 6 && !options.holidayNames.has(dateKey)
-}
-
-/** 開始日から終了日まで（両端を含む）の日数。workingDaysOnly のときは土日・祝日を除く */
-function countDays(startKey: string, endKey: string, options: ScheduleHealthOptions): number {
-  if (endKey < startKey) return 0
-  if (!options.workingDaysOnly) return diffCalendarDays(endKey, startKey) + 1
-  let count = 0
-  for (let key = startKey; key <= endKey; key = addDays(key, 1)) {
-    if (isCountedDay(key, options)) count += 1
-  }
-  return count
-}
-
-/**
- * 予定の進捗（今日時点で何%進んでいるはずか）と、期間の日数。
- * 期間のうち昨日までに過ぎた日数に、今日の半日分を足した割合を予定とする
- */
-function calculateSchedule(bar: TodoBar, todayKey: string, options: ScheduleHealthOptions): { expectedProgress: number; totalDays: number } {
-  let effective = options
-  let totalDays = countDays(bar.startDate, bar.endDate, effective)
-  // 期間がすべて休日のタスクは、暦日で数える
-  if (totalDays === 0) {
-    effective = { ...options, workingDaysOnly: false }
-    totalDays = countDays(bar.startDate, bar.endDate, effective)
-  }
-  if (todayKey < bar.startDate) return { expectedProgress: 0, totalDays }
-  if (todayKey > bar.endDate) return { expectedProgress: 100, totalDays }
-  const passedDays = countDays(bar.startDate, addDays(todayKey, -1), effective) + (isCountedDay(todayKey, effective) ? 0.5 : 0)
-  return { expectedProgress: clamp(Math.round((passedDays / totalDays) * 100), 0, 100), totalDays }
-}
+// 予定の進捗の計算は lib/scheduleHealth.ts と共有する（報告タブの「進捗の遅れ」と同じ判定にする）
+type ScheduleHealthOptions = ScheduleOptions
 
 function getScheduleHealth(todo: Todo, todoBar: TodoBar | null, todayKey: string, options: ScheduleHealthOptions): ScheduleHealthInfo | null {
   if (!todoBar) return null
@@ -2974,6 +2932,9 @@ function GanttViewContent({
       setDependencyPaths((previous) => areDependencyPathsEqual(previous, nextPaths) ? previous : nextPaths)
     }
 
+    // 描いた直後に測って矢印を合わせる（次のフレームを待たない。画面が隠れているとフレームが来ないことがある）。
+    // 文字の読み込みなどで位置が変わることもあるので、次のフレームでもう一度測る
+    measureDependencyPaths()
     frameId = window.requestAnimationFrame(measureDependencyPaths)
     return () => window.cancelAnimationFrame(frameId)
   }, [

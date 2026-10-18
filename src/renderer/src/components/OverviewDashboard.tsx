@@ -13,7 +13,8 @@ import type {
   Todo,
   TodoCoAssignee
 } from '../types'
-import { dataInk } from '../lib/theme'
+import { dataInk } from '../lib/theme'
+import { changeFieldLabel } from '../lib/changeFields'
 
 interface Props {
   todos: Todo[]
@@ -279,7 +280,7 @@ function buildRecentMemberActivity(user: ProgressDigestUser): RecentMemberActivi
     ...user.added_todos.map((item) => ({ id: `todo-${item.id}`, at: item.created_at, kind: 'タスク追加', todoTitle: item.title })),
     ...user.completed_todos.map((item) => ({ id: `done-${item.id}`, at: item.completed_at, kind: 'タスク完了', todoTitle: item.title })),
     ...user.added_subtasks.map((item) => ({ id: `sub-${item.id}`, at: item.created_at, kind: 'サブタスク追加', todoTitle: item.todo_title, detail: item.title })),
-    ...user.task_changes.map((item) => ({ id: `change-${item.id}`, at: item.created_at, kind: 'タスク変更', todoTitle: item.todo_title, detail: item.field }))
+    ...user.task_changes.map((item) => ({ id: `change-${item.id}`, at: item.created_at, kind: 'タスク変更', todoTitle: item.todo_title, detail: changeFieldLabel(item.field) }))
   ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 3)
 }
 

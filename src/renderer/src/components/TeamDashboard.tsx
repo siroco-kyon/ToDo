@@ -2,9 +2,12 @@ import React, { useCallback, useEffect, useState } from 'react'
 import type { TeamDashboard as TeamDashboardData, TeamDeadlineItem, TeamMemberWorkload, TeamNowItem } from '../types'
 import { AssigneeChip } from './AssigneePicker'
 import { dataInk } from '../lib/theme'
+import { formatShortDate } from '../lib/dueDate'
 
 interface Props {
   onSelectTodo: (id: string) => void
+  /** メンバーのカードを押したとき（そのメンバーで一覧を絞ってガントを開く） */
+  onSelectMember?: (userId: string) => void
   /** false のときプライベートカテゴリのタスクを集計から除外（全体レンズ） */
   includePrivate?: boolean
 }
@@ -33,7 +36,7 @@ function dueSoonLabel(days: number): string {
   return `${days}日後`
 }
 
-export function TeamDashboard({ onSelectTodo, includePrivate = true }: Props): React.JSX.Element {
+export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = true }: Props): React.JSX.Element {
   const [data, setData] = useState<TeamDashboardData>(EMPTY)
   const [loadedAt, setLoadedAt] = useState<number>(Date.now())
   const [nowMs, setNowMs] = useState<number>(Date.now())
@@ -133,7 +136,7 @@ export function TeamDashboard({ onSelectTodo, includePrivate = true }: Props): R
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
             {data.workloads.map((member) => (
-              <WorkloadCard key={member.user_id} member={member} />
+              <WorkloadCard key={member.user_id} member={member} onSelect={onSelectMember ? () => onSelectMember(member.user_id) : undefined} />
             ))}
           </div>
         )}
@@ -194,7 +197,7 @@ function DeadlineRow({ item, accent, label, onSelectTodo }: { item: TeamDeadline
         <span style={{ flexShrink: 0, fontSize: '0.72rem', color: accent, fontWeight: 700 }}>{label}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.7rem', color: 'var(--slate-400)' }}>
-        <span>期限 {item.due_date.slice(0, 10)}</span>
+        <span>期限 {formatShortDate(item.due_date)}</span>
         {item.category_name && <span style={{ color: dataInk(item.category_color ?? 'var(--indigo-300)') }}>{item.category_name}</span>}
         <span>{item.progress}%</span>
         <span style={{ marginLeft: 'auto' }}>
@@ -205,26 +208,32 @@ function DeadlineRow({ item, accent, label, onSelectTodo }: { item: TeamDeadline
   )
 }
 
-function WorkloadCard({ member }: { member: TeamMemberWorkload }): React.JSX.Element {
+function WorkloadCard({ member, onSelect }: { member: TeamMemberWorkload; onSelect?: () => void }): React.JSX.Element {
+  const Container = onSelect ? 'button' : 'div'
   return (
-    <div style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <Container
+      type={onSelect ? 'button' : undefined}
+      onClick={onSelect}
+      title={onSelect ? `${member.display_name}さんのタスクだけをガントで見る` : undefined}
+      style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10, textAlign: 'left', color: 'inherit', font: 'inherit', cursor: onSelect ? 'pointer' : 'default', width: '100%' }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 11, height: 11, borderRadius: '50%', background: member.user_color }} />
         <span style={{ fontSize: '0.86rem', color: 'var(--slate-200)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.display_name}</span>
       </div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        <Metric label="進行中" value={`${member.active_tasks}`} color="var(--slate-200)" />
+        <Metric label="未完了" title="未着手と進行中の数（保留中は別に数える）" value={`${member.active_tasks}`} color="var(--slate-200)" />
         <Metric label="保留中" value={`${member.on_hold_tasks}`} color="var(--purple-300)" />
         <Metric label="超過" value={`${member.overdue_tasks}`} color={member.overdue_tasks > 0 ? 'var(--red-400)' : 'var(--slate-500)'} />
         <Metric label="今日" value={formatMinutes(member.today_minutes)} color="var(--green-400)" />
       </div>
-    </div>
+    </Container>
   )
 }
 
-function Metric({ label, value, color }: { label: string; value: string; color: string }): React.JSX.Element {
+function Metric({ label, value, color, title }: { label: string; value: string; color: string; title?: string }): React.JSX.Element {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <div title={title} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <span style={{ fontSize: '0.64rem', color: 'var(--text-subtle)' }}>{label}</span>
       <span style={{ fontSize: '0.92rem', color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
     </div>
