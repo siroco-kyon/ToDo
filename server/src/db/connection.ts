@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { DB_PATH, ensureDataDir } from '../config'
 import { createSchema, runMigrations, insertDefaultSettings } from './schema'
+import { installTodoRecurrenceConstraint } from '../shared/todo-recurrence'
 
 let db: Database.Database | null = null
 
@@ -16,5 +17,6 @@ export function initDb(): void {
   db.pragma('foreign_keys = ON')
   createSchema(db)
   runMigrations(db)
+  installTodoRecurrenceConstraint(db)
   insertDefaultSettings(db)
 }

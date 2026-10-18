@@ -2,9 +2,10 @@ import React, { useMemo, useState, useRef } from 'react'
 import type { SubTask, Todo } from '../types'
 import { RunningTimerDisplay } from './TimerDisplay'
 import { QuickCheckItem } from './TodoChecklist'
-import { diffDaysFromToday, getDueDateColor, toDateKey } from '../lib/dueDate'
+import { diffDaysFromToday, formatShortDate, getDueDateColor, toDateKey } from '../lib/dueDate'
 import { checklistBadgeText, checklistBadgeTitle, type ChecklistSummary } from '../lib/todoList'
 import { dataInk } from '../lib/theme'
+import { todoRecurrenceLabel } from '../lib/recurrence'
 
 const EXPANDED_LISTS_KEY = 'todoList.expandedLists'
 
@@ -58,8 +59,7 @@ interface Props {
 
 /** 期限の表示。近いものは「今日まで」「3日遅れ」のように残り日数で出す（完了済みは日付だけ） */
 function formatDueLabel(dueDate: string, done: boolean): string {
-  const [, m, d] = dueDate.slice(0, 10).split('-')
-  const date = `${Number(m)}/${Number(d)}`
+  const date = formatShortDate(dueDate)
   if (done) return date
   const diff = diffDaysFromToday(dueDate)
   if (diff < 0) return `${date}・${Math.abs(diff)}日遅れ`
@@ -215,7 +215,7 @@ function TodoItem({
                 </span>
               )}
               {todo.recurrence && !isArchived && (
-                <span title={`繰り返し: ${todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : '毎月'}`}
+                <span title={`繰り返し: ${todoRecurrenceLabel(todo) ?? todo.recurrence}`}
                   style={{ fontSize: '0.75rem', color: 'var(--indigo-400)', flexShrink: 0 }}>🔁</span>
               )}
               {listMode && checklist && !isArchived && (

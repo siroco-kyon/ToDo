@@ -5,6 +5,7 @@ import type { DesktopContext, DesktopPreferences } from '../../../shared/desktop
 import { desktopDownloadPageUrl, fetchDesktopRelease, isLoopbackOrigin, isNewerDesktopRelease, type DesktopReleaseStatus } from '../lib/desktopRelease'
 import { LegacyDraftRecoveryModal } from './LegacyDraftRecoveryModal'
 import { FONT_PRESETS, FONT_SCALE_PRESETS } from '../lib/fontSettings'
+import { todoRecurrenceLabel } from '../lib/recurrence'
 
 interface Props {
   onClose: () => void
@@ -33,7 +34,6 @@ const STATUS_LABEL: Record<Todo['status'], string> = {
   archived: 'アーカイブ'
 }
 
-const RECURRENCE_LABEL: Record<string, string> = { daily: '毎日', weekly: '毎週', monthly: '毎月' }
 
 function formatLocal(iso: string): string {
   const date = new Date(iso)
@@ -198,7 +198,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             todo.category_name, todo.assignee_name,
             STATUS_LABEL[todo.status] ?? todo.status, todo.priority, todo.progress,
             todo.start_date, todo.due_date,
-            todo.recurrence ? RECURRENCE_LABEL[todo.recurrence] ?? todo.recurrence : '',
+            todo.recurrence ? todoRecurrenceLabel(todo) ?? todo.recurrence : '',
             formatLocal(todo.created_at), formatLocal(todo.updated_at)
           ])
         ))

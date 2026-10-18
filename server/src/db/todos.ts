@@ -5,6 +5,7 @@ import HolidayJp from '@holiday-jp/holiday_jp'
 import { getDb } from './connection'
 import { assertExpectedValues } from '../shared/todo-update-guard'
 import { dependencyCascadeOrder } from '../shared/dependency-order'
+import { isTodoRecurrence, nextRecurrenceDateKey, normalizeTodoRecurrence, type TodoRecurrence } from '../shared/todo-recurrence'
 import {
   addDays,
   clampDependencyLagDays,
@@ -158,7 +159,7 @@ function applyTodoUpdate(id: string, data: UpdateTodoInput, updatedAt: string): 
   if (listModeAfter !== undefined) { fields.push('list_mode = ?'); values.push(listModeAfter) }
   if (data.start_date !== undefined) { fields.push('start_date = ?'); values.push(normalizeDateKey(data.start_date)) }
   if (data.due_date !== undefined) { fields.push('due_date = ?'); values.push(normalizeDateKey(data.due_date)) }
-  if (data.recurrence !== undefined) { fields.push(unlessListMode('recurrence')); values.push(listModeAfter === 1 ? null : data.recurrence) }
+  if (data.recurrence !== undefined) { fields.push(unlessListMode('recurrence')); values.push(listModeAfter === 1 ? null : normalizeTodoRecurrence(data.recurrence)) }
   if (data.recurrence_copy_subtasks !== undefined) { fields.push('recurrence_copy_subtasks = ?'); values.push(data.recurrence_copy_subtasks ? 1 : 0) }
   if (data.recurrence_skip_weekends !== undefined) { fields.push('recurrence_skip_weekends = ?'); values.push(data.recurrence_skip_weekends ? 1 : 0) }
   if (data.recurrence_skip_holidays !== undefined) { fields.push('recurrence_skip_holidays = ?'); values.push(data.recurrence_skip_holidays ? 1 : 0) }
@@ -294,7 +295,7 @@ export function createTodo(data: CreateTodoInput, createdByUserId: string | null
     startDate,
     dueDate,
     minOrder - 1,
-    listMode ? null : data.recurrence ?? null,
+    listMode ? null : normalizeTodoRecurrence(data.recurrence),
     data.recurrence_copy_subtasks ? 1 : 0,
     data.recurrence_skip_weekends ? 1 : 0,
     data.recurrence_skip_holidays ? 1 : 0,
@@ -315,20 +316,10 @@ export function reorderTodos(orderedIds: string[]): void {
 
 // ─── Recurrence ───────────────────────────────────────────────
 
-function shiftRecurrenceDate(value: string | null, recurrence: 'daily' | 'weekly' | 'monthly'): string | null {
+// 毎月・毎年はその月にない日を末日に丸める（1/31 の次を 3/3 にしない、2/29 の次の年は 2/28）
+function shiftRecurrenceDate(value: string | null, recurrence: TodoRecurrence): string | null {
   const dateKey = normalizeDateKey(value)
-  if (!dateKey) return null
-  if (recurrence === 'daily') return addDays(dateKey, 1)
-  if (recurrence === 'weekly') return addDays(dateKey, 7)
-
-  // monthly は月末を丸める（1/31 の次を 3/3 にしない）
-  const date = parseDateKey(dateKey)
-  const day = date.getDate()
-  date.setDate(1)
-  date.setMonth(date.getMonth() + 1)
-  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
-  date.setDate(Math.min(day, lastDay))
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  return dateKey ? nextRecurrenceDateKey(dateKey, recurrence) : null
 }
 
 // 土日・祝日をスキップする設定に応じて、候補日が有効な日になるまで1日ずつ進める
@@ -355,7 +346,8 @@ function applySkipRules(
 // 立っていればサブタスクも未完了状態・日付シフトつきで複製する。
 function spawnNextRecurrence(source: Todo): void {
   const recurrence = source.recurrence
-  if (!recurrence) return
+  // 知らない値（新しい版で増えた選択肢など）の次回分は作らない
+  if (!isTodoRecurrence(recurrence)) return
 
   const skipWeekends = !!source.recurrence_skip_weekends
   const skipHolidays = !!source.recurrence_skip_holidays

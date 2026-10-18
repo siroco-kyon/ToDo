@@ -2,6 +2,7 @@ import { LinkedText } from './LinkedText'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { writeTaskReportSnapshot } from '../lib/taskReportSnapshot'
+import { recurrenceKindLabel } from '../lib/recurrence'
 import type {
   ProgressDigest,
   ProgressDigestNote,
@@ -61,11 +62,6 @@ const CHANGE_FIELD_LABEL: Record<string, string> = {
   list_mode: '種類'
 }
 
-const RECURRENCE_LABEL: Record<string, string> = {
-  daily: '毎日',
-  weekly: '毎週',
-  monthly: '毎月'
-}
 
 interface TaskActivityEvent {
   id: string
@@ -142,7 +138,7 @@ function formatChangeValue(field: string, value: string | null): string {
   if (field === 'status' && value) return STATUS_LABEL[value as TodoStatus] ?? value
   if (field === 'progress' && value) return `${value}%`
   if (field === 'priority' && value) return `レベル${value}`
-  if (field === 'recurrence' && value) return RECURRENCE_LABEL[value] ?? value
+  if (field === 'recurrence' && value) return recurrenceKindLabel(value) ?? value
   if (field === 'recurrence_copy_subtasks') return value === '1' ? 'する' : 'しない'
   if (field === 'list_mode') return value === '1' ? 'ToDoリスト' : 'タスク'
   return compactText(value)

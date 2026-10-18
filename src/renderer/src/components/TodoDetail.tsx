@@ -4,7 +4,7 @@ import type { Category, CreateSubTaskInput, DailyPlanItem, ProgressNote, PublicU
 import { RunningTimerDisplay, TimerDisplay } from './TimerDisplay'
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
 import { AssigneeChip, AssigneePicker } from './AssigneePicker'
-import { diffDaysFromToday, getDueDateColor, toDateKey } from '../lib/dueDate'
+import { diffDaysFromToday, formatShortDate, getDueDateColor, toDateKey } from '../lib/dueDate'
 import { subscribeProgressDraftChanges } from '../lib/legacyProgressDrafts'
 import { buildEditPatch } from '../lib/editChanges'
 import { ProgressSlider } from './ProgressSlider'
@@ -17,6 +17,7 @@ import { autoScrollNearEdge, dropTargetAt, moveIdBy, moveIdTo, scrollParentOf, t
 import { copyTextToClipboard } from '../lib/clipboard'
 import { taskLinkFor } from '../lib/urlState'
 import { dataInk, textOnFill } from '../lib/theme'
+import { TODO_RECURRENCE_OPTIONS, nextRecurrenceDue, recurrenceDoneMessage, recurrenceKindLabel, todoRecurrenceLabel } from '../lib/recurrence'
 
 interface Props {
   todo: Todo | null
@@ -426,8 +427,8 @@ export function TodoDetail({
     try {
       await onUpdate(todo.id, { status: nextStatus })
       if (nextStatus === 'done') {
-        const recurrenceLabel = todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : todo.recurrence === 'monthly' ? '毎月' : null
-        onShowToast(recurrenceLabel ? `完了にしました。${recurrenceLabel}タスクの次回分を作成しました` : '完了にしました')
+        const recurrenceMessage = recurrenceDoneMessage(todo)
+        onShowToast(recurrenceMessage ? `完了にしました。${recurrenceMessage}` : '完了にしました')
       } else {
         onShowToast('完了を取り消しました')
       }
@@ -1035,7 +1036,16 @@ export function TodoDetail({
               <div><label style={labelStyle}>説明</label><textarea value={editData.description ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, description: event.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} /></div>
               <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input type="date" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div><div style={{ flex: 1 }}><label style={labelStyle}>{editingListMode ? '期限（空にすると期限なし）' : '期限'}</label><input type="date" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div></div>
               <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最低</option><option value={2}>低</option><option value={3}>中</option><option value={4}>高</option><option value={5}>最高</option></select></div></div>
-              {!editingListMode && <div><label style={labelStyle}>繰り返し（完了にすると次回分を自動で作ります）</label><select value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as 'daily' | 'weekly' | 'monthly' | null }))} style={inputStyle}><option value="">なし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option></select></div>}
+              {!editingListMode && (
+                <div>
+                  <label style={labelStyle}>繰り返し（完了にすると次回分を自動で作ります）</label>
+                  <select value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as Todo['recurrence'] }))} style={inputStyle}>
+                    <option value="">なし</option>
+                    {TODO_RECURRENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <RecurrenceHint data={editData} />
+                </div>
+              )}
               {!editingListMode && editData.recurrence && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'var(--slate-300)', cursor: 'pointer' }}>
                   <input
@@ -1593,7 +1603,6 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   list_mode: '種類'
 }
 const HISTORY_STATUS_LABELS: Record<string, string> = { not_started: '未着手', active: '進行中', on_hold: '保留中', done: '完了', archived: 'アーカイブ' }
-const HISTORY_RECURRENCE_LABELS: Record<string, string> = { daily: '毎日', weekly: '毎週', monthly: '毎月' }
 
 function historyValue(field: string, value: string | null): string {
   if (value == null || value === '') return 'なし'
@@ -1601,7 +1610,7 @@ function historyValue(field: string, value: string | null): string {
   if (field === 'priority') return PRIORITY_OPTIONS.find((option) => String(option.value) === value)?.label ?? value
   if (field === 'progress') return `${value}%`
   if (field === 'start_date' || field === 'due_date') return formatShortDate(value.slice(0, 10))
-  if (field === 'recurrence') return HISTORY_RECURRENCE_LABELS[value] ?? value
+  if (field === 'recurrence') return recurrenceKindLabel(value) ?? value
   if (field === 'recurrence_copy_subtasks') return value === '1' ? 'する' : 'しない'
   if (field === 'list_mode') return value === '1' ? 'ToDoリスト' : 'タスク'
   return value
@@ -2006,11 +2015,6 @@ const PRIORITY_OPTIONS = [
   { value: 5, label: '最高' }
 ]
 
-function formatShortDate(dateKey: string): string {
-  const [, m, d] = dateKey.slice(0, 10).split('-')
-  return `${Number(m)}/${Number(d)}`
-}
-
 function dueRemainingLabel(dueDate: string): string {
   const diff = diffDaysFromToday(dueDate)
   if (diff < 0) return `${Math.abs(diff)}日遅れ`
@@ -2035,6 +2039,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
   const listMode = isListTodo(todo)
   const statusTone = STATUS_OPTIONS.find((option) => option.value === todo.status)?.color ?? 'var(--slate-400)'
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
+  const recurrenceLabel = listMode ? null : todoRecurrenceLabel(todo)
 
   const save = async (data: UpdateTodoInput, message: string): Promise<boolean> => {
     setSaving(true)
@@ -2192,11 +2197,35 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
             {!isArchived && (
               <button onClick={openScheduleEditor} style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: '0.74rem' }}>変更</button>
             )}
+            {recurrenceLabel && (
+              <span title="完了にすると次回分を自動で作ります。変えるときは「編集」から" style={{ fontSize: '0.74rem', color: 'var(--indigo-300)', border: '1px solid var(--indigo-700)', borderRadius: 99, padding: '1px 8px', whiteSpace: 'nowrap' }}>
+                🔁 {recurrenceLabel}
+              </span>
+            )}
           </div>
         )}
       </div>
     </div>
   )
+}
+
+/** 編集欄の繰り返しの下に、次回分の日付を出す（毎年は基準の月日も） */
+function RecurrenceHint({ data }: { data: UpdateTodoInput }): React.JSX.Element | null {
+  const recurrence = data.recurrence ?? null
+  if (!recurrence) return null
+  const source = {
+    recurrence,
+    start_date: data.start_date ?? null,
+    due_date: data.due_date ?? null,
+    recurrence_skip_weekends: data.recurrence_skip_weekends ?? 0,
+    recurrence_skip_holidays: data.recurrence_skip_holidays ?? 0
+  }
+  const next = nextRecurrenceDue(source)
+  const label = todoRecurrenceLabel(source)
+  const text = next
+    ? `${label}。完了にすると、次回分を${next.kind} ${formatShortDate(next.dateKey)}${next.holidayMayShift ? '（祝日ならその後ろ）' : ''}で作ります`
+    : `${label}。日付がないので、次回分も日付なしで作ります`
+  return <div style={{ marginTop: 4, fontSize: '0.72rem', color: 'var(--slate-400)', lineHeight: 1.5 }}>{text}</div>
 }
 
 function Badge({ children, color }: { children: React.ReactNode; color: string }): React.JSX.Element {

@@ -22,6 +22,15 @@ export function isoToDateKey(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso.slice(0, 10) : toDateKey(date)
 }
 
+/**
+ * 短い日付の表記（例: 10/20）。今年でない日付には年を付ける（例: 2027/10/20）。
+ * 毎年の繰り返しの次回分などを、今年の日付と見間違えないようにする
+ */
+export function formatShortDate(dateKey: string, today = new Date()): string {
+  const [y, m, d] = dateKey.slice(0, 10).split('-').map(Number)
+  return y === today.getFullYear() ? `${m}/${d}` : `${y}/${m}/${d}`
+}
+
 /** 今日から見た暦日の差（過去は負） */
 export function diffDaysFromToday(dateKey: string): number {
   const today = new Date()

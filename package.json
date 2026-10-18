@@ -17,6 +17,7 @@
     "test:todo-list": "node tests/todo-list-display.cjs && node tests/todo-list-desktop.cjs && npm --prefix server run test:todo-list",
     "test:reorder": "node tests/subtask-reorder.cjs",
     "test:url": "node tests/url-state.cjs",
+    "test:yearly": "node tests/recurrence-dates.cjs && node tests/yearly-recurrence-desktop.cjs && npm --prefix server run test:yearly",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",

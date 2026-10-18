@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react'
 import type { Category, Todo, TodoStatus } from '../types'
 import { checklistBadgeText, checklistBadgeTitle, type ChecklistSummary } from '../lib/todoList'
 import { dataInk } from '../lib/theme'
+import { todoRecurrenceLabel } from '../lib/recurrence'
+import { formatShortDate } from '../lib/dueDate'
 
 interface Props {
   todos: Todo[]
@@ -108,7 +110,7 @@ function KanbanCard({
           </span>
         )}
         {todo.recurrence && (
-          <span title="繰り返し" style={{ fontSize: '0.62rem', color: 'var(--indigo-400)' }}>🔁</span>
+          <span title={`繰り返し: ${todoRecurrenceLabel(todo) ?? todo.recurrence}`} style={{ fontSize: '0.62rem', color: 'var(--indigo-400)' }}>🔁</span>
         )}
         {todo.list_mode === 1 && checklist && (
           <span title={checklistBadgeTitle(checklist)} style={{ fontSize: '0.6rem', color: 'var(--indigo-300)', border: '1px solid var(--indigo-700)', borderRadius: 99, padding: '0 5px' }}>
@@ -141,7 +143,7 @@ function KanbanCard({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
         {todo.due_date && (
           <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: '0.66rem', color: isDone ? 'var(--slate-500)' : getDueColor(todo.due_date) }}>
-            期限 {Number(todo.due_date.slice(5, 7))}/{Number(todo.due_date.slice(8, 10))}
+            期限 {formatShortDate(todo.due_date)}
           </span>
         )}
         {prog > 0 && (

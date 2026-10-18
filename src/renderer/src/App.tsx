@@ -21,6 +21,7 @@ import { buildChecklistSummaries, buildTodayGroups, countRemaining, groupListIte
 import { TodayTodoCard } from './components/TodayTodo'
 import { mergeSubsetOrder } from './lib/reorder'
 import { buildUrlSearch, parseUrlState } from './lib/urlState'
+import { recurrenceDoneMessage } from './lib/recurrence'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 
 // 最初に開くガント・タスク一覧・詳細以外の画面と、設定などの小窓は、開いたときに読み込む（起動を軽くする）
@@ -1063,10 +1064,8 @@ export function App(): React.JSX.Element {
     // 繰り返しタスクの次回分はDB層が完了時に自動生成する
     await window.api.todoUpdate(todo.id, { status: newStatus })
 
-    if (newStatus === 'done' && todo.recurrence) {
-      const recurrenceLabel = todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : '毎月'
-      showToast(`${recurrenceLabel}タスクを次回分として作成しました`)
-    }
+    const recurrenceMessage = newStatus === 'done' ? recurrenceDoneMessage(todo) : null
+    if (recurrenceMessage) showToast(recurrenceMessage)
 
     await loadTodos()
   }, [loadTodos, showToast])
@@ -1076,10 +1075,8 @@ export function App(): React.JSX.Element {
   const handleKanbanMove = useCallback(async (todo: Todo, status: Todo['status']) => {
     if (todo.status === status) return
     await window.api.todoUpdate(todo.id, { status })
-    if (status === 'done' && todo.recurrence) {
-      const recurrenceLabel = todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : '毎月'
-      showToast(`${recurrenceLabel}タスクを次回分として作成しました`)
-    }
+    const recurrenceMessage = status === 'done' ? recurrenceDoneMessage(todo) : null
+    if (recurrenceMessage) showToast(recurrenceMessage)
     await loadTodos()
   }, [loadTodos, showToast])
 

@@ -1,3 +1,6 @@
+/** タスクの繰り返し（完了にすると次回分を作る）。server/src/shared/todo-recurrence.ts と同じ選択肢 */
+export type TodoRecurrence = 'daily' | 'weekly' | 'monthly' | 'yearly'
+
 export interface Category {
   id: string
   name: string
@@ -98,7 +101,8 @@ export interface Todo {
   start_date: string | null
   due_date: string | null
   sort_order: number
-  recurrence: 'daily' | 'weekly' | 'monthly' | null
+  /** 繰り返し（完了にすると次回分を作る）。null は繰り返さない */
+  recurrence: TodoRecurrence | null
   /** 1 のとき、繰り返しの次回分にサブタスクを未完了状態で複製する */
   recurrence_copy_subtasks: number
   /** 1 のとき、繰り返しの次回分が土日に当たる場合は平日にずらす */
@@ -232,7 +236,7 @@ export interface CreateTodoInput {
   progress?: number
   start_date?: string | null
   due_date?: string | null
-  recurrence?: 'daily' | 'weekly' | 'monthly' | null
+  recurrence?: TodoRecurrence | null
   recurrence_copy_subtasks?: number
   recurrence_skip_weekends?: number
   recurrence_skip_holidays?: number
@@ -252,7 +256,7 @@ export interface UpdateTodoInput {
   progress?: number
   start_date?: string | null
   due_date?: string | null
-  recurrence?: 'daily' | 'weekly' | 'monthly' | null
+  recurrence?: TodoRecurrence | null
   recurrence_copy_subtasks?: number
   recurrence_skip_weekends?: number
   recurrence_skip_holidays?: number

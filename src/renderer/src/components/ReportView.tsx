@@ -2,7 +2,7 @@ import { LinkedText } from './LinkedText'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { dateStamp, downloadCsv, toCsv } from '../lib/csv'
-import { diffDaysFromToday, getDueDateColor, isoToDateKey, toDateKey } from '../lib/dueDate'
+import { diffDaysFromToday, formatShortDate as formatShortDateKey, getDueDateColor, isoToDateKey, toDateKey } from '../lib/dueDate'
 import { MentionTextarea } from './MentionTextarea'
 import { ON_TRACK_NOTE, ProgressNoteHelpers, withProgressNoteTemplate } from './ProgressNoteHelpers'
 import { ProgressNoteThread, discussionBadgeStyle } from './ProgressNoteThread'
@@ -237,9 +237,7 @@ function matchesQuickFilter(row: ReportRow, filter: QuickFilter, currentUserId: 
 }
 
 function formatShortDate(dateKey: string | null): string {
-  if (!dateKey) return '未設定'
-  const [, m, d] = dateKey.slice(0, 10).split('-')
-  return `${Number(m)}/${Number(d)}`
+  return dateKey ? formatShortDateKey(dateKey) : '未設定'
 }
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
