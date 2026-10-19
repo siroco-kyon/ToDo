@@ -113,7 +113,10 @@ export function QuickAddModal({
   // ToDoリスト（中の項目を毎日・毎週などでチェックし直すタスク）として作る。期限は「なし」のままでも決めてもよい
   const [listMode, setListMode] = useState(defaultListMode)
   const [submitting, setSubmitting] = useState(false)
-  const [keepOpen, setKeepOpen] = useState(false)
+  // 「追加後も続けて入力する」は、続けて何件も入れる人のために端末に覚える
+  const [keepOpen, setKeepOpen] = useState(() => {
+    try { return window.localStorage.getItem('quick-add-keep-open') === '1' } catch { return false }
+  })
   const [showDetails, setShowDetails] = useState(() => Boolean(savedDraft.description?.trim() || savedDraft.memo?.trim()))
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const duePresets = useMemo(buildDuePresets, [])
@@ -454,7 +457,10 @@ export function QuickAddModal({
           {/* 「詳しく設定」を開いて小窓が長くなっても、追加・キャンセルは下に見えたままにする */}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', marginTop: 2, flexWrap: 'wrap', position: 'sticky', bottom: 0, margin: '2px -20px -20px', padding: '10px 20px 16px', background: 'var(--slate-800)', borderTop: '1px solid var(--slate-700)', borderRadius: '0 0 12px 12px', zIndex: 1 }}>
             <label style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--slate-400)', fontSize: '0.78rem', cursor: 'pointer' }}>
-              <input type="checkbox" checked={keepOpen} onChange={(event) => setKeepOpen(event.target.checked)} />
+              <input type="checkbox" checked={keepOpen} onChange={(event) => {
+                setKeepOpen(event.target.checked)
+                try { window.localStorage.setItem('quick-add-keep-open', event.target.checked ? '1' : '0') } catch { /* 覚えられなくてもよい */ }
+              }} />
               追加後も続けて入力する
             </label>
             <button

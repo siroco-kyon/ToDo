@@ -4551,7 +4551,13 @@ function GanttViewContent({
         )}
       </div>
 
-      {showUnscheduled && (
+      {/* 日付のないタスクが0件のときは1行だけにして、チャートの高さを取らない */}
+      {showUnscheduled && unscheduledGroups.length === 0 && (
+        <div ref={unscheduledSectionRef} style={{ fontSize: '0.76rem', color: 'var(--text-subtle)', padding: '2px 4px' }}>
+          未配置タスク（日付なし）はありません。開始日も期限もないタスクは、ここに並びます。
+        </div>
+      )}
+      {showUnscheduled && unscheduledGroups.length > 0 && (
         <div ref={unscheduledSectionRef} style={{ background: 'var(--gray-900)', border: '1px solid var(--gray-800)', borderRadius: 16, padding: 16, scrollMarginTop: 8 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ fontSize: '0.92rem', color: 'var(--slate-50)', fontWeight: 700 }}>未配置タスク（日付なし）{unscheduledGroups.length > 0 ? ` ${unscheduledGroups.length}件` : ''}</div>

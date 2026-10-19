@@ -8,7 +8,8 @@ import { isAddressedToUser, isUnseen, noteHasUnseen, readProgressSeenAt, writePr
 import { serverNow } from '../lib/serverClock'
 import { NoteMenu, discussionBadgeStyle } from './ProgressNoteThread'
 import { subscribeProgressDraftChanges } from '../lib/legacyProgressDrafts'
-import { dataInk } from '../lib/theme'
+import { dataInk } from '../lib/theme'
+import { taskOptionLabel } from '../lib/taskLabel'
 
 export interface ProgressTimelineFocusTarget {
   date?: string | null
@@ -770,7 +771,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                     {taskOptionGroups.map((group) => (
                       <optgroup key={group.label} label={group.label}>
                         {group.todos.map((todo) => (
-                          <option key={todo.id} value={todo.id}>{todo.title}</option>
+                          <option key={todo.id} value={todo.id}>{taskOptionLabel(todo)}</option>
                         ))}
                       </optgroup>
                     ))}

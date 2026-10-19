@@ -18,6 +18,8 @@ import { copyTextToClipboard } from '../lib/clipboard'
 import { taskLinkFor } from '../lib/urlState'
 import { dataInk, textOnFill } from '../lib/theme'
 import { changeFieldLabel } from '../lib/changeFields'
+import { FOCUS_PROGRESS_LOG_EVENT } from '../lib/appEvents'
+import { taskOptionLabel } from '../lib/taskLabel'
 import { TODO_RECURRENCE_OPTIONS, nextRecurrenceDue, recurrenceDoneMessage, recurrenceKindLabel, recurrenceReopenMessage, todoRecurrenceLabel } from '../lib/recurrence'
 
 interface Props {
@@ -241,6 +243,14 @@ export function TodoDetail({
     input.scrollIntoView({ block: 'center', behavior: 'smooth' })
     input.focus({ preventScroll: true })
   }
+  // Ctrl+K の「進捗ログを書く」からも入力欄へ移る
+  const focusProgressLogRef = useRef(focusProgressLogInput)
+  focusProgressLogRef.current = focusProgressLogInput
+  useEffect(() => {
+    const handle = (): void => focusProgressLogRef.current()
+    window.addEventListener(FOCUS_PROGRESS_LOG_EVENT, handle)
+    return () => window.removeEventListener(FOCUS_PROGRESS_LOG_EVENT, handle)
+  }, [])
   const liveTodoIdRef = useRef(todoId)
   liveTodoIdRef.current = todoId
   const mountedRef = useRef(true)
@@ -426,23 +436,44 @@ export function TodoDetail({
   }
 
   // 進捗バーは報告タブと同じスライダー（ドラッグ・←→キー）。離したときに1回だけ保存する
-  const handleProgressCommit = async (progress: number): Promise<void> => {
+  // 進捗の保存は順番に送る。続けて操作したとき、前の保存が画面に反映される前の値を「変更前」として送ると、
+  // 自分の変更をほかの人の変更と取り違えて弾かれるため、直前に保存した値を「変更前」に使う
+  const progressSaveChainRef = useRef<Promise<void>>(Promise.resolve())
+  const lastSavedProgressRef = useRef<{ todoId: string; progress: number; status: Todo['status'] } | null>(null)
+  // 画面の値が保存した値に追いついたら、画面の値を使う（そのあとのほかの人の変更を正しく見分けるため）
+  useEffect(() => {
+    const saved = lastSavedProgressRef.current
+    if (saved && saved.todoId === todo?.id && saved.progress === todo?.progress) lastSavedProgressRef.current = null
+  }, [todo?.id, todo?.progress])
+  const handleProgressCommit = (progress: number): Promise<void> => {
+    const run = progressSaveChainRef.current.then(() => commitProgress(progress))
+    progressSaveChainRef.current = run.catch(() => undefined)
+    return run
+  }
+  const commitProgress = async (progress: number): Promise<void> => {
     if (!todoId) return
-    const previous = { progress: todo?.progress ?? 0, status: todo?.status ?? 'not_started' }
+    const saved = lastSavedProgressRef.current?.todoId === todoId ? lastSavedProgressRef.current : null
+    const previous = saved ?? { progress: todo?.progress ?? 0, status: todo?.status ?? 'not_started' }
+    if (progress === previous.progress) return
     try {
       await onUpdate(todoId, { progress, expected_values: { progress: previous.progress } })
+      lastSavedProgressRef.current = { todoId, progress, status: progress >= 100 && previous.status !== 'on_hold' ? 'done' : previous.status === 'not_started' && progress > 0 ? 'active' : previous.status }
       // バーを押し間違えたときにすぐ戻せるようにする（状態が自動で変わった分も戻す）
       const undo = {
         label: '元に戻す',
         run: () => {
           void onUpdate(todoId, { progress: previous.progress, status: previous.status }).then(
-            () => onShowToast(`進捗を${previous.progress}%に戻しました`),
+            () => {
+              lastSavedProgressRef.current = { todoId, progress: previous.progress, status: previous.status }
+              onShowToast(`進捗を${previous.progress}%に戻しました`)
+            },
             (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
           )
         }
       }
       onShowToast(progress >= 100 && previous.status !== 'done' ? '進捗が100%になったので完了にしました' : `進捗を${progress}%にしました`, 'success', undo)
     } catch (error) {
+      lastSavedProgressRef.current = null
       onShowToast(error instanceof Error ? error.message : '進捗を更新できませんでした', 'error')
     }
   }
@@ -824,6 +855,8 @@ export function TodoDetail({
         setNoteDraft('')
         window.localStorage.removeItem(progressDraftKey)
       }
+      // 報告タブ・進捗タブと同じく、投稿したことを知らせる
+      onShowToast('進捗ログを投稿しました')
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '進捗ログを追加できませんでした', 'error')
     } finally {
@@ -1025,16 +1058,17 @@ export function TodoDetail({
 
   const timerSection = (
     <>
-          <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* 狭いパネルでは停止メモと停止を下の段へ折り返す（右端で切れないように） */}
+          <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginBottom: 4 }}>計測時間</div>
               {isRunning ? <RunningTimerDisplay startTime={timerStartTime} /> : <TimerDisplay elapsedSeconds={0} isRunning={false} />}
               <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: 2 }}>合計 <TotalMinutes loggedSeconds={loggedSeconds} startTime={isRunning ? timerStartTime : null} />分</div>
             </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 0 }}>
               {isRunning ? (
                 <>
-                  <input disabled={timerStopping} value={stopNote} onChange={(event) => setStopNote(event.target.value)} placeholder="停止メモ" style={{ ...inputStyle, width: 160, fontSize: '0.8rem', padding: '6px 8px' }} />
+                  <input disabled={timerStopping} value={stopNote} onChange={(event) => setStopNote(event.target.value)} placeholder="停止メモ" aria-label="停止メモ" style={{ ...inputStyle, width: 160, maxWidth: '100%', flex: '1 1 120px', fontSize: '0.8rem', padding: '6px 8px' }} />
                   <button disabled={timerStopping} onClick={() => {
                     if (timerStoppingRef.current) return
                     timerStoppingRef.current = true
@@ -1482,7 +1516,12 @@ export function TodoDetail({
                 </select>
                 <select value={dependencyDraft.relatedTodoId} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, relatedTodoId: event.target.value }))} style={{ ...inputStyle, flex: '2 1 170px', width: 'auto', minWidth: 0 }}>
                   <option value="">タスクを選択</option>
-                  {dependencyCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title}</option>)}
+                  {dependencyCandidates.filter((candidate) => candidate.status !== 'done').map((candidate) => <option key={candidate.id} value={candidate.id}>{taskOptionLabel(candidate)}</option>)}
+                  {dependencyCandidates.some((candidate) => candidate.status === 'done') && (
+                    <optgroup label="完了したタスク">
+                      {dependencyCandidates.filter((candidate) => candidate.status === 'done').map((candidate) => <option key={candidate.id} value={candidate.id}>{taskOptionLabel(candidate)}</option>)}
+                    </optgroup>
+                  )}
                 </select>
                 <input type="number" min={0} max={60} value={dependencyDraft.lagDays} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, lagDays: event.target.value }))} placeholder="待機日数" aria-label="待機日数" title="先行タスクの完了から、何日空けて始めるか" style={{ ...inputStyle, flex: '0 0 88px', width: 88 }} />
                 <button onClick={() => void handleCreateDependency()} style={buttonStyle('var(--blue-600)')}>追加</button>

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDialogFocus } from '../hooks/useDialogFocus'
-import type { Todo } from '../types'
+import type { Todo } from '../types'
+import { formatShortDate } from '../lib/dueDate'
 
 /** パレットの1項目（画面の切り替え・操作）。タスクは別に並べる */
 export interface PaletteCommand {
@@ -58,7 +59,8 @@ export function CommandPalette({ commands, todos, onOpenTodo, onClose }: Props):
         key: `todo:${todo.id}`,
         group: 'タスク' as const,
         label: todo.title,
-        detail: [todo.category_name, todo.assignee_name, todo.status === 'done' ? '完了' : todo.status === 'on_hold' ? '保留中' : null].filter(Boolean).join('・'),
+        // 同じ名前の繰り返しの回を見分けられるよう、期限も出す
+        detail: [todo.category_name, todo.assignee_name, todo.due_date ? `期限 ${formatShortDate(todo.due_date)}` : null, todo.status === 'done' ? '完了' : todo.status === 'on_hold' ? '保留中' : null].filter(Boolean).join('・'),
         run: () => onOpenTodo(todo.id)
       }))
     // 何も入れていないときは画面と操作を先に、入れたらタスクを先に出す

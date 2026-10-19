@@ -885,6 +885,8 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>(loadAssigneeFilter)
   const [excludeCoAssigned, setExcludeCoAssigned] = useState(() => readStorage(STORAGE_KEYS.excludeCoAssigned) === '1')
   const [quickFilter, setQuickFilter] = useState<QuickFilter>(loadSessionQuickFilter)
+  // この画面を開いてから進捗ログを書いたタスク（「報告なし」で絞っていても、書いた直後は残す）
+  const [reportedNowIds, setReportedNowIds] = useState<Set<string>>(() => new Set())
   useEffect(() => {
     try { window.sessionStorage.setItem(SESSION_KEYS.quickFilter, quickFilter) } catch { /* 覚えられなくても絞り込みはできる */ }
   }, [quickFilter])
@@ -1150,10 +1152,12 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   // 自分の未報告の案内はサーバー版でログインしているときだけ
   const effectiveQuickFilter: QuickFilter = quickFilter === 'myNeedsReport' && !(multiUser && currentUserId) ? 'all' : quickFilter
   const rows = useMemo(() => baseRows
-    .filter((row) => matchesQuickFilter(row, effectiveQuickFilter, currentUserId))
+    // 「報告なし」で絞っているあいだに書いたタスクは、すぐに消さず残す（書いた内容を確かめ・直せるように）
+    .filter((row) => matchesQuickFilter(row, effectiveQuickFilter, currentUserId)
+      || ((effectiveQuickFilter === 'needsReport' || effectiveQuickFilter === 'myNeedsReport') && reportedNowIds.has(row.todo.id)))
     // 保留中だけを見るときは、保留が長いものから並べる
     .sort((a, b) => effectiveQuickFilter === 'onHold' ? (a.todo.on_hold_since ?? '9999').localeCompare(b.todo.on_hold_since ?? '9999') : 0),
-  [baseRows, currentUserId, effectiveQuickFilter])
+  [baseRows, currentUserId, effectiveQuickFilter, reportedNowIds])
 
   const groups = useMemo(
     () => groupRows(rows, effectiveGroupMode, users, currentUser?.id ?? null, selectedUserId),
@@ -1250,6 +1254,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     try {
       const created = await window.api.progressNoteCreate(todo.id, trimmed)
       if (needsDiscussion) await window.api.progressNoteSetNeedsDiscussion(created.id, true)
+      setReportedNowIds((previous) => new Set(previous).add(todo.id))
       await load()
       onShowToast('進捗ログを投稿しました')
       return true
@@ -1706,7 +1711,9 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
 
         {loaded && groups.length === 0 && (
           <div style={emptyStyle}>
-            {effectiveQuickFilter !== 'all'
+            {effectiveQuickFilter === 'myNeedsReport'
+              ? <>この期間の自分の報告はすべて済んでいます。<button onClick={() => setQuickFilter('all')} style={{ ...inlineActionStyle, marginLeft: 8, fontSize: '0.82rem' }}>すべて表示</button></>
+              : effectiveQuickFilter !== 'all'
               ? <>条件に合うタスクはありません。<button onClick={() => setQuickFilter('all')} style={{ ...inlineActionStyle, marginLeft: 8, fontSize: '0.82rem' }}>すべて表示</button></>
               : settingsChips.length > 0
                 ? '表示できるタスクがありません。「表示設定」の横に出ている条件も確認してください。'

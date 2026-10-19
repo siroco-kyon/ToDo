@@ -24,6 +24,7 @@ import { buildUrlSearch, parseUrlState } from './lib/urlState'
 import { recurrenceDoneMessage, recurrenceReopenMessage } from './lib/recurrence'
 import { elapsedSecondsSince } from './hooks/useElapsedSeconds'
 import { formatShortDate } from './lib/dueDate'
+import { FOCUS_PROGRESS_LOG_EVENT } from './lib/appEvents'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 
 // 最初に開くガント・タスク一覧・詳細以外の画面と、設定などの小窓は、開いたときに読み込む（起動を軽くする）
@@ -112,6 +113,9 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+// 右のパネル（今日の予定・ガントの詳細）の最小幅。これより狭いと、詳細の計測の「停止」や日程の欄が切れる
+const SIDE_PANE_MIN_WIDTH = 340
+
 function loadPaneWidths(): PaneWidths {
   try {
     const raw = window.localStorage.getItem('app-pane-widths')
@@ -120,7 +124,7 @@ function loadPaneWidths(): PaneWidths {
     return {
       category: clamp(Number(parsed.category) || DEFAULT_PANE_WIDTHS.category, 132, 320),
       list: clamp(Number(parsed.list) || DEFAULT_PANE_WIDTHS.list, 220, 460),
-      side: clamp(Number(parsed.side) || DEFAULT_PANE_WIDTHS.side, 280, 720)
+      side: clamp(Number(parsed.side) || DEFAULT_PANE_WIDTHS.side, SIDE_PANE_MIN_WIDTH, 720)
     }
   } catch {
     return DEFAULT_PANE_WIDTHS
@@ -415,12 +419,15 @@ export function App(): React.JSX.Element {
       showToast('保留中のタスクは、進行中に戻してから計測を開始してください')
       return
     }
+    const previousTitle = runningTodoId && runningTodoId !== todoId ? todos.find((todo) => todo.id === runningTodoId)?.title ?? null : null
     try {
       await startTimer(todoId)
+      // 別のタスクを計測中だったときは、止めて切り替えたことを知らせる（黙って止まると記録が分かれたことに気付けない）
+      if (previousTitle) showToast(`「${previousTitle}」の計測を止めて、「${todos.find((todo) => todo.id === todoId)?.title ?? 'このタスク'}」の計測を始めました`)
     } catch (error) {
       showToast(error instanceof Error ? error.message : '計測を開始できませんでした', 'error')
     }
-  }, [activeView, detailDirty, selectedTodoId, showToast, startTimer, todos])
+  }, [activeView, detailDirty, runningTodoId, selectedTodoId, showToast, startTimer, todos])
 
   useEffect(() => {
     window.api.appIsFirstLaunch().then(setIsFirstLaunch)
@@ -710,7 +717,7 @@ export function App(): React.JSX.Element {
           return { ...previous, list: clamp(current.startWidth + delta, 220, 460) }
         }
 
-        return { ...previous, side: clamp(current.startWidth - delta, 280, 720) }
+        return { ...previous, side: clamp(current.startWidth - delta, SIDE_PANE_MIN_WIDTH, 720) }
       })
     }
 
@@ -1600,6 +1607,28 @@ export function App(): React.JSX.Element {
   const paletteCommands: PaletteCommand[] = [
     ...paletteViews.map(({ view, label, keywords }) => ({ key: `view:${view}`, group: '画面' as const, label: `${label}を開く`, keywords, run: () => toggleCenterView(view) })),
     { key: 'add', group: '操作', label: 'タスクを追加', keywords: 'new add 新規', run: () => openQuickAdd() },
+    // 開いているタスクへの操作（キーボードだけで「開く→進捗ログ→完了」まで進められるように）
+    ...(selectedTodo && selectedTodo.status !== 'archived' ? [
+      {
+        key: 'task-log', group: '操作' as const, label: `「${selectedTodo.title}」の進捗ログを書く`, keywords: '進捗 ログ 報告 書く',
+        run: () => {
+          if (activeView !== 'detail' && !(activeView === 'gantt' && ganttSidePanelMode === 'detail')) setActiveView('detail')
+          window.setTimeout(() => window.dispatchEvent(new CustomEvent(FOCUS_PROGRESS_LOG_EVENT)), 0)
+        }
+      },
+      {
+        key: 'task-done', group: '操作' as const,
+        label: selectedTodo.status === 'done' ? `「${selectedTodo.title}」の完了を取り消す` : `「${selectedTodo.title}」を完了にする`,
+        keywords: '完了 done 終わり',
+        run: () => void handleToggleDone(selectedTodo)
+      },
+      {
+        key: 'task-timer', group: '操作' as const,
+        label: runningTodoId === selectedTodo.id ? `「${selectedTodo.title}」の計測を止める` : `「${selectedTodo.title}」の計測を始める`,
+        keywords: '計測 タイマー timer 開始 停止',
+        run: () => { if (runningTodoId === selectedTodo.id) stopFromToolbar(); else void start(selectedTodo.id) }
+      }
+    ] : []),
     ...(currentUser ? [{ key: 'mine', group: '操作' as const, label: '自分の担当だけを表示', keywords: '担当 絞り込み 自分', run: () => setSelectedAssigneeId(currentUser.id) }] : []),
     { key: 'clear-filters', group: '操作', label: '一覧の絞り込みを解除', keywords: '絞り込み 解除 全員', run: clearListFilters },
     { key: 'pane-category', group: '操作', label: categoryPaneVisible ? 'カテゴリ一覧を隠す' : 'カテゴリ一覧を表示', keywords: 'パネル 表示', run: () => togglePane('category') },
