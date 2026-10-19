@@ -3826,6 +3826,13 @@ function GanttViewContent({
                 const sectionStripeColor = showCategoryGrouping ? section.color : (group.todo.category_color ?? 'transparent')
                 // 要相談の印は、バーの右外にある依存関係のつかみ（または期限超過の斜線）を避けて置く
                 const discussionMarkerLeft = Math.min(overdueTail ? overdueTail.left + overdueTail.width + 6 : barEnd + 18, Math.max(timelineWidth - 60, 0))
+                // バーが短くて名前が入らないときは、バーの右の外（依存関係のつかみ・期限超過の斜線・要相談の印の後ろ）に名前を出す
+                const parentTitleText = `${listMode ? '☑ ' : group.todo.status === 'on_hold' ? '保留中 · ' : ''}${group.todo.title}`
+                const parentTitleWidth = Array.from(parentTitleText).reduce((sum, char) => sum + (char.charCodeAt(0) < 0x2000 ? 7 : 11.5), 0) + 24
+                const parentLabelOutside = Boolean(displayedTodoBar && todoVisible && !todoOutsideRange && unitWidth >= UNIT_WIDTH[timeScale].normal && barWidth < parentTitleWidth)
+                const parentLabelLeft = discussionCount > 0
+                  ? discussionMarkerLeft + 64
+                  : overdueTail ? overdueTail.left + overdueTail.width + 8 : barEnd + 22
                 const barTooltip = displayedTodoBar
                   ? buildTodoBarTooltip({
                     todo: group.todo,
@@ -4109,6 +4116,8 @@ function GanttViewContent({
                             >
                               {todoOutsideRange ? (
                                 <span style={{ fontSize: '0.64rem', fontWeight: 800, whiteSpace: 'nowrap' }}>{todoOutsideRange === 'before' ? '← 期間前' : '期間後 →'}</span>
+              ) : parentLabelOutside ? (
+                                barWidth > 36 && <span style={{ fontSize: '0.64rem', fontWeight: 700, whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)' }}>{listMode ? '☑' : `${progress}%`}</span>
                               ) : barWidth > 56 && (
                                 // 開始日が画面の左外にあっても、見えている範囲の左端にタスク名を出し続ける
                                 <span style={{ position: 'sticky', left: leftTableWidth + 10, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)' }}>
@@ -4128,6 +4137,17 @@ function GanttViewContent({
                               </>
                             )}
                           </div>
+                        )}
+                        {parentLabelOutside && (
+                          <span
+                            aria-hidden="true"
+                            style={{ position: 'absolute', left: parentLabelLeft, top: 0, height: PARENT_ROW_HEIGHT, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.7rem', fontWeight: 700, color: GANTT_TEXT, whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 1 }}
+                          >
+                            {parentTitleText}
+                            <span style={{ fontSize: '0.64rem', fontWeight: 600, color: 'var(--text-subtle)' }}>
+                              {[group.todo.assignee_name, listMode ? checklistText : `${progress}%`].filter(Boolean).join('・')}
+                            </span>
+                          </span>
                         )}
                         {discussionCount > 0 && displayedTodoBar && todoVisible && !todoOutsideRange && (
                           <span
@@ -4212,6 +4232,10 @@ function GanttViewContent({
                         : subTaskOutsideRange === 'before'
                           ? 6
                           : subTaskStartIndex * unitWidth + 6
+                      // 名前が入る長さか（全角は約1文字10px、半角は約6px として見積もる）
+                      const subTaskOverdue = !subTask.done && subTaskTone(subTask, todayKey).statusLabel === '期限超過'
+                      const subTaskLabelWidth = Array.from(`${subTaskProgress}% ${subTask.title}`).reduce((sum, char) => sum + (char.charCodeAt(0) < 0x2000 ? 6 : 10), 0) + 16
+                      const subTaskLabelOutside = !subTaskOutsideRange && unitWidth >= UNIT_WIDTH[timeScale].normal && subTaskBarWidth < subTaskLabelWidth
                       const baselineVisible = baselineBar
                         ? intersectsRange(baselineBar.startDate, baselineBar.endDate, normalizedRange.start, normalizedRange.end)
                         : false
@@ -4428,7 +4452,9 @@ function GanttViewContent({
                                 <span style={{ position: subTaskOutsideRange ? undefined : 'sticky', left: leftTableWidth + 10, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.6rem', fontWeight: 700, padding: '0 2px', whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
                                   {subTaskOutsideRange
                                     ? subTaskOutsideRange === 'before' ? '← 期間前' : '期間後 →'
-                                    : <>{!subTask.done && tone.statusLabel === '期限超過' ? '⚠ ' : ''}{Boolean(subTask.done) && unitWidth >= UNIT_WIDTH[timeScale].normal ? '完了 ' : ''}{unitWidth >= UNIT_WIDTH[timeScale].normal ? `${subTaskProgress}% ${subTask.title}` : barStartLabel(displayedBar.startDate, timeScale)}</>}
+                                    : subTaskLabelOutside
+                                      ? `${subTaskOverdue ? '⚠ ' : ''}${subTaskProgress}%`
+                                      : <>{subTaskOverdue ? '⚠ ' : ''}{Boolean(subTask.done) && unitWidth >= UNIT_WIDTH[timeScale].normal ? '完了 ' : ''}{unitWidth >= UNIT_WIDTH[timeScale].normal ? `${subTaskProgress}% ${subTask.title}` : barStartLabel(displayedBar.startDate, timeScale)}</>}
                                 </span>
                               </div>
                               {isTimelineEditable && !subTaskOutsideRange && (
@@ -4438,6 +4464,28 @@ function GanttViewContent({
                                 </>
                               )}
                             </div>
+                            {/* バーが短くて名前が入らないときは、バーの右の外に名前を出す（「⚠ 0...」で切れて読めなかったため） */}
+                            {subTaskLabelOutside && (
+                              <span
+                                aria-hidden="true"
+                                style={{
+                                  position: 'absolute',
+                                  left: subTaskBarLeft + subTaskBarWidth + 6,
+                                  top: 0,
+                                  height: SUBTASK_ROW_HEIGHT,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  fontSize: '0.66rem',
+                                  fontWeight: 700,
+                                  color: subTaskOverdue ? 'var(--red-300)' : GANTT_TEXT,
+                                  whiteSpace: 'nowrap',
+                                  pointerEvents: 'none',
+                                  textDecoration: Boolean(subTask.done) ? 'line-through' : 'none'
+                                }}
+                              >
+                                {subTaskOverdue ? '期限超過 ' : ''}{Boolean(subTask.done) ? '完了 ' : ''}{subTask.title}
+                              </span>
+                            )}
                           </div>
                         </div>
                       )
