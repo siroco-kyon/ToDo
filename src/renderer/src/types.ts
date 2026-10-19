@@ -454,6 +454,8 @@ export interface TeamMemberWorkload {
   active_tasks: number
   on_hold_tasks: number
   overdue_tasks: number
+  /** 直近7日に進捗ログもメモの更新もない、始まっている担当タスクの数（サーバー版だけ。古いサーバーは送らない） */
+  unreported_tasks?: number
   today_minutes: number
 }
 

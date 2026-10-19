@@ -25,7 +25,7 @@ import { buildUrlSearch, parseUrlState } from './lib/urlState'
 import { recurrenceDoneMessage, recurrenceReopenMessage } from './lib/recurrence'
 import { elapsedSecondsSince } from './hooks/useElapsedSeconds'
 import { formatShortDate, shiftDateKey } from './lib/dueDate'
-import { FOCUS_PROGRESS_LOG_EVENT } from './lib/appEvents'
+import { FOCUS_PROGRESS_LOG_EVENT, FOCUS_TASK_DETAIL_EVENT } from './lib/appEvents'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 
 // 最初に開くガント・タスク一覧・詳細以外の画面と、設定などの小窓は、開いたときに読み込む（起動を軽くする）
@@ -159,8 +159,9 @@ function SkipLinks({ showTaskList, showSidePanel, sidePanelLabel }: { showTaskLi
   const focusRegion = (id: string): void => {
     const region = document.getElementById(id)
     if (!region) return
-    // 区分けの中の最初の操作できる部品へ。なければ区分けそのものへ
-    const first = region.querySelector<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+    // 本文は区分けそのものへ（最初の部品が絞り込みを外すチップのとき、続けて Enter を押して外してしまわないように）。
+    // ほかは区分けの中の最初の操作できる部品へ。なければ区分けそのものへ
+    const first = id === 'hakobi-main' ? null : region.querySelector<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
     ;(first ?? region).focus()
   }
   return (
@@ -510,6 +511,35 @@ export function App(): React.JSX.Element {
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [isStandaloneGanttWindow, isStandaloneTaskReportWindow])
+
+  // フォーカスしていた部品が消えた（小窓を閉じた・画面を切り替えた・返信を送ったなど）ときは、
+  // ページの先頭（body）に落とさず、いた区分け（一覧・本文・右のパネル・小窓）へ戻す。次の Tab がそこから続く
+  useEffect(() => {
+    let lastFocused: HTMLElement | null = null
+    let lastRegion: HTMLElement | null = null
+    const handleFocusIn = (event: FocusEvent): void => {
+      if (!(event.target instanceof HTMLElement) || event.target === document.body) return
+      lastFocused = event.target
+      lastRegion = event.target.closest<HTMLElement>('[role="dialog"], [data-focus-region]')
+    }
+    const rescue = (): void => {
+      if (document.activeElement && document.activeElement !== document.body) return
+      // 何もない所を押して外した（部品はまだある）ときは、そのままにする
+      if (!lastFocused || lastFocused.isConnected) return
+      lastFocused = null
+      const target = lastRegion?.isConnected ? lastRegion : document.getElementById('hakobi-main')
+      if (!target) return
+      if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1')
+      target.focus({ preventScroll: true })
+    }
+    const observer = new MutationObserver(rescue)
+    observer.observe(document.body, { childList: true, subtree: true })
+    document.addEventListener('focusin', handleFocusIn)
+    return () => {
+      observer.disconnect()
+      document.removeEventListener('focusin', handleFocusIn)
+    }
+  }, [])
 
   // Ctrl+K（Mac は ⌘K）で移動・操作のパレットを開く
   useEffect(() => {
@@ -1611,11 +1641,33 @@ export function App(): React.JSX.Element {
     { view: 'todo', label: 'ToDo', keywords: 'todo リスト チェック' },
     { view: 'log', label: '記録', keywords: 'log 作業時間' }
   ]
+  // いちばん新しい「元に戻す」などの操作つきの知らせ（キーボードで知らせまで行かなくても、Ctrl+K から押せるように）
+  const latestActionToast = [...toasts].reverse().find((toast) => toast.actionLabel && toast.onAction)
   const paletteCommands: PaletteCommand[] = [
-    ...paletteViews.map(({ view, label, keywords }) => ({ key: `view:${view}`, group: '画面' as const, label: `${label}を開く`, keywords, run: () => toggleCenterView(view) })),
+    ...(latestActionToast ? [{
+      key: `toast:${latestActionToast.id}`, group: '操作' as const,
+      label: `${latestActionToast.actionLabel}（${latestActionToast.message}）`,
+      keywords: '元に戻す 取り消し undo',
+      run: () => { latestActionToast.onAction?.(); removeToast(latestActionToast.id) }
+    }] : []),
+    // 画面を開いたら、フォーカスもその画面（本文）へ移す（パレットを開く前の場所に戻ると、続けて Tab で新しい画面に入れない）
+    ...paletteViews.map(({ view, label, keywords }) => ({
+      key: `view:${view}`, group: '画面' as const, label: `${label}を開く`, keywords,
+      run: () => {
+        toggleCenterView(view)
+        window.setTimeout(() => document.getElementById('hakobi-main')?.focus({ preventScroll: true }), 30)
+      }
+    })),
     { key: 'add', group: '操作', label: 'タスクを追加', keywords: 'new add 新規', run: () => openQuickAdd() },
     // 開いているタスクへの操作（キーボードだけで「開く→進捗ログ→完了」まで進められるように）
     ...(selectedTodo && selectedTodo.status !== 'archived' ? [
+      {
+        key: 'task-focus', group: '操作' as const, label: `「${selectedTodo.title}」の詳細へ移る`, keywords: '詳細 移動 フォーカス',
+        run: () => {
+          if (activeView !== 'detail' && !(activeView === 'gantt' && ganttSidePanelMode === 'detail')) setActiveView('detail')
+          window.setTimeout(() => window.dispatchEvent(new CustomEvent(FOCUS_TASK_DETAIL_EVENT)), 30)
+        }
+      },
       {
         key: 'task-log', group: '操作' as const, label: `「${selectedTodo.title}」の進捗ログを書く`, keywords: '進捗 ログ 報告 書く',
         run: () => {
@@ -1758,7 +1810,7 @@ export function App(): React.JSX.Element {
           style={{ ...resizeHandleStyle, display: categoryPaneVisible ? 'block' : 'none' }}
         />
 
-        <section id="hakobi-task-list" tabIndex={-1} aria-label="タスク一覧" style={{ width: paneWidths.list, flexShrink: 0, background: 'var(--c-0d1525)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: taskPaneVisible ? 'flex' : 'none', flexDirection: 'column', outline: 'none' }}>
+        <section id="hakobi-task-list" data-focus-region tabIndex={-1} aria-label="タスク一覧" style={{ width: paneWidths.list, flexShrink: 0, background: 'var(--c-0d1525)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: taskPaneVisible ? 'flex' : 'none', flexDirection: 'column', outline: 'none' }}>
           <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--slate-800)' }}>
             <input
               value={searchQuery}
@@ -1892,7 +1944,7 @@ export function App(): React.JSX.Element {
           style={{ ...resizeHandleStyle, display: taskPaneVisible ? 'block' : 'none' }}
         />
 
-        <main id="hakobi-main" tabIndex={-1} aria-label={CENTER_VIEW_LABELS[activeView]} style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: 'var(--slate-900)', outline: 'none' }}>
+        <main id="hakobi-main" data-focus-region tabIndex={-1} aria-label={CENTER_VIEW_LABELS[activeView]} style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: 'var(--slate-900)', outline: 'none' }}>
           <ViewBoundary key={activeView}>
           {initialLoadError ? (
             <div role="alert" style={{ margin: 24, padding: 20, border: '1px solid var(--red-500)', borderRadius: 12, background: 'var(--red-950)', color: 'var(--red-200)' }}>
@@ -1926,6 +1978,7 @@ export function App(): React.JSX.Element {
               listFilters={listFilters}
               hasAnyTodos={todos.length > 0}
               groupByCategory={selectedCategoryId === null}
+              onShowToast={showToast}
             />
           ) : activeView === 'kanban' ? (
             <KanbanView
@@ -2047,7 +2100,7 @@ export function App(): React.JSX.Element {
               style={resizeHandleStyle}
             />
 
-            <aside id="hakobi-side-panel" tabIndex={-1} aria-label={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? 'タスクの詳細' : '今日の予定'} style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column', outline: 'none' }}>
+            <aside id="hakobi-side-panel" data-focus-region tabIndex={-1} aria-label={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? 'タスクの詳細' : '今日の予定'} style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column', outline: 'none' }}>
               {activeView === 'gantt' ? (
                 <>
                   <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -2141,7 +2194,11 @@ export function App(): React.JSX.Element {
         <CommandPalette
           commands={paletteCommands}
           todos={lensTodos}
-          onOpenTodo={openTodoDetail}
+          onOpenTodo={(id) => {
+            openTodoDetail(id)
+            // パレットを閉じてフォーカスが元の場所に戻ったあとで、詳細の題名へ移す
+            window.setTimeout(() => window.dispatchEvent(new CustomEvent(FOCUS_TASK_DETAIL_EVENT)), 30)
+          }}
           onClose={() => setShowCommandPalette(false)}
         />
       )}

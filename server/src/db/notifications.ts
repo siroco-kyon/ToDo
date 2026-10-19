@@ -52,7 +52,27 @@ export const REPORT_MEETING_WEEKDAY_SETTING = 'reportMeetingWeekday'
 /** 定例の前日の、この時刻（サーバーの時計の時）を過ぎたらリマインドを出す */
 export const REPORT_REMINDER_HOUR = 17
 /** この日数のあいだ進捗ログもメモの更新もない担当タスクを「報告がまだ」とする */
-const REPORT_REMINDER_LOOKBACK_DAYS = 7
+export const REPORT_REMINDER_LOOKBACK_DAYS = 7
+
+/**
+ * 報告がまだの担当タスク。直近7日に進捗ログもメモの更新もない、未着手・進行中のタスク
+ * （保留中・完了・ToDoリスト・まだ始まらないタスクは除く）。報告のリマインドとチームタブの「報告なし」で使う
+ */
+export function listUnreportedTodos(userId: string, now = new Date(), includePrivate = true): Array<{ id: string; title: string }> {
+  const since = new Date(now)
+  since.setDate(since.getDate() - REPORT_REMINDER_LOOKBACK_DAYS)
+  const sinceIso = since.toISOString()
+  const privateClause = includePrivate ? '' : 'AND COALESCE(c.is_private, 0) = 0'
+  return getDb().prepare(
+    `SELECT t.id, t.title FROM Todos t LEFT JOIN Categories c ON t.category_id = c.id
+     WHERE t.assignee_id = ? AND t.status IN ('not_started', 'active') AND COALESCE(t.list_mode, 0) = 0
+       AND (t.start_date IS NULL OR substr(t.start_date, 1, 10) <= ?)
+       AND NOT EXISTS (SELECT 1 FROM ProgressNotes n WHERE n.todo_id = t.id AND n.created_at >= ?)
+       AND NOT EXISTS (SELECT 1 FROM TodoChangeLogs l WHERE l.todo_id = t.id AND l.field = 'memo' AND l.created_at >= ?)
+       ${privateClause}
+     ORDER BY t.due_date IS NULL, t.due_date, t.title`
+  ).all(userId, localDateKey(0, now), sinceIso, sinceIso) as Array<{ id: string; title: string }>
+}
 
 /**
  * 報告のリマインド。定例の前日の17時を過ぎたら、直近7日に進捗ログもメモの更新もない担当タスク
@@ -69,17 +89,7 @@ export function ensureReportReminder(userId: string, now = new Date()): UserNoti
     .get(userId, localDayStartIso(now))
   if (sent) return null
 
-  const since = new Date(now)
-  since.setDate(since.getDate() - REPORT_REMINDER_LOOKBACK_DAYS)
-  const sinceIso = since.toISOString()
-  const rows = db.prepare(
-    `SELECT t.id, t.title FROM Todos t
-     WHERE t.assignee_id = ? AND t.status IN ('not_started', 'active') AND COALESCE(t.list_mode, 0) = 0
-       AND (t.start_date IS NULL OR substr(t.start_date, 1, 10) <= ?)
-       AND NOT EXISTS (SELECT 1 FROM ProgressNotes n WHERE n.todo_id = t.id AND n.created_at >= ?)
-       AND NOT EXISTS (SELECT 1 FROM TodoChangeLogs l WHERE l.todo_id = t.id AND l.field = 'memo' AND l.created_at >= ?)
-     ORDER BY t.due_date IS NULL, t.due_date, t.title`
-  ).all(userId, localDateKey(0, now), sinceIso, sinceIso) as Array<{ id: string; title: string }>
+  const rows = listUnreportedTodos(userId, now)
   if (rows.length === 0) return null
 
   return createNotification({

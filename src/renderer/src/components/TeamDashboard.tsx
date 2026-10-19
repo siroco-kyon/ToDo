@@ -263,6 +263,9 @@ function WorkloadCard({ member, behindCount, onSelect }: { member: TeamMemberWor
         <Metric label="保留中" value={`${member.on_hold_tasks}`} color="var(--purple-300)" />
         <Metric label="超過" title="期限を過ぎた未完了のタスク" value={`${member.overdue_tasks}`} color={member.overdue_tasks > 0 ? 'var(--red-400)' : 'var(--slate-500)'} />
         <Metric label="遅れ" title="期限前で、予定の進捗より遅れているタスク（ガントの「遅れ」と同じ判定）" value={`${behindCount}`} color={behindCount > 0 ? 'var(--amber-300)' : 'var(--slate-500)'} />
+        {member.unreported_tasks !== undefined && (
+          <Metric label="報告なし（7日）" title="直近7日に進捗ログもメモの更新もない、始まっている担当タスク（報告のリマインドと同じ条件）" value={`${member.unreported_tasks}`} color={member.unreported_tasks > 0 ? 'var(--amber-200)' : 'var(--slate-500)'} />
+        )}
         <Metric label="今日" value={formatMinutes(member.today_minutes)} color="var(--green-400)" />
       </div>
     </Container>

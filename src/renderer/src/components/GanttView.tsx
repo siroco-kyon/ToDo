@@ -3,7 +3,8 @@ import type { Category, CreateSubTaskInput, ProgressNote, PublicUser, SubTask, T
 import { discussionBadgeStyle } from './ProgressNoteThread'
 import { buildChecklistSummaries, checklistBadgeText } from '../lib/todoList'
 import { autoScrollNearEdge, dropPositionOf, moveIdBy, moveIdTo, type DropPosition } from '../lib/reorder'
-import { dataInk } from '../lib/theme'
+import { dataInk } from '../lib/theme'
+import { formatShortDate } from '../lib/dueDate'
 import { BEHIND_THRESHOLD_OPTIONS, DEFAULT_BEHIND_THRESHOLD_DAYS, GANTT_VIEW_SETTINGS_STORAGE_KEY, calculateSchedule, isBehindSchedule, type ScheduleOptions } from '../lib/scheduleHealth'
 
 interface Props {
@@ -24,6 +25,8 @@ interface Props {
   hasAnyTodos?: boolean
   /** 右に詳細を開いているタスク。ガントが狭くなっても、このタスクのバーが見えるように横へ送る */
   focusTodoId?: string | null
+  /** 知らせを出す（キーで日程を変えたときに「元に戻す」付きで知らせる） */
+  onShowToast?: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
 }
 
 /** チャートの最小の高さ（これより低い窓では、ガントの画面ごとスクロールする） */
@@ -982,7 +985,8 @@ function GanttViewContent({
   standalone = false,
   groupByCategory = false,
   hasAnyTodos = true,
-  focusTodoId = null
+  focusTodoId = null,
+  onShowToast
 }: Props): React.JSX.Element {
   const unscheduledSectionRef = useRef<HTMLDivElement>(null)
   const initialSettings = useMemo(() => loadGanttViewSettings(), [])
@@ -2175,6 +2179,61 @@ function GanttViewContent({
       setSubTasks(latestSubTasks)
     }
   }, [])
+
+  // 行のタスク名で Alt+→ / Alt+← を押すと期限を1日ずらす。Shift も押すと開始日ごと（日程を）ずらす。
+  // バーのドラッグと同じく、後続のタスクとサブタスクも動き、「1つ戻る」（Ctrl+Z）で戻せる
+  const shiftTodoByKeyboard = useCallback((todo: Todo, days: number, moveWhole: boolean): void => {
+    const start = todo.start_date?.slice(0, 10) ?? null
+    const due = todo.due_date?.slice(0, 10) ?? null
+    const notify = (message: string, type: 'success' | 'error' = 'success', action?: { label: string; run: () => void }): void => {
+      if (onShowToast) onShowToast(message, type, action)
+      else setDependencyFeedback(message)
+    }
+    const update: UpdateTodoInput = {}
+    if (moveWhole) {
+      if (!start && !due) {
+        notify('日付のないタスクは、詳細で開始日か期限を入れてください', 'error')
+        return
+      }
+      if (start) update.start_date = addDays(start, days)
+      if (due) update.due_date = addDays(due, days)
+    } else {
+      if (!due) {
+        notify('期限のないタスクは、詳細で期限を入れてください', 'error')
+        return
+      }
+      const nextDue = addDays(due, days)
+      if (start && nextDue < start) {
+        notify('期限を開始日より前にはできません', 'error')
+        return
+      }
+      update.due_date = nextDue
+    }
+    const affectedTodoIds = collectDependentTodoIds([todo.id])
+    const previousSnapshots = snapshotTodoSchedules(affectedTodoIds)
+    const previousSubTaskSnapshots = moveWhole ? snapshotSubTaskSchedulesForTodos(affectedTodoIds) : []
+    const label = `${moveWhole ? '日程の移動' : '期限の変更'}: ${todo.title}`
+    const undo = async (): Promise<void> => {
+      await restoreTodoSchedules(previousSnapshots)
+      await restoreSubTaskSchedules(previousSubTaskSnapshots)
+    }
+    void onUpdateTodo(todo.id, update).then(async () => {
+      const latestTodos = await window.api.todoGetAll()
+      await shiftSubTasksForMovedTodos(previousSnapshots, previousSubTaskSnapshots, latestTodos)
+      ensureRangeIncludesTodos(affectedTodoIds, latestTodos)
+      if (previousSnapshots.length > 0) setLastUndoEntry({ label, run: undo })
+      const range = moveWhole
+        ? `${update.start_date ? formatShortDate(update.start_date) : '—'}〜${update.due_date ? formatShortDate(update.due_date) : '—'}`
+        : formatShortDate(update.due_date!)
+      notify(`「${todo.title}」の${moveWhole ? '日程' : '期限'}を${range}にしました`, 'success', {
+        label: '元に戻す',
+        run: () => {
+          setLastUndoEntry(null)
+          void undo().then(() => notify('元に戻しました'), (error) => notify(error instanceof Error ? error.message : '元に戻せませんでした', 'error'))
+        }
+      })
+    }, (error) => notify(error instanceof Error ? error.message : '日程を変えられませんでした', 'error'))
+  }, [collectDependentTodoIds, ensureRangeIncludesTodos, onShowToast, onUpdateTodo, restoreSubTaskSchedules, restoreTodoSchedules, shiftSubTasksForMovedTodos, snapshotSubTaskSchedulesForTodos, snapshotTodoSchedules])
 
   const performUndo = useCallback(async (): Promise<void> => {
     if (!lastUndoEntry || undoPending) return
@@ -3890,7 +3949,7 @@ function GanttViewContent({
                               toggleTodoExpansion(group.todo.id)
                             }}
                             disabled={!canToggleSubtasks}
-                            aria-label={isExpanded ? 'サブタスクを折りたたむ' : 'サブタスクを展開する'}
+                            aria-label={isExpanded ? `「${group.todo.title}」のサブタスクを折りたたむ` : `「${group.todo.title}」のサブタスクを展開する`}
                             style={expandToggleButtonStyle(canToggleSubtasks, isExpanded)}
                           >
                             {canToggleSubtasks ? (isExpanded ? '-' : '+') : '.'}
@@ -3908,12 +3967,20 @@ function GanttViewContent({
                           />
                             <button
                               onClick={() => handleChartItemSelect(group.todo.id)}
+                              onKeyDown={(event) => {
+                                if (!event.altKey || event.ctrlKey || event.metaKey || (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft')) return
+                                event.preventDefault()
+                                if (group.todo.status === 'archived' || isReorderMode) return
+                                shiftTodoByKeyboard(group.todo, event.key === 'ArrowRight' ? 1 : -1, event.shiftKey)
+                              }}
+                              aria-keyshortcuts="Alt+ArrowRight Alt+ArrowLeft Alt+Shift+ArrowRight Alt+Shift+ArrowLeft"
                               title={[
                                 group.todo.title,
                                 group.todo.category_name ? `カテゴリ: ${group.todo.category_name}` : null,
                                 canToggleSubtasks ? `サブタスク: ${group.datedSubTasks.length}件` : null,
                                 group.undatedSubTaskCount > 0 ? `日付未設定サブタスク: ${group.undatedSubTaskCount}件` : null,
-                                clipped ? '表示範囲外あり' : null
+                                clipped ? '表示範囲外あり' : null,
+                                'Alt+→ / Alt+← で期限を1日ずらす（Shift も押すと日程ごと）'
                               ].filter(Boolean).join('\n')}
                               style={tableTitleButtonStyle}
                             >
@@ -3926,7 +3993,7 @@ function GanttViewContent({
                                 className={group.todo.status === 'on_hold' ? undefined : 'tarbo-gantt-hold-toggle'}
                                 onClick={() => void onUpdateTodo(group.todo.id, { status: group.todo.status === 'on_hold' ? 'active' : 'on_hold' }).catch(() => window.alert('状態を変更できませんでした'))}
                                 title={group.todo.status === 'on_hold' ? '保留中です。押すと進行中に戻します' : 'タスクを保留する'}
-                                aria-label={group.todo.status === 'on_hold' ? '進行中に戻す' : 'タスクを保留する'}
+                                aria-label={group.todo.status === 'on_hold' ? `「${group.todo.title}」を進行中に戻す` : `「${group.todo.title}」を保留する`}
                                 style={{ ...subTaskAddButtonStyle(false), color: group.todo.status === 'on_hold' ? 'var(--purple-300)' : 'var(--slate-400)' }}
                               >{group.todo.status === 'on_hold' ? '▶' : 'Ⅱ'}</button>
                             )}
@@ -3937,6 +4004,7 @@ function GanttViewContent({
                               }}
                               disabled={creatingSubTask || isReorderMode}
                               title="サブタスクを追加"
+                              aria-label={`「${group.todo.title}」にサブタスクを追加`}
                               style={subTaskAddButtonStyle(creatingSubTask || isReorderMode)}
                             >
                               +

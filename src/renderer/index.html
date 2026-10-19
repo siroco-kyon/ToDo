@@ -27,6 +27,10 @@
         font-size: 0.8333rem;
       }
       :focus-visible { outline: 3px solid var(--sky-400, #38bdf8); outline-offset: 2px; }
+      /* 入力欄は部品の書き方（outline: none）に関係なく、キーボードで入ったことが分かる枠を出す */
+      input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--sky-400, #38bdf8) !important; outline-offset: 0 !important; }
+      /* 画面全体（本文の区分け）にフォーカスを移したときは、内側に枠を出す（外側だと画面の端で切れる） */
+      [data-focus-region]:focus-visible { outline: 3px solid var(--sky-400, #38bdf8) !important; outline-offset: -3px !important; }
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
       }

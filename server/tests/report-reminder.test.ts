@@ -51,6 +51,13 @@ test('報告のリマインドは定例の前日の17時から、報告がまだ
 
     assert.deepEqual(notifications.runReportReminders(thursday(20)), [], '同じ日には2回出さない')
 
+    // チームタブの「報告なし」もリマインドと同じ条件で数える
+    assert.deepEqual(notifications.listUnreportedTodos('u1', thursday(18)).map((todo) => todo.title), ['見積もり回答'])
+    assert.deepEqual(notifications.listUnreportedTodos('u2', thursday(18)), [], '直近7日に進捗ログがあれば数えない')
+    const team = await import('../src/db/team')
+    const workloads = team.getTeamWorkloads()
+    assert.equal(workloads.find((member) => member.user_id === 'u1')?.unreported_tasks, notifications.listUnreportedTodos('u1').length, 'チームの集計は今日の時点で数える')
+
     // 通知設定で止めた人には出さない
     db.prepare("DELETE FROM Notifications WHERE type = 'report_reminder'").run()
     db.prepare("INSERT INTO NotificationPreferences (user_id, type, enabled) VALUES ('u1', 'report_reminder', 0)").run()

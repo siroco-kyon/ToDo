@@ -7,6 +7,7 @@ import { desktopDownloadPageUrl, fetchDesktopRelease, isLoopbackOrigin, isNewerD
 import { LegacyDraftRecoveryModal } from './LegacyDraftRecoveryModal'
 import { FONT_PRESETS, FONT_SCALE_PRESETS } from '../lib/fontSettings'
 import { todoRecurrenceLabel } from '../lib/recurrence'
+import { handleTablistKeyDown } from '../lib/tablistKeys'
 
 interface Props {
   onClose: () => void
@@ -480,13 +481,13 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ヘッダー */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)' }}>⚙ 設定</h2>
-          <button onClick={onClose} style={closeBtnStyle}>×</button>
+          <button onClick={onClose} aria-label="設定を閉じる" title="閉じる（Esc）" style={closeBtnStyle}>×</button>
         </div>
 
         {/* 個人／チーム管理（管理者だけ）／データ */}
-        <div role="tablist" aria-label="設定の分類" style={{ display: 'flex', gap: 6, marginTop: -12, borderBottom: '1px solid var(--slate-700)', paddingBottom: 10 }}>
+        <div role="tablist" aria-label="設定の分類" onKeyDown={(event) => handleTablistKeyDown(event, true)} style={{ display: 'flex', gap: 6, marginTop: -12, borderBottom: '1px solid var(--slate-700)', paddingBottom: 10 }}>
           {settingsTabs.map((item) => (
-            <button key={item.key} type="button" role="tab" aria-selected={settingsTab === item.key} onClick={() => setSettingsTab(item.key)} style={settingsTabStyle(settingsTab === item.key)}>
+            <button key={item.key} type="button" role="tab" aria-selected={settingsTab === item.key} tabIndex={settingsTab === item.key ? 0 : -1} onClick={() => setSettingsTab(item.key)} style={settingsTabStyle(settingsTab === item.key)}>
               {item.label}
             </button>
           ))}

@@ -64,8 +64,11 @@ export function CommandPalette({ commands, todos, onOpenTodo, onClose }: Props):
         detail: [todo.category_name, todo.assignee_name, todo.due_date ? `期限 ${formatShortDate(todo.due_date)}` : null, todo.status === 'done' ? '完了' : todo.status === 'on_hold' ? '保留中' : null].filter(Boolean).join('・'),
         run: () => onOpenTodo(todo.id)
       }))
-    // 何も入れていないときは画面と操作を先に、入れたらタスクを先に出す
-    return q ? [...taskItems, ...commandItems] : [...commandItems, ...taskItems]
+    // 何も入れていないときは画面と操作を先に出す。入れたときは、操作の名前（「」で囲んだタスク名を除く）に
+    // 入れた語があるもの（「通知」→「通知を開く」）を先に、次にタスク、名前以外の言葉で当たった操作を最後に出す
+    if (!q) return [...commandItems, ...taskItems]
+    const namedCommand = (item: PaletteItem): boolean => item.label.replace(/「[^」]*」/g, '').toLowerCase().includes(q)
+    return [...commandItems.filter(namedCommand), ...taskItems, ...commandItems.filter((item) => !namedCommand(item))]
   }, [commands, onOpenTodo, query, todos])
 
   useEffect(() => {

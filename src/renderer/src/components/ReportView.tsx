@@ -1234,7 +1234,13 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       next.delete(key)
       return next
     })
-    window.requestAnimationFrame(() => document.getElementById(groupDomId(key))?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    // スクロールに合わせてフォーカスも移す（キーボードで続けて、その担当者の欄の中を Tab で進めるように）
+    window.requestAnimationFrame(() => {
+      const section = document.getElementById(groupDomId(key))
+      if (!section) return
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      section.focus({ preventScroll: true })
+    })
   }
 
   const canModifyNote = useCallback(
@@ -1747,7 +1753,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
             .sort((a, b) => b.created_at.localeCompare(a.created_at))
           const collapsed = collapsedGroups.has(group.key)
           return (
-            <section key={`${effectiveGroupMode}:${group.key}`} id={groupDomId(group.key)} style={{ display: 'flex', flexDirection: 'column', gap: 10, scrollMarginTop: 4 }}>
+            <section key={`${effectiveGroupMode}:${group.key}`} id={groupDomId(group.key)} tabIndex={-1} aria-label={`${group.label}（${group.rows.length}件）`} style={{ display: 'flex', flexDirection: 'column', gap: 10, scrollMarginTop: 4, outlineOffset: -2 }}>
               <div style={groupHeaderStyle}>
                 <button
                   onClick={() => toggleGroupCollapsed(group.key)}

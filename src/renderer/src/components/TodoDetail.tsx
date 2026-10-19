@@ -18,7 +18,7 @@ import { copyTextToClipboard } from '../lib/clipboard'
 import { taskLinkFor } from '../lib/urlState'
 import { dataInk, textOnFill } from '../lib/theme'
 import { changeFieldLabel } from '../lib/changeFields'
-import { FOCUS_PROGRESS_LOG_EVENT } from '../lib/appEvents'
+import { FOCUS_PROGRESS_LOG_EVENT, FOCUS_TASK_DETAIL_EVENT } from '../lib/appEvents'
 import { taskOptionLabel } from '../lib/taskLabel'
 import { TODO_RECURRENCE_OPTIONS, nextRecurrenceDue, recurrenceDoneMessage, recurrenceKindLabel, recurrenceReopenMessage, todoRecurrenceLabel } from '../lib/recurrence'
 
@@ -253,6 +253,13 @@ export function TodoDetail({
     const handle = (): void => focusProgressLogRef.current()
     window.addEventListener(FOCUS_PROGRESS_LOG_EVENT, handle)
     return () => window.removeEventListener(FOCUS_PROGRESS_LOG_EVENT, handle)
+  }, [])
+  // Ctrl+K でタスクを開いたときは、題名へフォーカスを移す（続けて Tab で詳細の中を進める）
+  const titleHeadingRef = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    const handle = (): void => titleHeadingRef.current?.focus()
+    window.addEventListener(FOCUS_TASK_DETAIL_EVENT, handle)
+    return () => window.removeEventListener(FOCUS_TASK_DETAIL_EVENT, handle)
   }, [])
   const liveTodoIdRef = useRef(todoId)
   liveTodoIdRef.current = todoId
@@ -1593,7 +1600,7 @@ export function TodoDetail({
           {editing ? (
             <input ref={editTitleInputRef} disabled={saving} aria-label="タスク名" value={editData.title ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, title: event.target.value }))} style={inputStyle} />
           ) : (
-            <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)', lineHeight: 1.4, margin: 0, overflowWrap: 'anywhere' }}>{todo.title}</h2>
+            <h2 ref={titleHeadingRef} tabIndex={-1} style={{ fontSize: '1.1rem', color: 'var(--slate-200)', lineHeight: 1.4, margin: 0, overflowWrap: 'anywhere' }}>{todo.title}</h2>
           )}
         </div>
         <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 export interface ToastMessage {
   id: number
@@ -30,6 +30,16 @@ export function Toast({ toasts, onRemove }: Props): React.JSX.Element {
 function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: number) => void }): React.JSX.Element {
   // マウスを乗せている・フォーカスがあるあいだは消さない（「元に戻す」を押す前に消えないように）
   const [held, setHeld] = useState(false)
+  // キーボードで知らせに入る前にいた場所。押して知らせが消えたら、そこへ戻す（ページの先頭に飛ばないように）
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+  const removeAndReturn = (): void => {
+    const target = returnFocusRef.current
+    onRemove(toast.id)
+    window.setTimeout(() => {
+      if (target && target.isConnected) target.focus({ preventScroll: true })
+      else document.getElementById('hakobi-main')?.focus({ preventScroll: true })
+    }, 0)
+  }
   useEffect(() => {
     if (held) return
     // 操作ボタン付きは押す時間が要るので長めに出す
@@ -42,8 +52,18 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: nu
       role={toast.type === 'error' ? 'alert' : 'status'}
       onPointerEnter={() => setHeld(true)}
       onPointerLeave={() => setHeld(false)}
-      onFocus={() => setHeld(true)}
+      onFocus={(event) => {
+        setHeld(true)
+        const from = event.relatedTarget
+        if (from instanceof HTMLElement && !event.currentTarget.contains(from)) returnFocusRef.current = from
+      }}
       onBlur={() => setHeld(false)}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return
+        event.preventDefault()
+        event.stopPropagation()
+        removeAndReturn()
+      }}
       style={{
       padding: '10px 16px',
       background: toast.type === 'success' ? 'var(--green-800)' : 'var(--red-900)',
@@ -53,8 +73,8 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: nu
       pointerEvents: 'auto', userSelect: 'none'
     }}>
       <span>{toast.type === 'success' ? '✓ ' : '✗ '}{toast.message}</span>
-      {toast.actionLabel && toast.onAction && <button onClick={() => { toast.onAction?.(); onRemove(toast.id) }} style={{ marginLeft: 12, border: '1px solid rgba(255,255,255,.65)', borderRadius: 6, background: 'transparent', color: 'var(--white)', cursor: 'pointer', padding: '3px 7px' }}>{toast.actionLabel}</button>}
-      <button onClick={() => onRemove(toast.id)} aria-label="通知を閉じる" style={{ marginLeft: 12, border: 0, background: 'transparent', color: 'var(--white)', cursor: 'pointer', fontSize: '1rem' }}>×</button>
+      {toast.actionLabel && toast.onAction && <button onClick={() => { toast.onAction?.(); removeAndReturn() }} style={{ marginLeft: 12, border: '1px solid rgba(255,255,255,.65)', borderRadius: 6, background: 'transparent', color: 'var(--white)', cursor: 'pointer', padding: '3px 7px' }}>{toast.actionLabel}</button>}
+      <button onClick={removeAndReturn} aria-label="この知らせを閉じる" style={{ marginLeft: 12, border: 0, background: 'transparent', color: 'var(--white)', cursor: 'pointer', fontSize: '1rem' }}>×</button>
     </div>
   )
 }

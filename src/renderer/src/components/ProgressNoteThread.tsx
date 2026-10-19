@@ -186,10 +186,15 @@ export function ProgressNoteThread({
     if (ok) setEditing(false)
   }
 
+  // 送ったら入力欄が消えるので、フォーカスをこの投稿の「返信」へ戻す（ページの先頭へ飛ばないように）
+  const noteReplyButtonRef = useRef<HTMLButtonElement>(null)
   const submitReply = async (body: string, parentCommentId: string | null): Promise<boolean> => {
     if (!onReply) return false
     const ok = await onReply(note.id, body, parentCommentId)
-    if (ok) setReplyingTo(null)
+    if (ok) {
+      setReplyingTo(null)
+      window.setTimeout(() => noteReplyButtonRef.current?.focus({ preventScroll: true }), 0)
+    }
     return ok
   }
 
@@ -264,7 +269,7 @@ export function ProgressNoteThread({
         <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <ReactionBar reactions={note.reactions} onToggle={onToggleReaction ? (emoji) => onToggleReaction(note.id, emoji) : undefined} />
           {onReply && replyingTo !== 'note' && (
-            <button onClick={() => setReplyingTo('note')} style={inlineActionStyle}>返信</button>
+            <button ref={noteReplyButtonRef} onClick={() => setReplyingTo('note')} style={inlineActionStyle}>返信</button>
           )}
           <NoteMenu
             items={[

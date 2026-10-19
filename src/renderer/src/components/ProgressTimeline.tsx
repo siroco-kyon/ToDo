@@ -72,6 +72,10 @@ function loadSortMode(): SortMode {
   return 'newest'
 }
 
+function noteReplyButtonId(noteId: string): string {
+  return `progress-note-reply-${noteId}`
+}
+
 function compareNewest(a: ProgressNote, b: ProgressNote): number {
   return b.last_activity_at.localeCompare(a.last_activity_at)
     || b.created_at.localeCompare(a.created_at)
@@ -476,8 +480,10 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       setCommentDrafts((previous) => ({ ...previous, [key]: '' }))
       if (parentCommentId) setReplyingToCommentId(null)
       else setCommentingOnNoteId(null)
-      // 新しい順では返信した投稿が先頭へ移るので、見失わないようにその投稿へ移る
+      // 新しい順では返信した投稿が先頭へ移るので、見失わないようにその投稿へ移る。
+      // フォーカスもその投稿の「返信」へ戻す（入力欄が消えて、ページの先頭へ飛ばないように）
       setFocusedNoteId(noteId)
+      window.setTimeout(() => document.getElementById(noteReplyButtonId(noteId))?.focus({ preventScroll: true }), 0)
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '返信を追加できませんでした', 'error')
     }
@@ -877,7 +883,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                     <div style={postActionRowStyle}>
                       <ReactionBar reactions={note.reactions} onToggle={(emoji) => void handleToggleReaction(note.id, emoji)} />
                       <span style={actionMetaStyle}>返信 {commentCount}</span>
-                      <button onClick={() => setCommentingOnNoteId(note.id)} style={inlineActionStyle}>返信</button>
+                      <button id={noteReplyButtonId(note.id)} onClick={() => setCommentingOnNoteId(note.id)} style={inlineActionStyle}>返信</button>
                       {/* 報告タブと同じく、要相談・編集・削除は ⋯ にまとめる */}
                       <NoteMenu
                         items={[

@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
 import type { PublicUser } from '../types'
 import { RunningTimerDisplay } from './TimerDisplay'
+import { handleTablistKeyDown, tabStopIndex } from '../lib/tablistKeys'
 import './Toolbar.css'
 
 interface Props {
@@ -176,12 +177,14 @@ export function Toolbar({
         ＋ <span className="hakobi-toolbar-wide-only">タスクを</span>追加
       </button>
 
-      <div style={groupStyle} role="tablist" aria-label="画面の切り替え">
-        {viewButtons.map((button) => (
+      {/* タブは Tab では1回だけ止まり、← → で移って Enter で開く */}
+      <div style={groupStyle} role="tablist" aria-label="画面の切り替え（← → で移って Enter で開く）" onKeyDown={(event) => handleTablistKeyDown(event)}>
+        {viewButtons.map((button, index) => (
           <button
             key={button.key}
             role="tab"
             aria-selected={button.active}
+            tabIndex={tabStopIndex(button.active, index, viewButtons.some((item) => item.active))}
             // 読み上げ名は見えている名前（音声で「ガント」と言っても押せるように）。説明はツールチップに
             aria-label={button.key === 'progress' && progressUnseenCount > 0
               ? `${button.label}（新着 ${progressUnseenCount}件）`
@@ -259,7 +262,12 @@ export function Toolbar({
         />
 
         {currentUser && onOpenNotifications && (
-          <button onClick={onOpenNotifications} style={notificationButtonStyle(notificationUnreadCount > 0)}>
+          <button
+            onClick={onOpenNotifications}
+            aria-haspopup="dialog"
+            aria-label={notificationUnreadCount > 0 ? `通知（未読 ${notificationUnreadCount}件）` : '通知'}
+            style={notificationButtonStyle(notificationUnreadCount > 0)}
+          >
             通知
             {notificationUnreadCount > 0 && (
               <span style={notificationBadgeStyle}>{notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}</span>
@@ -377,6 +385,8 @@ function ToolbarMenu({ menuKey, label, buttonContent, title, sections, footer, a
                   title={item.description}
                   className="hakobi-toolbar-menu-item"
                   onClick={() => {
+                    // 小窓を開く項目は、先にメニューのボタンへフォーカスを戻す（小窓を閉じたらこのボタンへ戻る）
+                    if (item.checked === undefined) buttonRef.current?.focus()
                     item.onSelect()
                     if (item.checked === undefined) setOpen(false)
                   }}

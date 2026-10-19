@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { UserNotification } from '../types'
 
@@ -20,6 +20,12 @@ export function NotificationPanel({
   onShowToast
 }: Props): React.JSX.Element {
   const dialogRef = useRef<HTMLDivElement>(null)
+  // 開いたら最初の通知へ（なければ見出しへ）。「すべて既読」に置くと、続けて Enter を押しただけで全部既読になる
+  const firstItemRef = useRef<HTMLButtonElement>(null)
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  useLayoutEffect(() => {
+    ;(firstItemRef.current ?? titleRef.current)?.focus()
+  }, [])
   useDialogFocus(dialogRef)
   const [tab, setTab] = useState<'unread' | 'all'>('unread')
   const [showSettings, setShowSettings] = useState(false)
@@ -56,7 +62,7 @@ export function NotificationPanel({
       <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="notification-title" style={panelStyle} onMouseDown={(event) => event.stopPropagation()}>
         <header style={headerStyle}>
           <div>
-            <h2 id="notification-title" style={titleStyle}>通知</h2>
+            <h2 id="notification-title" ref={titleRef} tabIndex={-1} style={titleStyle}>通知</h2>
             <div style={subtitleStyle}>未読 {unreadCount} 件</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -64,7 +70,7 @@ export function NotificationPanel({
               すべて既読
             </button>
             <button onClick={() => setShowSettings((value) => !value)} style={closeButtonStyle}>通知設定</button>
-            <button onClick={onClose} style={closeButtonStyle}>閉じる</button>
+            <button onClick={onClose} title="閉じる（Esc）" style={closeButtonStyle}>閉じる</button>
           </div>
         </header>
 
@@ -83,11 +89,12 @@ export function NotificationPanel({
           {visibleNotifications.length === 0 ? (
             <div style={emptyStyle}>{tab === 'unread' ? '未読の通知はありません' : '通知履歴はありません'}</div>
           ) : (
-            visibleNotifications.map((notification) => {
+            visibleNotifications.map((notification, index) => {
               const unread = notification.read_at == null
               return (
                 <button
                   key={notification.id}
+                  ref={index === 0 ? firstItemRef : undefined}
                   onClick={() => onSelect(notification)}
                   style={itemStyle(unread)}
                 >

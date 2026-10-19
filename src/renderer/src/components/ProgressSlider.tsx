@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 
 // マウスで左右にドラッグして進捗率を変えられるバー。
 // ドラッグ中は表示だけ動かし、指を離したときに1回だけ保存する（途中の値で何度も保存しない）。
-// キーボードでも ←→（5%）、PageUp/PageDown（10%）、Home/End で操作できる。
+// キーボードでも ←→（5%）、Shift+←→・PageUp/PageDown（25%）、Home/End で操作できる。
 
 interface Props {
   value: number
@@ -100,7 +100,9 @@ export function ProgressSlider({
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (disabled) return
-    const deltas: Record<string, number> = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5, PageUp: 10, PageDown: -10 }
+    // Shift を押しながらの矢印と PageUp/PageDown は 25% ずつ（0→100% を4回で）
+    const arrowStep = event.shiftKey ? 25 : 5
+    const deltas: Record<string, number> = { ArrowRight: arrowStep, ArrowUp: arrowStep, ArrowLeft: -arrowStep, ArrowDown: -arrowStep, PageUp: 25, PageDown: -25 }
     let next: number | null = null
     if (event.key in deltas) next = clamp(shown + deltas[event.key])
     else if (event.key === 'Home') next = 0
@@ -132,7 +134,7 @@ export function ProgressSlider({
         aria-valuenow={shown}
         aria-valuetext={`${shown}%`}
         aria-disabled={disabled}
-        title={disabled ? undefined : 'ドラッグで進捗率を変更（←→キーでも変更できます）'}
+        title={disabled ? undefined : 'ドラッグで進捗率を変更（←→キーで5%、Shift+←→で25%ずつ変えられます）'}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
