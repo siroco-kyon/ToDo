@@ -71,7 +71,7 @@ const AUTOSAVE_DELAY_MS = 1500
 const TWO_COLUMN_MIN_WIDTH = 880
 
 const sectionTitleStyle: React.CSSProperties = {
-  fontSize: '0.75rem',
+  fontSize: 'var(--font-control)',
   color: 'var(--slate-400)',
   marginBottom: 8,
   textTransform: 'uppercase',
@@ -84,7 +84,7 @@ function SectionHeading({ title, summary, detail }: { title: React.ReactNode; su
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
       <span style={{ ...sectionTitleStyle, marginBottom: 0 }}>{title}</span>
-      {summary && <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>{summary}</span>}
+      {summary && <span style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>{summary}</span>}
       {detail && <InfoTip text={detail} />}
     </div>
   )
@@ -105,7 +105,7 @@ function InfoTip({ text }: { text: string }): React.JSX.Element {
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
         onKeyDown={(event) => { if (event.key === 'Escape') setOpen(false) }}
-        style={{ fontSize: '0.8rem', color: open ? 'var(--slate-200)' : 'var(--slate-400)', cursor: 'help', lineHeight: 1 }}
+        style={{ fontSize: 'var(--font-control)', color: open ? 'var(--slate-200)' : 'var(--slate-400)', cursor: 'help', lineHeight: 1 }}
       >
         ⓘ
       </span>
@@ -113,7 +113,7 @@ function InfoTip({ text }: { text: string }): React.JSX.Element {
         id={tipId}
         role="tooltip"
         hidden={!open}
-        style={{ position: 'absolute', top: 'calc(100% + 6px)', left: -8, zIndex: 20, width: 280, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)', fontSize: '0.78rem', lineHeight: 1.6, boxShadow: '0 10px 24px color-mix(in srgb, var(--slate-950) 50%, transparent)', textTransform: 'none', letterSpacing: 0 }}
+        style={{ position: 'absolute', top: 'calc(100% + 6px)', left: -8, zIndex: 20, width: 280, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)', fontSize: 'var(--font-control)', lineHeight: 1.6, boxShadow: '0 10px 24px color-mix(in srgb, var(--slate-950) 50%, transparent)', textTransform: 'none', letterSpacing: 0 }}
       >
         {text}
       </span>
@@ -123,7 +123,7 @@ function InfoTip({ text }: { text: string }): React.JSX.Element {
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
-  fontSize: '0.75rem',
+  fontSize: 'var(--font-control)',
   color: 'var(--text-subtle)',
   marginBottom: 4
 }
@@ -1097,14 +1097,14 @@ export function TodoDetail({
           {/* 狭いパネルでは停止メモと停止を下の段へ折り返す（右端で切れないように） */}
           <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginBottom: 4 }}>計測時間</div>
+              <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)', marginBottom: 4 }}>計測時間</div>
               {isRunning ? <RunningTimerDisplay startTime={timerStartTime} /> : <TimerDisplay elapsedSeconds={0} isRunning={false} />}
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: 2 }}>合計 <TotalMinutes loggedSeconds={loggedSeconds} startTime={isRunning ? timerStartTime : null} />分</div>
+              <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)', marginTop: 2 }}>合計 <TotalMinutes loggedSeconds={loggedSeconds} startTime={isRunning ? timerStartTime : null} />分</div>
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 0 }}>
               {isRunning ? (
                 <>
-                  <input disabled={timerStopping} value={stopNote} onChange={(event) => setStopNote(event.target.value)} placeholder="停止メモ" aria-label="停止メモ" style={{ ...inputStyle, width: 160, maxWidth: '100%', flex: '1 1 120px', fontSize: '0.8rem', padding: '6px 8px' }} />
+                  <input disabled={timerStopping} value={stopNote} onChange={(event) => setStopNote(event.target.value)} placeholder="停止メモ" aria-label="停止メモ" style={{ ...inputStyle, width: 160, maxWidth: '100%', flex: '1 1 120px', fontSize: 'var(--font-control)', padding: '6px 8px' }} />
                   <button disabled={timerStopping} onClick={() => {
                     if (timerStoppingRef.current) return
                     timerStoppingRef.current = true
@@ -1145,12 +1145,12 @@ export function TodoDetail({
                   <option value="list">ToDoリスト（毎日・毎週のチェックや細かいやることをまとめる）</option>
                 </select>
                 {editingListMode && !listMode && (
-                  <div style={{ marginTop: 4, fontSize: '0.72rem', color: 'var(--indigo-300)', lineHeight: 1.5 }}>
+                  <div style={{ marginTop: 4, fontSize: 'var(--font-caption)', color: 'var(--indigo-300)', lineHeight: 1.5 }}>
                     保存すると繰り返し（次回分の作成）を外します。期限はそのままです（期限なしにするときは期限を空にします）。今のサブタスクはそのまま項目になります（繰り返しは項目ごとに設定できます）。
                   </div>
                 )}
                 {!editingListMode && listMode && (
-                  <div style={{ marginTop: 4, fontSize: '0.72rem', color: 'var(--amber-200)', lineHeight: 1.5 }}>
+                  <div style={{ marginTop: 4, fontSize: 'var(--font-caption)', color: 'var(--amber-200)', lineHeight: 1.5 }}>
                     保存すると、項目の繰り返し（毎日・毎週など）を外し、サブタスクに戻します。
                   </div>
                 )}
@@ -1226,7 +1226,7 @@ export function TodoDetail({
                             padding: '4px 10px', borderRadius: 99, cursor: 'pointer',
                             border: `1px solid ${selected ? user.color : 'var(--slate-700)'}`,
                             background: selected ? `color-mix(in srgb, ${user.color} 14.9%, transparent)` : 'var(--slate-900)',
-                            color: selected ? 'var(--slate-200)' : 'var(--slate-500)', fontSize: '0.78rem'
+                            color: selected ? 'var(--slate-200)' : 'var(--slate-500)', fontSize: 'var(--font-control)'
                           }}
                         >
                           <span style={{ width: 8, height: 8, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
@@ -1249,16 +1249,16 @@ export function TodoDetail({
           {!editing && !listMode && (
             <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: '12px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>
+                <span style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>
                   進捗{' '}
-                  {todo.status !== 'done' && <span style={{ color: 'var(--text-subtle)', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span>}
+                  {todo.status !== 'done' && <span style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-caption)' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span>}
                 </span>
                 {!isArchived && (
                   <button
                     type="button"
                     onClick={focusProgressLogInput}
                     title="下の進捗ログの入力欄へ移ります（Ctrl+Enter で投稿）"
-                    style={{ padding: '4px 10px', borderRadius: 999, border: '1px solid var(--indigo-700)', background: 'transparent', color: 'var(--indigo-300)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}
+                    style={{ padding: '4px 10px', borderRadius: 999, border: '1px solid var(--indigo-700)', background: 'transparent', color: 'var(--indigo-300)', cursor: 'pointer', fontSize: 'var(--font-caption)', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}
                   >
                     ✎ 進捗ログを書く
                   </button>
@@ -1267,7 +1267,7 @@ export function TodoDetail({
               {todo.status === 'done' ? (
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', padding: '4px 0' }}>
                   <span style={{ color: 'var(--green-400)', fontSize: '1rem', fontWeight: 800 }}>✓ 完了</span>
-                  {(todo.progress ?? 0) < 100 && <span style={{ color: 'var(--text-subtle)', fontSize: '0.72rem' }}>完了にしたときの進捗は {todo.progress ?? 0}% でした（書き直す必要はありません）</span>}
+                  {(todo.progress ?? 0) < 100 && <span style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-caption)' }}>完了にしたときの進捗は {todo.progress ?? 0}% でした（書き直す必要はありません）</span>}
                 </div>
               ) : (
                 <ProgressSlider
@@ -1278,7 +1278,7 @@ export function TodoDetail({
                 />
               )}
               {subTaskProgress !== null && (
-                <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
+                <div style={{ marginTop: 8, fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>
                   サブタスク: {doneCount}/{subTasks.length} 完了
                   <div style={{ height: 4, background: 'var(--slate-900)', borderRadius: 99, marginTop: 4 }}>
                     <div style={{ height: '100%', width: `${subTaskProgress}%`, background: 'var(--indigo-500)', borderRadius: 99 }} />
@@ -1403,7 +1403,7 @@ export function TodoDetail({
                       }}
                     />
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>{noteDraft.length}文字</div>
+                  <div style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>{noteDraft.length}文字</div>
                   <button
                     onClick={() => void handleAddProgressNote()}
                     disabled={!noteDraft.trim() || noteSaving}
@@ -1503,7 +1503,7 @@ export function TodoDetail({
                 />
                 <button type="submit" disabled={!newSubTask.title.trim()} style={buttonStyle(newSubTask.title.trim() ? 'var(--blue-600)' : 'var(--slate-800)', newSubTask.title.trim() ? 'var(--on-fill-white)' : 'var(--slate-500)')}>追加</button>
               </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--slate-400)' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
                 {users.length > 0 && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     担当
@@ -1511,7 +1511,7 @@ export function TodoDetail({
                       value={newSubTask.assignee_id ?? ''}
                       onChange={(event) => setNewSubTask((previous) => ({ ...previous, assignee_id: event.target.value || null }))}
                       aria-label="追加するサブタスクの担当"
-                      style={{ ...inputStyle, width: 'auto', fontSize: '0.76rem', padding: '3px 6px' }}
+                      style={{ ...inputStyle, width: 'auto', fontSize: 'var(--font-control)', padding: '3px 6px' }}
                     >
                       <option value="">担当なし</option>
                       {users.filter((user) => user.is_active === 1 || user.id === newSubTask.assignee_id).map((user) => (
@@ -1522,17 +1522,17 @@ export function TodoDetail({
                 )}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   期限
-                  <input type="date" value={newSubTask.due_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, due_date: event.target.value || null }))} aria-label="追加するサブタスクの期限" style={{ ...inputStyle, width: 'auto', fontSize: '0.76rem', padding: '3px 6px' }} />
+                  <input type="date" value={newSubTask.due_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, due_date: event.target.value || null }))} aria-label="追加するサブタスクの期限" style={{ ...inputStyle, width: 'auto', fontSize: 'var(--font-control)', padding: '3px 6px' }} />
                 </label>
-                <button type="button" onClick={() => setShowSubTaskDetails((previous) => !previous)} aria-expanded={showSubTaskDetails} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--blue-300)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>
+                <button type="button" onClick={() => setShowSubTaskDetails((previous) => !previous)} aria-expanded={showSubTaskDetails} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--blue-300)', cursor: 'pointer', fontSize: 'var(--font-caption)', fontWeight: 700 }}>
                   {showSubTaskDetails ? '▾ 閉じる' : '▸ 開始日・メモ・進捗'}
                 </button>
               </div>
               {showSubTaskDetails && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={labelStyle}>開始日<input type="date" value={newSubTask.start_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} /></label>
-                  <textarea value={newSubTask.description ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, description: event.target.value }))} placeholder="メモ..." aria-label="追加するサブタスクのメモ" rows={2} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: 'var(--slate-400)' }}>
+                  <label style={labelStyle}>開始日<input type="date" value={newSubTask.start_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px' }} /></label>
+                  <textarea value={newSubTask.description ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, description: event.target.value }))} placeholder="メモ..." aria-label="追加するサブタスクのメモ" rows={2} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
                     <span>進捗 {clampProgress(newSubTask.progress ?? 0)}%</span>
                     <input
                       type="range"
@@ -1637,7 +1637,7 @@ export function TodoDetail({
             <button
               type="button"
               onClick={returnTo.onReturn}
-              style={{ marginBottom: 4, padding: '2px 0', border: 'none', background: 'transparent', color: 'var(--blue-300)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}
+              style={{ marginBottom: 4, padding: '2px 0', border: 'none', background: 'transparent', color: 'var(--blue-300)', cursor: 'pointer', fontSize: 'var(--font-control)', fontWeight: 700 }}
             >
               ← {returnTo.label}へ戻る
             </button>
@@ -1677,7 +1677,7 @@ export function TodoDetail({
           <button ref={editButtonRef} onClick={editing ? cancelEditing : startEditing} disabled={saving} title={editing ? undefined : 'タスク名・説明・繰り返し・サブ担当などをまとめて編集します'} style={buttonStyle('var(--slate-700)')}>
             {editing ? '編集をやめる' : '編集'}
           </button>
-          {editing && <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>編集中・Ctrl+Enter で保存</span>}
+          {editing && <span style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>編集中・Ctrl+Enter で保存</span>}
           {!editing && currentUser && (
             <button
               disabled={subscriptionPending}
@@ -1704,7 +1704,7 @@ export function TodoDetail({
 
       <div ref={detailBodyRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {saveError && <div role="alert" style={{ padding: 10, color: 'var(--red-200)', border: '1px solid var(--red-500)', borderRadius: 8 }}>{saveError}</div>}
-      {sectionLoadError && <div role="alert" style={{ padding: 10, borderRadius: 8, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', fontSize: '0.8rem' }}>{sectionLoadError}<button onClick={() => { setSectionLoadError(null); void Promise.all([loadWorkLogs(todo.id), loadSubTasks(todo.id), loadDependencies(todo.id), loadProgressNotes(todo.id)]) }} style={{ marginLeft: 10, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-900)', color: 'var(--white)' }}>再試行</button></div>}
+      {sectionLoadError && <div role="alert" style={{ padding: 10, borderRadius: 8, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', fontSize: 'var(--font-control)' }}>{sectionLoadError}<button onClick={() => { setSectionLoadError(null); void Promise.all([loadWorkLogs(todo.id), loadSubTasks(todo.id), loadDependencies(todo.id), loadProgressNotes(todo.id)]) }} style={{ marginLeft: 10, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-900)', color: 'var(--white)' }}>再試行</button></div>}
       {twoColumns ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 360px)', gap: 20, alignItems: 'start' }}>
           <div style={detailColumnStyle}>
@@ -1750,13 +1750,13 @@ const detailColumnStyle: React.CSSProperties = { display: 'flex', flexDirection:
 function AutosaveStatus({ saving, dirty, failed, length, onRetry }: { saving: boolean; dirty: boolean; failed: boolean; length: number; onRetry: () => void }): React.JSX.Element {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-      <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: failed ? 'var(--red-300)' : dirty || saving ? 'var(--blue-300)' : 'var(--slate-400)' }}>
+      <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-control)', color: failed ? 'var(--red-300)' : dirty || saving ? 'var(--blue-300)' : 'var(--slate-400)' }}>
         {saving ? '保存中…' : failed ? '保存できませんでした' : dirty ? '入力が止まると保存します' : '保存済み'}
         {failed && !saving && (
-          <button type="button" onClick={onRetry} style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', cursor: 'pointer', fontSize: '0.75rem' }}>再試行</button>
+          <button type="button" onClick={onRetry} style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', cursor: 'pointer', fontSize: 'var(--font-control)' }}>再試行</button>
         )}
       </div>
-      <div style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>{length}文字</div>
+      <div style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>{length}文字</div>
     </div>
   )
 }
@@ -1822,22 +1822,22 @@ function TodoHistory({ todoId, refreshKey }: { todoId: string; refreshKey: strin
     <section>
       <SectionHeading title="変更履歴" summary="いつ・誰が変えたか" />
       {error ? (
-        <div role="alert" style={{ fontSize: '0.8rem', color: 'var(--red-300)' }}>
+        <div role="alert" style={{ fontSize: 'var(--font-control)', color: 'var(--red-300)' }}>
           {error}
-          <button type="button" onClick={() => void load(0)} style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', cursor: 'pointer', fontSize: '0.75rem' }}>再試行</button>
+          <button type="button" onClick={() => void load(0)} style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', cursor: 'pointer', fontSize: 'var(--font-control)' }}>再試行</button>
         </div>
       ) : entries.length === 0 ? (
         <div style={{ color: 'var(--slate-400)', fontSize: '0.85rem' }}>{loading ? '読み込み中…' : '変更はまだありません'}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {entries.map((entry) => (
-            <div key={entry.id} style={{ background: 'var(--slate-800)', borderRadius: 6, padding: '6px 10px', fontSize: '0.8rem', color: 'var(--slate-200)', lineHeight: 1.5 }}>
+            <div key={entry.id} style={{ background: 'var(--slate-800)', borderRadius: 6, padding: '6px 10px', fontSize: 'var(--font-control)', color: 'var(--slate-200)', lineHeight: 1.5 }}>
               <span style={{ color: 'var(--slate-400)', marginRight: 8, whiteSpace: 'nowrap' }}>{formatHistoryTime(entry.created_at)}{entry.user_name ? `　${entry.user_name}` : ''}</span>
               <span style={{ overflowWrap: 'anywhere' }}>{historyText(entry)}</span>
             </div>
           ))}
           {hasMore && (
-            <button type="button" disabled={loading} onClick={() => void load(entries.length)} style={{ alignSelf: 'flex-start', marginTop: 2, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--slate-700)', background: 'transparent', color: 'var(--slate-300)', cursor: loading ? 'default' : 'pointer', fontSize: '0.78rem' }}>
+            <button type="button" disabled={loading} onClick={() => void load(entries.length)} style={{ alignSelf: 'flex-start', marginTop: 2, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--slate-700)', background: 'transparent', color: 'var(--slate-300)', cursor: loading ? 'default' : 'pointer', fontSize: 'var(--font-control)' }}>
               {loading ? '読み込み中…' : 'もっと見る'}
             </button>
           )}
@@ -1893,15 +1893,15 @@ function DependencyList({ title, items, getTodoId, getTitle, reload, onShowToast
   }
   return (
     <div>
-      <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)', marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)', marginBottom: 6 }}>{title}</div>
       {items.length === 0 ? (
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>設定されていません</div>
+        <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>設定されていません</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {items.map((item) => (
             <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--slate-900)', flexWrap: 'wrap' }}>
               <button onClick={() => void window.api.windowOpenTodo(getTodoId(item))} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>{getTitle(item)}</button>
-              <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>待機 {item.lag_days}日</span>
+              <span style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>待機 {item.lag_days}日</span>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {/* 期限の「+1日」と見分けられるよう「待機」と書く */}
                 <button onClick={() => void changeLag(item, clampLag(item.lag_days - 1))} aria-label={`「${getTitle(item)}」との待機を1日減らす`} title="待機日数を1日減らします（後続の日程も動きます）" style={buttonStyle('var(--slate-700)')}>待機 -1日</button>
@@ -1992,7 +1992,7 @@ function SubTaskAssigneeSelect({ users, value, onChange, disabled = false }: { u
       disabled={disabled}
       onChange={(event) => onChange(event.target.value || null)}
       aria-label="サブタスクの担当"
-      style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }}
+      style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px' }}
     >
       <option value="">担当なし</option>
       {users.filter((user) => user.is_active === 1 || user.id === value).map((user) => (
@@ -2010,13 +2010,13 @@ function EditableSubTaskItem({ subTask, users, onChange, onDelete }: { subTask: 
       <button onClick={() => onChange({ done: !subTask.done, progress: subTask.done ? Math.min(progress, 99) : 100 })} style={{ width: 16, height: 16, borderRadius: 3, marginTop: 8, border: `2px solid ${subTask.done ? 'var(--green-400)' : 'var(--slate-600)'}`, background: subTask.done ? 'var(--green-400)' : 'transparent', cursor: 'pointer' }} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <input value={subTask.title} onChange={(event) => onChange({ title: event.target.value })} placeholder="サブタスク名" style={{ ...inputStyle, fontSize: '0.82rem', padding: '6px 8px' }} />
-        <textarea value={subTask.description} onChange={(event) => onChange({ description: event.target.value })} placeholder="メモ..." rows={2} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
+        <textarea value={subTask.description} onChange={(event) => onChange({ description: event.target.value })} placeholder="メモ..." rows={2} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
         {users.length > 0 && <SubTaskAssigneeSelect users={users} value={subTask.assignee_id} onChange={(assigneeId) => onChange({ assignee_id: assigneeId })} />}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-          <input type="date" aria-label="開始日" title="開始日" value={subTask.start_date ?? ''} onChange={(event) => onChange({ start_date: event.target.value || null })} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
-          <input type="date" aria-label="期限" title="期限" value={subTask.due_date ?? ''} onChange={(event) => onChange({ due_date: event.target.value || null })} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
+          <input type="date" aria-label="開始日" title="開始日" value={subTask.start_date ?? ''} onChange={(event) => onChange({ start_date: event.target.value || null })} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px' }} />
+          <input type="date" aria-label="期限" title="期限" value={subTask.due_date ?? ''} onChange={(event) => onChange({ due_date: event.target.value || null })} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px' }} />
         </div>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: 'var(--slate-400)' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
           <span>進捗 {progress}%</span>
           <input
             type="range"
@@ -2131,7 +2131,7 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
   if (editing) {
     return (
       <fieldset disabled={saving} style={{ margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', borderRadius: 8, background: 'var(--slate-800)', border: '1px solid var(--indigo-500)' }}>
-        {saveError && <div role="alert" style={{ color: 'var(--red-200)', fontSize: '0.8rem' }}>{saveError}</div>}
+        {saveError && <div role="alert" style={{ color: 'var(--red-200)', fontSize: 'var(--font-control)' }}>{saveError}</div>}
         <input
           value={draft.title}
           onChange={(event) => setDraft((previous) => ({ ...previous, title: event.target.value }))}
@@ -2140,13 +2140,13 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
           autoFocus
           style={{ ...inputStyle, fontSize: '0.82rem', padding: '6px 8px' }}
         />
-        <textarea value={draft.description} onChange={(event) => setDraft((previous) => ({ ...previous, description: event.target.value }))} placeholder="メモ..." rows={2} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
+        <textarea value={draft.description} onChange={(event) => setDraft((previous) => ({ ...previous, description: event.target.value }))} placeholder="メモ..." rows={2} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
         {users.length > 0 && <SubTaskAssigneeSelect users={users} value={draft.assignee_id} onChange={(assigneeId) => setDraft((previous) => ({ ...previous, assignee_id: assigneeId }))} />}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-          <label style={{ ...labelStyle, marginBottom: 0 }}>開始日<input type="date" value={draft.start_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} /></label>
-          <label style={{ ...labelStyle, marginBottom: 0 }}>期限<input type="date" value={draft.due_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, due_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} /></label>
+          <label style={{ ...labelStyle, marginBottom: 0 }}>開始日<input type="date" value={draft.start_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px' }} /></label>
+          <label style={{ ...labelStyle, marginBottom: 0 }}>期限<input type="date" value={draft.due_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, due_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px' }} /></label>
         </div>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: 'var(--slate-400)' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
           <span>進捗 {draft.progress}%</span>
           <input
             type="range"
@@ -2177,7 +2177,7 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '0.85rem', color: subTask.done ? 'var(--slate-600)' : 'var(--slate-300)', textDecoration: subTask.done ? 'line-through' : 'none', wordBreak: 'break-word' }}>{subTask.title}</div>
         {(assigneeName || subTask.start_date || subTask.due_date) && (
-          <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: 'var(--slate-400)' }}>
+          <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
             {assigneeName && <AssigneeChip name={assigneeName} color={subTask.assignee_color ?? null} fontSize={0.66} />}
             {(subTask.start_date || subTask.due_date) && (
               <span style={{ color: subTask.done ? 'var(--slate-400)' : getDueDateColor(subTask.due_date) || 'var(--slate-400)' }}>
@@ -2186,7 +2186,7 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
             )}
           </div>
         )}
-        {subTask.description && <div style={{ marginTop: 2, fontSize: '0.75rem', color: subTask.done ? 'var(--slate-700)' : 'var(--slate-500)', whiteSpace: 'pre-wrap' }}><LinkedText text={subTask.description} /></div>}
+        {subTask.description && <div style={{ marginTop: 2, fontSize: 'var(--font-control)', color: subTask.done ? 'var(--slate-700)' : 'var(--slate-500)', whiteSpace: 'pre-wrap' }}><LinkedText text={subTask.description} /></div>}
         <div style={{ marginTop: 2 }}>
           <ProgressSlider
             value={progress}
@@ -2333,16 +2333,16 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
     setDueDraft(toDateKey(date))
   }
 
-  const fieldLabelStyle: React.CSSProperties = { fontSize: '0.68rem', color: 'var(--text-subtle)', marginBottom: 3 }
-  const compactSelectStyle: React.CSSProperties = { ...inputStyle, padding: '5px 8px', fontSize: '0.8rem' }
-  const dueShortcutStyle: React.CSSProperties = { padding: '4px 10px', borderRadius: 999, border: '1px solid var(--slate-600)', background: 'transparent', color: 'var(--slate-300)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, minHeight: 26 }
+  const fieldLabelStyle: React.CSSProperties = { fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', marginBottom: 3 }
+  const compactSelectStyle: React.CSSProperties = { ...inputStyle, padding: '5px 8px', fontSize: 'var(--font-control)' }
+  const dueShortcutStyle: React.CSSProperties = { padding: '4px 10px', borderRadius: 999, border: '1px solid var(--slate-600)', background: 'transparent', color: 'var(--slate-300)', cursor: 'pointer', fontSize: 'var(--font-caption)', fontWeight: 600, minHeight: 26 }
 
   return (
     <div style={{ background: 'var(--c-162033)', border: '1px solid var(--slate-800)', borderRadius: 10, padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))', gap: '10px 12px' }}>
       <div>
         <div style={fieldLabelStyle}>状態</div>
         {isArchived ? (
-          <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)', padding: '5px 0' }}>アーカイブ</div>
+          <div style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)', padding: '5px 0' }}>アーカイブ</div>
         ) : (
           <select
             value={todo.status}
@@ -2411,7 +2411,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
             selectStyle={compactSelectStyle}
           />
           {(todo.co_assignees ?? []).length > 0 && (
-            <div style={{ marginTop: 3, fontSize: '0.68rem', color: 'var(--slate-400)' }} title="サブ担当は「編集」で変えられます">
+            <div style={{ marginTop: 3, fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }} title="サブ担当は「編集」で変えられます">
               副: {(todo.co_assignees ?? []).map((item) => item.display_name).join('、')}
             </div>
           )}
@@ -2420,7 +2420,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
       <div style={{ gridColumn: '1 / -1' }}>
         <div style={fieldLabelStyle}>日程</div>
         {editingSchedule ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: '0.76rem', color: 'var(--slate-400)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               開始
               <input ref={startInputRef} type="date" value={startDraft} onChange={(event) => setStartDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setEditingSchedule(false) }} aria-label="開始日" style={{ ...compactSelectStyle, width: 'auto' }} />
@@ -2443,10 +2443,10 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
               />
             </label>
             {listMode && dueDraft && (
-              <button onClick={() => setDueDraft('')} title="期限を外して、期限なしのリストにします" style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: '0.74rem' }}>期限なし</button>
+              <button onClick={() => setDueDraft('')} title="期限を外して、期限なしのリストにします" style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: 'var(--font-caption)' }}>期限なし</button>
             )}
             <span role="group" aria-label="期限を延ばす" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', width: '100%' }}>
-              <span aria-hidden="true" style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>期限を</span>
+              <span aria-hidden="true" style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>期限を</span>
               {[{ label: '+1日', days: 1 }, { label: '+3日', days: 3 }, { label: '+1週', days: 7 }].map((option) => (
                 <button
                   key={option.label}
@@ -2470,13 +2470,13 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
               </label>
             )}
             {scheduleInvalid && (
-              <span id={scheduleErrorId} role="alert" style={{ width: '100%', fontSize: '0.74rem', color: 'var(--red-300)', fontWeight: 700 }}>
+              <span id={scheduleErrorId} role="alert" style={{ width: '100%', fontSize: 'var(--font-caption)', color: 'var(--red-300)', fontWeight: 700 }}>
                 開始日が期限より後になっています。期限か開始日を直してください
               </span>
             )}
             <button onClick={() => setEditingSchedule(false)} style={buttonStyle('var(--slate-700)')}>取消</button>
             <button onClick={() => void saveSchedule()} disabled={saving || scheduleInvalid} style={buttonStyle(scheduleInvalid ? 'var(--slate-800)' : 'var(--blue-600)', scheduleInvalid ? 'var(--text-subtle)' : undefined)}>{saving ? '保存中…' : '保存'}</button>
-            <span style={{ width: '100%', fontSize: '0.66rem', color: 'var(--text-subtle)' }}>依存関係のある後続タスクも自動で再計算されます</span>
+            <span style={{ width: '100%', fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>依存関係のある後続タスクも自動で再計算されます</span>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.82rem' }}>
@@ -2487,14 +2487,14 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
               <>
                 <span style={{ color: 'var(--text-subtle)' }}>→</span>
                 <span style={{ color: dueColor || 'var(--slate-300)', fontWeight: dueColor ? 700 : 400 }}>期限 {todo.due_date ? formatShortDate(todo.due_date) : '未設定'}</span>
-                {todo.due_date && todo.status !== 'done' && <span style={{ fontSize: '0.74rem', color: dueColor || 'var(--slate-500)' }}>（{dueRemainingLabel(todo.due_date)}）</span>}
+                {todo.due_date && todo.status !== 'done' && <span style={{ fontSize: 'var(--font-caption)', color: dueColor || 'var(--slate-500)' }}>（{dueRemainingLabel(todo.due_date)}）</span>}
               </>
             )}
             {!isArchived && (
-              <button ref={scheduleButtonRef} onClick={openScheduleEditor} aria-label="日程を変更" style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: '0.74rem' }}>変更</button>
+              <button ref={scheduleButtonRef} onClick={openScheduleEditor} aria-label="日程を変更" style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: 'var(--font-caption)' }}>変更</button>
             )}
             {recurrenceLabel && (
-              <span title="完了にすると次回分を自動で作ります。変えるときは「編集」から" style={{ fontSize: '0.74rem', color: 'var(--indigo-300)', border: '1px solid var(--indigo-700)', borderRadius: 99, padding: '1px 8px', whiteSpace: 'nowrap' }}>
+              <span title="完了にすると次回分を自動で作ります。変えるときは「編集」から" style={{ fontSize: 'var(--font-caption)', color: 'var(--indigo-300)', border: '1px solid var(--indigo-700)', borderRadius: 99, padding: '1px 8px', whiteSpace: 'nowrap' }}>
                 🔁 {recurrenceLabel}
               </span>
             )}
@@ -2521,11 +2521,11 @@ function RecurrenceHint({ data }: { data: UpdateTodoInput }): React.JSX.Element 
   const text = next
     ? `${label}。完了にすると、次回分を${next.kind} ${formatShortDate(next.dateKey)}${next.holidayMayShift ? '（祝日ならその後ろ）' : ''}で作ります`
     : `${label}。日付がないので、次回分も日付なしで作ります`
-  return <div style={{ marginTop: 4, fontSize: '0.72rem', color: 'var(--slate-400)', lineHeight: 1.5 }}>{text}</div>
+  return <div style={{ marginTop: 4, fontSize: 'var(--font-caption)', color: 'var(--slate-400)', lineHeight: 1.5 }}>{text}</div>
 }
 
 function Badge({ children, color }: { children: React.ReactNode; color: string }): React.JSX.Element {
-  return <div style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 999, background: 'var(--slate-900)', color, fontSize: '0.74rem', fontWeight: 600 }}>{children}</div>
+  return <div style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 999, background: 'var(--slate-900)', color, fontSize: 'var(--font-caption)', fontWeight: 600 }}>{children}</div>
 }
 
 function buttonStyle(background: string, color = textOnFill(background)): React.CSSProperties {

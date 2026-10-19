@@ -301,14 +301,14 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
   return (
     <section>
       {!compact && (
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: 700, marginBottom: 8, letterSpacing: '0.05em' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 'var(--font-control)', color: 'var(--text-subtle)', fontWeight: 700, marginBottom: 8, letterSpacing: '0.05em' }}>
           ToDoリスト
           <span style={{ letterSpacing: 0, color: 'var(--indigo-300)', fontWeight: 700 }}>{checklistBadgeText(summary)}</span>
         </div>
       )}
       <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {!compact && (
-          <div style={{ fontSize: '0.74rem', color: 'var(--slate-400)', lineHeight: 1.5 }}>
+          <div style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)', lineHeight: 1.5 }}>
             繰り返しの項目は決めた日が来ると未チェックに戻り、繰り返さない項目はチェックすると「済み」に移ります。項目名か ✎ を押すと編集、⠿ をドラッグすると並べ替えられます。
           </div>
         )}
@@ -324,18 +324,18 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
           </ItemGroup>
         )}
         {items.length === 0 && (
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>まだ項目がありません。下の欄から追加してください。</div>
+          <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>まだ項目がありません。下の欄から追加してください。</div>
         )}
         {doneItems.length > 0 && (
           <details>
-            <summary style={{ cursor: 'pointer', fontSize: '0.76rem', color: 'var(--slate-400)', padding: '2px 0' }}>
+            <summary style={{ cursor: 'pointer', fontSize: 'var(--font-control)', color: 'var(--slate-400)', padding: '2px 0' }}>
               済み {recentDone.length}件{oldDone.length > 0 ? `（ほかに ${RECENT_DONE_DAYS}日より前 ${oldDone.length}件）` : ''}
             </summary>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 6 }}>
               {recentDone.map((item, index) => renderItem(item, index, recentDone))}
-              {recentDone.length === 0 && <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>この{RECENT_DONE_DAYS}日に済んだやることはありません。</div>}
+              {recentDone.length === 0 && <div style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>この{RECENT_DONE_DAYS}日に済んだやることはありません。</div>}
               {oldDone.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 4, fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 4, fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>
                   {RECENT_DONE_DAYS}日より前に済んだもの {oldDone.length}件
                   <button onClick={() => setShowOldDone((open) => !open)} style={linkButtonStyle}>{showOldDone ? '隠す' : '表示する'}</button>
                   <button onClick={() => void clearOldDone()} disabled={clearing} style={{ ...linkButtonStyle, color: 'var(--red-300)' }}>{clearing ? '削除中…' : 'まとめて削除'}</button>
@@ -347,7 +347,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
         )}
 
         {!formOpen && (
-          <button onClick={() => setFormOpen(true)} disabled={disabled} style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed var(--slate-700)', borderRadius: 8, padding: '5px 12px', color: 'var(--blue-300)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
+          <button onClick={() => setFormOpen(true)} disabled={disabled} style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed var(--slate-700)', borderRadius: 8, padding: '5px 12px', color: 'var(--blue-300)', cursor: 'pointer', fontSize: 'var(--font-control)', fontWeight: 700 }}>
             ＋ 項目を追加
           </button>
         )}
@@ -381,7 +381,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
               <button type="button" onClick={() => setFormOpen(false)} style={buttonStyle('var(--slate-700)', 'var(--slate-300)')}>閉じる</button>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--slate-400)' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
             <RepeatPicker
               choice={repeat}
               day={repeatDay}
@@ -508,7 +508,7 @@ function StartPicker({ value, onChange, label }: { value: string; onChange: (val
 function ItemGroup({ label, note, children }: { label: string; note?: string; children: React.ReactNode }): React.JSX.Element {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.7rem', color: 'var(--text-subtle)', fontWeight: 700, paddingBottom: 2 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', fontWeight: 700, paddingBottom: 2 }}>
         {label}
         {note && <span style={{ fontWeight: 400 }}>{note}</span>}
       </div>
@@ -537,7 +537,7 @@ function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
       <span
         aria-hidden="true"
         title={draggable ? 'ドラッグして並べ替え' : undefined}
-        style={{ width: 10, flexShrink: 0, color: draggable ? 'var(--slate-600)' : 'transparent', cursor: draggable ? 'grab' : 'default', fontSize: '0.8rem', userSelect: 'none' }}
+        style={{ width: 10, flexShrink: 0, color: draggable ? 'var(--slate-600)' : 'transparent', cursor: draggable ? 'grab' : 'default', fontSize: 'var(--font-control)', userSelect: 'none' }}
       >
         ⠿
       </span>
@@ -556,7 +556,7 @@ function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
       >
         {item.title}
       </button>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, fontSize: '0.7rem' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, fontSize: 'var(--font-caption)' }}>
         {item.assignee_name && <span style={{ color: dataInk(item.assignee_color ?? 'var(--slate-400)') }}>{item.assignee_name}</span>}
         {period && (
           <span style={{ color: dueColor || (notStarted ? 'var(--slate-600)' : 'var(--slate-500)'), fontWeight: dueColor ? 700 : 400 }} title={notStarted ? '開始日が来たら「今日やること」に出ます' : undefined}>
@@ -569,7 +569,7 @@ function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
           onClick={onEdit}
           aria-label={`${item.title}を編集`}
           title="編集（名前・繰り返し・開始日・期限・担当・メモ・並べ替え・削除）"
-          style={{ background: 'none', border: 'none', padding: '0 2px', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: '0.78rem' }}
+          style={{ background: 'none', border: 'none', padding: '0 2px', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 'var(--font-control)' }}
         >
           ✎
         </button>
@@ -611,11 +611,11 @@ export function QuickCheckItem({ item, pending, todayKey, listTitle, showAssigne
       <button
         onClick={(event) => { event.stopPropagation(); onOpen() }}
         title={listTitle ? `「${listTitle}」を開く` : 'ToDoリストを開く'}
-        style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: done ? 'var(--slate-500)' : 'var(--slate-200)', textDecoration: done ? 'line-through' : 'none', fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: done ? 'var(--slate-500)' : 'var(--slate-200)', textDecoration: done ? 'line-through' : 'none', fontSize: 'var(--font-control)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
       >
         {item.title}
       </button>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: '0.64rem' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: 'var(--font-caption)' }}>
         {showAssignee && item.assignee_name && <span style={{ color: dataInk(item.assignee_color ?? 'var(--slate-400)') }}>{item.assignee_name}</span>}
         {period && (
           <span style={{ color: dueColor || 'var(--slate-500)', fontWeight: overdue ? 700 : 400 }}>{overdue ? '期限切れ' : period}</span>
@@ -708,7 +708,7 @@ function ItemEditor({ item, users, canMoveUp, canMoveDown, onMove, onCancel, onS
         autoFocus
         style={inputStyle}
       />
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--slate-400)' }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
         <RepeatPicker choice={repeat} day={repeatDay} onChange={(choice, day) => { setRepeat(choice); setRepeatDay(day) }} labelPrefix="項目の" />
         {repeat === '' && (
           <>
@@ -753,7 +753,7 @@ const inputStyle: React.CSSProperties = {
 const smallInputStyle: React.CSSProperties = {
   ...inputStyle,
   width: 'auto',
-  fontSize: '0.76rem',
+  fontSize: 'var(--font-control)',
   padding: '3px 6px'
 }
 
@@ -771,7 +771,7 @@ const linkButtonStyle: React.CSSProperties = {
   padding: 0,
   color: 'var(--blue-300)',
   cursor: 'pointer',
-  fontSize: '0.72rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 700
 }
 
@@ -783,11 +783,11 @@ function presetStyle(active: boolean): React.CSSProperties {
     background: active ? 'var(--indigo-900)' : 'transparent',
     color: active ? 'var(--indigo-100)' : 'var(--slate-400)',
     cursor: 'pointer',
-    fontSize: '0.72rem',
+    fontSize: 'var(--font-caption)',
     fontWeight: 700
   }
 }
 
 function buttonStyle(background: string, color = textOnFill(background)): React.CSSProperties {
-  return { padding: '5px 11px', background, border: 'none', borderRadius: 6, color, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap' }
+  return { padding: '5px 11px', background, border: 'none', borderRadius: 6, color, cursor: 'pointer', fontSize: 'var(--font-control)', fontWeight: 'bold', whiteSpace: 'nowrap' }
 }

@@ -21,7 +21,7 @@ interface ItemsProps {
 export function TodayTodoItems({ groups, pendingIds, onToggle, onOpenList, showAssignee = false }: ItemsProps): React.JSX.Element {
   const todayKey = toDateKey(new Date())
   if (groups.length === 0) {
-    return <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', lineHeight: 1.5 }}>今日やる項目はありません。</div>
+    return <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)', lineHeight: 1.5 }}>今日やる項目はありません。</div>
   }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -30,8 +30,8 @@ export function TodayTodoItems({ groups, pendingIds, onToggle, onOpenList, showA
         return (
           <div key={section} style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
             <div title={TODAY_SECTION_LABEL[section].title} style={{ display: 'flex', alignItems: 'baseline', gap: 6, paddingBottom: 2 }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)', fontWeight: 700 }}>{TODAY_SECTION_LABEL[section].label}</span>
-              <span style={{ fontSize: '0.66rem', color: done === entries.length ? 'var(--green-400)' : 'var(--slate-500)' }}>{done}/{entries.length}</span>
+              <span style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)', fontWeight: 700 }}>{TODAY_SECTION_LABEL[section].label}</span>
+              <span style={{ fontSize: 'var(--font-caption)', color: done === entries.length ? 'var(--green-400)' : 'var(--slate-500)' }}>{done}/{entries.length}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
               {groupEntriesByList(entries).map(({ todo, items }) => (
@@ -72,11 +72,11 @@ function ListHeading({ todo, onOpen }: { todo: Todo; onOpen: () => void }): Reac
     >
       <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
       {todo.category_name && (
-        <span style={{ fontSize: '0.68rem', color: dataInk(todo.category_color) ?? 'var(--text-subtle)', fontWeight: 700, flexShrink: 0, maxWidth: '45%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 'var(--font-caption)', color: dataInk(todo.category_color) ?? 'var(--text-subtle)', fontWeight: 700, flexShrink: 0, maxWidth: '45%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {todo.category_name}
         </span>
       )}
-      <span style={{ fontSize: '0.72rem', color: 'var(--slate-300)', fontWeight: 700, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-300)', fontWeight: 700, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {todo.title}
       </span>
     </button>
@@ -116,13 +116,13 @@ export function TodayTodoCard({ groups, pendingIds, storageKey, onToggle, onOpen
           onClick={toggleCollapsed}
           aria-expanded={!collapsed}
           title={collapsed ? '開く' : '折りたたむ'}
-          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--slate-400)', fontSize: '0.75rem', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s ease' }}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--slate-400)', fontSize: 'var(--font-control)', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s ease' }}
         >
           ▾
         </button>
-        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--indigo-100)' }}>今日のToDo</span>
-        <span style={{ fontSize: '0.7rem', color: remaining > 0 ? 'var(--indigo-200)' : 'var(--green-400)' }}>{remaining > 0 ? `残り ${remaining}` : 'すべて済み'}</span>
-        <button onClick={onOpenTab} title="ToDo タブを開く" style={{ marginLeft: 'auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--blue-300)', fontSize: '0.7rem', fontWeight: 700 }}>
+        <span style={{ fontSize: 'var(--font-control)', fontWeight: 700, color: 'var(--indigo-100)' }}>今日のToDo</span>
+        <span style={{ fontSize: 'var(--font-caption)', color: remaining > 0 ? 'var(--indigo-200)' : 'var(--green-400)' }}>{remaining > 0 ? `残り ${remaining}` : 'すべて済み'}</span>
+        <button onClick={onOpenTab} title="ToDo タブを開く" style={{ marginLeft: 'auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--blue-300)', fontSize: 'var(--font-caption)', fontWeight: 700 }}>
           ToDoタブ
         </button>
       </div>

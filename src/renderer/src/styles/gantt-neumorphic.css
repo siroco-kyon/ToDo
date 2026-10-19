@@ -118,14 +118,14 @@
   display: none !important;
 }
 
-/* 保留していない行の「保留する」は薄く出しておき、行にマウスを乗せたとき・キーボードで選んだときにはっきり出す
-   （まったく出さないと、ボタンがあることに気付けない） */
+/* 保留していない行はホバー・キーボード操作中だけ表示する（AGENTS.mdの行表示規則）。 */
 .tarbo-gantt .tarbo-gantt-hold-toggle {
-  opacity: 0.45;
+  opacity: 0;
   transition: opacity 0.12s ease;
 }
 
 .tarbo-gantt .tarbo-gantt-row:hover .tarbo-gantt-hold-toggle,
+.tarbo-gantt .tarbo-gantt-row:focus-within .tarbo-gantt-hold-toggle,
 .tarbo-gantt .tarbo-gantt-hold-toggle:focus-visible {
   opacity: 1;
 }

@@ -63,7 +63,7 @@ function avatarStyle(color: string | null | undefined): React.CSSProperties {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
     background: color ?? 'var(--slate-500)', border: '1px solid var(--slate-900)',
-    color: 'var(--ink-on-data)', fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase'
+    color: 'var(--ink-on-data)', fontSize: 'var(--font-caption)', fontWeight: 800, textTransform: 'uppercase'
   }
 }
 
@@ -129,30 +129,30 @@ function KanbanCard({
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, flexWrap: 'wrap' }}>
         {todo.category_name && (
           <span style={{
-            fontSize: '0.66rem', padding: '1px 6px', borderRadius: 99,
+            fontSize: 'var(--font-caption)', padding: '1px 6px', borderRadius: 99,
             background: `color-mix(in srgb, ${todo.category_color ?? 'var(--indigo-500)'} 18.8%, transparent)`, color: dataInk(todo.category_color ?? 'var(--indigo-500)')
           }}>
             {todo.category_name}
           </span>
         )}
         {todo.priority >= 4 && (
-          <span style={{ fontSize: '0.66rem', color: todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)' }}>
+          <span style={{ fontSize: 'var(--font-caption)', color: todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)' }}>
             {'!'.repeat(todo.priority - 3)}
           </span>
         )}
         {todo.recurrence && (
-          <span title={`繰り返し: ${todoRecurrenceLabel(todo) ?? todo.recurrence}`} style={{ fontSize: '0.62rem', color: 'var(--indigo-400)' }}>🔁</span>
+          <span title={`繰り返し: ${todoRecurrenceLabel(todo) ?? todo.recurrence}`} style={{ fontSize: 'var(--font-caption)', color: 'var(--indigo-400)' }}>🔁</span>
         )}
         {todo.list_mode === 1 && checklist && (
-          <span title={checklistBadgeTitle(checklist)} style={{ fontSize: '0.6rem', color: 'var(--indigo-300)', border: '1px solid var(--indigo-700)', borderRadius: 99, padding: '0 5px' }}>
+          <span title={checklistBadgeTitle(checklist)} style={{ fontSize: 'var(--font-caption)', color: 'var(--indigo-300)', border: '1px solid var(--indigo-700)', borderRadius: 99, padding: '0 5px' }}>
             ☑ {checklistBadgeText(checklist)}
           </span>
         )}
         {isPrivate && (
-          <span title="集計から外すカテゴリ（チームの集計・レポートに含めません。ほかの人にも見えます）" style={{ fontSize: '0.6rem', color: 'var(--slate-400)', border: '1px solid var(--slate-700)', borderRadius: 99, padding: '0 5px' }}>集計外</span>
+          <span title="集計から外すカテゴリ（チームの集計・レポートに含めません。ほかの人にも見えます）" style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)', border: '1px solid var(--slate-700)', borderRadius: 99, padding: '0 5px' }}>集計外</span>
         )}
         {isRunning && (
-          <span style={{ fontSize: '0.6rem', background: 'color-mix(in srgb, var(--green-400) 12.5%, transparent)', color: 'var(--green-400)', padding: '1px 5px', borderRadius: 99 }}>計測中</span>
+          <span style={{ fontSize: 'var(--font-caption)', background: 'color-mix(in srgb, var(--green-400) 12.5%, transparent)', color: 'var(--green-400)', padding: '1px 5px', borderRadius: 99 }}>計測中</span>
         )}
       </div>
 
@@ -173,12 +173,12 @@ function KanbanCard({
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
         {todo.due_date && (
-          <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: '0.66rem', color: isDone ? 'var(--slate-500)' : getDueColor(todo.due_date) }}>
+          <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: 'var(--font-caption)', color: isDone ? 'var(--slate-500)' : getDueColor(todo.due_date) }}>
             期限 {formatShortDate(todo.due_date)}{dueStateSuffix(todo.due_date, isDone)}
           </span>
         )}
         {prog > 0 && (
-          <span style={{ fontSize: '0.66rem', color: progressColor(prog) }}>{prog}%</span>
+          <span style={{ fontSize: 'var(--font-caption)', color: progressColor(prog) }}>{prog}%</span>
         )}
         {(todo.assignee_name || coAssignees.length > 0) && (
           <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 'auto' }}>
@@ -289,7 +289,7 @@ export function KanbanView({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--slate-800)' }}>
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: col.accent, flexShrink: 0 }} />
               <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--slate-200)' }}>{col.label}</span>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 99, padding: '1px 7px' }}>
+              <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 99, padding: '1px 7px' }}>
                 {items.length}
               </span>
               <button
@@ -298,7 +298,7 @@ export function KanbanView({
                 onClick={() => { setAddingStatus(col.status); setAddTitle(''); setAddError('') }}
                 title={`「${col.label}」の列にタスクを追加`}
                 aria-label={`${col.label}にタスクを追加`}
-                style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid var(--slate-700)', borderRadius: 6, color: 'var(--slate-400)', cursor: 'pointer', fontSize: '0.8rem', lineHeight: 1, padding: '3px 7px' }}
+                style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid var(--slate-700)', borderRadius: 6, color: 'var(--slate-400)', cursor: 'pointer', fontSize: 'var(--font-control)', lineHeight: 1, padding: '3px 7px' }}
               >
                 ＋
               </button>
@@ -323,7 +323,7 @@ export function KanbanView({
                   placeholder="タスク名を入力して Enter"
                   style={{ width: '100%', padding: '7px 9px', background: 'var(--slate-900)', border: '1px solid var(--blue-500)', borderRadius: 8, color: 'var(--slate-200)', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}
                 />
-                {addError && <p id="kanban-add-error" role="alert" style={{ color: 'var(--red-400)', fontSize: '0.8rem', overflowWrap: 'anywhere' }}>{addError} 入力内容は残っています。</p>}
+                {addError && <p id="kanban-add-error" role="alert" style={{ color: 'var(--red-400)', fontSize: 'var(--font-control)', overflowWrap: 'anywhere' }}>{addError} 入力内容は残っています。</p>}
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button type="submit" disabled={adding || !addTitle.trim()} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--blue-500)', background: 'var(--blue-900)', color: 'var(--blue-100)', cursor: adding ? 'wait' : 'pointer' }}>{adding ? '追加中…' : '追加'}</button>
                   <button type="button" disabled={adding} onClick={() => { setAddingStatus(null); setAddTitle(''); addButtonsRef.current.get(col.status)?.focus() }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--slate-700)', background: 'transparent', color: 'var(--slate-300)', cursor: 'pointer' }}>キャンセル</button>
@@ -349,7 +349,7 @@ export function KanbanView({
               ))}
 
               {items.length === 0 && addingStatus !== col.status && (
-                <div style={{ padding: '16px 8px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: '0.76rem' }}>
+                <div style={{ padding: '16px 8px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: 'var(--font-control)' }}>
                   カードをここにドラッグ（キーボードは Alt+← / Alt+→）
                 </div>
               )}

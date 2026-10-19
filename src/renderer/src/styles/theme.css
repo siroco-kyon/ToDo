@@ -13,7 +13,12 @@
  * カテゴリ・担当者の色（利用者が選んだ色）はトークンにしない。文字に使うときは lib/theme.ts の dataInk() を通す。
  * トークンを足すときは、両方のテーマに値を書く。
  */
+/* ネイティブの日付選択アイコンも、両方のテーマで読める色にする。 */
+input[type="date"], input[type="time"], input[type="datetime-local"] { color-scheme: var(--native-scheme); }
+
 :root {
+  --font-caption: 0.78rem;
+  --font-control: 0.85rem;
   /* color-scheme は決めない（決めると、色を書いていないボタンや入力欄の既定の色が変わる）。日付の入力など、暗い部品にしたいところだけ var(--native-scheme) を使う */
   --native-scheme: dark;
   --data-ink-mix: 100%;

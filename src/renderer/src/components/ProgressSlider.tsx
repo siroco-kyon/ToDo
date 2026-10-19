@@ -146,7 +146,8 @@ export function ProgressSlider({
           flex: 1,
           minWidth: 0,
           // 細いバーでも掴みやすいよう、上下に当たり判定の余白を取る
-          padding: '6px 0',
+          padding: '8px 0',
+          minHeight: 24,
           cursor: disabled ? 'default' : dragging ? 'grabbing' : 'ew-resize',
           touchAction: 'none',
           outlineOffset: 2

@@ -637,7 +637,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
         <div style={{ flex: 1, minWidth: 0, paddingBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
             <span style={{ color: 'var(--slate-200)', fontSize: '0.82rem', fontWeight: 800 }}>{authorName}</span>
-            <span style={{ color: 'var(--text-subtle)', fontSize: '0.72rem' }}>{formatDateTime(comment.created_at)}</span>
+            <span style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-caption)' }}>{formatDateTime(comment.created_at)}</span>
             {comment.updated_at !== comment.created_at && <span style={editedStyle}>編集済み</span>}
             {userId && isUnseen(comment, userId, seenBefore) && <span style={newBadgeStyle}>新着</span>}
           </div>
@@ -690,7 +690,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       <div style={headerStyle}>
         <div>
           <div style={{ fontSize: '1rem', color: 'var(--slate-50)', fontWeight: 800 }}>進捗タイムライン</div>
-          <div style={{ marginTop: 3, color: 'var(--text-subtle)', fontSize: '0.78rem' }}>
+          <div style={{ marginTop: 3, color: 'var(--text-subtle)', fontSize: 'var(--font-control)' }}>
             {range.from === range.to ? range.from : `${range.from} ～ ${range.to}`} ・ 投稿 {visibleNotes.length}件 / 返信 {totalComments}件
             {unseenCount > 0 && <span style={{ color: 'var(--blue-300)', fontWeight: 700 }}> ・ 新着 {unseenCount}件</span>}
           </div>
@@ -709,7 +709,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
             }}
             style={inputStyle}
           />
-          <span style={{ color: 'var(--text-subtle)', fontSize: '0.8rem' }}>～</span>
+          <span style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-control)' }}>～</span>
           <input
             type="date"
             aria-label="表示期間の終了日"
@@ -811,7 +811,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                     onInsertTemplate={() => setNoteDraft(withProgressNoteTemplate(noteDraft))}
                     onInsertOnTrack={() => setNoteDraft(ON_TRACK_NOTE)}
                   />
-                  <span style={{ color: 'var(--slate-400)', fontSize: '0.74rem' }}>{noteDraft.length}文字</span>
+                  <span style={{ color: 'var(--slate-400)', fontSize: 'var(--font-caption)' }}>{noteDraft.length}文字</span>
                 </span>
                 <button onClick={() => void handleCreateNote()} disabled={!selectedTodoId || !noteDraft.trim() || savingNote} style={primaryPostButtonStyle(Boolean(selectedTodoId && noteDraft.trim() && !savingNote))}>
                   {savingNote ? '投稿中' : '投稿'}
@@ -851,9 +851,9 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ color: 'var(--slate-50)', fontSize: '0.9rem', fontWeight: 800 }}>{authorName}</span>
-                    <span style={{ color: 'var(--text-subtle)', fontSize: '0.74rem' }}>{formatDateTime(note.created_at)}</span>
+                    <span style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-caption)' }}>{formatDateTime(note.created_at)}</span>
                     {note.last_reply_at && (
-                      <span style={{ color: 'var(--slate-400)', fontSize: '0.74rem' }}>最終返信：{formatDateTime(note.last_reply_at)}</span>
+                      <span style={{ color: 'var(--slate-400)', fontSize: 'var(--font-caption)' }}>最終返信：{formatDateTime(note.last_reply_at)}</span>
                     )}
                     {note.updated_at !== note.created_at && <span style={editedStyle}>編集済み</span>}
                     {note.needs_discussion === 1 && (
@@ -944,7 +944,7 @@ function Avatar({ name, color, size }: { name: string; color: string; size: numb
 }
 
 const newBadgeStyle: React.CSSProperties = {
-  fontSize: '0.66rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 800,
   color: 'var(--blue-200)',
   background: 'var(--blue-900)',
@@ -963,7 +963,7 @@ const groupHeadingStyle: React.CSSProperties = {
   background: 'var(--slate-900)',
   borderBottom: '1px solid var(--slate-800)',
   color: 'var(--slate-400)',
-  fontSize: '0.74rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 800,
   letterSpacing: '0.02em'
 }
@@ -971,7 +971,7 @@ const groupHeadingStyle: React.CSSProperties = {
 // 選んでいるチップは色で塗って「✓」を付ける（色だけで選んでいるかを示さない）。0件のチップは点線の枠で、文字は読める濃さにする
 function filterChipStyle(color: string, active: boolean, muted: boolean): React.CSSProperties {
   return {
-    fontSize: '0.74rem',
+    fontSize: 'var(--font-caption)',
     color: muted ? 'var(--text-subtle)' : active ? 'var(--slate-900)' : color,
     background: active ? color : 'var(--gray-900)',
     border: `${active ? 2 : 1}px ${muted && !active ? 'dashed' : 'solid'} ${active ? color : muted ? 'var(--slate-700)' : `color-mix(in srgb, ${color} 33.3%, transparent)`}`,
@@ -1049,7 +1049,7 @@ function chipStyle(active: boolean): React.CSSProperties {
     background: active ? 'var(--blue-950)' : 'var(--gray-900)',
     color: active ? 'var(--blue-100)' : 'var(--slate-400)',
     cursor: 'pointer',
-    fontSize: '0.8rem',
+    fontSize: 'var(--font-control)',
     fontWeight: 800
   }
 }
@@ -1061,7 +1061,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   background: 'var(--gray-900)',
   color: 'var(--slate-300)',
   cursor: 'pointer',
-  fontSize: '0.8rem',
+  fontSize: 'var(--font-control)',
   fontWeight: 800
 }
 
@@ -1086,7 +1086,7 @@ function pillButtonStyle(active: boolean): React.CSSProperties {
     background: active ? 'var(--blue-950)' : 'var(--slate-800)',
     color: active ? 'var(--blue-100)' : 'var(--slate-500)',
     cursor: active ? 'pointer' : 'not-allowed',
-    fontSize: '0.76rem',
+    fontSize: 'var(--font-control)',
     fontWeight: 900
   }
 }
@@ -1098,7 +1098,7 @@ const ghostButtonStyle: React.CSSProperties = {
   background: 'var(--slate-900)',
   color: 'var(--slate-400)',
   cursor: 'pointer',
-  fontSize: '0.76rem',
+  fontSize: 'var(--font-control)',
   fontWeight: 800
 }
 
@@ -1142,7 +1142,7 @@ const inlineActionStyle: React.CSSProperties = {
   border: 'none',
   color: 'var(--slate-400)',
   cursor: 'pointer',
-  fontSize: '0.76rem',
+  fontSize: 'var(--font-control)',
   fontWeight: 800,
   padding: '0.25rem 0.4rem',
   margin: '-0.25rem -0.4rem',
@@ -1151,7 +1151,7 @@ const inlineActionStyle: React.CSSProperties = {
 
 const actionMetaStyle: React.CSSProperties = {
   color: 'var(--text-subtle)',
-  fontSize: '0.72rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 800
 }
 
@@ -1160,7 +1160,7 @@ const taskLinkStyle: React.CSSProperties = {
   border: 'none',
   padding: 0,
   cursor: 'pointer',
-  fontSize: '0.78rem',
+  fontSize: 'var(--font-control)',
   fontWeight: 800,
   textAlign: 'left'
 }
@@ -1171,13 +1171,13 @@ const categoryPillStyle: React.CSSProperties = {
   borderRadius: 999,
   background: 'var(--slate-900)',
   border: '1px solid var(--slate-700)',
-  fontSize: '0.68rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 800
 }
 
 const editedStyle: React.CSSProperties = {
   color: 'var(--text-subtle)',
-  fontSize: '0.68rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 700
 }
 

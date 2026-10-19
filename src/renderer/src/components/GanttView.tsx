@@ -3325,7 +3325,7 @@ function GanttViewContent({
           {standalone && <div style={standaloneBadgeStyle}>別ウィンドウ表示</div>}
         </div>
       </div>
-      {reorderFeedback && <div role="alert" style={{ fontSize: '0.72rem', color: 'var(--red-300)' }}>{reorderFeedback}</div>}
+      {reorderFeedback && <div role="alert" style={{ fontSize: 'var(--font-caption)', color: 'var(--red-300)' }}>{reorderFeedback}</div>}
 
       {!controlsCollapsed && (
         <div style={settingsPanelStyle}>
@@ -3384,7 +3384,7 @@ function GanttViewContent({
                   </label>
                 ))}
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>タスク名はいつも出します。バーの上にも担当と進捗が出ます。</div>
+              <div style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>タスク名はいつも出します。バーの上にも担当と進捗が出ます。</div>
             </div>
 
             <div style={settingsSectionStyle}>
@@ -3511,23 +3511,23 @@ function GanttViewContent({
 
             <div style={settingsSectionStyle}>
               <label style={controlLabelStyle}>遅れの判定</label>
-              <div style={{ fontSize: '0.74rem', color: 'var(--slate-400)', lineHeight: 1.6 }}>
+              <div style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)', lineHeight: 1.6 }}>
                 期間のうち今日までに過ぎた日数の割合を「予定の進捗」とし、実際の進捗が予定より何日分遅れているかで判定します。
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.76rem', color: 'var(--slate-300)' }}>予定より</span>
+                <span style={{ fontSize: 'var(--font-control)', color: 'var(--slate-300)' }}>予定より</span>
                 {BEHIND_THRESHOLD_OPTIONS.map((days) => (
                   <button key={days} onClick={() => setBehindThresholdDays(days)} style={chipStyle(behindThresholdDays === days)}>
                     {days}日
                   </button>
                 ))}
-                <span style={{ fontSize: '0.76rem', color: 'var(--slate-300)' }}>以上遅れていたら「遅れ」</span>
+                <span style={{ fontSize: 'var(--font-control)', color: 'var(--slate-300)' }}>以上遅れていたら「遅れ」</span>
               </div>
               <label style={toggleLabelStyle}>
                 <input type="checkbox" checked={workingDaysOnly} onChange={(event) => setWorkingDaysOnly(event.target.checked)} />
                 <span>土日・祝日を除いて数える</span>
               </label>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', lineHeight: 1.6 }}>
+              <div style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', lineHeight: 1.6 }}>
                 例: 10日間のタスクの5日目なら予定は45%。実際が20%なら約2.5日分の遅れです。
                 期限を過ぎて100%未満は「期限超過」、開始日前で0%は「開始前」になります。
               </div>
@@ -3554,7 +3554,7 @@ function GanttViewContent({
             <div style={settingsSectionStyle}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                 <label style={controlLabelStyle}>表示タスク</label>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>{taskSelectionSummary}</div>
+                <div style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>{taskSelectionSummary}</div>
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button onClick={() => setSelectedTodoIds([])} style={chipStyle(selectedTodoIds.length === 0)}>すべて</button>
@@ -3581,7 +3581,7 @@ function GanttViewContent({
 
             <div style={settingsSectionStyle}>
               <label style={controlLabelStyle}>依存関係</label>
-              <div style={{ fontSize: '0.76rem', color: 'var(--slate-400)', lineHeight: 1.5 }}>
+              <div style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)', lineHeight: 1.5 }}>
                 前タスクの完了後に後タスクを開始する関係です。待機日数を入れると、その分だけ開始を後ろへずらします。
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
@@ -3618,20 +3618,20 @@ function GanttViewContent({
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button onClick={() => void createDependency()} style={chipStyle(false)}>依存関係を追加</button>
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>タスクバー右端の丸をドラッグしても依存関係を追加できます。</div>
-              {dependencyFeedback && <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>{dependencyFeedback}</div>}
+              <div style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>タスクバー右端の丸をドラッグしても依存関係を追加できます。</div>
+              {dependencyFeedback && <div style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>{dependencyFeedback}</div>}
               {dependencyList.length === 0 ? (
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>依存関係はまだありません。</div>
+                <div style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>依存関係はまだありません。</div>
               ) : (
                 <div style={dependencyListStyle}>
                   {dependencyList.map((dependency) => (
                     <div key={dependency.id} style={dependencyRowStyle}>
                       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ color: 'var(--slate-200)', fontSize: '0.78rem', fontWeight: 700 }}>
+                        <span style={{ color: 'var(--slate-200)', fontSize: 'var(--font-control)', fontWeight: 700 }}>
                           {todoById.get(dependency.predecessor_todo_id)?.title ?? '不明なタスク'}
                         </span>
-                        <span style={{ color: 'var(--text-subtle)', fontSize: '0.72rem' }}>-&gt;</span>
-                        <span style={{ color: 'var(--slate-300)', fontSize: '0.76rem' }}>
+                        <span style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-caption)' }}>-&gt;</span>
+                        <span style={{ color: 'var(--slate-300)', fontSize: 'var(--font-control)' }}>
                           {todoById.get(dependency.successor_todo_id)?.title ?? '不明なタスク'}
                         </span>
                         <span style={dependencyLagBadgeStyle}>
@@ -3651,7 +3651,7 @@ function GanttViewContent({
 
             <div style={settingsSectionStyle}>
               <label style={controlLabelStyle}>基準線</label>
-              <div style={{ fontSize: '0.76rem', color: 'var(--slate-400)', lineHeight: 1.5 }}>
+              <div style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)', lineHeight: 1.5 }}>
                 現在の予定を保存し、あとから実際の計画と見比べられます。
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -3667,7 +3667,7 @@ function GanttViewContent({
                   </button>
                 )}
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
+              <div style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>
                 {baselineSnapshot
                   ? `保存日時 ${baselineSnapshot.capturedAt.slice(0, 10)} ${baselineSnapshot.capturedAt.slice(11, 16)}`
                   : '保存済みの基準線はありません。'}
@@ -3684,7 +3684,7 @@ function GanttViewContent({
         ) : !hasAnyTodos ? (
           <div style={{ ...centerEmptyStyle, flexDirection: 'column' }}>
             <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--slate-200)' }}>まだタスクがありません</div>
-            <div style={{ marginTop: 6, fontSize: '0.8rem', color: 'var(--slate-400)' }}>
+            <div style={{ marginTop: 6, fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>
               タスクを追加すると、開始日から期限までが横棒で表示されます。バーをドラッグすると日程を変えられます。
             </div>
             {onAddTodo && (
@@ -3694,7 +3694,7 @@ function GanttViewContent({
         ) : displayedRangeGroups.length === 0 ? (
           <div style={{ ...centerEmptyStyle, flexDirection: 'column' }}>
             <div>この条件で表示できる予定タスクはありません。</div>
-            <div style={{ marginTop: 6, fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
+            <div style={{ marginTop: 6, fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>
               {unscheduledGroups.length > 0 ? `日付のないタスクが${unscheduledGroups.length}件あります（下の「未配置タスク」）。` : ''}
               画面上部に「タスク一覧の絞り込み」が出ているときは、そこでも解除できます。
             </div>
@@ -3744,8 +3744,8 @@ function GanttViewContent({
                           : undefined
                       }}
                     >
-                      <div style={{ fontSize: '0.7rem', color: unit.isCurrent ? (timeScale === 'day' ? 'var(--rose-200)' : 'var(--blue-200)') : unit.dayKind === 'saturday' ? 'var(--sky-300)' : unit.dayKind ? 'var(--red-300)' : 'var(--text-subtle)' }}>{unit.primaryLabel}</div>
-                      <div style={{ marginTop: 2, fontSize: '0.7rem', color: unit.isCurrent ? 'var(--blue-100)' : 'var(--slate-300)', fontWeight: unit.isCurrent ? 700 : 500 }}>{unit.secondaryLabel}</div>
+                      <div style={{ fontSize: 'var(--font-caption)', color: unit.isCurrent ? (timeScale === 'day' ? 'var(--rose-200)' : 'var(--blue-200)') : unit.dayKind === 'saturday' ? 'var(--sky-300)' : unit.dayKind ? 'var(--red-300)' : 'var(--text-subtle)' }}>{unit.primaryLabel}</div>
+                      <div style={{ marginTop: 2, fontSize: 'var(--font-caption)', color: unit.isCurrent ? 'var(--blue-100)' : 'var(--slate-300)', fontWeight: unit.isCurrent ? 700 : 500 }}>{unit.secondaryLabel}</div>
                     </div>
                   ))}
                 </div>
@@ -3869,7 +3869,7 @@ function GanttViewContent({
                               }}
                               title={`「${section.label}」にタスクを追加`}
                               aria-label={`${section.label}にタスクを追加`}
-                              style={{ ...subTaskAddButtonStyle(false), marginLeft: 'auto', width: 'auto', padding: '0 8px', fontSize: '0.72rem' }}
+                              style={{ ...subTaskAddButtonStyle(false), marginLeft: 'auto', width: 'auto', padding: '0 8px', fontSize: 'var(--font-caption)' }}
                             >
                               ＋ 追加
                             </button>
@@ -4274,19 +4274,19 @@ function GanttViewContent({
                               style={{ position: 'absolute', left: 8, right: 8, top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: todoOutsideRange ? 'center' : undefined, cursor: todoOutsideRange || !barEditable ? 'pointer' : 'grab', color: barTone.text, zIndex: 2 }}
                             >
                               {todoOutsideRange ? (
-                                <span style={{ fontSize: '0.7rem', fontWeight: 800, whiteSpace: 'nowrap' }}>{todoOutsideRange === 'before' ? '← 期間前' : '期間後 →'}</span>
+                                <span style={{ fontSize: 'var(--font-caption)', fontWeight: 800, whiteSpace: 'nowrap' }}>{todoOutsideRange === 'before' ? '← 期間前' : '期間後 →'}</span>
               ) : parentLabelOutside ? (
-                                barWidth > 36 && <span style={{ fontSize: '0.7rem', fontWeight: 700, whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)' }}>{listMode ? '☑' : `${progress}%`}</span>
+                                barWidth > 36 && <span style={{ fontSize: 'var(--font-caption)', fontWeight: 700, whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)' }}>{listMode ? '☑' : `${progress}%`}</span>
                               ) : barWidth > 56 && (
                                 // 開始日が画面の左外にあっても、見えている範囲の左端にタスク名を出し続ける
                                 <span style={{ position: 'sticky', left: leftTableWidth + 10, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)' }}>
-                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{listMode ? '☑ ' : group.todo.status === 'on_hold' ? '保留中 · ' : ''}{group.todo.title}</span>
+                                  <span style={{ fontSize: 'var(--font-caption)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{listMode ? '☑ ' : group.todo.status === 'on_hold' ? '保留中 · ' : ''}{group.todo.title}</span>
                                   {barWidth > 170 ? (
-                                    <span style={{ fontSize: '0.7rem', fontWeight: 600, opacity: 0.9, flexShrink: 0 }}>
+                                    <span style={{ fontSize: 'var(--font-caption)', fontWeight: 600, opacity: 0.9, flexShrink: 0 }}>
                                       {[group.todo.assignee_name, listMode ? checklistText : `${progress}%`, scheduleStatusText].filter(Boolean).join('・')}
                                     </span>
                                   ) : scheduleStatusText && (
-                                    <span style={{ fontSize: '0.7rem', fontWeight: 700, flexShrink: 0 }}>{scheduleStatusText}</span>
+                                    <span style={{ fontSize: 'var(--font-caption)', fontWeight: 700, flexShrink: 0 }}>{scheduleStatusText}</span>
                                   )}
                                 </span>
                               )}
@@ -4302,10 +4302,10 @@ function GanttViewContent({
                         {parentLabelOutside && (
                           <span
                             aria-hidden="true"
-                            style={{ position: 'absolute', left: parentLabelLeft, top: 0, height: PARENT_ROW_HEIGHT, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.7rem', fontWeight: 700, color: GANTT_TEXT, whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 1 }}
+                            style={{ position: 'absolute', left: parentLabelLeft, top: 0, height: PARENT_ROW_HEIGHT, display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-caption)', fontWeight: 700, color: GANTT_TEXT, whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 1 }}
                           >
                             {parentTitleText}
-                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-subtle)' }}>
+                            <span style={{ fontSize: 'var(--font-caption)', fontWeight: 600, color: 'var(--text-subtle)' }}>
                               {[group.todo.assignee_name, listMode ? checklistText : `${progress}%`, scheduleStatusText].filter(Boolean).join('・')}
                             </span>
                           </span>
@@ -4455,7 +4455,7 @@ function GanttViewContent({
                                   />
                                 ) : (
                                 <>
-                                <span aria-hidden="true" style={{ color: 'var(--text-subtle)', fontSize: '0.74rem', flexShrink: 0, width: 12, textAlign: 'center' }}>
+                                <span aria-hidden="true" style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-caption)', flexShrink: 0, width: 12, textAlign: 'center' }}>
                                   {isLastSubTask ? '└' : '├'}
                                 </span>
                                 <button
@@ -4465,7 +4465,7 @@ function GanttViewContent({
                                     ...tableTitleButtonStyle,
                                     color: tone.text,
                                     cursor: 'text',
-                                    fontSize: '0.72rem',
+                                    fontSize: 'var(--font-caption)',
                                     fontWeight: 600,
                                     textDecoration: Boolean(subTask.done) ? 'line-through' : 'none'
                                   }}
@@ -4610,7 +4610,7 @@ function GanttViewContent({
                                 }}
                                 style={{ position: 'absolute', left: 4, right: 4, top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: subTaskOutsideRange ? 'center' : 'flex-start', cursor: subTaskOutsideRange || !isTimelineEditable ? 'pointer' : 'grab', zIndex: 2 }}
                               >
-                                <span style={{ position: subTaskOutsideRange ? undefined : 'sticky', left: leftTableWidth + 10, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.7rem', fontWeight: 700, padding: '0 2px', whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
+                                <span style={{ position: subTaskOutsideRange ? undefined : 'sticky', left: leftTableWidth + 10, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 'var(--font-caption)', fontWeight: 700, padding: '0 2px', whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
                                   {subTaskOutsideRange
                                     ? subTaskOutsideRange === 'before' ? '← 期間前' : '期間後 →'
                                     : subTaskLabelOutside
@@ -4636,7 +4636,7 @@ function GanttViewContent({
                                   height: SUBTASK_ROW_HEIGHT,
                                   display: 'flex',
                                   alignItems: 'center',
-                                  fontSize: '0.7rem',
+                                  fontSize: 'var(--font-caption)',
                                   fontWeight: 700,
                                   color: subTaskOverdue ? 'var(--red-300)' : GANTT_TEXT,
                                   whiteSpace: 'nowrap',
@@ -4690,7 +4690,7 @@ function GanttViewContent({
                                   }
                                 }}
                                 placeholder="サブタスク名"
-                                style={{ ...tableInputStyle, height: 32, fontSize: '0.76rem' }}
+                                style={{ ...tableInputStyle, height: 32, fontSize: 'var(--font-control)' }}
                               />
                               <input
                                 type="date"
@@ -4736,7 +4736,7 @@ function GanttViewContent({
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  fontSize: '0.7rem',
+                                  fontSize: 'var(--font-caption)',
                                   fontWeight: 800,
                                   opacity: 0.82,
                                   overflow: 'hidden'
@@ -4762,7 +4762,7 @@ function GanttViewContent({
 
       {/* 日付のないタスクが0件のときは1行だけにして、チャートの高さを取らない */}
       {showUnscheduled && unscheduledGroups.length === 0 && (
-        <div ref={unscheduledSectionRef} style={{ fontSize: '0.76rem', color: 'var(--text-subtle)', padding: '2px 4px' }}>
+        <div ref={unscheduledSectionRef} style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)', padding: '2px 4px' }}>
           未配置タスク（日付なし）はありません。開始日も期限もないタスクは、ここに並びます。
         </div>
       )}
@@ -4770,7 +4770,7 @@ function GanttViewContent({
         <div ref={unscheduledSectionRef} style={{ background: 'var(--gray-900)', border: '1px solid var(--gray-800)', borderRadius: 16, padding: 16, scrollMarginTop: 8 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ fontSize: '0.92rem', color: 'var(--slate-50)', fontWeight: 700 }}>未配置タスク（日付なし）{unscheduledGroups.length > 0 ? ` ${unscheduledGroups.length}件` : ''}</div>
-            <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>開始日も期限もないタスクです。「今日に配置」を押すか、詳細で日程を入れるとチャートに出ます。</div>
+            <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>開始日も期限もないタスクです。「今日に配置」を押すか、詳細で日程を入れるとチャートに出ます。</div>
           </div>
 
           {unscheduledGroups.length === 0 ? (
@@ -4780,7 +4780,7 @@ function GanttViewContent({
               {unscheduledGroups.map((group) => (
                 <div key={group.todo.id} style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 13px' }}>
                   <button onClick={() => onSelectTodo(group.todo.id)} style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700, textAlign: 'left' }}>{group.todo.title}</button>
-                  <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--slate-400)' }}>
+                  <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
                     {group.todo.priority >= 4 && (
                       <span style={{ color: group.todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)', fontWeight: 700 }}>優先度 {group.todo.priority === 5 ? '最高' : '高'}</span>
                     )}
@@ -4795,7 +4795,7 @@ function GanttViewContent({
                       </span>
                     )}
                   </div>
-                  <button onClick={() => void onUpdateTodo(group.todo.id, { start_date: todayKey, due_date: todayKey })} style={{ marginTop: 10, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--blue-600)', background: 'var(--blue-950)', color: 'var(--blue-100)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700 }}>今日に配置</button>
+                  <button onClick={() => void onUpdateTodo(group.todo.id, { start_date: todayKey, due_date: todayKey })} style={{ marginTop: 10, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--blue-600)', background: 'var(--blue-950)', color: 'var(--blue-100)', cursor: 'pointer', fontSize: 'var(--font-caption)', fontWeight: 700 }}>今日に配置</button>
                 </div>
               ))}
             </div>
@@ -4817,7 +4817,7 @@ const inputStyle: React.CSSProperties = {
 }
 
 const controlLabelStyle: React.CSSProperties = {
-  fontSize: '0.72rem',
+  fontSize: 'var(--font-caption)',
   color: 'var(--slate-400)'
 }
 
@@ -4830,7 +4830,7 @@ const toggleLabelStyle: React.CSSProperties = {
   background: 'var(--slate-900)',
   border: '1px solid var(--slate-700)',
   color: 'var(--slate-300)',
-  fontSize: '0.8rem'
+  fontSize: 'var(--font-control)'
 }
 
 const leftHeaderGridStyle: React.CSSProperties = {
@@ -4839,7 +4839,7 @@ const leftHeaderGridStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 8,
   color: 'var(--slate-400)',
-  fontSize: '0.7rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 700,
   textTransform: 'uppercase'
 }
@@ -4918,7 +4918,7 @@ const tableTitleButtonStyle: React.CSSProperties = {
   padding: 0,
   cursor: 'pointer',
   color: 'var(--slate-50)',
-  fontSize: '0.75rem',
+  fontSize: 'var(--font-control)',
   fontWeight: 700,
   textAlign: 'left',
   width: '100%',
@@ -4935,7 +4935,7 @@ const tableCellStyle: React.CSSProperties = {
   gap: 4,
   overflow: 'hidden',
   color: 'var(--slate-300)',
-  fontSize: '0.7rem',
+  fontSize: 'var(--font-caption)',
   fontVariantNumeric: 'tabular-nums',
   whiteSpace: 'nowrap'
 }
@@ -4959,7 +4959,7 @@ const tableInputStyle: React.CSSProperties = {
   background: 'var(--slate-950)',
   color: 'var(--slate-200)',
   padding: '2px 5px',
-  fontSize: '0.7rem',
+  fontSize: 'var(--font-caption)',
   fontVariantNumeric: 'tabular-nums',
   outline: 'none',
   boxSizing: 'border-box'
@@ -4973,7 +4973,7 @@ const tableSelectStyle: React.CSSProperties = {
 const subTableCellStyle: React.CSSProperties = {
   ...tableCellStyle,
   color: 'var(--slate-400)',
-  fontSize: '0.7rem'
+  fontSize: 'var(--font-caption)'
 }
 
 const statusDotStyle: React.CSSProperties = {
@@ -4992,15 +4992,15 @@ const categoryCountBadgeStyle: React.CSSProperties = {
   padding: '0 7px',
   borderRadius: 999,
   color: GANTT_MUTED,
-  fontSize: '0.7rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 800,
   lineHeight: 1
 }
 
 function categoryCollapseButtonStyle(collapsed: boolean): React.CSSProperties {
   return {
-    width: 22,
-    height: 22,
+    width: 24,
+    height: 24,
     borderRadius: 6,
     border: `1px solid ${GANTT_LINE}`,
     background: GANTT_SURFACE_PRESSED,
@@ -5012,7 +5012,7 @@ function categoryCollapseButtonStyle(collapsed: boolean): React.CSSProperties {
     transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
     transition: 'transform 120ms ease, color 120ms ease',
     flexShrink: 0,
-    fontSize: '0.72rem',
+    fontSize: 'var(--font-caption)',
     lineHeight: 1
   }
 }
@@ -5020,8 +5020,8 @@ function categoryCollapseButtonStyle(collapsed: boolean): React.CSSProperties {
 // 行の小さいボタン（＋・保留）。文字の大きさに合わせて広げる（行の高さ 38px に収まる 32px まで。150% で 33.6px → 32px）
 function subTaskAddButtonStyle(disabled: boolean): React.CSSProperties {
   return {
-    width: 'clamp(22px, 1.4rem, 32px)',
-    height: 'clamp(22px, 1.4rem, 32px)',
+    width: 'clamp(24px, 1.5rem, 32px)',
+    height: 'clamp(24px, 1.5rem, 32px)',
     borderRadius: 6,
     border: `1px solid ${disabled ? 'var(--slate-600)' : GANTT_LINE}`,
     background: disabled ? GANTT_SURFACE_PRESSED : GANTT_SURFACE_RAISED,
@@ -5046,7 +5046,7 @@ function inlineConfirmButtonStyle(disabled: boolean): React.CSSProperties {
     background: disabled ? 'var(--emerald-900)' : 'var(--emerald-700)',
     color: 'var(--on-fill-green-100)',
     cursor: disabled ? 'not-allowed' : 'pointer',
-    fontSize: '0.72rem',
+    fontSize: 'var(--font-caption)',
     fontWeight: 800,
     whiteSpace: 'nowrap'
   }
@@ -5061,7 +5061,7 @@ function inlineCancelButtonStyle(disabled: boolean): React.CSSProperties {
     background: GANTT_SURFACE_PRESSED,
     color: disabled ? 'var(--slate-500)' : GANTT_MUTED,
     cursor: disabled ? 'not-allowed' : 'pointer',
-    fontSize: '0.72rem',
+    fontSize: 'var(--font-caption)',
     fontWeight: 800,
     whiteSpace: 'nowrap'
   }
@@ -5074,7 +5074,7 @@ const headerActionButtonStyle: React.CSSProperties = {
   background: 'var(--blue-950)',
   color: 'var(--blue-100)',
   cursor: 'pointer',
-  fontSize: '0.74rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 700
 }
 
@@ -5084,7 +5084,7 @@ const standaloneBadgeStyle: React.CSSProperties = {
   border: '1px solid var(--slate-700)',
   background: 'var(--gray-900)',
   color: 'var(--slate-300)',
-  fontSize: '0.74rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 700
 }
 
@@ -5130,7 +5130,7 @@ const dependencyDeleteButtonStyle: React.CSSProperties = {
   background: 'var(--red-950)',
   color: 'var(--red-200)',
   cursor: 'pointer',
-  fontSize: '0.72rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 700,
   flexShrink: 0
 }
@@ -5141,7 +5141,7 @@ const dependencyLagBadgeStyle: React.CSSProperties = {
   border: '1px solid var(--slate-700)',
   background: 'var(--c-0b1220)',
   color: 'var(--slate-300)',
-  fontSize: '0.72rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 700
 }
 
@@ -5152,13 +5152,13 @@ const dependencyLagButtonStyle: React.CSSProperties = {
   background: 'var(--gray-900)',
   color: 'var(--slate-300)',
   cursor: 'pointer',
-  fontSize: '0.72rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 700,
   flexShrink: 0
 }
 
 const selectionEmptyStyle: React.CSSProperties = {
-  fontSize: '0.78rem',
+  fontSize: 'var(--font-control)',
   color: 'var(--text-subtle)'
 }
 
@@ -5168,7 +5168,7 @@ const collapsedSummaryChipStyle: React.CSSProperties = {
   background: 'var(--slate-900)',
   border: '1px solid var(--slate-700)',
   color: 'var(--slate-300)',
-  fontSize: '0.7rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 600
 }
 
@@ -5192,7 +5192,7 @@ function toolButtonStyle(active: boolean, disabled = false): React.CSSProperties
     background: active ? 'var(--blue-600)' : 'transparent',
     color: disabled ? 'var(--slate-600)' : active ? 'var(--on-fill-blue-50)' : 'var(--slate-300)',
     cursor: disabled ? 'not-allowed' : 'pointer',
-    fontSize: '0.76rem',
+    fontSize: 'var(--font-control)',
     fontWeight: 700,
     whiteSpace: 'nowrap'
   }
@@ -5249,7 +5249,7 @@ const floatingCloseButtonStyle: React.CSSProperties = {
   background: 'var(--gray-900)',
   color: 'var(--slate-300)',
   cursor: 'pointer',
-  fontSize: '0.74rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 700
 }
 
@@ -5270,7 +5270,7 @@ const secondaryActionChipStyle: React.CSSProperties = {
   background: 'var(--slate-900)',
   color: 'var(--slate-300)',
   cursor: 'pointer',
-  fontSize: '0.76rem',
+  fontSize: 'var(--font-control)',
   fontWeight: 700
 }
 
@@ -5279,7 +5279,7 @@ function legendItemStyle(): React.CSSProperties {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 5,
-    fontSize: '0.7rem',
+    fontSize: 'var(--font-caption)',
     color: 'var(--slate-400)',
     whiteSpace: 'nowrap'
   }
@@ -5293,15 +5293,15 @@ function chipStyle(active: boolean): React.CSSProperties {
     background: active ? 'var(--blue-700)' : 'var(--gray-900)',
     color: active ? 'var(--on-fill-blue-50)' : 'var(--slate-400)',
     cursor: 'pointer',
-    fontSize: '0.76rem',
+    fontSize: 'var(--font-control)',
     fontWeight: 700
   }
 }
 
 function expandToggleButtonStyle(active: boolean, expanded: boolean): React.CSSProperties {
   return {
-    width: 'clamp(18px, 1.15rem, 28px)',
-    height: 'clamp(18px, 1.15rem, 28px)',
+    width: 'clamp(24px, 1.5rem, 32px)',
+    height: 'clamp(24px, 1.5rem, 32px)',
     borderRadius: 4,
     border: `1px solid ${active ? 'var(--slate-700)' : 'var(--gray-800)'}`,
     background: active ? 'var(--gray-900)' : 'transparent',
@@ -5311,7 +5311,7 @@ function expandToggleButtonStyle(active: boolean, expanded: boolean): React.CSSP
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    fontSize: '0.7rem'
+    fontSize: 'var(--font-caption)'
   }
 }
 
@@ -5330,7 +5330,7 @@ function subTaskGripStyle(disabled: boolean, dragging: boolean): React.CSSProper
     justifyContent: 'center',
     // ふだんの色とマウスを乗せたときの色は CSS（.tarbo-gantt-subtask-grip）で決める
     ...(dragging ? { background: 'var(--sky-950)', color: 'var(--sky-100)' } : {}),
-    fontSize: '0.8rem',
+    fontSize: 'var(--font-control)',
     lineHeight: 1,
     userSelect: 'none',
     cursor: disabled ? 'not-allowed' : 'grab'
@@ -5363,7 +5363,7 @@ function reorderHandleStyle(disabled: boolean, dragging: boolean): React.CSSProp
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '0.7rem',
+    fontSize: 'var(--font-caption)',
     lineHeight: 1,
     letterSpacing: '-0.1em',
     userSelect: 'none',
@@ -5381,7 +5381,7 @@ function tagStyle(active: boolean, accent: string): React.CSSProperties {
     background: active ? `color-mix(in srgb, ${accent} 20%, transparent)` : 'var(--gray-900)',
     color: active ? 'var(--slate-200)' : 'var(--slate-400)',
     cursor: 'pointer',
-    fontSize: '0.76rem',
+    fontSize: 'var(--font-control)',
     fontWeight: 700
   }
 }
@@ -5395,7 +5395,7 @@ function taskToggleStyle(active: boolean, accent?: string | null): React.CSSProp
     background: active ? `color-mix(in srgb, ${color} 14.9%, transparent)` : 'var(--gray-900)',
     color: active ? 'var(--slate-200)' : 'var(--slate-400)',
     cursor: 'pointer',
-    fontSize: '0.75rem',
+    fontSize: 'var(--font-control)',
     fontWeight: 700,
     maxWidth: 240,
     overflow: 'hidden',
