@@ -1081,3 +1081,22 @@ R17〜25は各ラウンドの改善前評価、R26は最終実装に対する総
 5. 大きな仕様変更が必要な計画/報告の情報設計は提案として扱う。配布物一致を必要とする場合は新しいローカルインストーラーを生成・検証する作業が別途必要。公開は今回の範囲に含めない。
 
 主要変更ファイル: `App.tsx`、`Toolbar.tsx`/`.css`、`TodoDetail.tsx`、`KanbanView.tsx`、`QuickAddModal.tsx`、`PlanView.tsx`、`ReportView.tsx`、`ProgressTimeline.tsx`、`TeamDashboard.tsx`、`WorkLogSummary.tsx`、`TodoListsView.tsx`、`GettingStartedModal.tsx`、`CommandPalette.tsx`、`ProgressSlider.tsx`、`useDialogFocus.ts`、`styles/theme.css`、`styles/gantt-neumorphic.css`、`tests/ux-usability-electron.cjs`。詳細はGit差分を参照。R26のコミットIDは最終記録に追記する。
+
+### 今回のGitコミット一覧・引継ぎ
+
+作業ブランチは `ux-improve`。開始点 `3f83647` 以降のラウンド別コミット:
+
+| ラウンド | コミット | 内容 |
+|---|---|---|
+| 17 | `b8d0283` | 固定保存・記録の失敗回復・検索導線 |
+| 18 | `16ab584` | カンバン入力保持/再試行・追加小窓のキー操作 |
+| 19 | `4509716` | 日付テーマ・補助文字統一・操作範囲 |
+| 20 | `a50458b` | 報告の操作整理・担当範囲/移動 |
+| 21 | `7690fbd` | 初回用途説明・ToDo管理整理 |
+| 22 | `7cae1e8` | 取得失敗と空データの区別・報告期間整合 |
+| 23 | `c03dae7` | 狭幅閲覧・タブ・文字拡大 |
+| 24 | `c804a6e` | 投稿/返信中の入力と二重送信保護 |
+| 25 | `3b232d1` | 計画失敗表示・二重実行防止 |
+| 26 | `b7b30d6` | 最終評価・画面比較・回帰結果・28画像 |
+
+本コミット一覧は追加の記録専用コミットで確定する。コードの最終検証対象は `3b232d1`。以後は画像・結果JSON・本ログのみの変更。次回は上の「次回の作業」から始め、同じ10ラウンドを重複実施しない。既存の未追跡資料・過去画像は継続して利用者の作業として扱う。
