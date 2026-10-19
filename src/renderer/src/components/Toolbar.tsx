@@ -12,6 +12,8 @@ interface Props {
   onStopTimer?: () => void
   onOpenQuickAdd: () => void
   onOpenProgressReport: () => void
+  /** 使い方（はじめに）の案内を開く */
+  onOpenGettingStarted?: () => void
   showArchived: boolean
   onToggleArchived: () => void
   onOpenSettings: () => void
@@ -79,6 +81,7 @@ export function Toolbar({
   isTimerRunning, runningTask = null, onOpenRunningTask, onStopTimer,
   onOpenQuickAdd,
   onOpenProgressReport,
+  onOpenGettingStarted,
   showArchived,
   onToggleArchived,
   onOpenSettings,
@@ -155,6 +158,7 @@ export function Toolbar({
     items: [
       { key: 'report', label: '進捗レポート', description: '期間を指定して、進捗ログや作業時間をまとめます', onSelect: onOpenProgressReport },
       { key: 'settings', label: '設定', onSelect: onOpenSettings },
+      ...(onOpenGettingStarted ? [{ key: 'help', label: '使い方（はじめに）', description: '毎日することと、上のタブの使いみちをまとめています', onSelect: onOpenGettingStarted }] : []),
       ...(onLogout ? [{ key: 'logout', label: 'ログアウト', onSelect: onLogout }] : [])
     ]
   }]

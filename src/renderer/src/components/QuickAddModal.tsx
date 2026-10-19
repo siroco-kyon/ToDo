@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { Category, CreateTodoInput, PublicUser, Todo, TodoRecurrence } from '../types'
 import { AssigneePicker } from './AssigneePicker'
-import { toDateKey } from '../lib/dueDate'
+import { formatShortDate, toDateKey } from '../lib/dueDate'
 import { TODO_RECURRENCE_OPTIONS, todoRecurrenceLabel } from '../lib/recurrence'
 
 interface Props {
@@ -95,6 +95,8 @@ export function QuickAddModal({
     } catch { return {} }
   }, [])
   const [title, setTitle] = useState(savedDraft.title ?? '')
+  // 前回の書きかけを戻したか（戻したときは、そう知らせる。古い下書きをうっかり追加しないように）
+  const [restoredDraft, setRestoredDraft] = useState(() => Boolean(savedDraft.title?.trim() || savedDraft.description?.trim() || savedDraft.memo?.trim()))
   const [description, setDescription] = useState(savedDraft.description ?? '')
   const [memo, setMemo] = useState(savedDraft.memo ?? '')
   const [categoryId, setCategoryId] = useState(() => (
@@ -285,6 +287,25 @@ export function QuickAddModal({
               rows={titles.length > 1 ? Math.min(6, titles.length + 1) : 2}
               style={{ ...selectStyle, fontSize: '1rem', resize: 'vertical', lineHeight: 1.5 }}
             />
+            {restoredDraft && (
+              <div role="status" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem', color: 'var(--amber-300)' }}>
+                前回の書きかけを戻しました
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTitle('')
+                    setDescription('')
+                    setMemo('')
+                    setRestoredDraft(false)
+                    try { window.localStorage.removeItem('quick-add-draft') } catch { /* 消せなくても入力欄は空にする */ }
+                    inputRef.current?.focus()
+                  }}
+                  style={{ ...presetButtonStyle(false), padding: '2px 8px', fontSize: '0.72rem' }}
+                >
+                  消して新しく書く
+                </button>
+              </div>
+            )}
             <div style={{ marginTop: 4, fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
               Enter で追加・Shift+Enter で改行。複数行にすると1行ずつ別のタスクになります
               {titles.length > 1 && <span style={{ color: 'var(--blue-300)', fontWeight: 700 }}>（{titles.length}件）</span>}
@@ -449,8 +470,14 @@ export function QuickAddModal({
           )}
 
           {isDateRangeInvalid && (
-            <div role="alert" style={{ fontSize: '0.76rem', color: 'var(--red-300)' }}>
-              開始日は期限以前にしてください。
+            <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.76rem', color: 'var(--red-300)' }}>
+              <span>期限 {formatShortDate(dueDate)} が、開始日 {formatShortDate(startDate)} より前になっています。</span>
+              <button type="button" onClick={() => setStartDate(dueDate)} style={presetButtonStyle(false)}>開始日を期限と同じ日にする</button>
+            </div>
+          )}
+          {!isDateRangeInvalid && dueDate && dueDate < toDateKey(new Date()) && (
+            <div role="status" style={{ fontSize: '0.76rem', color: 'var(--amber-300)' }}>
+              期限 {formatShortDate(dueDate)} は過ぎた日付です（このまま追加すると「期限超過」になります）
             </div>
           )}
 

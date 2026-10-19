@@ -506,14 +506,26 @@ export function TodoDetail({
     const nextStatus: Todo['status'] = todo.status === 'done'
       ? (todo.progress > 0 ? 'active' : 'not_started')
       : 'done'
+    const previousStatus = todo.status
+    const todoId = todo.id
+    // 一覧で完了にしたときと同じく、知らせから元に戻せるようにする
+    const undo = {
+      label: '元に戻す',
+      run: () => {
+        void onUpdate(todoId, { status: previousStatus }).then(
+          () => onShowToast('元に戻しました'),
+          (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+        )
+      }
+    }
     try {
       await onUpdate(todo.id, { status: nextStatus })
       if (nextStatus === 'done') {
         const recurrenceMessage = recurrenceDoneMessage(todo)
-        onShowToast(recurrenceMessage ? `完了にしました。${recurrenceMessage}` : '完了にしました')
+        onShowToast(recurrenceMessage ? `完了にしました。${recurrenceMessage}` : '完了にしました', 'success', undo)
       } else {
         const reopenMessage = recurrenceReopenMessage(todo)
-        onShowToast(reopenMessage ? `完了を取り消しました。${reopenMessage}` : '完了を取り消しました')
+        onShowToast(reopenMessage ? `完了を取り消しました。${reopenMessage}` : '完了を取り消しました', 'success', undo)
       }
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '状態を変更できませんでした', 'error')
@@ -1104,7 +1116,7 @@ export function TodoDetail({
                   }} style={buttonStyle('var(--red-500)')}>{timerStopping ? '停止中…' : '停止'}</button>
                 </>
               ) : (
-                <button onClick={() => void onStartTimer(todo.id)} style={buttonStyle('var(--green-400)', 'var(--black)')}>開始</button>
+                <button onClick={() => void onStartTimer(todo.id)} title="このタスクの作業時間を計り始めます（終わったら「停止」）" style={buttonStyle('var(--green-400)', 'var(--black)')}>計測開始</button>
               )}
             </div>
           </div>
@@ -1237,9 +1249,7 @@ export function TodoDetail({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>
                   進捗{' '}
-                  {todo.status === 'done'
-                    ? <span style={{ color: 'var(--green-400)', fontSize: '0.7rem', fontWeight: 700 }}>完了済み（数字は完了にしたときの進捗）</span>
-                    : <span style={{ color: 'var(--text-subtle)', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span>}
+                  {todo.status !== 'done' && <span style={{ color: 'var(--text-subtle)', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span>}
                 </span>
                 {!isArchived && (
                   <button
@@ -1252,12 +1262,19 @@ export function TodoDetail({
                   </button>
                 )}
               </div>
-              <ProgressSlider
-                value={todo.progress ?? 0}
-                label={`${todo.title}の進捗率`}
-                disabled={isArchived}
-                onCommit={handleProgressCommit}
-              />
+              {todo.status === 'done' ? (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', padding: '4px 0' }}>
+                  <span style={{ color: 'var(--green-400)', fontSize: '1rem', fontWeight: 800 }}>✓ 完了</span>
+                  {(todo.progress ?? 0) < 100 && <span style={{ color: 'var(--text-subtle)', fontSize: '0.72rem' }}>完了にしたときの進捗は {todo.progress ?? 0}% でした（書き直す必要はありません）</span>}
+                </div>
+              ) : (
+                <ProgressSlider
+                  value={todo.progress ?? 0}
+                  label={`${todo.title}の進捗率`}
+                  disabled={isArchived}
+                  onCommit={handleProgressCommit}
+                />
+              )}
               {subTaskProgress !== null && (
                 <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
                   サブタスク: {doneCount}/{subTasks.length} 完了

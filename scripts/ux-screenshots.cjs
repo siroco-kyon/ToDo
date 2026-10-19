@@ -105,6 +105,9 @@ async function applyLook(win, theme, fontScale) {
     localStorage.setItem('app-theme-mode', ${JSON.stringify(theme)})
     localStorage.setItem('app-font-scale', ${JSON.stringify(fontScale)})
     if (window.api) {
+      // 「はじめての方へ」の知らせは撮る画面に入れない（ラウンド15で追加）
+      const me = await window.api.authGetCurrentUser()
+      localStorage.setItem('hakobi-getting-started:' + (me ? me.id : 'local'), '1')
       await window.api.settingsSet('themeMode', ${JSON.stringify(theme)})
       await window.api.settingsSet('fontScale', ${JSON.stringify(fontScale)})
     }

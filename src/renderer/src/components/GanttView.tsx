@@ -4015,10 +4015,14 @@ function GanttViewContent({
                               toggleTodoExpansion(group.todo.id)
                             }}
                             disabled={!canToggleSubtasks}
+                            aria-hidden={canToggleSubtasks ? undefined : true}
+                            tabIndex={canToggleSubtasks ? undefined : -1}
                             aria-label={isExpanded ? `「${group.todo.title}」のサブタスクを折りたたむ` : `「${group.todo.title}」のサブタスクを展開する`}
+                            title={canToggleSubtasks ? (isExpanded ? 'サブタスクを折りたたむ' : 'サブタスクを開く') : undefined}
                             style={expandToggleButtonStyle(canToggleSubtasks, isExpanded)}
                           >
-                            {canToggleSubtasks ? (isExpanded ? '-' : '+') : '.'}
+                            {/* サブタスクがない行は何も出さない（「.」が何かのボタンに見えていた） */}
+                            {canToggleSubtasks ? (isExpanded ? '▾' : '▸') : ''}
                           </button>
                           <span
                             title={tone.label}
@@ -4075,7 +4079,7 @@ function GanttViewContent({
                                 title={group.todo.status === 'on_hold' ? '保留中です。押すと進行中に戻します' : 'タスクを保留する'}
                                 aria-label={group.todo.status === 'on_hold' ? `「${group.todo.title}」を進行中に戻す` : `「${group.todo.title}」を保留する`}
                                 style={{ ...subTaskAddButtonStyle(false), color: group.todo.status === 'on_hold' ? 'var(--purple-300)' : 'var(--slate-400)' }}
-                              >{group.todo.status === 'on_hold' ? '▶' : 'Ⅱ'}</button>
+                              >{group.todo.status === 'on_hold' ? '▶' : <span aria-hidden="true" style={{ fontSize: '0.62em', letterSpacing: '-0.1em' }}>❚❚</span>}</button>
                             )}
                             <button
                               onClick={(event) => {

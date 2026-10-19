@@ -1217,6 +1217,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const reportedCount = baseRows.filter((row) => row.reportedInPeriod).length
   const noteCount = baseRows.reduce((sum, row) => sum + row.notes.length, 0)
   const myNeedsReportCount = multiUser && currentUserId ? countOf('myNeedsReport') : 0
+  const myTaskCount = multiUser && currentUserId ? baseRows.filter((row) => isMyTask(row.todo, [], currentUserId)).length : 0
   const quickFilterChips: Array<{ value: QuickFilter; label: string; count: number; color: string; title: string }> = [
     { value: 'all', label: 'すべて', count: baseRows.length, color: 'var(--slate-300)', title: '絞り込まずに表示' },
     { value: 'needsReport', label: '報告なし', count: countOf('needsReport'), color: 'var(--amber-200)', title: '進行中（または開始日を過ぎた未着手）なのに、この期間に担当（主・副）の進捗ログもメモの更新もないタスク。チームタブの「報告なし（直近7日）」は、期間を直近7日にした同じ数え方' },
@@ -1684,6 +1685,15 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
             <div role="status" style={myReminderStyle}>
               <span>あなたの担当で、この期間まだ報告がないタスクが <strong>{myNeedsReportCount}件</strong> あります。<span className="hakobi-hide-narrow">進捗ログかメモで一言残しておきましょう。</span></span>
               <button onClick={() => setQuickFilter('myNeedsReport')} style={{ ...secondaryButtonStyle, marginLeft: 'auto' }}>自分の未報告だけ表示</button>
+            </div>
+          )}
+          {/* 自分の報告が済んだら、注意が消えるだけでなく「済んだ」と出す（定例の前に安心できるように） */}
+          {multiUser && currentUserId && myNeedsReportCount === 0 && myTaskCount > 0 && effectiveQuickFilter !== 'myNeedsReport' && (
+            <div role="status" style={myDoneStyle}>
+              <span>✓ この期間の自分の報告は済んでいます（担当 {myTaskCount}件）</span>
+              {effectiveGroupMode === 'assignee' && groups.some((group) => group.key === currentUserId) && (
+                <button onClick={() => jumpToGroup(currentUserId)} style={{ ...secondaryButtonStyle, marginLeft: 'auto' }}>自分の欄へ</button>
+              )}
             </div>
           )}
           {effectiveQuickFilter === 'myNeedsReport' && (
@@ -2733,6 +2743,19 @@ const myReminderStyle: React.CSSProperties = {
   border: '1px solid var(--yellow-700)',
   background: 'var(--c-1c1408)',
   color: 'var(--amber-200)',
+  fontSize: '0.8rem'
+}
+
+const myDoneStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  flexWrap: 'wrap',
+  padding: '5px 6px 5px 12px',
+  borderRadius: 10,
+  border: '1px solid var(--green-700)',
+  background: 'var(--green-950)',
+  color: 'var(--green-200)',
   fontSize: '0.8rem'
 }
 

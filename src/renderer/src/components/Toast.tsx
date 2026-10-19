@@ -3,7 +3,8 @@ import React, { useEffect, useRef, useState } from 'react'
 export interface ToastMessage {
   id: number
   message: string
-  type: 'success' | 'error'
+  /** info は、操作の結果ではない案内（パネルを自動で畳んだことなど）。控えめな色で出す */
+  type: 'success' | 'error' | 'info'
   actionLabel?: string
   onAction?: () => void
   /** 同じ key の知らせは新しいもので置き換える */
@@ -115,15 +116,16 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: nu
       // 長い文は折り返す（横に長く伸びて、画面の中ほどのメニューやボタンを覆わないように）
       maxWidth: 'min(28rem, calc(100vw - 40px))',
       boxSizing: 'border-box',
-      background: toast.type === 'success' ? 'var(--green-800)' : 'var(--red-900)',
-      border: `1px solid ${toast.type === 'success' ? 'var(--green-400)' : 'var(--red-500)'}`,
-      borderRadius: 8, color: 'var(--white)', fontSize: '0.9rem',
+      background: toast.type === 'success' ? 'var(--green-800)' : toast.type === 'info' ? 'var(--slate-800)' : 'var(--red-900)',
+      border: `1px solid ${toast.type === 'success' ? 'var(--green-400)' : toast.type === 'info' ? 'var(--slate-600)' : 'var(--red-500)'}`,
+      // 案内（info）は灰色の地なので、文字もテーマに合わせる（ライトでは濃い文字）
+      borderRadius: 8, color: toast.type === 'info' ? 'var(--slate-100)' : 'var(--white)', fontSize: '0.9rem',
       boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
       pointerEvents: 'auto', userSelect: 'none'
     }}>
-      <span>{toast.type === 'success' ? '✓ ' : '✗ '}{toast.message}</span>
-      {toast.actionLabel && toast.onAction && <button onClick={() => { toast.onAction?.(); removeAndReturn() }} style={{ marginLeft: 12, border: '1px solid rgba(255,255,255,.65)', borderRadius: 6, background: 'transparent', color: 'var(--white)', cursor: 'pointer', padding: '3px 7px' }}>{toast.actionLabel}</button>}
-      <button onClick={removeAndReturn} aria-label="この知らせを閉じる" style={{ marginLeft: 8, minWidth: '1.75rem', minHeight: '1.75rem', border: 0, borderRadius: 6, background: 'transparent', color: 'var(--white)', cursor: 'pointer', fontSize: '1rem' }}>×</button>
+      <span>{toast.type === 'success' ? '✓ ' : toast.type === 'info' ? 'ⓘ ' : '✗ '}{toast.message}</span>
+      {toast.actionLabel && toast.onAction && <button onClick={() => { toast.onAction?.(); removeAndReturn() }} style={{ marginLeft: 12, border: '1px solid currentColor', borderRadius: 6, background: 'transparent', color: 'inherit', cursor: 'pointer', padding: '3px 7px' }}>{toast.actionLabel}</button>}
+      <button onClick={removeAndReturn} aria-label="この知らせを閉じる" style={{ marginLeft: 8, minWidth: '1.75rem', minHeight: '1.75rem', border: 0, borderRadius: 6, background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: '1rem' }}>×</button>
     </div>
   )
 }

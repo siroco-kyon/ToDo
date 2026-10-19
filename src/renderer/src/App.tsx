@@ -34,6 +34,7 @@ const UserManagementModal = lazy(() => import('./components/UserManagementModal'
 const ProgressReportModal = lazy(() => import('./components/ProgressReportModal').then((module) => ({ default: module.ProgressReportModal })))
 const TaskReportWindow = lazy(() => import('./components/TaskReportWindow').then((module) => ({ default: module.TaskReportWindow })))
 const DesktopImportModal = lazy(() => import('./components/DesktopImportModal').then((module) => ({ default: module.DesktopImportModal })))
+const GettingStartedModal = lazy(() => import('./components/GettingStartedModal').then((module) => ({ default: module.GettingStartedModal })))
 const SetupWizardModal = lazy(() => import('./components/SetupWizardModal').then((module) => ({ default: module.SetupWizardModal })))
 const WorkLogSummary = lazy(() => import('./components/WorkLogSummary').then((module) => ({ default: module.WorkLogSummary })))
 const ProgressTimeline = lazy(() => import('./components/ProgressTimeline').then((module) => ({ default: module.ProgressTimeline })))
@@ -267,6 +268,7 @@ export function App(): React.JSX.Element {
   // 追加画面の初期値（ガントの見出しの「＋」から開いたときなど）。null は左の選択状態から決める
   const [quickAddDefaults, setQuickAddDefaults] = useState<{ categoryId?: string | null; assigneeId?: string | null; listMode?: boolean } | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [showGettingStarted, setShowGettingStarted] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const saved = window.localStorage.getItem('app-theme-mode')
     return saved === 'light' || saved === 'system' ? saved : 'dark'
@@ -324,7 +326,7 @@ export function App(): React.JSX.Element {
   const resizeRef = useRef<{ key: PaneKey; startX: number; startWidth: number } | null>(null)
 
   // action.key が同じ知らせは、新しいもので置き換える（進捗を続けて変えたときに知らせが積み重ならないように）
-  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success', action?: { label: string; run: () => void; key?: string }) => {
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success', action?: { label: string; run: () => void; key?: string }) => {
     const id = ++toastIdRef.current
     setToasts((prev) => [
       ...(action?.key ? prev.filter((toast) => toast.key !== action.key) : prev),
@@ -640,7 +642,7 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     if (isFirstLaunch !== false || activeView !== 'gantt' || !ganttPanesNoticePendingRef.current) return
     ganttPanesNoticePendingRef.current = false
-    showToast('ガントを広く見せるため、左右のパネルを畳みました。上の「表示」から開けます', 'success', {
+    showToast('ガントを広く見せるため、左右のパネルを畳みました。上の「表示」から開けます', 'info', {
       label: 'パネルを開く',
       run: () => setGanttPanes({ category: true, task: true, side: true })
     })
@@ -700,7 +702,7 @@ export function App(): React.JSX.Element {
     } catch { /* 覚えられなくても知らせる */ }
     showToast(forKanbanOnly
       ? `カンバンの4列が収まるよう、${hidden.join('と')}を隠しました。上の「表示」から開けます`
-      : `画面の幅に合わせて、${hidden.join('と')}を隠しました。上の「表示」から開けます`)
+      : `画面の幅に合わせて、${hidden.join('と')}を隠しました。上の「表示」から開けます`, 'info')
   }, [activeView, autoHideCategoryPane, autoHideSidePanel, autoHideTaskPane, isFirstLaunch, isKanban, openedWhileNarrow, showCategoryPane, showPlanRail, showTaskPane, showToast])
 
   // 一覧の担当の絞り込みは、見ている人ごとに端末へ覚える（読み込み直すたびに「自分」へ戻らないように）。
@@ -813,6 +815,19 @@ export function App(): React.JSX.Element {
       setInitialLoadError(error instanceof Error ? error.message : 'データを読み込めませんでした')
     })
   }, [isFirstLaunch, loadInitialData, syncTimer])
+
+  const gettingStartedKey = `hakobi-getting-started:${currentUser?.id ?? 'local'}`
+  useEffect(() => {
+    if (!initialDataLoaded || isFirstLaunch !== false || isStandaloneGanttWindow || isStandaloneTaskReportWindow) return
+    try {
+      if (window.localStorage.getItem(gettingStartedKey)) return
+      window.localStorage.setItem(gettingStartedKey, '1')
+    } catch { return }
+    const timer = window.setTimeout(() => {
+      showToast('はじめての方へ: 毎日することを3つの手順にまとめました', 'info', { label: '使い方を見る', run: () => setShowGettingStarted(true) })
+    }, 1200)
+    return () => window.clearTimeout(timer)
+  }, [gettingStartedKey, initialDataLoaded, isFirstLaunch, isStandaloneGanttWindow, isStandaloneTaskReportWindow, showToast])
 
   const handleExportClipboard = useCallback(async () => {
     const result = await window.api.markdownExport('clipboard')
@@ -1643,7 +1658,7 @@ export function App(): React.JSX.Element {
         - (next.task ? paneWidths.list : 0)
         - (next.side ? paneWidths.side : 0)
       if (next[key] && chartWidth < GANTT_COMFORT_WIDTH) {
-        showToast('ガントの幅が狭くなり、日付が数日分しか見えません', 'success', {
+        showToast('ガントの幅が狭くなり、日付が数日分しか見えません', 'info', {
           label: 'ほかのパネルを畳む',
           run: () => setGanttPanes({ category: false, task: false, side: false, [key]: true })
         })
@@ -1746,7 +1761,8 @@ export function App(): React.JSX.Element {
     { key: 'archived', group: '操作', label: showArchived ? 'アーカイブしたタスクを隠す' : 'アーカイブしたタスクも表示', keywords: 'アーカイブ', run: () => setShowArchived((previous) => !previous) },
     ...(currentUser && multiUser ? [{ key: 'notifications', group: '操作' as const, label: '通知を開く', keywords: 'notification', run: () => openNotifications() }] : []),
     { key: 'report', group: '操作', label: '進捗レポートを開く', keywords: 'レポート 週報', run: () => { if (isAdmin && multiUser) setShowProgressReport(true); else setShowMySummary(true) } },
-    { key: 'settings', group: '操作', label: '設定を開く', keywords: 'settings テーマ フォント', run: () => setShowSettings(true) }
+    { key: 'settings', group: '操作', label: '設定を開く', keywords: 'settings テーマ フォント', run: () => setShowSettings(true) },
+    { key: 'getting-started', group: '操作', label: '使い方（はじめに）を開く', keywords: 'help ヘルプ 使い方 はじめに', run: () => setShowGettingStarted(true) }
   ]
   // 右の「今日の予定」の上に出す「今日のToDo」（ToDoリストを使う人だけ）
   const todayTodoCard = usesTodoLists ? (
@@ -1790,6 +1806,7 @@ export function App(): React.JSX.Element {
         onOpenRunningTask={runningTodoId ? () => openTodoDetail(runningTodoId) : undefined}
         onStopTimer={stopFromToolbar}
         onOpenQuickAdd={() => openQuickAdd()}
+        onOpenGettingStarted={() => setShowGettingStarted(true)}
         onOpenProgressReport={() => {
           if (isAdmin && multiUser) setShowProgressReport(true)
           else setShowMySummary(true)
@@ -2238,6 +2255,16 @@ export function App(): React.JSX.Element {
           }}
           onClose={() => setShowCommandPalette(false)}
         />
+      )}
+
+      {showGettingStarted && (
+        <ViewBoundary fallback={null} onDismiss={() => setShowGettingStarted(false)}>
+          <GettingStartedModal
+            multiUser={multiUser}
+            onOpenReport={() => toggleCenterView('report')}
+            onClose={() => setShowGettingStarted(false)}
+          />
+        </ViewBoundary>
       )}
 
       {showSettings && (
