@@ -249,7 +249,7 @@ export function QuickAddModal({
           background: 'var(--slate-800)',
           borderRadius: 12,
           padding: 20,
-          width: 560,
+          width: '36rem',
           maxWidth: '100%',
           maxHeight: '100%',
           overflowY: 'auto',

@@ -113,8 +113,12 @@ export function Toolbar({
   onToggleCategoryPane,
   onToggleTaskPane
 }: Props): React.JSX.Element {
+  const tabsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    tabsRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [activeView])
   const viewButtons: ViewButton[] = [
-    { key: 'overview', label: '概要', description: '期限が近いタスクや最近の動きをまとめて表示します', active: activeView === 'overview', onClick: onToggleOverviewView },
+    ...(activeView === 'overview' ? [{ key: 'overview' as const, label: '概要', description: '期限が近いタスクや最近の動きをまとめて表示します', active: true, onClick: onToggleOverviewView }] : []),
     { key: 'gantt', label: 'ガント', description: '開始日から期限までを横棒で表示します。バーをドラッグすると日程を変えられます', active: activeView === 'gantt', onClick: onToggleGanttView },
     { key: 'kanban', label: 'カンバン', description: '未着手・進行中・保留中・完了の列に分けて表示します。カードを動かすと状態を変えられます', active: activeView === 'kanban', onClick: onToggleKanbanView },
     ...(showTeamButton ? [{ key: 'team' as const, label: 'チーム', description: '誰が何を計測中か、期限超過・期限が近いタスク、メンバーごとの件数を表示します', active: activeView === 'team', onClick: onToggleTeamView }] : []),
@@ -150,7 +154,8 @@ export function Toolbar({
     {
       key: 'archive',
       items: [{ key: 'archived', label: 'アーカイブしたタスクも表示', description: 'アーカイブしたタスクも一覧に表示します', checked: showArchived, onSelect: onToggleArchived }]
-    }
+    },
+    { key: 'other-views', items: [{ key: 'overview', label: '概要を開く', description: '期限が近いタスクと最近の動きをまとめて確認します', onSelect: onToggleOverviewView }] }
   ]
 
   const accountSections: MenuSection[] = [{
@@ -171,7 +176,8 @@ export function Toolbar({
         padding: '8px 16px',
         background: 'var(--slate-900)',
         borderBottom: '1px solid var(--slate-800)',
-        display: 'flex',
+        display: 'grid',
+        gridTemplateColumns: 'auto minmax(0, 1fr) auto',
         alignItems: 'center',
         gap: 12,
         flexWrap: 'wrap'
@@ -182,7 +188,7 @@ export function Toolbar({
       </button>
 
       {/* タブは Tab では1回だけ止まり、← → で移って Enter で開く */}
-      <div style={groupStyle} role="tablist" aria-label="画面の切り替え（← → で移って Enter で開く）" onKeyDown={(event) => handleTablistKeyDown(event)}>
+      <div ref={tabsRef} className="hakobi-view-tabs" style={{ ...groupStyle, minWidth: 0, flexWrap: 'nowrap', overflowX: 'auto', scrollbarWidth: 'thin' }} role="tablist" aria-label="画面の切り替え（横スクロール・← → で移って Enter で開く）" onKeyDown={(event) => handleTablistKeyDown(event)}>
         {viewButtons.map((button, index) => (
           <button
             key={button.key}
@@ -210,7 +216,7 @@ export function Toolbar({
         ))}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexWrap: 'wrap', maxWidth: '55vw' }}>
         {isTimerRunning && (
           <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: '0.74rem', color: 'var(--green-400)', background: 'var(--green-950)', border: '1px solid var(--green-900)', borderRadius: 999, whiteSpace: 'nowrap', overflow: 'hidden' }}>
             {runningTask && onOpenRunningTask ? (

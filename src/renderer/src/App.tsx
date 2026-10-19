@@ -689,7 +689,8 @@ export function App(): React.JSX.Element {
   const autoHideCategoryPane = isKanban
     ? kanbanBoardWidth({ side: true, category: false }) < KANBAN_MIN_BOARD_WIDTH
     : effectiveViewportWidth < NARROW_CATEGORY_PANE_WIDTH
-  const autoHideTaskPane = isKanban && kanbanBoardWidth({ side: true, category: true }) < KANBAN_MIN_BOARD_WIDTH
+  const autoHideTaskPane = (isKanban && kanbanBoardWidth({ side: true, category: true }) < KANBAN_MIN_BOARD_WIDTH)
+    || (activeView !== 'detail' && effectiveViewportWidth < 1000)
   const [openedWhileNarrow, setOpenedWhileNarrow] = useState({ category: false, side: false, task: false })
   useEffect(() => {
     setOpenedWhileNarrow((previous) => {

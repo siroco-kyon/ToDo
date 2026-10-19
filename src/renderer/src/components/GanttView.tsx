@@ -1103,7 +1103,7 @@ function GanttViewContent({
     if (chartAreaWidth <= 0) return scaled
     const overflow = leftTableWidthFor(scaled, visibleLeftColumns) - Math.round(chartAreaWidth * 0.4)
     if (overflow <= 0) return scaled
-    return { ...scaled, title: Math.max(150, scaled.title - overflow) }
+    return { ...scaled, title: Math.max(Math.round(150 * leftColumnScale), scaled.title - overflow) }
   }, [chartAreaWidth, leftColumnScale, leftColumnWidths, visibleLeftColumns])
   // タスク名の列が狭いときは、行の「保留」「＋」をマウスを乗せたとき・キーボードで選んだときだけ出す（名前の場所を空ける）
   const compactRowTools = displayedLeftColumnWidths.title < 200
@@ -1377,7 +1377,7 @@ function GanttViewContent({
   }, [])
 
   const todayKey = getTodayKey()
-  const unitWidth = UNIT_WIDTH[timeScale][zoom]
+  const unitWidth = Math.round(UNIT_WIDTH[timeScale][zoom] * Math.max(1, textScale))
   const isTimelineEditable = !isReorderMode
   const normalizedTaskQuery = taskQuery.trim().toLowerCase()
 

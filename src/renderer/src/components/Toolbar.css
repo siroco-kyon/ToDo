@@ -33,6 +33,8 @@
   display: none;
 }
 .hakobi-toolbar-search-label { display: none; }
+.hakobi-view-tabs > button { flex-shrink: 0; }
+.hakobi-view-tabs > button:focus-visible { outline-offset: -3px; }
 
 /* 「移動」の文字は、もう少し狭くなるまで残す（Ctrl+K で開けることに気付けるように） */
 @media (max-width: 1040px) {

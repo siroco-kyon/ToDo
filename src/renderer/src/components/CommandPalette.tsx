@@ -138,10 +138,10 @@ export function CommandPalette({ commands, todos, onOpenTodo, onClose }: Props):
                   aria-selected={active}
                   onMouseEnter={() => setActiveIndex(index)}
                   onMouseDown={(event) => { event.preventDefault(); choose(item) }}
-                  style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: active ? 'var(--slate-800)' : 'transparent' }}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 4, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: active ? 'var(--slate-800)' : 'transparent' }}
                 >
-                  <span style={{ color: 'var(--slate-200)', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{item.label}</span>
-                  {item.detail && <span style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--slate-400)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{item.detail}</span>}
+                  <span style={{ color: 'var(--slate-200)', fontSize: '0.88rem', overflowWrap: 'anywhere', minWidth: 0 }}>{item.label}</span>
+                  {item.detail && <span style={{ color: 'var(--slate-400)', fontSize: 'var(--font-caption)', overflowWrap: 'anywhere' }}>{item.detail}</span>}
                 </div>
               </React.Fragment>
             )

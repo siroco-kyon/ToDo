@@ -763,7 +763,9 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <div style={feedStyle}>
-          <div style={newPostStyle}>
+          <details open={Boolean(noteDraft.trim()) || undefined} style={{ ...newPostStyle, display: 'block' }}>
+          <summary style={{ cursor: 'pointer', color: 'var(--slate-100)', fontWeight: 700, padding: '4px 0' }}>進捗ログを書く{noteDraft.trim() ? '（書きかけがあります）' : ''}</summary>
+          <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
             <Avatar name={currentAuthorName} color={currentAuthorColor} size={42} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <select
@@ -819,6 +821,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
               </div>
             </div>
           </div>
+          </details>
 
           {loading && <div style={emptyStyle}>読み込み中...</div>}
           {!loading && visibleNotes.length === 0 && <div style={emptyStyle}>選択した期間・投稿者の進捗ログはまだありません。</div>}
