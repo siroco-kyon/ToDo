@@ -144,7 +144,7 @@ export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = t
         {data.workloads.length === 0 ? (
           <EmptyNote text="メンバーがいません。" />
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 330px), 1fr))', gap: 8 }}>
             {data.workloads.map((member) => (
               <WorkloadCard key={member.user_id} member={member} behindCount={behindCountByUser.get(member.user_id) ?? 0} onSelect={onSelectMember ? () => onSelectMember(member.user_id) : undefined} />
             ))}
@@ -254,13 +254,13 @@ function WorkloadCard({ member, behindCount, onSelect }: { member: TeamMemberWor
       type={onSelect ? 'button' : undefined}
       onClick={onSelect}
       title={onSelect ? `${member.display_name}さんのタスクだけをガントで見る` : undefined}
-      style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10, textAlign: 'left', color: 'inherit', font: 'inherit', cursor: onSelect ? 'pointer' : 'default', width: '100%' }}
+      style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 10, padding: '8px 12px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 14px', textAlign: 'left', color: 'inherit', font: 'inherit', cursor: onSelect ? 'pointer' : 'default', width: '100%' }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '7.5rem', minWidth: 0 }}>
         <span style={{ width: 11, height: 11, borderRadius: '50%', background: member.user_color }} />
         <span style={{ fontSize: '0.86rem', color: 'var(--slate-200)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.display_name}</span>
       </div>
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
         <Metric label="未完了" title="未着手と進行中の数（保留中は別に数える）" value={`${member.active_tasks}`} color="var(--slate-200)" />
         <Metric label="保留中" value={`${member.on_hold_tasks}`} color="var(--purple-300)" />
         <Metric label="超過" title="期限を過ぎた未完了のタスク" value={`${member.overdue_tasks}`} color={member.overdue_tasks > 0 ? 'var(--red-400)' : 'var(--slate-500)'} />

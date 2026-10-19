@@ -290,7 +290,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
         </label>
         <button onClick={() => goTo(index - 1)} disabled={index === 0} title="前の人（←）" style={navButtonStyle(index === 0)}>◀ 前の人</button>
         <button onClick={() => goTo(index + 1)} disabled={index >= groups.length - 1} title="次の人（→）" style={navButtonStyle(index >= groups.length - 1, true)}>次の人 ▶</button>
-        <button onClick={() => void copyMinutes()} title="メモ・追加したタスク・時間をまとめてコピーします" style={navButtonStyle(false)}>定例の内容をコピー</button>
+        <button onClick={() => void copyMinutes()} title="メモ・追加したタスク・時間をまとめてコピーします" aria-label="定例の内容をコピー" style={navButtonStyle(false)}>定例の<span className="hakobi-hide-narrow">内容を</span>コピー</button>
         <button onClick={close} title="定例モードを閉じます（Esc）。進み具合は残ります" style={navButtonStyle(false)}>閉じる</button>
       </div>
 

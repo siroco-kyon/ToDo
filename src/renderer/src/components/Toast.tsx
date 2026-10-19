@@ -16,25 +16,52 @@ interface Props {
 }
 
 export function Toast({ toasts, onRemove }: Props): React.JSX.Element {
-  // 知らせは右下に出す。操作中の部品（フォーカスのある進捗バーなど）が右下にあって隠れるときは、右上に出す
+  // 知らせは右下に出す。右に詳細などのパネルが開いているときは、そのパネルの左に出す（変えた結果を確かめたい所を隠さないように）。
+  // 操作中の部品（フォーカスのある進捗バーなど）が知らせの位置にあって隠れるときは、上に出す
   const [placeTop, setPlaceTop] = useState(false)
+  const [rightOffset, setRightOffset] = useState(20)
   useEffect(() => {
     if (toasts.length === 0) return
     const update = (): void => {
-      const active = document.activeElement
-      if (!(active instanceof HTMLElement) || active === document.body || active.closest('[data-toast]')) return
-      const rect = active.getBoundingClientRect()
+      const sidePanel = document.getElementById('hakobi-side-panel')
+      const sideWidth = sidePanel && sidePanel.getClientRects().length > 0 ? sidePanel.getBoundingClientRect().width : 0
+      // パネルの左に出すと狭すぎる（知らせが 280px 入らない）ときは、これまでどおり右下に出す
+      const offset = sideWidth > 0 && window.innerWidth - sideWidth - 40 >= 280 ? sideWidth + 20 : 20
+      setRightOffset(offset)
       const toastTop = window.innerHeight - 20 - toasts.length * 64
-      const toastLeft = window.innerWidth - 20 - 460
-      setPlaceTop(rect.bottom > toastTop && rect.right > toastLeft)
+      const toastRight = window.innerWidth - offset
+      const toastLeft = toastRight - 460
+      const covers = (element: Element): boolean => {
+        const rect = element.getBoundingClientRect()
+        return rect.width > 0 && rect.bottom > toastTop && rect.right > toastLeft && rect.left < toastRight
+      }
+      // 開いているメニュー・候補の一覧も隠さない（進捗ログの「⋯」のメニューなど）
+      const popupCovered = Array.from(document.querySelectorAll('[role="menu"], [role="listbox"]')).some((element) => !element.closest('[data-toast]') && covers(element))
+      const active = document.activeElement
+      const activeCovered = active instanceof HTMLElement && active !== document.body && !active.closest('[data-toast]') && covers(active)
+      setPlaceTop(popupCovered || activeCovered)
     }
     update()
+    // メニューが開いた・閉じたことは DOM の変化で拾う（知らせが出ているあいだだけ見る）。
+    // 描き直しを待たずにすぐ確かめる（メニューを押す前に知らせが動いているように）
+    let pending = false
+    const observer = new MutationObserver(() => {
+      if (pending) return
+      pending = true
+      queueMicrotask(() => { pending = false; update() })
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
     document.addEventListener('focusin', update)
-    return () => document.removeEventListener('focusin', update)
+    window.addEventListener('resize', update)
+    return () => {
+      observer.disconnect()
+      document.removeEventListener('focusin', update)
+      window.removeEventListener('resize', update)
+    }
   }, [toasts.length])
   return (
     <div style={{
-      position: 'fixed', ...(placeTop ? { top: 72 } : { bottom: 20 }), right: 20,
+      position: 'fixed', ...(placeTop ? { top: 72 } : { bottom: 20 }), right: rightOffset,
       display: 'flex', flexDirection: 'column', gap: 8, zIndex: 9999,
       pointerEvents: 'none'
     }} aria-live="polite" aria-atomic="false">

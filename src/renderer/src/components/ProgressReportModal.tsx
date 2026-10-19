@@ -525,11 +525,15 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
         boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid var(--slate-700)',
         display: 'flex', flexDirection: 'column', gap: 22
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* 見出しはスクロールしても上に残す（長いレポートを読み進めても、閉じる・コピーを押せるように） */}
+        <div style={{ position: 'sticky', top: -28, zIndex: 2, margin: '-28px -28px 0', padding: '18px 28px 12px', background: 'var(--slate-800)', borderBottom: '1px solid var(--slate-700)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)', margin: 0 }}>
             {selfOnly ? '📊 自分の進捗サマリー' : '📊 進捗レポート'}
           </h2>
-          <button onClick={onClose} style={closeBtnStyle}>×</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {digest && <button onClick={() => void handleCopyMarkdown()} style={copyBtn}>📋 Markdownをコピー</button>}
+            <button onClick={onClose} aria-label="閉じる" title="閉じる（Esc）" style={closeBtnStyle}>×</button>
+          </div>
         </div>
 
         {/* ─── 期間 ─── */}

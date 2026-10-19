@@ -38,6 +38,8 @@ interface Props {
   hasOtherFilters?: boolean
   /** 絞り込む前にタスクが1件でもあるか。1件もないときは、絞り込みの案内ではなく最初のタスクを作る案内を出す */
   hasAnyTodos?: boolean
+  /** タスクをまだ読み込んでいる（「まだタスクがありません」を出さない） */
+  dataLoading?: boolean
   onClearSearch?: () => void
   onClearFilters?: () => void
   onAddTodo?: () => void
@@ -396,7 +398,7 @@ const TodoRow = React.memo(function TodoRow({ handlers, ...props }: TodoRowProps
 
 export function TodoList({
   todos, selectedId, runningTodoId, timerStartTime, isManualSort, searchQuery,
-  hasOtherFilters = false, hasAnyTodos = true, onClearSearch, onClearFilters, onAddTodo,
+  hasOtherFilters = false, hasAnyTodos = true, dataLoading = false, onClearSearch, onClearFilters, onAddTodo,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete, onReorder,
   onStartTimer, onStopTimer, checklistSummaries, listItemsByTodo, pendingItemIds, onToggleListItem
 }: Props): React.JSX.Element {
@@ -449,6 +451,11 @@ export function TodoList({
     dragOver: (id) => { if (dragging.current) setDragOverId(id) },
     drop: (id) => { void latestRef.current.handleDrop(id) }
   }), [])
+
+  // 読み込みが終わるまでは「まだタスクがありません」を出さない（あるのに一瞬「ない」と見える）
+  if (todos.length === 0 && dataLoading) {
+    return <div role="status" style={{ padding: '28px 18px', color: 'var(--slate-400)', textAlign: 'center', fontSize: '0.84rem' }}>タスクを読み込み中…</div>
+  }
 
   if (todos.length === 0 && !hasAnyTodos) {
     return (

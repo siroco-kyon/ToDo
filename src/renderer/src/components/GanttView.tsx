@@ -25,6 +25,8 @@ interface Props {
   hasAnyTodos?: boolean
   /** 右に詳細を開いているタスク。ガントが狭くなっても、このタスクのバーが見えるように横へ送る */
   focusTodoId?: string | null
+  /** タスクをまだ読み込んでいる（「まだタスクがありません」を出さない） */
+  dataLoading?: boolean
   /** 文字の大きさの倍率（設定の文字の大きさ。1 = 100%）。大きいときは左の表の幅も広げる */
   textScale?: number
   /** 知らせを出す（キーで日程を変えたときに「元に戻す」付きで知らせる） */
@@ -993,6 +995,7 @@ function GanttViewContent({
   groupByCategory = false,
   hasAnyTodos = true,
   focusTodoId = null,
+  dataLoading = false,
   textScale = 1,
   onShowToast
 }: Props): React.JSX.Element {
@@ -1077,11 +1080,31 @@ function GanttViewContent({
 
   // 覚えている列の幅は文字の大きさ 100% のときの幅。文字を大きくしたら同じ割合で広げる（150% でタスク名が数文字で切れないように）
   const leftColumnScale = Math.max(1, textScale)
-  const displayedLeftColumnWidths = useMemo<GanttLeftColumnWidths>(() => (
-    leftColumnScale === 1
+  // ガントの幅（窓が狭い・左右のパネルを開いているときは狭い）。左の表がその 4 割を超えるときは、タスク名の列を縮める
+  // （狭い窓で、日付が 1〜2 列しか見えなくならないように）
+  const [chartAreaWidth, setChartAreaWidth] = useState(0)
+  const observedChartRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const element = scrollRef.current
+    if (element === observedChartRef.current) return
+    observedChartRef.current = element
+    if (!element || typeof ResizeObserver === 'undefined') return
+    setChartAreaWidth(element.clientWidth)
+    const observer = new ResizeObserver(() => setChartAreaWidth(element.clientWidth))
+    observer.observe(element)
+    return () => observer.disconnect()
+  })
+  const displayedLeftColumnWidths = useMemo<GanttLeftColumnWidths>(() => {
+    const scaled = leftColumnScale === 1
       ? leftColumnWidths
       : Object.fromEntries(Object.entries(leftColumnWidths).map(([key, width]) => [key, Math.round(width * leftColumnScale)])) as unknown as GanttLeftColumnWidths
-  ), [leftColumnScale, leftColumnWidths])
+    if (chartAreaWidth <= 0) return scaled
+    const overflow = leftTableWidthFor(scaled, visibleLeftColumns) - Math.round(chartAreaWidth * 0.4)
+    if (overflow <= 0) return scaled
+    return { ...scaled, title: Math.max(150, scaled.title - overflow) }
+  }, [chartAreaWidth, leftColumnScale, leftColumnWidths, visibleLeftColumns])
+  // タスク名の列が狭いときは、行の「保留」「＋」をマウスを乗せたとき・キーボードで選んだときだけ出す（名前の場所を空ける）
+  const compactRowTools = displayedLeftColumnWidths.title < 200
   const leftGridTemplate = useMemo(() => leftGridTemplateFor(displayedLeftColumnWidths, visibleLeftColumns), [displayedLeftColumnWidths, visibleLeftColumns])
   const leftTableWidth = useMemo(() => leftTableWidthFor(displayedLeftColumnWidths, visibleLeftColumns), [displayedLeftColumnWidths, visibleLeftColumns])
   const visibleLeftColumnDefs = useMemo(() => visibleLeftColumnDefsFor(visibleLeftColumns), [visibleLeftColumns])
@@ -2357,6 +2380,26 @@ function GanttViewContent({
 
   const hasScrollableChart = !loading && displayedRangeGroups.length > 0
 
+  // 詳細を開いているタスクの行が、期限の変更などで並び替わって動いたときは、縦にもその行まで送る
+  // （動いていないときは送らない。自分で縦にスクロールした位置を、読み込み直しのたびに戻さないように）
+  const focusRowOrder = focusTodoId ? displayedRangeGroups.findIndex((group) => group.todo.id === focusTodoId) : -1
+  const lastFocusRowRef = useRef<{ id: string; order: number } | null>(null)
+  useEffect(() => {
+    const container = scrollRef.current
+    const previous = lastFocusRowRef.current
+    lastFocusRowRef.current = focusTodoId ? { id: focusTodoId, order: focusRowOrder } : null
+    if (!container || !focusTodoId || focusRowOrder < 0 || !previous || previous.id !== focusTodoId || previous.order === focusRowOrder) return
+    const frame = window.requestAnimationFrame(() => {
+      const row = container.querySelector<HTMLElement>(`[data-gantt-todo-id="${CSS.escape(focusTodoId)}"]`)
+      if (!row) return
+      const rowTop = row.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
+      const headerHeight = 48
+      if (rowTop >= container.scrollTop + headerHeight && rowTop + row.offsetHeight <= container.scrollTop + container.clientHeight) return
+      container.scrollTop = Math.max(0, rowTop - headerHeight - 24)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [focusRowOrder, focusTodoId])
+
   // 右に詳細を開いてガントが狭くなったときも、そのタスクのバーが見えるように横へ送る
   useEffect(() => {
     const container = scrollRef.current
@@ -3630,7 +3673,7 @@ function GanttViewContent({
 
       {/* チャートは、ガントの画面に残っている高さいっぱいに広げる（低い窓で横スクロールバーが窓の外に出ないように）。最小は CHART_MIN_HEIGHT */}
       <div style={{ flex: `1 0 ${CHART_MIN_HEIGHT}px`, minHeight: CHART_MIN_HEIGHT, border: '1px solid var(--slate-800)', borderRadius: 8, background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        {loading ? (
+        {loading || (dataLoading && todos.length === 0) ? (
           <div style={centerEmptyStyle}>タスクを読み込み中...</div>
         ) : !hasAnyTodos ? (
           <div style={{ ...centerEmptyStyle, flexDirection: 'column' }}>
@@ -3939,6 +3982,7 @@ function GanttViewContent({
                   >
                     <div
                       className="tarbo-gantt-row"
+                      data-gantt-todo-id={group.todo.id}
                       onDragOver={(event) => { void handleReorderDragOver(group.todo.id, event) }}
                       onDrop={(event) => { void handleReorderDrop(group.todo.id, event) }}
                       onDragEnd={() => {
@@ -4012,7 +4056,7 @@ function GanttViewContent({
                               // 保留中のタスクだけ紫の「再開」ボタンを常に出す。
                               // 保留していないタスクの「保留する」ボタンは、行にマウスを乗せたときだけ控えめに出す
                               <button
-                                className={group.todo.status === 'on_hold' ? undefined : 'tarbo-gantt-hold-toggle'}
+                                className={[group.todo.status === 'on_hold' ? null : 'tarbo-gantt-hold-toggle', compactRowTools ? 'tarbo-gantt-compact-tool' : null].filter(Boolean).join(' ') || undefined}
                                 onClick={() => {
                                   const todo = group.todo
                                   const previousStatus = todo.status
@@ -4041,6 +4085,7 @@ function GanttViewContent({
                               disabled={creatingSubTask || isReorderMode}
                               title="サブタスクを追加"
                               aria-label={`「${group.todo.title}」にサブタスクを追加`}
+                              className={compactRowTools ? 'tarbo-gantt-compact-tool' : undefined}
                               style={subTaskAddButtonStyle(creatingSubTask || isReorderMode)}
                             >
                               +

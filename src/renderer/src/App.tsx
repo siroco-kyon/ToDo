@@ -148,6 +148,8 @@ const NARROW_SIDE_PANEL_WIDTH = 1280
 const NARROW_CATEGORY_PANE_WIDTH = 1100
 // カンバンの4列（1列 200px と間・余白）が収まる幅。収まらないときは、右の「今日の予定」→カテゴリ一覧→タスク一覧の順に隠す
 const KANBAN_MIN_BOARD_WIDTH = 4 * 200 + 3 * 10 + 24 + 6
+/** これより狭いと、ガントの日付が数日分しか見えない（左の表の幅を含む） */
+const GANTT_COMFORT_WIDTH = 640
 const SIDE_PANEL_VIEWS_WITHOUT_RAIL: readonly CenterView[] = ['plan', 'team', 'progress', 'report', 'todo']
 // 中央の区分けの読み上げ名（上部のタブの名前と同じ）
 const CENTER_VIEW_LABELS: Record<CenterView, string> = {
@@ -1633,7 +1635,19 @@ export function App(): React.JSX.Element {
   const planRailVisible = isGanttView ? ganttPanes.side : showPlanRail && (!autoHideSidePanel || openedWhileNarrow.side)
   const togglePane = (key: keyof PaneVisibility): void => {
     if (isGanttView) {
-      setGanttPanes((previous) => ({ ...previous, [key]: !previous[key] }))
+      const next = { ...ganttPanes, [key]: !ganttPanes[key] }
+      setGanttPanes(next)
+      // 開いた結果、ガントが狭くなりすぎたら知らせる（狭い窓では日付が数日分しか見えなくなり、気づきにくい）
+      const chartWidth = viewportWidth
+        - (next.category ? paneWidths.category : 0)
+        - (next.task ? paneWidths.list : 0)
+        - (next.side ? paneWidths.side : 0)
+      if (next[key] && chartWidth < GANTT_COMFORT_WIDTH) {
+        showToast('ガントの幅が狭くなり、日付が数日分しか見えません', 'success', {
+          label: 'ほかのパネルを畳む',
+          run: () => setGanttPanes({ category: false, task: false, side: false, [key]: true })
+        })
+      }
       return
     }
     // 狭くて自動で隠しているパネルは、設定を変えずにその幅のあいだだけ開け閉めする
@@ -1940,6 +1954,7 @@ export function App(): React.JSX.Element {
               hasOtherFilters={selectedAssigneeId !== null || selectedCategoryId !== null || hiddenPrivateTodoIds.size > 0}
               // 「まだタスクがありません」は、集計外を隠しているだけのときには出さない（隠す前のタスクで判定する）
               hasAnyTodos={todos.length > 0}
+              dataLoading={!initialDataLoaded}
               onClearSearch={() => setSearchQuery('')}
               onClearFilters={clearListFilters}
               onAddTodo={() => openQuickAdd()}
@@ -1997,6 +2012,7 @@ export function App(): React.JSX.Element {
               onAddTodo={openQuickAdd}
               listFilters={listFilters}
               hasAnyTodos={todos.length > 0}
+              dataLoading={!initialDataLoaded}
               groupByCategory={selectedCategoryId === null}
               textScale={(Number.parseFloat(fontScale) || 100) / 100}
               onShowToast={showToast}

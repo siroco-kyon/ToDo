@@ -315,12 +315,10 @@ function SummaryCard({
   tone: string
 }): React.JSX.Element {
   return (
-    <div style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 14px' }}>
-      <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
-      <div style={{ fontSize: '1.08rem', color: tone, fontWeight: 700, marginTop: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {value}
-      </div>
-      <div style={{ fontSize: '0.76rem', color: 'var(--slate-400)', marginTop: 6 }}>{detail}</div>
+    <div title={detail} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+      <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>{label}</span>
+      <span style={{ fontSize: '0.95rem', color: tone, fontWeight: 700, whiteSpace: 'nowrap' }}>{value}</span>
+      <span style={{ fontSize: '0.7rem', color: 'var(--slate-400)' }}>{detail}</span>
     </div>
   )
 }
@@ -988,24 +986,26 @@ export function PlanView({
           {listFilters && <span style={{ marginLeft: 'auto' }}>{listFilters}</span>}
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(320px, 0.9fr)', gap: 16, alignItems: 'start' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+      {/* 2列（時間割と候補）。狭いときは候補を時間割の下へ回す（時間割が細くならないように） */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+        <div style={{ flex: '1.5 1 440px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+            {/* 日付と件数は1行にまとめる（時間割を上に寄せる） */}
             <div
+              title="今日の時間割をまとめて調整できます"
               style={{
-                display: 'grid',
-                // 狭いときは折り返す（右の列の下に潜り込まないように）
-                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-              gap: 10,
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'baseline',
+                gap: '6px 18px',
               background: 'var(--gray-900)',
               border: '1px solid var(--gray-800)',
-              borderRadius: 14,
-              padding: 12
+              borderRadius: 12,
+              padding: '8px 14px'
             }}
             >
-              <div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>日付</div>
-              <div style={{ marginTop: 6, fontSize: '1rem', color: 'var(--slate-50)', fontWeight: 700 }}>{date}</div>
-              <div style={{ marginTop: 4, fontSize: '0.76rem', color: 'var(--slate-400)' }}>今日の時間割をまとめて調整できます</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>日付</span>
+              <span style={{ fontSize: '0.95rem', color: 'var(--slate-50)', fontWeight: 700 }}>{date}</span>
             </div>
             <SummaryCard label="予定" value={`${timedCount}件`} detail="時間あり" tone="var(--blue-400)" />
             <SummaryCard label="未定" value={`${unscheduledItems.length}件`} detail="まだ時刻なし" tone="var(--amber-400)" />
@@ -1433,7 +1433,7 @@ export function PlanView({
             </div>
           </Section>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        <div style={{ flex: '0.9 1 320px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <Section title="時刻が未定のタスク" subtitle="まだ時刻を決めていないタスクです。ドラッグかクリックで時間割に置けます。">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {unscheduledItems.length === 0 ? (

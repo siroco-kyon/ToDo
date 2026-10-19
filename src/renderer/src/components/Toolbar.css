@@ -33,6 +33,13 @@
   display: none;
 }
 
+/* 「移動」の文字は、もう少し狭くなるまで残す（Ctrl+K で開けることに気付けるように） */
+@media (max-width: 1040px) {
+  .hakobi-toolbar-roomy-only {
+    display: none;
+  }
+}
+
 @media (max-width: 1180px) {
   .hakobi-toolbar-wide-only {
     display: none;

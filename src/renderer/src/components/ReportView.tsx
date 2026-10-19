@@ -1514,9 +1514,17 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               {formatShortDate(range.from)}（{weekdayLabel(range.from)}）～ {formatShortDate(range.to)}（{weekdayLabel(range.to)}）
             </div>
             {listFilters}
-            <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>
+            {/* 説明は、狭い窓では ⓘ にしまう（最初のタスクが画面の下へ押し出されないように） */}
+            <div className="hakobi-hide-narrow" style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>
               定例用に、タスクごとの進捗と報告（進捗ログ・メモ）を1ページにまとめて表示します。状態・日程・進捗・メモはその場で変えられます
             </div>
+            <span
+              className="hakobi-show-narrow"
+              role="img"
+              aria-label="この画面について: 定例用に、タスクごとの進捗と報告（進捗ログ・メモ）を1ページにまとめて表示します。状態・日程・進捗・メモはその場で変えられます"
+              title="定例用に、タスクごとの進捗と報告（進捗ログ・メモ）を1ページにまとめて表示します。状態・日程・進捗・メモはその場で変えられます"
+              style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', cursor: 'help' }}
+            >ⓘ</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1674,7 +1682,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
 
           {myNeedsReportCount > 0 && effectiveQuickFilter !== 'myNeedsReport' && (
             <div role="status" style={myReminderStyle}>
-              <span>あなたの担当で、この期間まだ報告がないタスクが <strong>{myNeedsReportCount}件</strong> あります。進捗ログかメモで一言残しておきましょう。</span>
+              <span>あなたの担当で、この期間まだ報告がないタスクが <strong>{myNeedsReportCount}件</strong> あります。<span className="hakobi-hide-narrow">進捗ログかメモで一言残しておきましょう。</span></span>
               <button onClick={() => setQuickFilter('myNeedsReport')} style={{ ...secondaryButtonStyle, marginLeft: 'auto' }}>自分の未報告だけ表示</button>
             </div>
           )}
@@ -1686,7 +1694,8 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
           )}
 
           {loaded && (groups.length > 1 || visibleSubGroupKeys.length > 1) && (
-            <nav aria-label={effectiveGroupMode === 'assignee' ? '担当者へ移動' : 'カテゴリへ移動'} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', paddingTop: 2 }}>
+            // 担当者のチップは1行に並べ、入りきらないときは横にスクロールする（2行・3行になって中身を押し出さないように）
+            <nav className="hakobi-chip-strip" aria-label={effectiveGroupMode === 'assignee' ? '担当者へ移動' : 'カテゴリへ移動'} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap', overflowX: 'auto', paddingTop: 2, paddingBottom: 4, scrollbarWidth: 'thin' }}>
               {groups.length > 1 && <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>{effectiveGroupMode === 'assignee' ? '担当者へ移動:' : 'カテゴリへ移動:'}</span>}
               {groups.length > 1 && groups.map((group) => {
                 const needs = group.rows.filter((row) => needsReport(row.freshness)).length
@@ -2719,7 +2728,7 @@ const myReminderStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 10,
   flexWrap: 'wrap',
-  padding: '8px 12px',
+  padding: '5px 6px 5px 12px',
   borderRadius: 10,
   border: '1px solid var(--yellow-700)',
   background: 'var(--c-1c1408)',
