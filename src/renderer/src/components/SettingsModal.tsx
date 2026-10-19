@@ -611,6 +611,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             {FONT_SCALE_PRESETS.map((preset) => (
               <button
                 key={preset.value}
+                aria-pressed={fontScale === preset.value}
                 onClick={() => { void handleFontScaleSelect(preset.value) }}
                 style={{
                   ...secondaryBtn,

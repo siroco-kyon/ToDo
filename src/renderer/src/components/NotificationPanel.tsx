@@ -140,7 +140,8 @@ const backdropStyle: React.CSSProperties = {
 }
 
 const panelStyle: React.CSSProperties = {
-  width: 'min(420px, calc(100vw - 36px))',
+  // 文字を大きくしたときにボタンや件数が折り返さないよう、幅も文字の大きさに合わせる（100% で 420px）
+  width: 'min(26.25rem, calc(100vw - 36px))',
   maxHeight: 'min(620px, calc(100vh - 76px))',
   background: 'var(--slate-900)',
   border: '1px solid var(--slate-700)',
@@ -252,7 +253,8 @@ function buttonStyle(enabled: boolean): React.CSSProperties {
     color: enabled ? 'var(--on-fill-blue-50)' : 'var(--slate-500)',
     cursor: enabled ? 'pointer' : 'default',
     fontSize: '0.76rem',
-    fontWeight: 700
+    fontWeight: 700,
+    whiteSpace: 'nowrap'
   }
 }
 
@@ -264,5 +266,6 @@ const closeButtonStyle: React.CSSProperties = {
   color: 'var(--slate-300)',
   cursor: 'pointer',
   fontSize: '0.76rem',
-  fontWeight: 700
+  fontWeight: 700,
+  whiteSpace: 'nowrap'
 }

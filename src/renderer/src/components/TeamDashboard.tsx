@@ -40,7 +40,7 @@ function formatMinutes(minutes: number): string {
 function dueSoonLabel(days: number): string {
   if (days <= 0) return '今日'
   if (days === 1) return '明日'
-  return `${days}日後`
+  return `あと${days}日`
 }
 
 export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = true, todos = [] }: Props): React.JSX.Element {

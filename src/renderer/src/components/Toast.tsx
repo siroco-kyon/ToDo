@@ -6,6 +6,8 @@ export interface ToastMessage {
   type: 'success' | 'error'
   actionLabel?: string
   onAction?: () => void
+  /** 同じ key の知らせは新しいもので置き換える */
+  key?: string
 }
 
 interface Props {
@@ -14,9 +16,25 @@ interface Props {
 }
 
 export function Toast({ toasts, onRemove }: Props): React.JSX.Element {
+  // 知らせは右下に出す。操作中の部品（フォーカスのある進捗バーなど）が右下にあって隠れるときは、右上に出す
+  const [placeTop, setPlaceTop] = useState(false)
+  useEffect(() => {
+    if (toasts.length === 0) return
+    const update = (): void => {
+      const active = document.activeElement
+      if (!(active instanceof HTMLElement) || active === document.body || active.closest('[data-toast]')) return
+      const rect = active.getBoundingClientRect()
+      const toastTop = window.innerHeight - 20 - toasts.length * 64
+      const toastLeft = window.innerWidth - 20 - 460
+      setPlaceTop(rect.bottom > toastTop && rect.right > toastLeft)
+    }
+    update()
+    document.addEventListener('focusin', update)
+    return () => document.removeEventListener('focusin', update)
+  }, [toasts.length])
   return (
     <div style={{
-      position: 'fixed', bottom: 20, right: 20,
+      position: 'fixed', ...(placeTop ? { top: 72 } : { bottom: 20 }), right: 20,
       display: 'flex', flexDirection: 'column', gap: 8, zIndex: 9999,
       pointerEvents: 'none'
     }} aria-live="polite" aria-atomic="false">
@@ -49,6 +67,7 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: nu
 
   return (
     <div
+      data-toast
       role={toast.type === 'error' ? 'alert' : 'status'}
       onPointerEnter={() => setHeld(true)}
       onPointerLeave={() => setHeld(false)}
@@ -66,6 +85,9 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: nu
       }}
       style={{
       padding: '10px 16px',
+      // 長い文は折り返す（横に長く伸びて、画面の中ほどのメニューやボタンを覆わないように）
+      maxWidth: 'min(28rem, calc(100vw - 40px))',
+      boxSizing: 'border-box',
       background: toast.type === 'success' ? 'var(--green-800)' : 'var(--red-900)',
       border: `1px solid ${toast.type === 'success' ? 'var(--green-400)' : 'var(--red-500)'}`,
       borderRadius: 8, color: 'var(--white)', fontSize: '0.9rem',
@@ -74,7 +96,7 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: nu
     }}>
       <span>{toast.type === 'success' ? '✓ ' : '✗ '}{toast.message}</span>
       {toast.actionLabel && toast.onAction && <button onClick={() => { toast.onAction?.(); removeAndReturn() }} style={{ marginLeft: 12, border: '1px solid rgba(255,255,255,.65)', borderRadius: 6, background: 'transparent', color: 'var(--white)', cursor: 'pointer', padding: '3px 7px' }}>{toast.actionLabel}</button>}
-      <button onClick={removeAndReturn} aria-label="この知らせを閉じる" style={{ marginLeft: 12, border: 0, background: 'transparent', color: 'var(--white)', cursor: 'pointer', fontSize: '1rem' }}>×</button>
+      <button onClick={removeAndReturn} aria-label="この知らせを閉じる" style={{ marginLeft: 8, minWidth: '1.75rem', minHeight: '1.75rem', border: 0, borderRadius: 6, background: 'transparent', color: 'var(--white)', cursor: 'pointer', fontSize: '1rem' }}>×</button>
     </div>
   )
 }

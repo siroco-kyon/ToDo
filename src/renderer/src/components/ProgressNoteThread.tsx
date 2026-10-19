@@ -491,14 +491,17 @@ const textareaStyle: React.CSSProperties = {
   resize: 'vertical'
 }
 
+// 「返信」などの文字だけのボタン。押せる範囲は文字の周りにも広げる（高さ 1.75rem 以上）
 const inlineActionStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
   color: 'var(--slate-400)',
   cursor: 'pointer',
-  fontSize: '0.72rem',
+  fontSize: '0.76rem',
   fontWeight: 800,
-  padding: 0
+  padding: '0.25rem 0.4rem',
+  margin: '-0.25rem -0.4rem',
+  minHeight: '1.75rem'
 }
 
 const ghostButtonStyle: React.CSSProperties = {

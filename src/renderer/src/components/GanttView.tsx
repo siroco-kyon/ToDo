@@ -25,6 +25,8 @@ interface Props {
   hasAnyTodos?: boolean
   /** 右に詳細を開いているタスク。ガントが狭くなっても、このタスクのバーが見えるように横へ送る */
   focusTodoId?: string | null
+  /** 文字の大きさの倍率（設定の文字の大きさ。1 = 100%）。大きいときは左の表の幅も広げる */
+  textScale?: number
   /** 知らせを出す（キーで日程を変えたときに「元に戻す」付きで知らせる） */
   onShowToast?: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
 }
@@ -198,8 +200,8 @@ const LEFT_COLUMN_DEFS: Array<{ key: GanttLeftColumnKey; label: string; min: num
   { key: 'assignee', label: '担当', min: 56, max: 220 }
 ]
 const DEFAULT_LEFT_COLUMN_WIDTHS: GanttLeftColumnWidths = {
-  // 既定では左の表にタスク名だけを出すので、名前が読める幅にする
-  title: 200,
+  // 既定では左の表にタスク名だけを出すので、名前が読める幅にする（行の「保留」「＋」のボタンの分も見込む）
+  title: 220,
   start: 64,
   due: 64,
   progress: 46,
@@ -423,6 +425,8 @@ interface LeftColumnResizeState {
   column: GanttLeftColumnKey
   originClientX: number
   originalWidth: number
+  /** つかんだときの文字の大きさの倍率（画面上の移動量を 100% の幅に直す） */
+  scale: number
 }
 
 function leftColumnDef(key: GanttLeftColumnKey): { key: GanttLeftColumnKey; label: string; min: number; max: number } {
@@ -986,6 +990,7 @@ function GanttViewContent({
   groupByCategory = false,
   hasAnyTodos = true,
   focusTodoId = null,
+  textScale = 1,
   onShowToast
 }: Props): React.JSX.Element {
   const unscheduledSectionRef = useRef<HTMLDivElement>(null)
@@ -1067,8 +1072,15 @@ function GanttViewContent({
   dependencyDragRef.current = dependencyDrag
   panDragRef.current = panDrag
 
-  const leftGridTemplate = useMemo(() => leftGridTemplateFor(leftColumnWidths, visibleLeftColumns), [leftColumnWidths, visibleLeftColumns])
-  const leftTableWidth = useMemo(() => leftTableWidthFor(leftColumnWidths, visibleLeftColumns), [leftColumnWidths, visibleLeftColumns])
+  // 覚えている列の幅は文字の大きさ 100% のときの幅。文字を大きくしたら同じ割合で広げる（150% でタスク名が数文字で切れないように）
+  const leftColumnScale = Math.max(1, textScale)
+  const displayedLeftColumnWidths = useMemo<GanttLeftColumnWidths>(() => (
+    leftColumnScale === 1
+      ? leftColumnWidths
+      : Object.fromEntries(Object.entries(leftColumnWidths).map(([key, width]) => [key, Math.round(width * leftColumnScale)])) as unknown as GanttLeftColumnWidths
+  ), [leftColumnScale, leftColumnWidths])
+  const leftGridTemplate = useMemo(() => leftGridTemplateFor(displayedLeftColumnWidths, visibleLeftColumns), [displayedLeftColumnWidths, visibleLeftColumns])
+  const leftTableWidth = useMemo(() => leftTableWidthFor(displayedLeftColumnWidths, visibleLeftColumns), [displayedLeftColumnWidths, visibleLeftColumns])
   const visibleLeftColumnDefs = useMemo(() => visibleLeftColumnDefsFor(visibleLeftColumns), [visibleLeftColumns])
   // 行の左の表は5つの欄を同じ順で並べている。出さない列は CSS で隠し、残りが表示中の列の幅に入る
   const leftGridAttributes = useMemo(() => ({
@@ -1246,9 +1258,10 @@ function GanttViewContent({
     document.body.style.userSelect = 'none'
 
     const handlePointerMove = (event: PointerEvent): void => {
+      // 画面上の移動量を、文字の大きさ 100% のときの幅に直して覚える
       const nextWidth = clampLeftColumnWidth(
         resizingLeftColumn.column,
-        resizingLeftColumn.originalWidth + event.clientX - resizingLeftColumn.originClientX
+        Math.round(resizingLeftColumn.originalWidth + (event.clientX - resizingLeftColumn.originClientX) / resizingLeftColumn.scale)
       )
       setLeftColumnWidths((previous) => (
         previous[resizingLeftColumn.column] === nextWidth
@@ -1348,9 +1361,10 @@ function GanttViewContent({
     setResizingLeftColumn({
       column,
       originClientX: event.clientX,
-      originalWidth: leftColumnWidths[column]
+      originalWidth: leftColumnWidths[column],
+      scale: leftColumnScale
     })
-  }, [leftColumnWidths])
+  }, [leftColumnScale, leftColumnWidths])
 
   const beginPan = useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
     if (event.target !== event.currentTarget) return
@@ -3677,8 +3691,8 @@ function GanttViewContent({
                           : undefined
                       }}
                     >
-                      <div style={{ fontSize: '0.62rem', color: unit.isCurrent ? (timeScale === 'day' ? 'var(--rose-200)' : 'var(--blue-200)') : unit.dayKind === 'saturday' ? 'var(--sky-300)' : unit.dayKind ? 'var(--red-300)' : 'var(--slate-500)' }}>{unit.primaryLabel}</div>
-                      <div style={{ marginTop: 2, fontSize: '0.68rem', color: unit.isCurrent ? 'var(--blue-100)' : 'var(--slate-300)', fontWeight: unit.isCurrent ? 700 : 500 }}>{unit.secondaryLabel}</div>
+                      <div style={{ fontSize: '0.7rem', color: unit.isCurrent ? (timeScale === 'day' ? 'var(--rose-200)' : 'var(--blue-200)') : unit.dayKind === 'saturday' ? 'var(--sky-300)' : unit.dayKind ? 'var(--red-300)' : 'var(--text-subtle)' }}>{unit.primaryLabel}</div>
+                      <div style={{ marginTop: 2, fontSize: '0.7rem', color: unit.isCurrent ? 'var(--blue-100)' : 'var(--slate-300)', fontWeight: unit.isCurrent ? 700 : 500 }}>{unit.secondaryLabel}</div>
                     </div>
                   ))}
                 </div>
@@ -3878,6 +3892,10 @@ function GanttViewContent({
                   : { fill: tone.background, track: trackBackground, border: tone.border, text: tone.text }
                 const barEnd = barLeft + barWidth
                 // 期限を過ぎているタスクは、期限から今日までを斜線で延ばして遅れを見せる
+                // 遅れ・期限超過は、バーの色に加えて文字でも出す（色の見分けが付きにくい人にも分かるように）
+                const scheduleStatusText = showScheduleSignals && group.todo.status !== 'on_hold' && (scheduleHealth?.status === 'behind' || scheduleHealth?.status === 'overdue')
+                  ? scheduleHealth.label
+                  : null
                 const overdueTail = showScheduleSignals && scheduleHealth?.status === 'overdue' && displayedTodoBar && todoVisible && !todoOutsideRange && todayX !== null && todayX > barEnd
                   ? { left: barEnd, width: Math.min(todayX, timelineWidth) - barEnd, title: `${scheduleHealth.label}（期限 ${shortDateLabel(displayedTodoBar.endDate)} から今日まで）` }
                   : null
@@ -3991,7 +4009,21 @@ function GanttViewContent({
                               // 保留していないタスクの「保留する」ボタンは、行にマウスを乗せたときだけ控えめに出す
                               <button
                                 className={group.todo.status === 'on_hold' ? undefined : 'tarbo-gantt-hold-toggle'}
-                                onClick={() => void onUpdateTodo(group.todo.id, { status: group.todo.status === 'on_hold' ? 'active' : 'on_hold' }).catch(() => window.alert('状態を変更できませんでした'))}
+                                onClick={() => {
+                                  const todo = group.todo
+                                  const previousStatus = todo.status
+                                  const nextStatus = previousStatus === 'on_hold' ? 'active' : 'on_hold'
+                                  void onUpdateTodo(todo.id, { status: nextStatus }).then(() => {
+                                    // 保留・再開も知らせる（バーの「保留中・」の文字だけでは気付きにくい）
+                                    onShowToast?.(nextStatus === 'on_hold' ? `「${todo.title}」を保留にしました` : `「${todo.title}」を進行中に戻しました`, 'success', {
+                                      label: '元に戻す',
+                                      run: () => void onUpdateTodo(todo.id, { status: previousStatus }).catch(() => onShowToast?.('元に戻せませんでした', 'error'))
+                                    })
+                                  }, () => {
+                                    if (onShowToast) onShowToast('状態を変更できませんでした', 'error')
+                                    else window.alert('状態を変更できませんでした')
+                                  })
+                                }}
                                 title={group.todo.status === 'on_hold' ? '保留中です。押すと進行中に戻します' : 'タスクを保留する'}
                                 aria-label={group.todo.status === 'on_hold' ? `「${group.todo.title}」を進行中に戻す` : `「${group.todo.title}」を保留する`}
                                 style={{ ...subTaskAddButtonStyle(false), color: group.todo.status === 'on_hold' ? 'var(--purple-300)' : 'var(--slate-400)' }}
@@ -4183,17 +4215,19 @@ function GanttViewContent({
                               style={{ position: 'absolute', left: 8, right: 8, top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: todoOutsideRange ? 'center' : undefined, cursor: todoOutsideRange || !barEditable ? 'pointer' : 'grab', color: barTone.text, zIndex: 2 }}
                             >
                               {todoOutsideRange ? (
-                                <span style={{ fontSize: '0.64rem', fontWeight: 800, whiteSpace: 'nowrap' }}>{todoOutsideRange === 'before' ? '← 期間前' : '期間後 →'}</span>
+                                <span style={{ fontSize: '0.7rem', fontWeight: 800, whiteSpace: 'nowrap' }}>{todoOutsideRange === 'before' ? '← 期間前' : '期間後 →'}</span>
               ) : parentLabelOutside ? (
-                                barWidth > 36 && <span style={{ fontSize: '0.64rem', fontWeight: 700, whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)' }}>{listMode ? '☑' : `${progress}%`}</span>
+                                barWidth > 36 && <span style={{ fontSize: '0.7rem', fontWeight: 700, whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)' }}>{listMode ? '☑' : `${progress}%`}</span>
                               ) : barWidth > 56 && (
                                 // 開始日が画面の左外にあっても、見えている範囲の左端にタスク名を出し続ける
                                 <span style={{ position: 'sticky', left: leftTableWidth + 10, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)' }}>
                                   <span style={{ fontSize: '0.7rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{listMode ? '☑ ' : group.todo.status === 'on_hold' ? '保留中 · ' : ''}{group.todo.title}</span>
-                                  {barWidth > 170 && (
-                                    <span style={{ fontSize: '0.64rem', fontWeight: 600, opacity: 0.85, flexShrink: 0 }}>
-                                      {[group.todo.assignee_name, listMode ? checklistText : `${progress}%`].filter(Boolean).join('・')}
+                                  {barWidth > 170 ? (
+                                    <span style={{ fontSize: '0.7rem', fontWeight: 600, opacity: 0.9, flexShrink: 0 }}>
+                                      {[group.todo.assignee_name, listMode ? checklistText : `${progress}%`, scheduleStatusText].filter(Boolean).join('・')}
                                     </span>
+                                  ) : scheduleStatusText && (
+                                    <span style={{ fontSize: '0.7rem', fontWeight: 700, flexShrink: 0 }}>{scheduleStatusText}</span>
                                   )}
                                 </span>
                               )}
@@ -4212,8 +4246,8 @@ function GanttViewContent({
                             style={{ position: 'absolute', left: parentLabelLeft, top: 0, height: PARENT_ROW_HEIGHT, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.7rem', fontWeight: 700, color: GANTT_TEXT, whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 1 }}
                           >
                             {parentTitleText}
-                            <span style={{ fontSize: '0.64rem', fontWeight: 600, color: 'var(--text-subtle)' }}>
-                              {[group.todo.assignee_name, listMode ? checklistText : `${progress}%`].filter(Boolean).join('・')}
+                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-subtle)' }}>
+                              {[group.todo.assignee_name, listMode ? checklistText : `${progress}%`, scheduleStatusText].filter(Boolean).join('・')}
                             </span>
                           </span>
                         )}
@@ -4517,7 +4551,7 @@ function GanttViewContent({
                                 }}
                                 style={{ position: 'absolute', left: 4, right: 4, top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: subTaskOutsideRange ? 'center' : 'flex-start', cursor: subTaskOutsideRange || !isTimelineEditable ? 'pointer' : 'grab', zIndex: 2 }}
                               >
-                                <span style={{ position: subTaskOutsideRange ? undefined : 'sticky', left: leftTableWidth + 10, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.6rem', fontWeight: 700, padding: '0 2px', whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
+                                <span style={{ position: subTaskOutsideRange ? undefined : 'sticky', left: leftTableWidth + 10, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.7rem', fontWeight: 700, padding: '0 2px', whiteSpace: 'nowrap', textShadow: 'var(--bar-label-shadow)', textDecoration: Boolean(subTask.done) ? 'line-through' : 'none' }}>
                                   {subTaskOutsideRange
                                     ? subTaskOutsideRange === 'before' ? '← 期間前' : '期間後 →'
                                     : subTaskLabelOutside
@@ -4543,7 +4577,7 @@ function GanttViewContent({
                                   height: SUBTASK_ROW_HEIGHT,
                                   display: 'flex',
                                   alignItems: 'center',
-                                  fontSize: '0.66rem',
+                                  fontSize: '0.7rem',
                                   fontWeight: 700,
                                   color: subTaskOverdue ? 'var(--red-300)' : GANTT_TEXT,
                                   whiteSpace: 'nowrap',
@@ -4643,7 +4677,7 @@ function GanttViewContent({
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  fontSize: '0.6rem',
+                                  fontSize: '0.7rem',
                                   fontWeight: 800,
                                   opacity: 0.82,
                                   overflow: 'hidden'
@@ -4746,7 +4780,7 @@ const leftHeaderGridStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 8,
   color: 'var(--slate-400)',
-  fontSize: '0.66rem',
+  fontSize: '0.7rem',
   fontWeight: 700,
   textTransform: 'uppercase'
 }
@@ -4785,13 +4819,13 @@ function leftColumnResizeHandleStyle(active: boolean): React.CSSProperties {
   return {
     position: 'absolute',
     top: 2,
-    right: -5,
-    width: 9,
+    right: -6,
+    width: 12,
     height: 27,
     cursor: 'col-resize',
     borderRadius: 4,
-    background: active ? 'var(--sky-400)' : 'var(--slate-700)',
-    opacity: active ? 1 : 0.62,
+    background: active ? 'var(--sky-400)' : 'var(--slate-600)',
+    opacity: active ? 1 : 0.9,
     boxShadow: active ? '0 0 0 1px color-mix(in srgb, var(--sky-400) 35%, transparent)' : 'none',
     zIndex: 2
   }
@@ -4842,7 +4876,7 @@ const tableCellStyle: React.CSSProperties = {
   gap: 4,
   overflow: 'hidden',
   color: 'var(--slate-300)',
-  fontSize: '0.68rem',
+  fontSize: '0.7rem',
   fontVariantNumeric: 'tabular-nums',
   whiteSpace: 'nowrap'
 }
@@ -4866,7 +4900,7 @@ const tableInputStyle: React.CSSProperties = {
   background: 'var(--slate-950)',
   color: 'var(--slate-200)',
   padding: '2px 5px',
-  fontSize: '0.68rem',
+  fontSize: '0.7rem',
   fontVariantNumeric: 'tabular-nums',
   outline: 'none',
   boxSizing: 'border-box'
@@ -4880,7 +4914,7 @@ const tableSelectStyle: React.CSSProperties = {
 const subTableCellStyle: React.CSSProperties = {
   ...tableCellStyle,
   color: 'var(--slate-400)',
-  fontSize: '0.64rem'
+  fontSize: '0.7rem'
 }
 
 const statusDotStyle: React.CSSProperties = {
@@ -4899,7 +4933,7 @@ const categoryCountBadgeStyle: React.CSSProperties = {
   padding: '0 7px',
   borderRadius: 999,
   color: GANTT_MUTED,
-  fontSize: '0.68rem',
+  fontSize: '0.7rem',
   fontWeight: 800,
   lineHeight: 1
 }
@@ -4924,10 +4958,11 @@ function categoryCollapseButtonStyle(collapsed: boolean): React.CSSProperties {
   }
 }
 
+// 行の小さいボタン（＋・保留）。文字の大きさに合わせて広げる（行の高さ 38px に収まる 32px まで。150% で 33.6px → 32px）
 function subTaskAddButtonStyle(disabled: boolean): React.CSSProperties {
   return {
-    width: 22,
-    height: 22,
+    width: 'clamp(22px, 1.4rem, 32px)',
+    height: 'clamp(22px, 1.4rem, 32px)',
     borderRadius: 6,
     border: `1px solid ${disabled ? 'var(--slate-600)' : GANTT_LINE}`,
     background: disabled ? GANTT_SURFACE_PRESSED : GANTT_SURFACE_RAISED,
@@ -5185,7 +5220,7 @@ function legendItemStyle(): React.CSSProperties {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 5,
-    fontSize: '0.68rem',
+    fontSize: '0.7rem',
     color: 'var(--slate-400)',
     whiteSpace: 'nowrap'
   }
@@ -5206,8 +5241,8 @@ function chipStyle(active: boolean): React.CSSProperties {
 
 function expandToggleButtonStyle(active: boolean, expanded: boolean): React.CSSProperties {
   return {
-    width: 18,
-    height: 18,
+    width: 'clamp(18px, 1.15rem, 28px)',
+    height: 'clamp(18px, 1.15rem, 28px)',
     borderRadius: 4,
     border: `1px solid ${active ? 'var(--slate-700)' : 'var(--gray-800)'}`,
     background: active ? 'var(--gray-900)' : 'transparent',
@@ -5217,7 +5252,7 @@ function expandToggleButtonStyle(active: boolean, expanded: boolean): React.CSSP
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    fontSize: '0.66rem'
+    fontSize: '0.7rem'
   }
 }
 
@@ -5269,7 +5304,7 @@ function reorderHandleStyle(disabled: boolean, dragging: boolean): React.CSSProp
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '0.68rem',
+    fontSize: '0.7rem',
     lineHeight: 1,
     letterSpacing: '-0.1em',
     userSelect: 'none',

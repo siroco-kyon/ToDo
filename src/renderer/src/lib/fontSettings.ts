@@ -16,9 +16,9 @@ export const FONT_PRESETS: Array<{ value: string; label: string }> = [
 export const FONT_SCALE_DEFAULT = '100%'
 
 export const FONT_SCALE_PRESETS: Array<{ value: string; label: string }> = [
-  { value: '87.5%', label: '小' },
-  { value: FONT_SCALE_DEFAULT, label: '標準' },
-  { value: '112.5%', label: '大' },
-  { value: '125%', label: '特大' },
-  { value: '150%', label: '最大' }
+  { value: '87.5%', label: '小（87.5%）' },
+  { value: FONT_SCALE_DEFAULT, label: '標準（100%）' },
+  { value: '112.5%', label: '大（112.5%）' },
+  { value: '125%', label: '特大（125%）' },
+  { value: '150%', label: '最大（150%）' }
 ]

@@ -47,7 +47,7 @@ export function diffDaysFromToday(dateKey: string): number {
 
 /**
  * 期限の色に添える言葉（色が分かりにくい人のため。色だけで超過を伝えない）。
- * 超過は「・2日超過」、今日は「・今日」、明日は「・明日」。それ以外・完了したものは空文字
+ * 超過は「・2日超過」、今日は「・今日」、明日は「・明日」、7日以内は「・あと3日」（一覧と同じ書き方）。それ以外・完了したものは空文字
  */
 export function dueStateSuffix(dueDate: string | null, done = false): string {
   if (!dueDate || done) return ''
@@ -55,6 +55,7 @@ export function dueStateSuffix(dueDate: string | null, done = false): string {
   if (diff < 0) return `・${Math.abs(diff)}日超過`
   if (diff === 0) return '・今日'
   if (diff === 1) return '・明日'
+  if (diff <= 7) return `・あと${diff}日`
   return ''
 }
 

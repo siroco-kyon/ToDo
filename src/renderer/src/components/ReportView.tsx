@@ -1655,7 +1655,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                   title={muted ? `${chip.label}のタスクはありません` : chip.value === 'all' ? (active ? '絞り込まずに表示しています' : '絞り込みを外して、すべて表示します') : `${chip.title}${active ? '（もう一度押すと解除）' : '（押すと絞り込み）'}`}
                   style={quickFilterChipStyle(chip.color, active, muted)}
                 >
-                  {chip.label} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{chip.count}</span>
+                  {active && <span aria-hidden="true">✓ </span>}{chip.label} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{chip.count}</span>
                 </button>
               )
             })}
@@ -2691,12 +2691,13 @@ function reportButtonStyle(emphasized: boolean): React.CSSProperties {
   }
 }
 
+// 選んでいるチップは色で塗って「✓」を付ける（色だけで選んでいるかを示さない）。0件のチップは点線の枠で、文字は読める濃さにする
 function quickFilterChipStyle(color: string, active: boolean, muted: boolean): React.CSSProperties {
   return {
     fontSize: '0.76rem',
-    color: muted ? 'var(--slate-600)' : active ? 'var(--slate-900)' : color,
+    color: muted ? 'var(--text-subtle)' : active ? 'var(--slate-900)' : color,
     background: active ? color : 'var(--gray-900)',
-    border: `1px solid ${active ? color : muted ? 'var(--gray-800)' : `color-mix(in srgb, ${color} 33.3%, transparent)`}`,
+    border: `${active ? 2 : 1}px ${muted && !active ? 'dashed' : 'solid'} ${active ? color : muted ? 'var(--slate-700)' : `color-mix(in srgb, ${color} 33.3%, transparent)`}`,
     borderRadius: 999,
     padding: '3px 11px',
     fontWeight: 700,

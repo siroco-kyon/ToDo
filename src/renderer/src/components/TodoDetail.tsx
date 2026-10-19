@@ -36,7 +36,7 @@ interface Props {
   onStartTimer: (todoId: string) => Promise<void>
   onStopTimer: (note?: string) => Promise<void>
   onAddToTodayPlan: (todoId: string) => Promise<DailyPlanItem>
-  onShowToast: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
+  onShowToast: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void; key?: string }) => void
   onDirtyChange?: (dirty: boolean) => void
   /** ほかの画面（チーム・報告など）から開いたとき、その画面へ戻るボタン */
   returnTo?: { label: string; onReturn: () => void } | null
@@ -455,6 +455,8 @@ export function TodoDetail({
     const saved = lastSavedProgressRef.current
     if (saved && saved.todoId === todo?.id && saved.progress === todo?.progress) lastSavedProgressRef.current = null
   }, [todo?.id, todo?.progress])
+  // 続けて進捗を変えたときは、知らせを1枚にまとめ、「元に戻す」で最初の値まで戻す
+  const progressUndoBaseRef = useRef<{ todoId: string; progress: number; status: Todo['status']; at: number } | null>(null)
   const handleProgressCommit = (progress: number): Promise<void> => {
     const run = progressSaveChainRef.current.then(() => commitProgress(progress))
     progressSaveChainRef.current = run.catch(() => undefined)
@@ -468,20 +470,30 @@ export function TodoDetail({
     try {
       await onUpdate(todoId, { progress, expected_values: { progress: previous.progress } })
       lastSavedProgressRef.current = { todoId, progress, status: progress >= 100 && previous.status !== 'on_hold' ? 'done' : previous.status === 'not_started' && progress > 0 ? 'active' : previous.status }
-      // バーを押し間違えたときにすぐ戻せるようにする（状態が自動で変わった分も戻す）
+      // バーを押し間違えたときにすぐ戻せるようにする（状態が自動で変わった分も戻す）。
+      // 12秒以内に続けて変えたときは、最初に変える前の値へ戻す
+      const recentBase = progressUndoBaseRef.current
+      const base = recentBase && recentBase.todoId === todoId && Date.now() - recentBase.at < 12000
+        ? recentBase
+        : { todoId, progress: previous.progress, status: previous.status, at: 0 }
+      progressUndoBaseRef.current = { ...base, at: Date.now() }
       const undo = {
         label: '元に戻す',
+        key: `progress:${todoId}`,
         run: () => {
-          void onUpdate(todoId, { progress: previous.progress, status: previous.status }).then(
+          progressUndoBaseRef.current = null
+          void onUpdate(todoId, { progress: base.progress, status: base.status }).then(
             () => {
-              lastSavedProgressRef.current = { todoId, progress: previous.progress, status: previous.status }
-              onShowToast(`進捗を${previous.progress}%に戻しました`)
+              lastSavedProgressRef.current = { todoId, progress: base.progress, status: base.status }
+              onShowToast(`進捗を${base.progress}%に戻しました`)
             },
             (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
           )
         }
       }
-      onShowToast(progress >= 100 && previous.status !== 'done' ? '進捗が100%になったので完了にしました' : `進捗を${progress}%にしました`, 'success', undo)
+      onShowToast(progress >= 100 && previous.status !== 'done'
+        ? '進捗が100%になったので完了にしました'
+        : `進捗を${progress}%にしました${base.progress !== previous.progress ? `（${base.progress}%から）` : ''}`, 'success', undo)
     } catch (error) {
       lastSavedProgressRef.current = null
       onShowToast(error instanceof Error ? error.message : '進捗を更新できませんでした', 'error')

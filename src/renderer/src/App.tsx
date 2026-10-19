@@ -321,9 +321,13 @@ export function App(): React.JSX.Element {
   }, [])
   const resizeRef = useRef<{ key: PaneKey; startX: number; startWidth: number } | null>(null)
 
-  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success', action?: { label: string; run: () => void }) => {
+  // action.key が同じ知らせは、新しいもので置き換える（進捗を続けて変えたときに知らせが積み重ならないように）
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success', action?: { label: string; run: () => void; key?: string }) => {
     const id = ++toastIdRef.current
-    setToasts((prev) => [...prev, { id, message, type, actionLabel: action?.label, onAction: action?.run }])
+    setToasts((prev) => [
+      ...(action?.key ? prev.filter((toast) => toast.key !== action.key) : prev),
+      { id, message, type, actionLabel: action?.label, onAction: action?.run, key: action?.key }
+    ])
   }, [])
 
   const removeToast = useCallback((id: number) => {
@@ -1592,6 +1596,8 @@ export function App(): React.JSX.Element {
             onUpdateTodo={handleUpdate}
             onReorderTodos={handleReorder}
             groupByCategory={selectedCategoryId === null}
+            textScale={(Number.parseFloat(fontScale) || 100) / 100}
+            onShowToast={showToast}
             standalone
           />
         </div>
@@ -1978,6 +1984,7 @@ export function App(): React.JSX.Element {
               listFilters={listFilters}
               hasAnyTodos={todos.length > 0}
               groupByCategory={selectedCategoryId === null}
+              textScale={(Number.parseFloat(fontScale) || 100) / 100}
               onShowToast={showToast}
             />
           ) : activeView === 'kanban' ? (
