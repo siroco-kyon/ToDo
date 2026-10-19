@@ -455,7 +455,7 @@ export function QuickAddModal({
           )}
 
           {/* 「詳しく設定」を開いて小窓が長くなっても、追加・キャンセルは下に見えたままにする */}
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', marginTop: 2, flexWrap: 'wrap', position: 'sticky', bottom: 0, margin: '2px -20px -20px', padding: '10px 20px 16px', background: 'var(--slate-800)', borderTop: '1px solid var(--slate-700)', borderRadius: '0 0 12px 12px', zIndex: 1 }}>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', marginTop: 2, flexWrap: 'wrap', position: 'sticky', bottom: -20, margin: '2px -20px -20px', padding: '10px 20px 16px', background: 'var(--slate-800)', borderTop: '1px solid var(--slate-700)', borderRadius: '0 0 12px 12px', zIndex: 1 }}>
             <label style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--slate-400)', fontSize: '0.78rem', cursor: 'pointer' }}>
               <input type="checkbox" checked={keepOpen} onChange={(event) => {
                 setKeepOpen(event.target.checked)

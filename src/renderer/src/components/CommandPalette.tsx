@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { Todo } from '../types'
 import { formatShortDate } from '../lib/dueDate'
@@ -39,7 +39,8 @@ export function CommandPalette({ commands, todos, onOpenTodo, onClose }: Props):
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
+  // 描いた直後（画面に出る前）にフォーカスする。開いてすぐ打った文字も入力欄に入る
+  useLayoutEffect(() => {
     inputRef.current?.focus()
   }, [])
 

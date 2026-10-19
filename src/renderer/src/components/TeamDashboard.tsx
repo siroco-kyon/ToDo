@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import type { TeamDashboard as TeamDashboardData, TeamDeadlineItem, TeamMemberWorkload, TeamNowItem } from '../types'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import type { TeamDashboard as TeamDashboardData, TeamDeadlineItem, TeamMemberWorkload, TeamNowItem, Todo } from '../types'
 import { AssigneeChip } from './AssigneePicker'
 import { dataInk } from '../lib/theme'
 import { formatShortDate } from '../lib/dueDate'
+import { behindDaysOf, isBehindSchedule, loadScheduleSettings } from '../lib/scheduleHealth'
 
 interface Props {
   onSelectTodo: (id: string) => void
@@ -10,6 +11,12 @@ interface Props {
   onSelectMember?: (userId: string) => void
   /** false のときプライベートカテゴリのタスクを集計から除外（全体レンズ） */
   includePrivate?: boolean
+  /** メンバーごとの「遅れ」を数えるタスク（ガント・報告タブと同じ判定にする） */
+  todos?: Todo[]
+}
+
+function toDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 const EMPTY: TeamDashboardData = { now: [], overdue: [], dueSoon: [], workloads: [] }
@@ -36,7 +43,7 @@ function dueSoonLabel(days: number): string {
   return `${days}日後`
 }
 
-export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = true }: Props): React.JSX.Element {
+export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = true, todos = [] }: Props): React.JSX.Element {
   const [data, setData] = useState<TeamDashboardData>(EMPTY)
   const [loadedAt, setLoadedAt] = useState<number>(Date.now())
   const [nowMs, setNowMs] = useState<number>(Date.now())
@@ -80,6 +87,36 @@ export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = t
   }, [data.now.length])
 
   const secondsSinceLoad = Math.max(0, Math.floor((nowMs - loadedAt) / 1000))
+
+  // 遅れ（期限前で、予定の進捗より遅れている主担当のタスク）。ガントの表示設定の「遅れとみなす日数」「土日・祝日を数えない」に合わせる
+  const [scheduleSettings] = useState(loadScheduleSettings)
+  const [holidayNames, setHolidayNames] = useState<ReadonlyMap<string, string>>(() => new Map())
+  useEffect(() => {
+    if (!scheduleSettings.workingDaysOnly) return
+    let cancelled = false
+    void import('@holiday-jp/holiday_jp')
+      .then((module) => {
+        const library = ((module as { default?: unknown }).default ?? module) as { holidays: Record<string, { name: string }> }
+        if (!cancelled) setHolidayNames(new Map(Object.entries(library.holidays).map(([date, holiday]) => [date, holiday.name])))
+      })
+      .catch(() => { /* 祝日が読めなくても土日だけ除いて数える */ })
+    return () => { cancelled = true }
+  }, [scheduleSettings.workingDaysOnly])
+  const todayKey = toDateKey(new Date(nowMs))
+  const behindCountByUser = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const todo of todos) {
+      if (!todo.assignee_id || todo.status === 'done' || todo.status === 'archived' || todo.status === 'on_hold' || todo.list_mode || !todo.start_date || !todo.due_date) continue
+      const bar = { startDate: todo.start_date.slice(0, 10), endDate: todo.due_date.slice(0, 10) }
+      // 期限を過ぎたものは「超過」で数える
+      if (bar.endDate < bar.startDate || todayKey > bar.endDate) continue
+      const { behindDays, expectedProgress } = behindDaysOf(todo.progress, bar, todayKey, { ...scheduleSettings, holidayNames })
+      if (isBehindSchedule(expectedProgress, todo.progress, behindDays, scheduleSettings.behindThresholdDays)) {
+        counts.set(todo.assignee_id, (counts.get(todo.assignee_id) ?? 0) + 1)
+      }
+    }
+    return counts
+  }, [holidayNames, scheduleSettings, todayKey, todos])
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -136,7 +173,7 @@ export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = t
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
             {data.workloads.map((member) => (
-              <WorkloadCard key={member.user_id} member={member} onSelect={onSelectMember ? () => onSelectMember(member.user_id) : undefined} />
+              <WorkloadCard key={member.user_id} member={member} behindCount={behindCountByUser.get(member.user_id) ?? 0} onSelect={onSelectMember ? () => onSelectMember(member.user_id) : undefined} />
             ))}
           </div>
         )}
@@ -208,7 +245,7 @@ function DeadlineRow({ item, accent, label, onSelectTodo }: { item: TeamDeadline
   )
 }
 
-function WorkloadCard({ member, onSelect }: { member: TeamMemberWorkload; onSelect?: () => void }): React.JSX.Element {
+function WorkloadCard({ member, behindCount, onSelect }: { member: TeamMemberWorkload; behindCount: number; onSelect?: () => void }): React.JSX.Element {
   const Container = onSelect ? 'button' : 'div'
   return (
     <Container
@@ -224,7 +261,8 @@ function WorkloadCard({ member, onSelect }: { member: TeamMemberWorkload; onSele
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
         <Metric label="未完了" title="未着手と進行中の数（保留中は別に数える）" value={`${member.active_tasks}`} color="var(--slate-200)" />
         <Metric label="保留中" value={`${member.on_hold_tasks}`} color="var(--purple-300)" />
-        <Metric label="超過" value={`${member.overdue_tasks}`} color={member.overdue_tasks > 0 ? 'var(--red-400)' : 'var(--slate-500)'} />
+        <Metric label="超過" title="期限を過ぎた未完了のタスク" value={`${member.overdue_tasks}`} color={member.overdue_tasks > 0 ? 'var(--red-400)' : 'var(--slate-500)'} />
+        <Metric label="遅れ" title="期限前で、予定の進捗より遅れているタスク（ガントの「遅れ」と同じ判定）" value={`${behindCount}`} color={behindCount > 0 ? 'var(--amber-300)' : 'var(--slate-500)'} />
         <Metric label="今日" value={formatMinutes(member.today_minutes)} color="var(--green-400)" />
       </div>
     </Container>

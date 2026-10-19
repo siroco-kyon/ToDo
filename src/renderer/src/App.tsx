@@ -1,4 +1,5 @@
 import React, { lazy, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import type { AddDailyPlanItemOptions, Category, CreateSubTaskInput, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateSubTaskInput, UpdateTodoInput, UserNotification } from './types'
 import { useTimer } from './hooks/useTimer'
 import { useProgressUnseenCount } from './hooks/useProgressUnseenCount'
@@ -23,7 +24,7 @@ import { mergeSubsetOrder } from './lib/reorder'
 import { buildUrlSearch, parseUrlState } from './lib/urlState'
 import { recurrenceDoneMessage, recurrenceReopenMessage } from './lib/recurrence'
 import { elapsedSecondsSince } from './hooks/useElapsedSeconds'
-import { formatShortDate } from './lib/dueDate'
+import { formatShortDate, shiftDateKey } from './lib/dueDate'
 import { FOCUS_PROGRESS_LOG_EVENT } from './lib/appEvents'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 
@@ -516,7 +517,8 @@ export function App(): React.JSX.Element {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'k') return
       event.preventDefault()
-      setShowCommandPalette((previous) => !previous)
+      // すぐに描いて入力欄へフォーカスを移す（Ctrl+K の直後に打った文字を取りこぼさない）
+      flushSync(() => setShowCommandPalette((previous) => !previous))
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -977,10 +979,14 @@ export function App(): React.JSX.Element {
 
   const selectedTodo = lensTodos.find((todo) => todo.id === selectedTodoId) ?? null
 
+  // ほかの画面（チーム・報告など）からタスクを開いたときは、詳細にその画面へ戻るボタンを出す。タブで画面を変えたら消す
+  const [detailReturnView, setDetailReturnView] = useState<CenterView | null>(null)
+
   // 上部のタブで画面を切り替える。表示中のタブをもう一度押しても、ほかの画面には移らない
   const toggleCenterView = useCallback((view: CenterView) => {
     if (view === activeView) return
     if (detailDirty && !window.confirm('未保存の変更があります。別の画面へ移動しますか？')) return
+    setDetailReturnView(null)
     setActiveView(view)
     if (view === 'gantt') setGanttSidePanelMode('today')
   }, [activeView, detailDirty])
@@ -992,6 +998,7 @@ export function App(): React.JSX.Element {
       setGanttSidePanelMode('detail')
       return
     }
+    if (activeView !== 'detail') setDetailReturnView(activeView)
     setActiveView('detail')
   }, [activeView, detailDirty, selectedTodoId])
 
@@ -1627,7 +1634,23 @@ export function App(): React.JSX.Element {
         label: runningTodoId === selectedTodo.id ? `「${selectedTodo.title}」の計測を止める` : `「${selectedTodo.title}」の計測を始める`,
         keywords: '計測 タイマー timer 開始 停止',
         run: () => { if (runningTodoId === selectedTodo.id) stopFromToolbar(); else void start(selectedTodo.id) }
-      }
+      },
+      ...(selectedTodo.due_date && selectedTodo.status !== 'done' ? [{
+        key: 'task-due-1', group: '操作' as const, label: `「${selectedTodo.title}」の期限を1日延ばす（${formatShortDate(selectedTodo.due_date)} → ${formatShortDate(shiftDateKey(selectedTodo.due_date, 1))}）`,
+        keywords: '期限 延期 延ばす due',
+        run: () => {
+          const id = selectedTodo.id
+          const before = selectedTodo.due_date!.slice(0, 10)
+          const next = shiftDateKey(before, 1)
+          void handleUpdate(id, { due_date: next }).then(
+            () => showToast(`期限を${formatShortDate(next)}にしました`, 'success', {
+              label: '元に戻す',
+              run: () => void handleUpdate(id, { due_date: before }).then(() => showToast('期限を元に戻しました'), (error) => showToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error'))
+            }),
+            (error) => showToast(error instanceof Error ? error.message : '期限を変えられませんでした', 'error')
+          )
+        }
+      }] : [])
     ] : []),
     ...(currentUser ? [{ key: 'mine', group: '操作' as const, label: '自分の担当だけを表示', keywords: '担当 絞り込み 自分', run: () => setSelectedAssigneeId(currentUser.id) }] : []),
     { key: 'clear-filters', group: '操作', label: '一覧の絞り込みを解除', keywords: '絞り込み 解除 全員', run: clearListFilters },
@@ -1985,6 +2008,7 @@ export function App(): React.JSX.Element {
             />
           ) : activeView === 'team' ? (
             <TeamDashboard
+              todos={lensTodos}
               onSelectTodo={openTodoDetail}
               onSelectMember={(userId) => {
                 setSelectedAssigneeId(userId)
@@ -2010,6 +2034,7 @@ export function App(): React.JSX.Element {
               onAddToTodayPlan={handleAddToTodayPlan}
               onShowToast={showToast}
               onDirtyChange={setDetailDirty}
+              returnTo={detailReturnView ? { label: CENTER_VIEW_LABELS[detailReturnView], onReturn: () => toggleCenterView(detailReturnView) } : null}
             />
           )}
           </ViewBoundary>

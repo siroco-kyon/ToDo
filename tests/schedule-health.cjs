@@ -29,6 +29,12 @@ assert.equal(lib.countScheduleDays('2026-10-05', '2026-10-16', calendar), 12)
 // 期間がすべて休日なら暦日で数える
 assert.equal(lib.calculateSchedule({ startDate: '2026-10-10', endDate: '2026-10-11' }, '2026-10-10', workdays).totalDays, 2)
 
+// 遅れの判定: 日数の差が基準以上、または予定を半分以上下回ったとき（短いタスクの最終日に 0% など）
+assert.equal(lib.isBehindSchedule(45, 20, 2.5, 2), true, '日数の差が基準以上')
+assert.equal(lib.isBehindSchedule(75, 0, 1.5, 2), true, '2日間のタスクの最終日に 0%')
+assert.equal(lib.isBehindSchedule(45, 30, 1.5, 2), false, '差が小さければ順調')
+assert.equal(lib.isBehindSchedule(45, 60, -1.5, 2), false, '先行は遅れではない')
+
 // 設定がなければ既定（2日・暦日）
 assert.deepEqual({ ...lib.loadScheduleSettings() }, { behindThresholdDays: 2, workingDaysOnly: false })
 

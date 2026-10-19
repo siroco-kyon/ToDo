@@ -323,7 +323,7 @@ function MemberActivityCard({
     `サブタスク ${user.added_subtasks.length}`,
     `変更 ${user.task_changes.length}`,
     `進捗 ${user.notes.length}`,
-    `コメント ${user.comments.length}`
+    `返信 ${user.comments.length}`
   ]
 
   return (

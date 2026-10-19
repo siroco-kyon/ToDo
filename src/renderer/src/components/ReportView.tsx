@@ -6,7 +6,7 @@ import { diffDaysFromToday, dueStateSuffix, formatShortDate as formatShortDateKe
 import { MentionTextarea } from './MentionTextarea'
 import { ON_TRACK_NOTE, ProgressNoteHelpers, cleanProgressNote, withProgressNoteTemplate } from './ProgressNoteHelpers'
 import { countPostponements } from '../lib/dueChanges'
-import { behindDaysOf, loadScheduleSettings } from '../lib/scheduleHealth'
+import { behindDaysOf, isBehindSchedule, loadScheduleSettings } from '../lib/scheduleHealth'
 import { ProgressNoteThread, discussionBadgeStyle } from './ProgressNoteThread'
 import { ProgressSlider } from './ProgressSlider'
 import { ReportSettingsPanel } from './ReportSettingsPanel'
@@ -371,6 +371,10 @@ function buildRow(
   // 最終更新だけでは、過去の期間を選んだときに期間中の更新を見落とすので、期間中の変更履歴も見る
   const memoUpdatedInPeriod = (lastMemoAt != null && isInRange(isoToDateKey(lastMemoAt), range))
     || changes.some((change) => change.subtask_id == null && change.field === 'memo')
+  // 「報告あり」は担当（主・サブ）の書いた進捗ログで数える。リーダーなどほかの人の書き込みだけでは、本人が報告したことにしない。
+  // 担当がいないタスク・デスクトップ版（書いた人の記録がない）は、すべての書き込みを数える
+  const memberIds = new Set([todo.assignee_id, ...(todo.co_assignees ?? []).map((item) => item.user_id)].filter((id): id is string => Boolean(id)))
+  const memberNotes = memberIds.size === 0 ? notes : notes.filter((note) => note.user_id == null || memberIds.has(note.user_id))
 
   let freshness: Freshness
   if (todo.status === 'done') {
@@ -380,7 +384,7 @@ function buildRow(
     freshness = 'list'
   } else if (todo.status === 'on_hold') {
     freshness = 'onHold'
-  } else if (notes.length > 0 || memoUpdatedInPeriod) {
+  } else if (memberNotes.length > 0 || memoUpdatedInPeriod) {
     freshness = 'fresh'
   } else if (todo.status === 'not_started' && (
     !todo.start_date
@@ -403,7 +407,7 @@ function buildRow(
     addedInPeriod: isInRange(isoToDateKey(subTask.created_at), range)
   }]))
 
-  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, reportedInPeriod: notes.length > 0 || memoUpdatedInPeriod, ...summary, subTaskSummaries, discussions, checkSummaries, behind }
+  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, reportedInPeriod: memberNotes.length > 0 || memoUpdatedInPeriod, ...summary, subTaskSummaries, discussions, checkSummaries, behind }
 }
 
 function summarizeChanges(changes: TodoChangeEntry[]): ChangeSummary {
@@ -1103,7 +1107,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     const bar = { startDate: todo.start_date.slice(0, 10), endDate: todo.due_date.slice(0, 10) }
     if (bar.endDate < bar.startDate || todayKey > bar.endDate) return null
     const { behindDays, expectedProgress } = behindDaysOf(todo.progress, bar, todayKey, { ...scheduleSettings, holidayNames })
-    return behindDays >= scheduleSettings.behindThresholdDays ? { days: behindDays, expectedProgress } : null
+    return isBehindSchedule(expectedProgress, todo.progress, behindDays, scheduleSettings.behindThresholdDays) ? { days: behindDays, expectedProgress } : null
   }, [holidayNames, scheduleSettings, todayKey])
 
   const hiddenTodoIdSet = useMemo(() => new Set(settings.hiddenTodoIds), [settings.hiddenTodoIds])
@@ -1211,7 +1215,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     { value: 'discussion', label: '要相談', count: countOf('discussion'), color: 'var(--c-d6b38a)', title: '「要相談」が付いた進捗ログがあるタスク（期間に関係なく）' },
     { value: 'onHold', label: '保留中', count: countOf('onHold'), color: 'var(--purple-300)', title: '保留中のタスク（保留が長い順）' },
     { value: 'overdue', label: '期限超過', count: countOf('overdue'), color: 'var(--red-300)', title: '期限を過ぎて完了していないタスク' },
-    { value: 'behind', label: '進捗の遅れ', count: countOf('behind'), color: 'var(--amber-200)', title: `期限前だが、今日時点の予定の進捗より${scheduleSettings.behindThresholdDays}日分以上遅れているタスク（ガントの「遅れ」と同じ判定）` },
+    { value: 'behind', label: '進捗の遅れ', count: countOf('behind'), color: 'var(--amber-200)', title: `期限前だが、今日時点の予定の進捗より${scheduleSettings.behindThresholdDays}日分以上、または半分以上遅れているタスク（ガントの「遅れ」と同じ判定）` },
     { value: 'postponed', label: '期間中に延期', count: countOf('postponed'), color: 'var(--amber-200)', title: 'この期間に期限を後ろへずらしたタスク' }
   ]
   const toggleGroupCollapsed = (key: string): void => {
@@ -1642,7 +1646,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                   onClick={() => setQuickFilter(active && chip.value !== 'all' ? 'all' : chip.value)}
                   disabled={muted && !active}
                   aria-pressed={active}
-                  title={muted ? `${chip.label}のタスクはありません` : `${chip.title}${active ? '（もう一度押すと解除）' : '（押すと絞り込み）'}`}
+                  title={muted ? `${chip.label}のタスクはありません` : chip.value === 'all' ? (active ? '絞り込まずに表示しています' : '絞り込みを外して、すべて表示します') : `${chip.title}${active ? '（もう一度押すと解除）' : '（押すと絞り込み）'}`}
                   style={quickFilterChipStyle(chip.color, active, muted)}
                 >
                   {chip.label} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{chip.count}</span>

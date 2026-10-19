@@ -4,7 +4,7 @@ import { discussionBadgeStyle } from './ProgressNoteThread'
 import { buildChecklistSummaries, checklistBadgeText } from '../lib/todoList'
 import { autoScrollNearEdge, dropPositionOf, moveIdBy, moveIdTo, type DropPosition } from '../lib/reorder'
 import { dataInk } from '../lib/theme'
-import { BEHIND_THRESHOLD_OPTIONS, DEFAULT_BEHIND_THRESHOLD_DAYS, GANTT_VIEW_SETTINGS_STORAGE_KEY, calculateSchedule, type ScheduleOptions } from '../lib/scheduleHealth'
+import { BEHIND_THRESHOLD_OPTIONS, DEFAULT_BEHIND_THRESHOLD_DAYS, GANTT_VIEW_SETTINGS_STORAGE_KEY, calculateSchedule, isBehindSchedule, type ScheduleOptions } from '../lib/scheduleHealth'
 
 interface Props {
   todos: Todo[]
@@ -742,7 +742,7 @@ function getScheduleHealth(todo: Todo, todoBar: TodoBar | null, todayKey: string
     return { status: 'future', expectedProgress, delta, behindDays, label: '開始前', accent: 'var(--slate-500)', background: 'var(--slate-900)', text: 'var(--slate-300)' }
   }
 
-  if (behindDays >= options.behindThresholdDays) {
+  if (isBehindSchedule(expectedProgress, progress, behindDays, options.behindThresholdDays)) {
     return { status: 'behind', expectedProgress, delta, behindDays, label: `約${Math.max(1, Math.round(behindDays))}日遅れ`, accent: 'var(--amber-500)', background: 'var(--amber-950)', text: 'var(--amber-200)' }
   }
 
@@ -3138,7 +3138,7 @@ function GanttViewContent({
           <button
             onClick={() => setHealthFilter((previous) => previous === 'behind' ? null : 'behind')}
             aria-pressed={healthFilter === 'behind'}
-            title={healthFilter === 'behind' ? '押すと絞り込みを外します' : `予定より${behindThresholdDays}日分以上遅れているタスクだけを表示します（日数は表示設定で変えられます）`}
+            title={healthFilter === 'behind' ? '押すと絞り込みを外します' : `予定より${behindThresholdDays}日分以上、または半分以上遅れているタスクだけを表示します（日数は表示設定で変えられます）`}
             style={healthFilterChipStyle('var(--amber-950)', 'var(--amber-500)', 'var(--amber-200)', healthFilter === 'behind')}
           >
             遅れ {healthChipCounts.behind}{healthFilter === 'behind' ? ' ×' : ''}

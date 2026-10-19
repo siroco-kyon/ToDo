@@ -16,6 +16,13 @@ export function toDateKey(date: Date): string {
   return `${y}-${m}-${d}`
 }
 
+/** 日付のみの文字列を days 日ずらした YYYY-MM-DD */
+export function shiftDateKey(dateKey: string, days: number): string {
+  const date = parseDateOnly(dateKey)
+  date.setDate(date.getDate() + days)
+  return toDateKey(date)
+}
+
 /** ISO 日時をローカル日付の YYYY-MM-DD にする */
 export function isoToDateKey(iso: string): string {
   const date = new Date(iso)

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 
 export interface ToastMessage {
   id: number
@@ -28,14 +28,23 @@ export function Toast({ toasts, onRemove }: Props): React.JSX.Element {
 }
 
 function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: number) => void }): React.JSX.Element {
+  // マウスを乗せている・フォーカスがあるあいだは消さない（「元に戻す」を押す前に消えないように）
+  const [held, setHeld] = useState(false)
   useEffect(() => {
+    if (held) return
     // 操作ボタン付きは押す時間が要るので長めに出す
-    const timer = setTimeout(() => onRemove(toast.id), toast.type === 'error' ? 10000 : toast.actionLabel ? 8000 : 4500)
+    const timer = setTimeout(() => onRemove(toast.id), toast.type === 'error' ? 12000 : toast.actionLabel ? 12000 : 5000)
     return () => clearTimeout(timer)
-  }, [toast.id, toast.actionLabel, toast.type, onRemove])
+  }, [held, toast.id, toast.actionLabel, toast.type, onRemove])
 
   return (
-    <div role={toast.type === 'error' ? 'alert' : 'status'} style={{
+    <div
+      role={toast.type === 'error' ? 'alert' : 'status'}
+      onPointerEnter={() => setHeld(true)}
+      onPointerLeave={() => setHeld(false)}
+      onFocus={() => setHeld(true)}
+      onBlur={() => setHeld(false)}
+      style={{
       padding: '10px 16px',
       background: toast.type === 'success' ? 'var(--green-800)' : 'var(--red-900)',
       border: `1px solid ${toast.type === 'success' ? 'var(--green-400)' : 'var(--red-500)'}`,

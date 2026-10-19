@@ -476,8 +476,10 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       setCommentDrafts((previous) => ({ ...previous, [key]: '' }))
       if (parentCommentId) setReplyingToCommentId(null)
       else setCommentingOnNoteId(null)
+      // 新しい順では返信した投稿が先頭へ移るので、見失わないようにその投稿へ移る
+      setFocusedNoteId(noteId)
     } catch (error) {
-      onShowToast(error instanceof Error ? error.message : 'コメントを追加できませんでした', 'error')
+      onShowToast(error instanceof Error ? error.message : '返信を追加できませんでした', 'error')
     }
   }
 
@@ -489,7 +491,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       setNotes((previous) => patchNote(previous, updated))
       setEditingCommentId(null)
     } catch (error) {
-      onShowToast(error instanceof Error ? error.message : 'コメントを更新できませんでした', 'error')
+      onShowToast(error instanceof Error ? error.message : '返信を更新できませんでした', 'error')
     }
   }
 
@@ -499,7 +501,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       const updated = await window.api.progressNoteCommentDelete(commentId)
       setNotes((previous) => patchNote(previous, updated))
     } catch (error) {
-      onShowToast(error instanceof Error ? error.message : 'コメントを削除できませんでした', 'error')
+      onShowToast(error instanceof Error ? error.message : '返信を削除できませんでした', 'error')
     }
   }
 
@@ -567,7 +569,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
     const value = commentDrafts[key] ?? ''
     const placeholder = parentComment
       ? `${getAuthorName(parentComment.author_name)} に返信`
-      : 'コメントを書く'
+      : 'この投稿に返信を書く'
 
     return (
       <div style={composerRowStyle(parentComment ? 1 : 0)}>
@@ -681,7 +683,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
         <div>
           <div style={{ fontSize: '1rem', color: 'var(--slate-50)', fontWeight: 800 }}>進捗タイムライン</div>
           <div style={{ marginTop: 3, color: 'var(--text-subtle)', fontSize: '0.78rem' }}>
-            {range.from === range.to ? range.from : `${range.from} ～ ${range.to}`} ・ 投稿 {visibleNotes.length}件 / コメント {totalComments}件
+            {range.from === range.to ? range.from : `${range.from} ～ ${range.to}`} ・ 投稿 {visibleNotes.length}件 / 返信 {totalComments}件
             {unseenCount > 0 && <span style={{ color: 'var(--blue-300)', fontWeight: 700 }}> ・ 新着 {unseenCount}件</span>}
           </div>
         </div>
@@ -741,7 +743,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                 onClick={() => setTimelineFilter(active && chip.value !== 'all' ? 'all' : chip.value)}
                 disabled={muted && !active}
                 aria-pressed={active}
-                title={muted ? `${chip.label}の投稿はありません` : `${chip.title}${active ? '（もう一度押すと解除）' : ''}`}
+                title={muted ? `${chip.label}の投稿はありません` : chip.value === 'all' ? (active ? '絞り込まずに表示しています' : '絞り込みを外して、すべて表示します') : `${chip.title}${active ? '（もう一度押すと解除）' : ''}`}
                 style={filterChipStyle(chip.color, active, muted)}
               >
                 {chip.label} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{count}</span>
@@ -874,7 +876,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                   {!editingNote && (
                     <div style={postActionRowStyle}>
                       <ReactionBar reactions={note.reactions} onToggle={(emoji) => void handleToggleReaction(note.id, emoji)} />
-                      <span style={actionMetaStyle}>コメント {commentCount}</span>
+                      <span style={actionMetaStyle}>返信 {commentCount}</span>
                       <button onClick={() => setCommentingOnNoteId(note.id)} style={inlineActionStyle}>返信</button>
                       {/* 報告タブと同じく、要相談・編集・削除は ⋯ にまとめる */}
                       <NoteMenu

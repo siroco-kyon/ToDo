@@ -80,6 +80,18 @@ export function behindDaysOf(progress: number, bar: ScheduleBar, todayKey: strin
   return { expectedProgress, behindDays: ((expectedProgress - actual) / 100) * totalDays }
 }
 
+/** 予定の進捗を半分以上下回ったら、日数が短くても遅れとみなす（2日間のタスクの最終日に 0% など） */
+export const BEHIND_PROGRESS_GAP = 50
+
+/**
+ * 遅れているか。予定との差が遅れとみなす日数以上か、予定の進捗を半分以上下回っているとき。
+ * 期間の短いタスクは日数の差が小さく、日数だけでは最終日に 0% でも「順調」になってしまうため
+ */
+export function isBehindSchedule(expectedProgress: number, progress: number, behindDays: number, thresholdDays: number): boolean {
+  if (behindDays <= 0) return false
+  return behindDays >= thresholdDays || expectedProgress - progress >= BEHIND_PROGRESS_GAP
+}
+
 /** ガントの表示設定から、遅れとみなす日数と土日祝を数えないかを読む */
 export function loadScheduleSettings(): { behindThresholdDays: number; workingDaysOnly: boolean } {
   try {

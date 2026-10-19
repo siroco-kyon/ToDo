@@ -38,6 +38,8 @@ interface Props {
   onAddToTodayPlan: (todoId: string) => Promise<DailyPlanItem>
   onShowToast: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
   onDirtyChange?: (dirty: boolean) => void
+  /** ほかの画面（チーム・報告など）から開いたとき、その画面へ戻るボタン */
+  returnTo?: { label: string; onReturn: () => void } | null
 }
 
 interface EditableSubTask {
@@ -140,7 +142,8 @@ export function TodoDetail({
   onStopTimer,
   onAddToTodayPlan,
   onShowToast,
-  onDirtyChange
+  onDirtyChange,
+  returnTo = null
 }: Props): React.JSX.Element {
   const [logs, setLogs] = useState<WorkLog[]>([])
   const [subTasks, setSubTasks] = useState<SubTask[]>([])
@@ -1578,6 +1581,15 @@ export function TodoDetail({
         }}
       >
         <div style={{ width: '100%', minWidth: 0 }}>
+          {returnTo && !editing && (
+            <button
+              type="button"
+              onClick={returnTo.onReturn}
+              style={{ marginBottom: 4, padding: '2px 0', border: 'none', background: 'transparent', color: 'var(--blue-300)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}
+            >
+              ← {returnTo.label}へ戻る
+            </button>
+          )}
           {editing ? (
             <input ref={editTitleInputRef} disabled={saving} aria-label="タスク名" value={editData.title ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, title: event.target.value }))} style={inputStyle} />
           ) : (
@@ -2330,7 +2342,8 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
             {listMode && dueDraft && (
               <button onClick={() => setDueDraft('')} title="期限を外して、期限なしのリストにします" style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: '0.74rem' }}>期限なし</button>
             )}
-            <span role="group" aria-label="期限を延ばす" style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', width: '100%' }}>
+            <span role="group" aria-label="期限を延ばす" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', width: '100%' }}>
+              <span aria-hidden="true" style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>期限を</span>
               {[{ label: '+1日', days: 1 }, { label: '+3日', days: 3 }, { label: '+1週', days: 7 }].map((option) => (
                 <button
                   key={option.label}
