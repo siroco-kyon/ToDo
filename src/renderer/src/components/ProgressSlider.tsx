@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 
 // マウスで左右にドラッグして進捗率を変えられるバー。
 // ドラッグ中は表示だけ動かし、指を離したときに1回だけ保存する（途中の値で何度も保存しない）。
-// キーボードでも ←→（5%）、PageUp/PageDown（10%）、Home/End で操作できる。
+// キーボードでも ←→（5%）、Shift+←→・PageUp/PageDown（25%）、Home/End で操作できる。
 
 interface Props {
   value: number
@@ -100,7 +100,9 @@ export function ProgressSlider({
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (disabled) return
-    const deltas: Record<string, number> = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5, PageUp: 10, PageDown: -10 }
+    // Shift を押しながらの矢印と PageUp/PageDown は 25% ずつ（0→100% を4回で）
+    const arrowStep = event.shiftKey ? 25 : 5
+    const deltas: Record<string, number> = { ArrowRight: arrowStep, ArrowUp: arrowStep, ArrowLeft: -arrowStep, ArrowDown: -arrowStep, PageUp: 25, PageDown: -25 }
     let next: number | null = null
     if (event.key in deltas) next = clamp(shown + deltas[event.key])
     else if (event.key === 'Home') next = 0
@@ -132,7 +134,7 @@ export function ProgressSlider({
         aria-valuenow={shown}
         aria-valuetext={`${shown}%`}
         aria-disabled={disabled}
-        title={disabled ? undefined : 'ドラッグで進捗率を変更（←→キーでも変更できます）'}
+        title={disabled ? undefined : 'ドラッグで進捗率を変更（←→キーで5%、Shift+←→で25%ずつ変えられます）'}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -144,13 +146,15 @@ export function ProgressSlider({
           flex: 1,
           minWidth: 0,
           // 細いバーでも掴みやすいよう、上下に当たり判定の余白を取る
-          padding: '6px 0',
+          padding: '8px 0',
+          minHeight: 24,
           cursor: disabled ? 'default' : dragging ? 'grabbing' : 'ew-resize',
           touchAction: 'none',
           outlineOffset: 2
         }}
       >
-        <div ref={trackRef} style={{ position: 'relative', height, background: 'var(--slate-800)', borderRadius: 999 }}>
+        {/* 溝は枠線でも示す（ライトでは地の色と近く、0% のときにバーがあることに気付けなかったため） */}
+        <div ref={trackRef} style={{ position: 'relative', height, background: 'var(--slate-900)', boxShadow: 'inset 0 0 0 1px var(--slate-600)', borderRadius: 999 }}>
           <div
             style={{
               width: `${shown}%`,
@@ -172,10 +176,11 @@ export function ProgressSlider({
                 marginLeft: -thumbSize / 2,
                 marginTop: -thumbSize / 2,
                 borderRadius: '50%',
-                background: 'var(--slate-50)',
+                // つまみは両方のテーマで白（ライトで黒い点に見えないように）。触れていないときも、つかめることが分かる濃さにする
+                background: 'var(--on-fill-white)',
                 border: `2px solid ${fillColor}`,
-                boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
-                opacity: active ? 1 : 0.55,
+                boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
+                opacity: active ? 1 : 0.9,
                 transform: dragging ? 'scale(1.15)' : 'none',
                 transition: dragging ? 'none' : 'left 0.15s ease, opacity 0.15s ease'
               }}

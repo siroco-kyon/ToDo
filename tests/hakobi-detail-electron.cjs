@@ -321,7 +321,7 @@ async function runElectron() {
     await js('window.api.todoUpdate(window.tasks.b.id,{status:"active"})')
     const timerTitle = (await js('window.api.todoGetAll()')).find(todo => todo.id === tasks.b.id).title
     await currentTask(tasks.b.id, timerTitle)
-    await click('開始')
+    await click('計測開始')
     await until('Boolean(document.querySelector("input[placeholder=停止メモ]"))', 'Timer did not start')
     await js('(function(){const input=document.querySelector("input[placeholder=停止メモ]");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,"失敗しても残す停止メモ");input.dispatchEvent(new Event("input",{bubbles:true}));})()')
     await delay(75)

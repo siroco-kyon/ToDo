@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import { copyTextToClipboard } from '../lib/clipboard'
 
 /** 定例モードで1人ずつ見せるまとまり（担当者別なら担当者、カテゴリ別ならカテゴリ） */
@@ -30,6 +31,28 @@ export interface MeetingState {
   pausedMs: number
   /** 閉じた時刻（開いているあいだは null） */
   pausedAt: number | null
+}
+
+function toKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+/** 決まったことの期限の近道（なし・今週金曜・来週金曜・2週間後） */
+export function meetingDueChoices(today = new Date()): Array<{ label: string; value: string | null }> {
+  const base = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const thisFriday = new Date(base)
+  thisFriday.setDate(base.getDate() + ((5 - base.getDay() + 7) % 7))
+  const nextFriday = new Date(thisFriday)
+  nextFriday.setDate(thisFriday.getDate() + 7)
+  const twoWeeks = new Date(base)
+  twoWeeks.setDate(base.getDate() + 14)
+  const short = (date: Date): string => `${date.getMonth() + 1}/${date.getDate()}`
+  return [
+    { label: 'なし', value: null },
+    { label: `今週金曜 ${short(thisFriday)}`, value: toKey(thisFriday) },
+    { label: `来週金曜 ${short(nextFriday)}`, value: toKey(nextFriday) },
+    { label: `2週間後 ${short(twoWeeks)}`, value: toKey(twoWeeks) }
+  ]
 }
 
 export function createMeetingState(now = Date.now(), first?: { key: string; label: string }): MeetingState {
@@ -72,7 +95,7 @@ interface Props {
   periodLabel: string
   renderBody: (groupKey: string) => React.ReactNode
   /** 決まったことをタスクにする。作れたら true */
-  onCreateTask?: (groupKey: string, title: string) => Promise<boolean>
+  onCreateTask?: (groupKey: string, title: string, dueDate: string | null) => Promise<boolean>
   /** タスクを作るときの担当・カテゴリの説明（例: 「担当: 佐藤」） */
   createTaskHint: (groupKey: string) => string
   onShowToast: (message: string, type?: 'success' | 'error') => void
@@ -153,8 +176,13 @@ export function meetingMinutesMarkdown(groups: MeetingGroup[], state: MeetingSta
 // 定例モード。報告タブの担当者（カテゴリ）を1人ずつ大きく表示し、持ち時間を計りながら進める。
 // 決まったことはその場でタスクにでき、終わったら議事録をコピーできる
 export function MeetingMode({ groups, state, onStateChange, periodLabel, renderBody, onCreateTask, createTaskHint, onShowToast, onClose }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const [now, setNow] = useState(() => Date.now())
   const [taskTitle, setTaskTitle] = useState('')
+  // 決まったことの期限（その場で決めることが多いので、よく使う日を近道で選べるようにする）
+  const [taskDue, setTaskDue] = useState<string | null>(null)
+  const dueChoices = meetingDueChoices()
   const [creatingTask, setCreatingTask] = useState(false)
   // 今の人はキーで探す（並びが変わっても同じ人のまま）。一覧から外れていたら、同じ位置の人を見せる
   const keyedIndex = state.currentKey == null ? -1 : groups.findIndex((item) => item.key === state.currentKey)
@@ -181,11 +209,12 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
     setTaskTitle('')
   }
 
-  // ←→ で前の人・次の人、Esc で閉じる（入力中は除く）
+  // ←→ で前の人・次の人、Esc で閉じる（入力中の Esc は、まず入力欄から抜ける。もう一度押すと閉じる）
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       const target = event.target as HTMLElement | null
       const typing = target != null && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
+      if (event.key === 'Escape' && typing && !event.isComposing) { event.preventDefault(); target.blur(); return }
       if (event.key === 'Escape' && !typing) { event.preventDefault(); close(); return }
       if (typing || event.altKey || event.ctrlKey || event.metaKey) return
       if (event.key === 'ArrowRight') { event.preventDefault(); goTo(index + 1) }
@@ -215,10 +244,11 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
     const title = taskTitle.trim()
     if (!group || !title || !onCreateTask || creatingTask) return
     setCreatingTask(true)
-    const ok = await onCreateTask(group.key, title)
+    const ok = await onCreateTask(group.key, title, taskDue)
     setCreatingTask(false)
     if (!ok) return
     setTaskTitle('')
+    setTaskDue(null)
     onStateChange((previous) => ({ ...previous, createdTasks: { ...previous.createdTasks, [group.key]: [...(previous.createdTasks[group.key] ?? []), title] } }))
   }
 
@@ -229,7 +259,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
   const nearTime = !overTime && personSeconds > state.targetMinutes * 60 - 30
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="定例モード" style={{ position: 'fixed', inset: 0, zIndex: 950, background: 'var(--c-0b1220)', display: 'flex', flexDirection: 'column' }}>
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="定例モード" style={{ position: 'fixed', inset: 0, zIndex: 950, background: 'var(--c-0b1220)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 20px', borderBottom: '1px solid var(--slate-800)', background: 'var(--slate-900)' }}>
         <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--indigo-300)' }}>定例モード</span>
         {group && (
@@ -260,7 +290,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
         </label>
         <button onClick={() => goTo(index - 1)} disabled={index === 0} title="前の人（←）" style={navButtonStyle(index === 0)}>◀ 前の人</button>
         <button onClick={() => goTo(index + 1)} disabled={index >= groups.length - 1} title="次の人（→）" style={navButtonStyle(index >= groups.length - 1, true)}>次の人 ▶</button>
-        <button onClick={() => void copyMinutes()} title="メモ・追加したタスク・時間をまとめてコピーします" style={navButtonStyle(false)}>定例の内容をコピー</button>
+        <button onClick={() => void copyMinutes()} title="メモ・追加したタスク・時間をまとめてコピーします" aria-label="定例の内容をコピー" style={navButtonStyle(false)}>定例の<span className="hakobi-hide-narrow">内容を</span>コピー</button>
         <button onClick={close} title="定例モードを閉じます（Esc）。進み具合は残ります" style={navButtonStyle(false)}>閉じる</button>
       </div>
 
@@ -276,6 +306,20 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
               <section style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--slate-200)' }}>決まったことをタスクにする</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>{createTaskHint(group.key)}・開始日は今日</div>
+                <div role="group" aria-label="期限" style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>期限</span>
+                  {dueChoices.map((choice) => (
+                    <button
+                      key={choice.label}
+                      type="button"
+                      aria-pressed={taskDue === choice.value}
+                      onClick={() => setTaskDue(choice.value)}
+                      style={{ padding: '3px 9px', borderRadius: 999, border: `1px solid ${taskDue === choice.value ? 'var(--blue-500)' : 'var(--slate-700)'}`, background: taskDue === choice.value ? 'var(--blue-950)' : 'transparent', color: taskDue === choice.value ? 'var(--blue-100)' : 'var(--slate-300)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}
+                    >
+                      {choice.label}
+                    </button>
+                  ))}
+                </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <input
                     value={taskTitle}
@@ -310,7 +354,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
                 style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--c-0b1220)', color: 'var(--slate-200)', fontSize: '0.82rem', lineHeight: 1.6, resize: 'vertical' }}
               />
               <div style={{ fontSize: '0.75rem', color: 'var(--slate-400)', lineHeight: 1.6 }}>
-                このメモは報告画面を離れると消えます。残す場合は「定例の内容をコピー」でコピーしてください。
+                このメモはこの端末に12時間残ります（ほかの画面へ移っても、読み込み直しても消えません）。議事録として残す場合は「定例の内容をコピー」でコピーしてください。
               </div>
             </section>
             <section style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

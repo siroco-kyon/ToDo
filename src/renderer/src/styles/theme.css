@@ -13,7 +13,12 @@
  * カテゴリ・担当者の色（利用者が選んだ色）はトークンにしない。文字に使うときは lib/theme.ts の dataInk() を通す。
  * トークンを足すときは、両方のテーマに値を書く。
  */
+/* ネイティブの日付選択アイコンも、両方のテーマで読める色にする。 */
+input[type="date"], input[type="time"], input[type="datetime-local"] { color-scheme: var(--native-scheme); }
+
 :root {
+  --font-caption: 0.78rem;
+  --font-control: 0.85rem;
   /* color-scheme は決めない（決めると、色を書いていないボタンや入力欄の既定の色が変わる）。日付の入力など、暗い部品にしたいところだけ var(--native-scheme) を使う */
   --native-scheme: dark;
   --data-ink-mix: 100%;
@@ -163,6 +168,8 @@
   --on-fill-indigo-100: #e0e7ff;
   --on-fill-white: #ffffff;
   --ink-on-data: #0b1220;
+  /* 小さな補足の文字（以前の slate-500・600 の文字）。暗い地に対して 4.5:1 以上になる明るさ */
+  --text-subtle: #8291a6;
   --bar-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   --gantt-bar-active: #4338ca;
   --gantt-bar-done: #047857;
@@ -266,8 +273,9 @@
   --purple-950: #faf5ff;
   --red-50: #450a0a;
   --red-200: #991b1b;
-  --red-300: #dc2626;
-  --red-400: #dc2626;
+  /* 赤は文字に使う 300・400 だけ 700 にする（600 だと明るい灰色の地で 4.5:1 に届かない） */
+  --red-300: #b91c1c;
+  --red-400: #b91c1c;
   --red-500: #dc2626;
   --red-600: #dc2626;
   --red-700: #dc2626;
@@ -345,6 +353,8 @@
   --on-fill-indigo-100: #e0e7ff;
   --on-fill-white: #ffffff;
   --ink-on-data: #0b1220;
+  /* 小さな補足の文字。明るい地に対して 4.5:1 以上 */
+  --text-subtle: #556274;
   --bar-label-shadow: 0 0 3px rgba(255, 255, 255, 0.95);
   --gantt-bar-active: #a5b4fc;
   --gantt-bar-done: #6ee7b7;

@@ -4,19 +4,23 @@ import type { Category, CreateSubTaskInput, DailyPlanItem, ProgressNote, PublicU
 import { RunningTimerDisplay, TimerDisplay } from './TimerDisplay'
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds'
 import { AssigneeChip, AssigneePicker } from './AssigneePicker'
-import { diffDaysFromToday, getDueDateColor, toDateKey } from '../lib/dueDate'
+import { diffDaysFromToday, formatShortDate, getDueDateColor, toDateKey } from '../lib/dueDate'
 import { subscribeProgressDraftChanges } from '../lib/legacyProgressDrafts'
 import { buildEditPatch } from '../lib/editChanges'
 import { ProgressSlider } from './ProgressSlider'
 import { NoteMenu, ProgressNoteThread } from './ProgressNoteThread'
 import { MentionTextarea } from './MentionTextarea'
-import { ON_TRACK_NOTE, ProgressNoteHelpers, withProgressNoteTemplate } from './ProgressNoteHelpers'
+import { ON_TRACK_NOTE, ProgressNoteHelpers, cleanProgressNote, withProgressNoteTemplate } from './ProgressNoteHelpers'
 import { TodoChecklist } from './TodoChecklist'
 import { isListTodo } from '../lib/todoList'
 import { autoScrollNearEdge, dropTargetAt, moveIdBy, moveIdTo, scrollParentOf, type DropPosition } from '../lib/reorder'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { taskLinkFor } from '../lib/urlState'
 import { dataInk, textOnFill } from '../lib/theme'
+import { changeFieldLabel } from '../lib/changeFields'
+import { FOCUS_PROGRESS_LOG_EVENT, FOCUS_TASK_DETAIL_EVENT } from '../lib/appEvents'
+import { taskOptionLabel } from '../lib/taskLabel'
+import { TODO_RECURRENCE_OPTIONS, nextRecurrenceDue, recurrenceDoneMessage, recurrenceKindLabel, recurrenceReopenMessage, todoRecurrenceLabel } from '../lib/recurrence'
 
 interface Props {
   todo: Todo | null
@@ -32,8 +36,10 @@ interface Props {
   onStartTimer: (todoId: string) => Promise<void>
   onStopTimer: (note?: string) => Promise<void>
   onAddToTodayPlan: (todoId: string) => Promise<DailyPlanItem>
-  onShowToast: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
+  onShowToast: (message: string, type?: 'success' | 'error', action?: { label?: string; run?: () => void; key?: string }) => void
   onDirtyChange?: (dirty: boolean) => void
+  /** ほかの画面（チーム・報告など）から開いたとき、その画面へ戻るボタン */
+  returnTo?: { label: string; onReturn: () => void } | null
 }
 
 interface EditableSubTask {
@@ -65,7 +71,7 @@ const AUTOSAVE_DELAY_MS = 1500
 const TWO_COLUMN_MIN_WIDTH = 880
 
 const sectionTitleStyle: React.CSSProperties = {
-  fontSize: '0.75rem',
+  fontSize: 'var(--font-control)',
   color: 'var(--slate-400)',
   marginBottom: 8,
   textTransform: 'uppercase',
@@ -78,7 +84,7 @@ function SectionHeading({ title, summary, detail }: { title: React.ReactNode; su
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
       <span style={{ ...sectionTitleStyle, marginBottom: 0 }}>{title}</span>
-      {summary && <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>{summary}</span>}
+      {summary && <span style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>{summary}</span>}
       {detail && <InfoTip text={detail} />}
     </div>
   )
@@ -99,7 +105,7 @@ function InfoTip({ text }: { text: string }): React.JSX.Element {
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
         onKeyDown={(event) => { if (event.key === 'Escape') setOpen(false) }}
-        style={{ fontSize: '0.8rem', color: open ? 'var(--slate-200)' : 'var(--slate-400)', cursor: 'help', lineHeight: 1 }}
+        style={{ fontSize: 'var(--font-control)', color: open ? 'var(--slate-200)' : 'var(--slate-400)', cursor: 'help', lineHeight: 1 }}
       >
         ⓘ
       </span>
@@ -107,7 +113,7 @@ function InfoTip({ text }: { text: string }): React.JSX.Element {
         id={tipId}
         role="tooltip"
         hidden={!open}
-        style={{ position: 'absolute', top: 'calc(100% + 6px)', left: -8, zIndex: 20, width: 280, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)', fontSize: '0.78rem', lineHeight: 1.6, boxShadow: '0 10px 24px color-mix(in srgb, var(--slate-950) 50%, transparent)', textTransform: 'none', letterSpacing: 0 }}
+        style={{ position: 'absolute', top: 'calc(100% + 6px)', left: -8, zIndex: 20, width: 280, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)', fontSize: 'var(--font-control)', lineHeight: 1.6, boxShadow: '0 10px 24px color-mix(in srgb, var(--slate-950) 50%, transparent)', textTransform: 'none', letterSpacing: 0 }}
       >
         {text}
       </span>
@@ -117,8 +123,8 @@ function InfoTip({ text }: { text: string }): React.JSX.Element {
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
-  fontSize: '0.75rem',
-  color: 'var(--slate-500)',
+  fontSize: 'var(--font-control)',
+  color: 'var(--text-subtle)',
   marginBottom: 4
 }
 
@@ -136,7 +142,8 @@ export function TodoDetail({
   onStopTimer,
   onAddToTodayPlan,
   onShowToast,
-  onDirtyChange
+  onDirtyChange,
+  returnTo = null
 }: Props): React.JSX.Element {
   const [logs, setLogs] = useState<WorkLog[]>([])
   const [subTasks, setSubTasks] = useState<SubTask[]>([])
@@ -222,6 +229,38 @@ export function TodoDetail({
   const initializedTodoIdRef = useRef<string | undefined>(undefined)
 
   const todoId = todo?.id
+  // 「編集」を開いたらタスク名の欄へ、保存・やめたら「編集」ボタンへフォーカスを移す（キーボードで迷子にならないように）
+  const editTitleInputRef = useRef<HTMLInputElement>(null)
+  const editButtonRef = useRef<HTMLButtonElement>(null)
+  const wasEditingRef = useRef(false)
+  useEffect(() => {
+    if (editing) editTitleInputRef.current?.focus()
+    else if (wasEditingRef.current) editButtonRef.current?.focus()
+    wasEditingRef.current = editing
+  }, [editing])
+  // 進捗バーの横の「進捗ログを書く」から、下の方にある入力欄へ移る
+  const progressLogInputId = useId()
+  const focusProgressLogInput = (): void => {
+    const input = document.getElementById(progressLogInputId)
+    if (!input) return
+    input.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    input.focus({ preventScroll: true })
+  }
+  // Ctrl+K の「進捗ログを書く」からも入力欄へ移る
+  const focusProgressLogRef = useRef(focusProgressLogInput)
+  focusProgressLogRef.current = focusProgressLogInput
+  useEffect(() => {
+    const handle = (): void => focusProgressLogRef.current()
+    window.addEventListener(FOCUS_PROGRESS_LOG_EVENT, handle)
+    return () => window.removeEventListener(FOCUS_PROGRESS_LOG_EVENT, handle)
+  }, [])
+  // Ctrl+K でタスクを開いたときは、題名へフォーカスを移す（続けて Tab で詳細の中を進める）
+  const titleHeadingRef = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    const handle = (): void => titleHeadingRef.current?.focus()
+    window.addEventListener(FOCUS_TASK_DETAIL_EVENT, handle)
+    return () => window.removeEventListener(FOCUS_TASK_DETAIL_EVENT, handle)
+  }, [])
   const liveTodoIdRef = useRef(todoId)
   liveTodoIdRef.current = todoId
   const mountedRef = useRef(true)
@@ -407,12 +446,58 @@ export function TodoDetail({
   }
 
   // 進捗バーは報告タブと同じスライダー（ドラッグ・←→キー）。離したときに1回だけ保存する
-  const handleProgressCommit = async (progress: number): Promise<void> => {
+  // 進捗の保存は順番に送る。続けて操作したとき、前の保存が画面に反映される前の値を「変更前」として送ると、
+  // 自分の変更をほかの人の変更と取り違えて弾かれるため、直前に保存した値を「変更前」に使う
+  const progressSaveChainRef = useRef<Promise<void>>(Promise.resolve())
+  const lastSavedProgressRef = useRef<{ todoId: string; progress: number; status: Todo['status'] } | null>(null)
+  // 画面の値が保存した値に追いついたら、画面の値を使う（そのあとのほかの人の変更を正しく見分けるため）
+  useEffect(() => {
+    const saved = lastSavedProgressRef.current
+    if (saved && saved.todoId === todo?.id && saved.progress === todo?.progress) lastSavedProgressRef.current = null
+  }, [todo?.id, todo?.progress])
+  // サブタスクをチェックする前の進捗（チェックを外したときに戻す）
+  const progressBeforeDoneRef = useRef(new Map<string, number>())
+  // 続けて進捗を変えたときは、知らせを1枚にまとめ、「元に戻す」で最初の値まで戻す
+  const progressUndoBaseRef = useRef<{ todoId: string; progress: number; status: Todo['status']; at: number } | null>(null)
+  const handleProgressCommit = (progress: number): Promise<void> => {
+    const run = progressSaveChainRef.current.then(() => commitProgress(progress))
+    progressSaveChainRef.current = run.catch(() => undefined)
+    return run
+  }
+  const commitProgress = async (progress: number): Promise<void> => {
     if (!todoId) return
+    const saved = lastSavedProgressRef.current?.todoId === todoId ? lastSavedProgressRef.current : null
+    const previous = saved ?? { progress: todo?.progress ?? 0, status: todo?.status ?? 'not_started' }
+    if (progress === previous.progress) return
     try {
-      await onUpdate(todoId, { progress, expected_values: { progress: todo?.progress ?? 0 } })
-      if (progress >= 100 && todo?.status !== 'done') onShowToast('進捗が100%になったので完了にしました')
+      await onUpdate(todoId, { progress, expected_values: { progress: previous.progress } })
+      lastSavedProgressRef.current = { todoId, progress, status: progress >= 100 && previous.status !== 'on_hold' ? 'done' : previous.status === 'not_started' && progress > 0 ? 'active' : previous.status }
+      // バーを押し間違えたときにすぐ戻せるようにする（状態が自動で変わった分も戻す）。
+      // 12秒以内に続けて変えたときは、最初に変える前の値へ戻す
+      const recentBase = progressUndoBaseRef.current
+      const base = recentBase && recentBase.todoId === todoId && Date.now() - recentBase.at < 12000
+        ? recentBase
+        : { todoId, progress: previous.progress, status: previous.status, at: 0 }
+      progressUndoBaseRef.current = { ...base, at: Date.now() }
+      const undo = {
+        label: '元に戻す',
+        key: `progress:${todoId}`,
+        run: () => {
+          progressUndoBaseRef.current = null
+          void onUpdate(todoId, { progress: base.progress, status: base.status }).then(
+            () => {
+              lastSavedProgressRef.current = { todoId, progress: base.progress, status: base.status }
+              onShowToast(`進捗を${base.progress}%に戻しました`)
+            },
+            (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+          )
+        }
+      }
+      onShowToast(progress >= 100 && previous.status !== 'done'
+        ? '進捗が100%になったので完了にしました'
+        : `進捗を${progress}%にしました${base.progress !== previous.progress ? `（${base.progress}%から）` : ''}`, 'success', undo)
     } catch (error) {
+      lastSavedProgressRef.current = null
       onShowToast(error instanceof Error ? error.message : '進捗を更新できませんでした', 'error')
     }
   }
@@ -423,13 +508,26 @@ export function TodoDetail({
     const nextStatus: Todo['status'] = todo.status === 'done'
       ? (todo.progress > 0 ? 'active' : 'not_started')
       : 'done'
+    const previousStatus = todo.status
+    const todoId = todo.id
+    // 一覧で完了にしたときと同じく、知らせから元に戻せるようにする
+    const undo = {
+      label: '元に戻す',
+      run: () => {
+        void onUpdate(todoId, { status: previousStatus }).then(
+          () => onShowToast('元に戻しました'),
+          (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+        )
+      }
+    }
     try {
       await onUpdate(todo.id, { status: nextStatus })
       if (nextStatus === 'done') {
-        const recurrenceLabel = todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : todo.recurrence === 'monthly' ? '毎月' : null
-        onShowToast(recurrenceLabel ? `完了にしました。${recurrenceLabel}タスクの次回分を作成しました` : '完了にしました')
+        const recurrenceMessage = recurrenceDoneMessage(todo)
+        onShowToast(recurrenceMessage ? `完了にしました。${recurrenceMessage}` : '完了にしました', 'success', undo)
       } else {
-        onShowToast('完了を取り消しました')
+        const reopenMessage = recurrenceReopenMessage(todo)
+        onShowToast(reopenMessage ? `完了を取り消しました。${reopenMessage}` : '完了を取り消しました', 'success', undo)
       }
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '状態を変更できませんでした', 'error')
@@ -701,6 +799,10 @@ export function TodoDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, memoBase, memoDraft, memoFailedDraft, memoSaving, todoId])
 
+  // Enter のすぐ後に次の名前を打っても前の名前とつながらないよう、送る前に入力欄を空にし、
+  // 保存中に押された分は順番待ちにして1件ずつ追加する
+  const subTaskQueueRef = useRef<Array<{ todoId: string; input: CreateSubTaskInput }>>([])
+  const subTaskAddingRef = useRef(false)
   const handleAddSubTask = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault()
     if (!todo || savingRef.current) return
@@ -712,34 +814,49 @@ export function TodoDetail({
       return
     }
 
-    const createdItems: SubTask[] = []
-    const remainingTitles = [...titles]
-    try {
-      for (const title of titles) {
-        const created = await window.api.subtaskCreate(todo.id, {
+    for (const title of titles) {
+      subTaskQueueRef.current.push({
+        todoId: todo.id,
+        input: {
           title,
           description: newSubTask.description?.trim() ?? '',
           assignee_id: users.length > 0 ? newSubTask.assignee_id ?? null : null,
           start_date: newSubTask.start_date ?? null,
           due_date: newSubTask.due_date ?? null,
           progress: clampProgress(newSubTask.progress ?? 0)
-        })
+        }
+      })
+    }
+    setNewSubTask((previous) => ({ ...previous, title: '' }))
+    if (subTaskAddingRef.current) return
+
+    subTaskAddingRef.current = true
+    const createdItems: SubTask[] = []
+    try {
+      while (subTaskQueueRef.current.length > 0) {
+        const next = subTaskQueueRef.current[0]
+        const created = await window.api.subtaskCreate(next.todoId, next.input)
+        subTaskQueueRef.current.shift()
         createdItems.push(created)
-        if (editing) {
+        setSubTasks((previous) => previous.some((item) => item.id === created.id) ? previous : [...previous, created])
+        if (editingRef.current) {
           const base = createEditableSubTasks([created])[0]
           subTaskBasesRef.current.set(created.id, base)
           setEditableSubTasks((previous) => previous.some((item) => item.id === created.id) ? previous : [...previous, base])
         }
-        remainingTitles.shift()
-        setNewSubTask((previous) => ({ ...previous, title: remainingTitles.join('\n') }))
       }
     } catch (error) {
-      if (createdItems.length > 0) setSubTasks((previous) => [...previous, ...createdItems])
+      // 追加できなかった分は入力欄へ戻し、そのまま再試行できるようにする
+      const failedTitles = subTaskQueueRef.current.map((item) => item.input.title)
+      subTaskQueueRef.current = []
+      setNewSubTask((previous) => ({ ...previous, title: [...failedTitles, previous.title].filter((value) => value.trim()).join('\n') }))
       onShowToast(`${createdItems.length}件は追加済みです。残りを再試行できます: ${error instanceof Error ? error.message : '追加できませんでした'}`, 'error')
       return
+    } finally {
+      subTaskAddingRef.current = false
     }
-    setNewSubTask((previous) => ({ title: '', description: '', assignee_id: previous.assignee_id ?? null, start_date: toDateKey(new Date()), due_date: null, progress: 0 }))
-    setSubTasks((previous) => [...previous, ...createdItems])
+    // 名前の欄は、保存中に打ち始めた次の名前を消さないようそのまま残す
+    setNewSubTask((previous) => ({ title: previous.title, description: '', assignee_id: previous.assignee_id ?? null, start_date: toDateKey(new Date()), due_date: null, progress: 0 }))
     const extendedTo = createdItems.map((item) => item.parent_due_date_extended_to).filter(Boolean).sort().at(-1)
     if (extendedTo) onShowToast(`サブタスクに合わせて親タスクの期限を${extendedTo}まで延長しました`)
   }
@@ -761,8 +878,11 @@ export function TodoDetail({
   // bodyOverride を渡すと（「予定どおり」）、入力中の文には触らずにその文を投稿する
   const handleAddProgressNote = async (bodyOverride?: string): Promise<void> => {
     if (!todoId || noteSaving) return
-    const body = (bodyOverride ?? noteDraft).trim()
-    if (!body) return
+    const body = cleanProgressNote(bodyOverride ?? noteDraft)
+    if (!body) {
+      if (noteDraft.trim()) onShowToast('ひな形の見出しだけでは投稿できません。やったことなどを書いてください', 'error')
+      return
+    }
     try {
       setNoteSaving(true)
       const created = await window.api.progressNoteCreate(todoId, body)
@@ -771,6 +891,8 @@ export function TodoDetail({
         setNoteDraft('')
         window.localStorage.removeItem(progressDraftKey)
       }
+      // 報告タブ・進捗タブと同じく、投稿したことを知らせる
+      onShowToast('進捗ログを投稿しました')
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '進捗ログを追加できませんでした', 'error')
     } finally {
@@ -839,7 +961,7 @@ export function TodoDetail({
 
   if (!todo) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--slate-600)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-subtle)' }}>
         タスクを選択してください
       </div>
     )
@@ -972,16 +1094,17 @@ export function TodoDetail({
 
   const timerSection = (
     <>
-          <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* 狭いパネルでは停止メモと停止を下の段へ折り返す（右端で切れないように） */}
+          <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginBottom: 4 }}>計測時間</div>
+              <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)', marginBottom: 4 }}>計測時間</div>
               {isRunning ? <RunningTimerDisplay startTime={timerStartTime} /> : <TimerDisplay elapsedSeconds={0} isRunning={false} />}
-              <div style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginTop: 2 }}>合計 <TotalMinutes loggedSeconds={loggedSeconds} startTime={isRunning ? timerStartTime : null} />分</div>
+              <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)', marginTop: 2 }}>合計 <TotalMinutes loggedSeconds={loggedSeconds} startTime={isRunning ? timerStartTime : null} />分</div>
             </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 0 }}>
               {isRunning ? (
                 <>
-                  <input disabled={timerStopping} value={stopNote} onChange={(event) => setStopNote(event.target.value)} placeholder="停止メモ" style={{ ...inputStyle, width: 160, fontSize: '0.8rem', padding: '6px 8px' }} />
+                  <input disabled={timerStopping} value={stopNote} onChange={(event) => setStopNote(event.target.value)} placeholder="停止メモ" aria-label="停止メモ" style={{ ...inputStyle, width: 160, maxWidth: '100%', flex: '1 1 120px', fontSize: 'var(--font-control)', padding: '6px 8px' }} />
                   <button disabled={timerStopping} onClick={() => {
                     if (timerStoppingRef.current) return
                     timerStoppingRef.current = true
@@ -995,7 +1118,7 @@ export function TodoDetail({
                   }} style={buttonStyle('var(--red-500)')}>{timerStopping ? '停止中…' : '停止'}</button>
                 </>
               ) : (
-                <button onClick={() => void onStartTimer(todo.id)} style={buttonStyle('var(--green-400)', 'var(--black)')}>開始</button>
+                <button onClick={() => void onStartTimer(todo.id)} title="このタスクの作業時間を計り始めます（終わったら「停止」）" style={buttonStyle('var(--green-400)', 'var(--black)')}>計測開始</button>
               )}
             </div>
           </div>
@@ -1022,20 +1145,29 @@ export function TodoDetail({
                   <option value="list">ToDoリスト（毎日・毎週のチェックや細かいやることをまとめる）</option>
                 </select>
                 {editingListMode && !listMode && (
-                  <div style={{ marginTop: 4, fontSize: '0.72rem', color: 'var(--indigo-300)', lineHeight: 1.5 }}>
+                  <div style={{ marginTop: 4, fontSize: 'var(--font-caption)', color: 'var(--indigo-300)', lineHeight: 1.5 }}>
                     保存すると繰り返し（次回分の作成）を外します。期限はそのままです（期限なしにするときは期限を空にします）。今のサブタスクはそのまま項目になります（繰り返しは項目ごとに設定できます）。
                   </div>
                 )}
                 {!editingListMode && listMode && (
-                  <div style={{ marginTop: 4, fontSize: '0.72rem', color: 'var(--amber-200)', lineHeight: 1.5 }}>
+                  <div style={{ marginTop: 4, fontSize: 'var(--font-caption)', color: 'var(--amber-200)', lineHeight: 1.5 }}>
                     保存すると、項目の繰り返し（毎日・毎週など）を外し、サブタスクに戻します。
                   </div>
                 )}
               </div>
-              <div><label style={labelStyle}>説明</label><textarea value={editData.description ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, description: event.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} /></div>
-              <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input type="date" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div><div style={{ flex: 1 }}><label style={labelStyle}>{editingListMode ? '期限（空にすると期限なし）' : '期限'}</label><input type="date" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div></div>
-              <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最低</option><option value={2}>低</option><option value={3}>中</option><option value={4}>高</option><option value={5}>最高</option></select></div></div>
-              {!editingListMode && <div><label style={labelStyle}>繰り返し（完了にすると次回分を自動で作ります）</label><select value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as 'daily' | 'weekly' | 'monthly' | null }))} style={inputStyle}><option value="">なし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option></select></div>}
+              <div><label style={labelStyle}>説明</label><textarea aria-label="説明" value={editData.description ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, description: event.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} /></div>
+              <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input type="date" aria-label="開始日" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div><div style={{ flex: 1 }}><label style={labelStyle}>{editingListMode ? '期限（空にすると期限なし）' : '期限'}</label><input type="date" aria-label="期限" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div></div>
+              <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select aria-label="カテゴリ" value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select aria-label="優先度" value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最低</option><option value={2}>低</option><option value={3}>中</option><option value={4}>高</option><option value={5}>最高</option></select></div></div>
+              {!editingListMode && (
+                <div>
+                  <label style={labelStyle}>繰り返し（完了にすると次回分を自動で作ります）</label>
+                  <select aria-label="繰り返し" value={editData.recurrence ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, recurrence: (event.target.value || null) as Todo['recurrence'] }))} style={inputStyle}>
+                    <option value="">なし</option>
+                    {TODO_RECURRENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <RecurrenceHint data={editData} />
+                </div>
+              )}
               {!editingListMode && editData.recurrence && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: 'var(--slate-300)', cursor: 'pointer' }}>
                   <input
@@ -1069,9 +1201,9 @@ export function TodoDetail({
                   日本の祝日をスキップする
                 </label>
               )}
-              <div><label style={labelStyle}>状態</label><select value={editData.status ?? 'active'} onChange={(event) => setEditData((previous) => ({ ...previous, status: event.target.value as Todo['status'] }))} style={inputStyle}><option value="not_started">未着手</option><option value="active">進行中</option><option value="on_hold">保留中</option><option value="done">完了</option><option value="archived">アーカイブ</option></select></div>
+              <div><label style={labelStyle}>状態</label><select aria-label="状態" value={editData.status ?? 'active'} onChange={(event) => setEditData((previous) => ({ ...previous, status: event.target.value as Todo['status'] }))} style={inputStyle}><option value="not_started">未着手</option><option value="active">進行中</option><option value="on_hold">保留中</option><option value="done">完了</option><option value="archived">アーカイブ</option></select></div>
               {users.length > 0 && (
-                <div><label style={labelStyle}>担当者</label><AssigneePicker users={users} value={editData.assignee_id ?? null} onChange={(assigneeId) => setEditData((previous) => ({ ...previous, assignee_id: assigneeId, co_assignee_ids: (previous.co_assignee_ids ?? []).filter((id) => id !== assigneeId) }))} selectStyle={inputStyle} /></div>
+                <div><label style={labelStyle}>担当者</label><AssigneePicker label="担当者" users={users} value={editData.assignee_id ?? null} onChange={(assigneeId) => setEditData((previous) => ({ ...previous, assignee_id: assigneeId, co_assignee_ids: (previous.co_assignee_ids ?? []).filter((id) => id !== assigneeId) }))} selectStyle={inputStyle} /></div>
               )}
               {users.length > 0 && (
                 <div>
@@ -1094,7 +1226,7 @@ export function TodoDetail({
                             padding: '4px 10px', borderRadius: 99, cursor: 'pointer',
                             border: `1px solid ${selected ? user.color : 'var(--slate-700)'}`,
                             background: selected ? `color-mix(in srgb, ${user.color} 14.9%, transparent)` : 'var(--slate-900)',
-                            color: selected ? 'var(--slate-200)' : 'var(--slate-500)', fontSize: '0.78rem'
+                            color: selected ? 'var(--slate-200)' : 'var(--slate-500)', fontSize: 'var(--font-control)'
                           }}
                         >
                           <span style={{ width: 8, height: 8, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
@@ -1105,7 +1237,7 @@ export function TodoDetail({
                   </div>
                 </div>
               )}
-              {!editingListMode && <div><label style={labelStyle}>進捗 {editData.progress ?? 0}%</label><input type="range" min={0} max={100} step={5} value={editData.progress ?? 0} onChange={(event) => setEditData((previous) => ({ ...previous, progress: Number(event.target.value) }))} style={{ width: '100%', accentColor: 'var(--indigo-500)' }} /></div>}
+              {!editingListMode && <div><label style={labelStyle}>進捗 {editData.progress ?? 0}%</label><input type="range" aria-label="進捗率" min={0} max={100} step={5} value={editData.progress ?? 0} onChange={(event) => setEditData((previous) => ({ ...previous, progress: Number(event.target.value) }))} style={{ width: '100%', accentColor: 'var(--indigo-500)' }} /></div>}
               <button onClick={() => void handleSave()} disabled={saving} style={{ ...buttonStyle('var(--indigo-500)'), alignSelf: 'flex-end' }}>{saving ? '保存中…' : '保存'}</button>
             </fieldset>
           )}
@@ -1116,17 +1248,37 @@ export function TodoDetail({
     <>
           {!editing && !listMode && (
             <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: '12px 16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>進捗 <span style={{ color: 'var(--slate-500)', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span></span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                <span style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>
+                  進捗{' '}
+                  {todo.status !== 'done' && <span style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-caption)' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span>}
+                </span>
+                {!isArchived && (
+                  <button
+                    type="button"
+                    onClick={focusProgressLogInput}
+                    title="下の進捗ログの入力欄へ移ります（Ctrl+Enter で投稿）"
+                    style={{ padding: '4px 10px', borderRadius: 999, border: '1px solid var(--indigo-700)', background: 'transparent', color: 'var(--indigo-300)', cursor: 'pointer', fontSize: 'var(--font-caption)', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}
+                  >
+                    ✎ 進捗ログを書く
+                  </button>
+                )}
               </div>
-              <ProgressSlider
-                value={todo.progress ?? 0}
-                label={`${todo.title}の進捗率`}
-                disabled={isArchived}
-                onCommit={handleProgressCommit}
-              />
+              {todo.status === 'done' ? (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', padding: '4px 0' }}>
+                  <span style={{ color: 'var(--green-400)', fontSize: '1rem', fontWeight: 800 }}>✓ 完了</span>
+                  {(todo.progress ?? 0) < 100 && <span style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-caption)' }}>完了にしたときの進捗は {todo.progress ?? 0}% でした（書き直す必要はありません）</span>}
+                </div>
+              ) : (
+                <ProgressSlider
+                  value={todo.progress ?? 0}
+                  label={`${todo.title}の進捗率`}
+                  disabled={isArchived}
+                  onCommit={handleProgressCommit}
+                />
+              )}
               {subTaskProgress !== null && (
-                <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--slate-500)' }}>
+                <div style={{ marginTop: 8, fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>
                   サブタスク: {doneCount}/{subTasks.length} 完了
                   <div style={{ height: 4, background: 'var(--slate-900)', borderRadius: 99, marginTop: 4 }}>
                     <div style={{ height: '100%', width: `${subTaskProgress}%`, background: 'var(--indigo-500)', borderRadius: 99 }} />
@@ -1229,8 +1381,9 @@ export function TodoDetail({
                       void handleAddProgressNote()
                     }
                   }}
+                  id={progressLogInputId}
                   aria-label="進捗ログを書く"
-                  placeholder="例: 〇〇まで終わった。次は△△。□□で困っている"
+                  placeholder="例: 〇〇まで終わった。次は△△。□□で困っている（Ctrl+Enterで投稿）"
                   rows={3}
                   style={{ ...inputStyle, lineHeight: 1.6, resize: 'vertical', minHeight: 72 }}
                 />
@@ -1244,10 +1397,13 @@ export function TodoDetail({
                         setNoteDraft(next)
                         if (todoId) window.localStorage.setItem(progressDraftKey, next)
                       }}
-                      onPostOnTrack={() => void handleAddProgressNote(ON_TRACK_NOTE)}
+                      onInsertOnTrack={() => {
+                        setNoteDraft(ON_TRACK_NOTE)
+                        if (todoId) window.localStorage.setItem(progressDraftKey, ON_TRACK_NOTE)
+                      }}
                     />
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>{noteDraft.length}文字</div>
+                  <div style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>{noteDraft.length}文字</div>
                   <button
                     onClick={() => void handleAddProgressNote()}
                     disabled={!noteDraft.trim() || noteSaving}
@@ -1307,7 +1463,16 @@ export function TodoDetail({
                       <ReadonlySubTaskItem
                         subTask={subTask}
                         users={users}
-                        onToggle={() => void window.api.subtaskUpdate(subTask.id, { done: !subTask.done, expected_values: { done: Boolean(subTask.done) } }).then((updated) => setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))).catch((error) => onShowToast(error instanceof Error ? error.message : 'サブタスクを更新できませんでした', 'error'))}
+                        onToggle={() => {
+                          // チェックを外したときは、チェックする前の進捗に戻す（覚えていないときは、これまでどおり 99%）
+                          const nextDone = !subTask.done
+                          const restoreProgress = nextDone ? undefined : progressBeforeDoneRef.current.get(subTask.id)
+                          if (nextDone) progressBeforeDoneRef.current.set(subTask.id, subTask.progress)
+                          else progressBeforeDoneRef.current.delete(subTask.id)
+                          void window.api.subtaskUpdate(subTask.id, { done: nextDone, ...(restoreProgress !== undefined ? { progress: restoreProgress } : {}), expected_values: { done: Boolean(subTask.done) } })
+                            .then((updated) => setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item)))
+                            .catch((error) => onShowToast(error instanceof Error ? error.message : 'サブタスクを更新できませんでした', 'error'))
+                        }}
                         onSave={async (data) => {
                           const updated = await window.api.subtaskUpdate(subTask.id, data)
                           setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
@@ -1338,7 +1503,7 @@ export function TodoDetail({
                 />
                 <button type="submit" disabled={!newSubTask.title.trim()} style={buttonStyle(newSubTask.title.trim() ? 'var(--blue-600)' : 'var(--slate-800)', newSubTask.title.trim() ? 'var(--on-fill-white)' : 'var(--slate-500)')}>追加</button>
               </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.72rem', color: 'var(--slate-400)' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
                 {users.length > 0 && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     担当
@@ -1346,7 +1511,7 @@ export function TodoDetail({
                       value={newSubTask.assignee_id ?? ''}
                       onChange={(event) => setNewSubTask((previous) => ({ ...previous, assignee_id: event.target.value || null }))}
                       aria-label="追加するサブタスクの担当"
-                      style={{ ...inputStyle, width: 'auto', fontSize: '0.76rem', padding: '3px 6px' }}
+                      style={{ ...inputStyle, width: 'auto', fontSize: 'var(--font-control)', padding: '3px 6px' }}
                     >
                       <option value="">担当なし</option>
                       {users.filter((user) => user.is_active === 1 || user.id === newSubTask.assignee_id).map((user) => (
@@ -1357,17 +1522,17 @@ export function TodoDetail({
                 )}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   期限
-                  <input type="date" value={newSubTask.due_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, due_date: event.target.value || null }))} aria-label="追加するサブタスクの期限" style={{ ...inputStyle, width: 'auto', fontSize: '0.76rem', padding: '3px 6px' }} />
+                  <input type="date" value={newSubTask.due_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, due_date: event.target.value || null }))} aria-label="追加するサブタスクの期限" style={{ ...inputStyle, width: 'auto', fontSize: 'var(--font-control)', padding: '3px 6px' }} />
                 </label>
-                <button type="button" onClick={() => setShowSubTaskDetails((previous) => !previous)} aria-expanded={showSubTaskDetails} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--blue-300)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>
+                <button type="button" onClick={() => setShowSubTaskDetails((previous) => !previous)} aria-expanded={showSubTaskDetails} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--blue-300)', cursor: 'pointer', fontSize: 'var(--font-caption)', fontWeight: 700 }}>
                   {showSubTaskDetails ? '▾ 閉じる' : '▸ 開始日・メモ・進捗'}
                 </button>
               </div>
               {showSubTaskDetails && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={labelStyle}>開始日<input type="date" value={newSubTask.start_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} /></label>
-                  <textarea value={newSubTask.description ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, description: event.target.value }))} placeholder="メモ..." aria-label="追加するサブタスクのメモ" rows={2} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: 'var(--slate-400)' }}>
+                  <label style={labelStyle}>開始日<input type="date" value={newSubTask.start_date ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px' }} /></label>
+                  <textarea value={newSubTask.description ?? ''} onChange={(event) => setNewSubTask((previous) => ({ ...previous, description: event.target.value }))} placeholder="メモ..." aria-label="追加するサブタスクのメモ" rows={2} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
                     <span>進捗 {clampProgress(newSubTask.progress ?? 0)}%</span>
                     <input
                       type="range"
@@ -1401,13 +1566,18 @@ export function TodoDetail({
                 </select>
                 <select value={dependencyDraft.relatedTodoId} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, relatedTodoId: event.target.value }))} style={{ ...inputStyle, flex: '2 1 170px', width: 'auto', minWidth: 0 }}>
                   <option value="">タスクを選択</option>
-                  {dependencyCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title}</option>)}
+                  {dependencyCandidates.filter((candidate) => candidate.status !== 'done').map((candidate) => <option key={candidate.id} value={candidate.id}>{taskOptionLabel(candidate)}</option>)}
+                  {dependencyCandidates.some((candidate) => candidate.status === 'done') && (
+                    <optgroup label="完了したタスク">
+                      {dependencyCandidates.filter((candidate) => candidate.status === 'done').map((candidate) => <option key={candidate.id} value={candidate.id}>{taskOptionLabel(candidate)}</option>)}
+                    </optgroup>
+                  )}
                 </select>
                 <input type="number" min={0} max={60} value={dependencyDraft.lagDays} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, lagDays: event.target.value }))} placeholder="待機日数" aria-label="待機日数" title="先行タスクの完了から、何日空けて始めるか" style={{ ...inputStyle, flex: '0 0 88px', width: 88 }} />
                 <button onClick={() => void handleCreateDependency()} style={buttonStyle('var(--blue-600)')}>追加</button>
               </div>
-              <DependencyList title="先行タスク" items={predecessorDependencies} getTodoId={(item) => item.predecessor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.predecessor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} />
-              <DependencyList title="後続タスク" items={successorDependencies} getTodoId={(item) => item.successor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.successor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} />
+              <DependencyList title="先行タスク" items={predecessorDependencies} getTodoId={(item) => item.predecessor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.predecessor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} onShowToast={onShowToast} />
+              <DependencyList title="後続タスク" items={successorDependencies} getTodoId={(item) => item.successor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.successor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} onShowToast={onShowToast} />
             </div>
           </section>
           )}
@@ -1443,7 +1613,12 @@ export function TodoDetail({
   const twoColumns = !editing && detailBodyWidth >= TWO_COLUMN_MIN_WIDTH
 
   return (
-    <div style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div onKeyDown={(event) => {
+      if (editing && (event.ctrlKey || event.metaKey) && event.key === 'Enter' && !event.nativeEvent.isComposing) {
+        event.preventDefault()
+        void handleSave()
+      }
+    }} style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div
         style={{
           position: 'sticky',
@@ -1458,10 +1633,19 @@ export function TodoDetail({
         }}
       >
         <div style={{ width: '100%', minWidth: 0 }}>
+          {returnTo && !editing && (
+            <button
+              type="button"
+              onClick={returnTo.onReturn}
+              style={{ marginBottom: 4, padding: '2px 0', border: 'none', background: 'transparent', color: 'var(--blue-300)', cursor: 'pointer', fontSize: 'var(--font-control)', fontWeight: 700 }}
+            >
+              ← {returnTo.label}へ戻る
+            </button>
+          )}
           {editing ? (
-            <input disabled={saving} value={editData.title ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, title: event.target.value }))} style={inputStyle} />
+            <input ref={editTitleInputRef} disabled={saving} aria-label="タスク名" value={editData.title ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, title: event.target.value }))} style={inputStyle} />
           ) : (
-            <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)', lineHeight: 1.4, margin: 0, overflowWrap: 'anywhere' }}>{todo.title}</h2>
+            <h2 ref={titleHeadingRef} tabIndex={-1} style={{ fontSize: '1.1rem', color: 'var(--slate-200)', lineHeight: 1.4, margin: 0, overflowWrap: 'anywhere' }}>{todo.title}</h2>
           )}
         </div>
         <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1489,9 +1673,11 @@ export function TodoDetail({
               {isInTodayPlan ? '今日の計画に追加済み' : '今日の計画に追加'}
             </button>
           )}
-          <button onClick={editing ? cancelEditing : startEditing} disabled={saving} title={editing ? undefined : 'タスク名・説明・繰り返し・サブ担当などをまとめて編集します'} style={buttonStyle('var(--slate-700)')}>
+          {editing && <button onClick={() => void handleSave()} disabled={saving} title="変更を保存します（Ctrl+Enter）" aria-keyshortcuts="Control+Enter Meta+Enter" style={buttonStyle('var(--indigo-500)')}>{saving ? '保存中…' : '変更を保存'}</button>}
+          <button ref={editButtonRef} onClick={editing ? cancelEditing : startEditing} disabled={saving} title={editing ? undefined : 'タスク名・説明・繰り返し・サブ担当などをまとめて編集します'} style={buttonStyle('var(--slate-700)')}>
             {editing ? '編集をやめる' : '編集'}
           </button>
+          {editing && <span style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>編集中・Ctrl+Enter で保存</span>}
           {!editing && currentUser && (
             <button
               disabled={subscriptionPending}
@@ -1518,7 +1704,7 @@ export function TodoDetail({
 
       <div ref={detailBodyRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {saveError && <div role="alert" style={{ padding: 10, color: 'var(--red-200)', border: '1px solid var(--red-500)', borderRadius: 8 }}>{saveError}</div>}
-      {sectionLoadError && <div role="alert" style={{ padding: 10, borderRadius: 8, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', fontSize: '0.8rem' }}>{sectionLoadError}<button onClick={() => { setSectionLoadError(null); void Promise.all([loadWorkLogs(todo.id), loadSubTasks(todo.id), loadDependencies(todo.id), loadProgressNotes(todo.id)]) }} style={{ marginLeft: 10, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-900)', color: 'var(--white)' }}>再試行</button></div>}
+      {sectionLoadError && <div role="alert" style={{ padding: 10, borderRadius: 8, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', fontSize: 'var(--font-control)' }}>{sectionLoadError}<button onClick={() => { setSectionLoadError(null); void Promise.all([loadWorkLogs(todo.id), loadSubTasks(todo.id), loadDependencies(todo.id), loadProgressNotes(todo.id)]) }} style={{ marginLeft: 10, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-900)', color: 'var(--white)' }}>再試行</button></div>}
       {twoColumns ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 360px)', gap: 20, alignItems: 'start' }}>
           <div style={detailColumnStyle}>
@@ -1564,36 +1750,19 @@ const detailColumnStyle: React.CSSProperties = { display: 'flex', flexDirection:
 function AutosaveStatus({ saving, dirty, failed, length, onRetry }: { saving: boolean; dirty: boolean; failed: boolean; length: number; onRetry: () => void }): React.JSX.Element {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-      <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: failed ? 'var(--red-300)' : dirty || saving ? 'var(--blue-300)' : 'var(--slate-400)' }}>
+      <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-control)', color: failed ? 'var(--red-300)' : dirty || saving ? 'var(--blue-300)' : 'var(--slate-400)' }}>
         {saving ? '保存中…' : failed ? '保存できませんでした' : dirty ? '入力が止まると保存します' : '保存済み'}
         {failed && !saving && (
-          <button type="button" onClick={onRetry} style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', cursor: 'pointer', fontSize: '0.75rem' }}>再試行</button>
+          <button type="button" onClick={onRetry} style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', cursor: 'pointer', fontSize: 'var(--font-control)' }}>再試行</button>
         )}
       </div>
-      <div style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>{length}文字</div>
+      <div style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>{length}文字</div>
     </div>
   )
 }
 
 const HISTORY_PAGE_SIZE = 20
-const HISTORY_FIELD_LABELS: Record<string, string> = {
-  title: 'タスク名',
-  description: '説明',
-  memo: 'メモ',
-  category: 'カテゴリ',
-  assignee: '担当',
-  co_assignees: 'サブ担当',
-  status: '状態',
-  priority: '優先度',
-  progress: '進捗',
-  start_date: '開始日',
-  due_date: '期限',
-  recurrence: '繰り返し',
-  recurrence_copy_subtasks: '繰り返しでサブタスクも作る',
-  list_mode: '種類'
-}
 const HISTORY_STATUS_LABELS: Record<string, string> = { not_started: '未着手', active: '進行中', on_hold: '保留中', done: '完了', archived: 'アーカイブ' }
-const HISTORY_RECURRENCE_LABELS: Record<string, string> = { daily: '毎日', weekly: '毎週', monthly: '毎月' }
 
 function historyValue(field: string, value: string | null): string {
   if (value == null || value === '') return 'なし'
@@ -1601,14 +1770,14 @@ function historyValue(field: string, value: string | null): string {
   if (field === 'priority') return PRIORITY_OPTIONS.find((option) => String(option.value) === value)?.label ?? value
   if (field === 'progress') return `${value}%`
   if (field === 'start_date' || field === 'due_date') return formatShortDate(value.slice(0, 10))
-  if (field === 'recurrence') return HISTORY_RECURRENCE_LABELS[value] ?? value
+  if (field === 'recurrence') return recurrenceKindLabel(value) ?? value
   if (field === 'recurrence_copy_subtasks') return value === '1' ? 'する' : 'しない'
   if (field === 'list_mode') return value === '1' ? 'ToDoリスト' : 'タスク'
   return value
 }
 
 function historyText(entry: TodoHistoryEntry): string {
-  const label = HISTORY_FIELD_LABELS[entry.field] ?? entry.field
+  const label = changeFieldLabel(entry.field)
   // 説明・メモは本文を返さないので、変えたことだけを出す
   if (entry.field === 'description' || entry.field === 'memo') return `${label}を変更`
   return `${label}: ${historyValue(entry.field, entry.old_value)} → ${historyValue(entry.field, entry.new_value)}`
@@ -1653,22 +1822,22 @@ function TodoHistory({ todoId, refreshKey }: { todoId: string; refreshKey: strin
     <section>
       <SectionHeading title="変更履歴" summary="いつ・誰が変えたか" />
       {error ? (
-        <div role="alert" style={{ fontSize: '0.8rem', color: 'var(--red-300)' }}>
+        <div role="alert" style={{ fontSize: 'var(--font-control)', color: 'var(--red-300)' }}>
           {error}
-          <button type="button" onClick={() => void load(0)} style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', cursor: 'pointer', fontSize: '0.75rem' }}>再試行</button>
+          <button type="button" onClick={() => void load(0)} style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', cursor: 'pointer', fontSize: 'var(--font-control)' }}>再試行</button>
         </div>
       ) : entries.length === 0 ? (
         <div style={{ color: 'var(--slate-400)', fontSize: '0.85rem' }}>{loading ? '読み込み中…' : '変更はまだありません'}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {entries.map((entry) => (
-            <div key={entry.id} style={{ background: 'var(--slate-800)', borderRadius: 6, padding: '6px 10px', fontSize: '0.8rem', color: 'var(--slate-200)', lineHeight: 1.5 }}>
+            <div key={entry.id} style={{ background: 'var(--slate-800)', borderRadius: 6, padding: '6px 10px', fontSize: 'var(--font-control)', color: 'var(--slate-200)', lineHeight: 1.5 }}>
               <span style={{ color: 'var(--slate-400)', marginRight: 8, whiteSpace: 'nowrap' }}>{formatHistoryTime(entry.created_at)}{entry.user_name ? `　${entry.user_name}` : ''}</span>
               <span style={{ overflowWrap: 'anywhere' }}>{historyText(entry)}</span>
             </div>
           ))}
           {hasMore && (
-            <button type="button" disabled={loading} onClick={() => void load(entries.length)} style={{ alignSelf: 'flex-start', marginTop: 2, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--slate-700)', background: 'transparent', color: 'var(--slate-300)', cursor: loading ? 'default' : 'pointer', fontSize: '0.78rem' }}>
+            <button type="button" disabled={loading} onClick={() => void load(entries.length)} style={{ alignSelf: 'flex-start', marginTop: 2, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--slate-700)', background: 'transparent', color: 'var(--slate-300)', cursor: loading ? 'default' : 'pointer', fontSize: 'var(--font-control)' }}>
               {loading ? '読み込み中…' : 'もっと見る'}
             </button>
           )}
@@ -1678,22 +1847,66 @@ function TodoHistory({ todoId, refreshKey }: { todoId: string; refreshKey: strin
   )
 }
 
-function DependencyList({ title, items, getTodoId, getTitle, reload }: { title: string; items: TodoDependency[]; getTodoId: (item: TodoDependency) => string; getTitle: (item: TodoDependency) => string; reload: () => Promise<void> }): React.JSX.Element {
+function DependencyList({ title, items, getTodoId, getTitle, reload, onShowToast }: { title: string; items: TodoDependency[]; getTodoId: (item: TodoDependency) => string; getTitle: (item: TodoDependency) => string; reload: () => Promise<void>; onShowToast: Props['onShowToast'] }): React.JSX.Element {
+  // 待機日数を変える・依存関係を外すと、後続のタスクの日程が自動で動く。何件動いたかを知らせ、元に戻せるようにする
+  // （期限の変更と同じ。黙って動くと、ほかの人のタスクの日程が変わったことに気付けない）
+  const scheduleKey = (todo: Todo): string => `${todo.start_date?.slice(0, 10) ?? ''}/${todo.due_date?.slice(0, 10) ?? ''}`
+  const movedTodosAfter = async (change: () => Promise<unknown>): Promise<Todo[]> => {
+    const before = new Map((await window.api.todoGetAll()).map((todo) => [todo.id, scheduleKey(todo)]))
+    await change()
+    await reload()
+    return (await window.api.todoGetAll()).filter((todo) => before.has(todo.id) && before.get(todo.id) !== scheduleKey(todo))
+  }
+  const movedText = (moved: Todo[]): string => moved.length === 0 ? '' : `。後続の${moved.length}件（「${moved[0].title}」${moved.length > 1 ? 'ほか' : ''}）の日程も動きました`
+  const changeLag = async (item: TodoDependency, nextLag: number): Promise<void> => {
+    if (nextLag === item.lag_days) return
+    try {
+      const moved = await movedTodosAfter(() => window.api.todoDependencyUpdate(item.id, nextLag))
+      onShowToast(`「${getTitle(item)}」との待機を${nextLag}日にしました${movedText(moved)}`, 'success', {
+        label: '元に戻す',
+        run: () => {
+          void window.api.todoDependencyUpdate(item.id, item.lag_days).then(() => reload()).then(
+            () => onShowToast('待機日数を元に戻しました'),
+            (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+          )
+        }
+      })
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '待機日数を変えられませんでした', 'error')
+    }
+  }
+  const removeDependency = async (item: TodoDependency): Promise<void> => {
+    try {
+      const moved = await movedTodosAfter(() => window.api.todoDependencyDelete(item.id))
+      onShowToast(`「${getTitle(item)}」との依存関係を外しました${movedText(moved)}`, 'success', {
+        label: '元に戻す',
+        run: () => {
+          void window.api.todoDependencyCreate(item.predecessor_todo_id, item.successor_todo_id, item.lag_days).then(() => reload()).then(
+            () => onShowToast('依存関係を元に戻しました'),
+            (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+          )
+        }
+      })
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '依存関係を外せませんでした', 'error')
+    }
+  }
   return (
     <div>
-      <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)', marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)', marginBottom: 6 }}>{title}</div>
       {items.length === 0 ? (
-        <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)' }}>設定されていません</div>
+        <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>設定されていません</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {items.map((item) => (
             <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--slate-900)', flexWrap: 'wrap' }}>
               <button onClick={() => void window.api.windowOpenTodo(getTodoId(item))} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>{getTitle(item)}</button>
-              <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>待機 {item.lag_days}日</span>
+              <span style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>待機 {item.lag_days}日</span>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <button onClick={() => void window.api.todoDependencyUpdate(item.id, clampLag(item.lag_days - 1)).then(() => reload())} style={buttonStyle('var(--slate-700)')}>-1日</button>
-                <button onClick={() => void window.api.todoDependencyUpdate(item.id, clampLag(item.lag_days + 1)).then(() => reload())} style={buttonStyle('var(--slate-700)')}>+1日</button>
-                <button onClick={() => void window.api.todoDependencyDelete(item.id).then(() => reload())} style={buttonStyle('var(--red-900)')}>削除</button>
+                {/* 期限の「+1日」と見分けられるよう「待機」と書く */}
+                <button onClick={() => void changeLag(item, clampLag(item.lag_days - 1))} aria-label={`「${getTitle(item)}」との待機を1日減らす`} title="待機日数を1日減らします（後続の日程も動きます）" style={buttonStyle('var(--slate-700)')}>待機 -1日</button>
+                <button onClick={() => void changeLag(item, clampLag(item.lag_days + 1))} aria-label={`「${getTitle(item)}」との待機を1日増やす`} title="待機日数を1日増やします（後続の日程も動きます）" style={buttonStyle('var(--slate-700)')}>待機 +1日</button>
+                <button onClick={() => void removeDependency(item)} aria-label={`「${getTitle(item)}」との依存関係を外す`} style={buttonStyle('var(--red-900)')}>外す</button>
               </div>
             </div>
           ))}
@@ -1779,7 +1992,7 @@ function SubTaskAssigneeSelect({ users, value, onChange, disabled = false }: { u
       disabled={disabled}
       onChange={(event) => onChange(event.target.value || null)}
       aria-label="サブタスクの担当"
-      style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }}
+      style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px' }}
     >
       <option value="">担当なし</option>
       {users.filter((user) => user.is_active === 1 || user.id === value).map((user) => (
@@ -1797,13 +2010,13 @@ function EditableSubTaskItem({ subTask, users, onChange, onDelete }: { subTask: 
       <button onClick={() => onChange({ done: !subTask.done, progress: subTask.done ? Math.min(progress, 99) : 100 })} style={{ width: 16, height: 16, borderRadius: 3, marginTop: 8, border: `2px solid ${subTask.done ? 'var(--green-400)' : 'var(--slate-600)'}`, background: subTask.done ? 'var(--green-400)' : 'transparent', cursor: 'pointer' }} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <input value={subTask.title} onChange={(event) => onChange({ title: event.target.value })} placeholder="サブタスク名" style={{ ...inputStyle, fontSize: '0.82rem', padding: '6px 8px' }} />
-        <textarea value={subTask.description} onChange={(event) => onChange({ description: event.target.value })} placeholder="メモ..." rows={2} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
+        <textarea value={subTask.description} onChange={(event) => onChange({ description: event.target.value })} placeholder="メモ..." rows={2} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
         {users.length > 0 && <SubTaskAssigneeSelect users={users} value={subTask.assignee_id} onChange={(assigneeId) => onChange({ assignee_id: assigneeId })} />}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-          <input type="date" aria-label="開始日" title="開始日" value={subTask.start_date ?? ''} onChange={(event) => onChange({ start_date: event.target.value || null })} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
-          <input type="date" aria-label="期限" title="期限" value={subTask.due_date ?? ''} onChange={(event) => onChange({ due_date: event.target.value || null })} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} />
+          <input type="date" aria-label="開始日" title="開始日" value={subTask.start_date ?? ''} onChange={(event) => onChange({ start_date: event.target.value || null })} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px' }} />
+          <input type="date" aria-label="期限" title="期限" value={subTask.due_date ?? ''} onChange={(event) => onChange({ due_date: event.target.value || null })} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px' }} />
         </div>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: 'var(--slate-400)' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
           <span>進捗 {progress}%</span>
           <input
             type="range"
@@ -1918,7 +2131,7 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
   if (editing) {
     return (
       <fieldset disabled={saving} style={{ margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', borderRadius: 8, background: 'var(--slate-800)', border: '1px solid var(--indigo-500)' }}>
-        {saveError && <div role="alert" style={{ color: 'var(--red-200)', fontSize: '0.8rem' }}>{saveError}</div>}
+        {saveError && <div role="alert" style={{ color: 'var(--red-200)', fontSize: 'var(--font-control)' }}>{saveError}</div>}
         <input
           value={draft.title}
           onChange={(event) => setDraft((previous) => ({ ...previous, title: event.target.value }))}
@@ -1927,13 +2140,13 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
           autoFocus
           style={{ ...inputStyle, fontSize: '0.82rem', padding: '6px 8px' }}
         />
-        <textarea value={draft.description} onChange={(event) => setDraft((previous) => ({ ...previous, description: event.target.value }))} placeholder="メモ..." rows={2} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
+        <textarea value={draft.description} onChange={(event) => setDraft((previous) => ({ ...previous, description: event.target.value }))} placeholder="メモ..." rows={2} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px', resize: 'vertical', minHeight: 56 }} />
         {users.length > 0 && <SubTaskAssigneeSelect users={users} value={draft.assignee_id} onChange={(assigneeId) => setDraft((previous) => ({ ...previous, assignee_id: assigneeId }))} />}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-          <label style={{ ...labelStyle, marginBottom: 0 }}>開始日<input type="date" value={draft.start_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} /></label>
-          <label style={{ ...labelStyle, marginBottom: 0 }}>期限<input type="date" value={draft.due_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, due_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: '0.8rem', padding: '6px 8px' }} /></label>
+          <label style={{ ...labelStyle, marginBottom: 0 }}>開始日<input type="date" value={draft.start_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, start_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px' }} /></label>
+          <label style={{ ...labelStyle, marginBottom: 0 }}>期限<input type="date" value={draft.due_date ?? ''} onChange={(event) => setDraft((previous) => ({ ...previous, due_date: event.target.value || null }))} style={{ ...inputStyle, fontSize: 'var(--font-control)', padding: '6px 8px' }} /></label>
         </div>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: 'var(--slate-400)' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
           <span>進捗 {draft.progress}%</span>
           <input
             type="range"
@@ -1964,7 +2177,7 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '0.85rem', color: subTask.done ? 'var(--slate-600)' : 'var(--slate-300)', textDecoration: subTask.done ? 'line-through' : 'none', wordBreak: 'break-word' }}>{subTask.title}</div>
         {(assigneeName || subTask.start_date || subTask.due_date) && (
-          <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: 'var(--slate-400)' }}>
+          <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
             {assigneeName && <AssigneeChip name={assigneeName} color={subTask.assignee_color ?? null} fontSize={0.66} />}
             {(subTask.start_date || subTask.due_date) && (
               <span style={{ color: subTask.done ? 'var(--slate-400)' : getDueDateColor(subTask.due_date) || 'var(--slate-400)' }}>
@@ -1973,7 +2186,7 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
             )}
           </div>
         )}
-        {subTask.description && <div style={{ marginTop: 2, fontSize: '0.75rem', color: subTask.done ? 'var(--slate-700)' : 'var(--slate-500)', whiteSpace: 'pre-wrap' }}><LinkedText text={subTask.description} /></div>}
+        {subTask.description && <div style={{ marginTop: 2, fontSize: 'var(--font-control)', color: subTask.done ? 'var(--slate-700)' : 'var(--slate-500)', whiteSpace: 'pre-wrap' }}><LinkedText text={subTask.description} /></div>}
         <div style={{ marginTop: 2 }}>
           <ProgressSlider
             value={progress}
@@ -2006,14 +2219,9 @@ const PRIORITY_OPTIONS = [
   { value: 5, label: '最高' }
 ]
 
-function formatShortDate(dateKey: string): string {
-  const [, m, d] = dateKey.slice(0, 10).split('-')
-  return `${Number(m)}/${Number(d)}`
-}
-
 function dueRemainingLabel(dueDate: string): string {
   const diff = diffDaysFromToday(dueDate)
-  if (diff < 0) return `${Math.abs(diff)}日遅れ`
+  if (diff < 0) return `${Math.abs(diff)}日超過`
   if (diff === 0) return '今日まで'
   return `あと${diff}日`
 }
@@ -2025,22 +2233,44 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
   categories: Category[]
   users: PublicUser[]
   onUpdate: (id: string, data: UpdateTodoInput) => Promise<void>
-  onShowToast: (message: string, type?: 'success' | 'error') => void
+  onShowToast: (message: string, type?: 'success' | 'error', action?: { label?: string; run?: () => void; key?: string }) => void
 }): React.JSX.Element {
   const [saving, setSaving] = useState(false)
   const [editingSchedule, setEditingSchedule] = useState(false)
   const [startDraft, setStartDraft] = useState('')
   const [dueDraft, setDueDraft] = useState('')
+  const [recurrenceDraft, setRecurrenceDraft] = useState<Todo['recurrence']>(null)
   const isArchived = todo.status === 'archived'
   const listMode = isListTodo(todo)
+  const scheduleErrorId = useId()
+  // キーボードで使う人のために、日程の欄を開いたら開始日へ、閉じたら「変更」へフォーカスを移す
+  const startInputRef = useRef<HTMLInputElement>(null)
+  const scheduleButtonRef = useRef<HTMLButtonElement>(null)
+  const wasEditingScheduleRef = useRef(false)
+  useEffect(() => {
+    if (editingSchedule) startInputRef.current?.focus()
+    else if (wasEditingScheduleRef.current) scheduleButtonRef.current?.focus()
+    wasEditingScheduleRef.current = editingSchedule
+  }, [editingSchedule])
   const statusTone = STATUS_OPTIONS.find((option) => option.value === todo.status)?.color ?? 'var(--slate-400)'
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
+  const recurrenceLabel = listMode ? null : todoRecurrenceLabel(todo)
 
-  const save = async (data: UpdateTodoInput, message: string): Promise<boolean> => {
+  const save = async (data: UpdateTodoInput, message: string, undo?: UpdateTodoInput): Promise<boolean> => {
     setSaving(true)
     try {
       await onUpdate(todo.id, data)
-      onShowToast(message)
+      // 日程などは、知らせから元に戻せるようにする（依存関係の後続も元の日程で計算し直される）。
+      // 戻したら、後続が動いた知らせを「元に戻しました」で置き換える（古い知らせが残って、戻ったか分からなくならないように）
+      onShowToast(message, 'success', undo ? {
+        label: '元に戻す',
+        run: () => {
+          void onUpdate(todo.id, undo).then(
+            () => onShowToast('元に戻しました', 'success', { key: 'schedule-change' }),
+            (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+          )
+        }
+      } : undefined)
       return true
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '変更できませんでした', 'error')
@@ -2053,33 +2283,66 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
   const openScheduleEditor = (): void => {
     setStartDraft(todo.start_date?.slice(0, 10) ?? '')
     setDueDraft(todo.due_date?.slice(0, 10) ?? '')
+    setRecurrenceDraft(todo.recurrence ?? null)
     setEditingSchedule(true)
   }
 
+  // 開始日が期限より後なら、その場で知らせて保存させない
+  const scheduleInvalid = Boolean(startDraft && dueDraft && startDraft > dueDraft)
+
   const saveSchedule = async (): Promise<void> => {
-    if (startDraft && dueDraft && startDraft > dueDraft) {
-      onShowToast('開始日は期限以前にしてください', 'error')
-      return
-    }
+    if (scheduleInvalid) return
     const data: UpdateTodoInput = {}
-    if ((startDraft || null) !== (todo.start_date?.slice(0, 10) ?? null)) data.start_date = startDraft || null
-    if ((dueDraft || null) !== (todo.due_date?.slice(0, 10) ?? null)) data.due_date = dueDraft || null
+    const undo: UpdateTodoInput = {}
+    if (!listMode && (recurrenceDraft ?? null) !== (todo.recurrence ?? null)) {
+      data.recurrence = recurrenceDraft
+      undo.recurrence = todo.recurrence ?? null
+    }
+    if ((startDraft || null) !== (todo.start_date?.slice(0, 10) ?? null)) {
+      data.start_date = startDraft || null
+      undo.start_date = todo.start_date?.slice(0, 10) ?? null
+    }
+    if ((dueDraft || null) !== (todo.due_date?.slice(0, 10) ?? null)) {
+      data.due_date = dueDraft || null
+      undo.due_date = todo.due_date?.slice(0, 10) ?? null
+    }
     if (Object.keys(data).length === 0) {
       setEditingSchedule(false)
       return
     }
-    if (await save(data, '日程を変更しました')) setEditingSchedule(false)
+    const message = data.due_date !== undefined && data.due_date
+      ? `期限を${formatShortDate(data.due_date)}にしました`
+      : data.recurrence !== undefined && Object.keys(data).length === 1
+        ? `繰り返しを「${recurrenceKindLabel(data.recurrence) ?? 'なし'}」にしました`
+        : '日程を変更しました'
+    if (await save(data, message, undo)) setEditingSchedule(false)
   }
 
-  const fieldLabelStyle: React.CSSProperties = { fontSize: '0.68rem', color: 'var(--slate-500)', marginBottom: 3 }
-  const compactSelectStyle: React.CSSProperties = { ...inputStyle, padding: '5px 8px', fontSize: '0.8rem' }
+  // 期限を延ばす近道（今の期限、なければ今日から）。押すと期限の欄に入る。保存は「保存」で
+  const shiftDueDraft = (days: number): void => {
+    const base = dueDraft || toDateKey(new Date())
+    const date = new Date(`${base}T00:00:00`)
+    date.setDate(date.getDate() + days)
+    setDueDraft(toDateKey(date))
+  }
+  const nextFridayDraft = (): void => {
+    const date = new Date()
+    date.setHours(0, 0, 0, 0)
+    // 来週の金曜（今日が何曜日でも、次の週の金曜）
+    date.setDate(date.getDate() + ((5 - date.getDay() + 7) % 7) + 7)
+    setDueDraft(toDateKey(date))
+  }
+
+  const fieldLabelStyle: React.CSSProperties = { fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', marginBottom: 3 }
+  const compactSelectStyle: React.CSSProperties = { ...inputStyle, padding: '5px 8px', fontSize: 'var(--font-control)' }
+  const dueShortcutStyle: React.CSSProperties = { padding: '4px 10px', borderRadius: 999, border: '1px solid var(--slate-600)', background: 'transparent', color: 'var(--slate-300)', cursor: 'pointer', fontSize: 'var(--font-caption)', fontWeight: 600, minHeight: 26 }
 
   return (
     <div style={{ background: 'var(--c-162033)', border: '1px solid var(--slate-800)', borderRadius: 10, padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))', gap: '10px 12px' }}>
       <div>
         <div style={fieldLabelStyle}>状態</div>
         {isArchived ? (
-          <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)', padding: '5px 0' }}>アーカイブ</div>
+          <div style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)', padding: '5px 0' }}>アーカイブ</div>
         ) : (
           <select
             value={todo.status}
@@ -2088,7 +2351,8 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
             onChange={(event) => {
               const status = event.target.value as Todo['status']
               const label = STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status
-              void save({ status }, `状態を「${label}」にしました`)
+              // 状態・優先度・カテゴリ・担当も、知らせから元に戻せる（押し間違えたときに元の値を覚えていなくてよい）
+              void save({ status }, `状態を「${label}」にしました`, { status: todo.status })
             }}
             style={{ ...compactSelectStyle, color: statusTone, fontWeight: 700 }}
           >
@@ -2104,7 +2368,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
           aria-label="優先度"
           onChange={(event) => {
             const priority = Number(event.target.value)
-            void save({ priority }, `優先度を「${PRIORITY_OPTIONS.find((option) => option.value === priority)?.label ?? priority}」にしました`)
+            void save({ priority }, `優先度を「${PRIORITY_OPTIONS.find((option) => option.value === priority)?.label ?? priority}」にしました`, { priority: todo.priority })
           }}
           style={compactSelectStyle}
         >
@@ -2119,7 +2383,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
           aria-label="カテゴリ"
           onChange={(event) => {
             const categoryId = event.target.value || null
-            void save({ category_id: categoryId }, `カテゴリを「${categories.find((category) => category.id === categoryId)?.name ?? 'なし'}」にしました`)
+            void save({ category_id: categoryId }, `カテゴリを「${categories.find((category) => category.id === categoryId)?.name ?? 'なし'}」にしました`, { category_id: todo.category_id ?? null })
           }}
           style={{ ...compactSelectStyle, color: dataInk(todo.category_color ?? 'var(--slate-200)') }}
         >
@@ -2139,12 +2403,15 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
                 assignee_id: assigneeId,
                 // 主担当にした人はサブ担当から外す（編集画面と同じ）
                 co_assignee_ids: (todo.co_assignees ?? []).map((item) => item.user_id).filter((id) => id !== assigneeId)
-              }, `担当を「${users.find((user) => user.id === assigneeId)?.display_name ?? '未割り当て'}」にしました`)
+              }, `担当を「${users.find((user) => user.id === assigneeId)?.display_name ?? '未割り当て'}」にしました`, {
+                assignee_id: todo.assignee_id ?? null,
+                co_assignee_ids: (todo.co_assignees ?? []).map((item) => item.user_id)
+              })
             }}
             selectStyle={compactSelectStyle}
           />
           {(todo.co_assignees ?? []).length > 0 && (
-            <div style={{ marginTop: 3, fontSize: '0.68rem', color: 'var(--slate-400)' }} title="サブ担当は「編集」で変えられます">
+            <div style={{ marginTop: 3, fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }} title="サブ担当は「編集」で変えられます">
               副: {(todo.co_assignees ?? []).map((item) => item.display_name).join('、')}
             </div>
           )}
@@ -2153,10 +2420,10 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
       <div style={{ gridColumn: '1 / -1' }}>
         <div style={fieldLabelStyle}>日程</div>
         {editingSchedule ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: '0.76rem', color: 'var(--slate-400)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               開始
-              <input type="date" value={startDraft} onChange={(event) => setStartDraft(event.target.value)} aria-label="開始日" style={{ ...compactSelectStyle, width: 'auto' }} />
+              <input ref={startInputRef} type="date" value={startDraft} onChange={(event) => setStartDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setEditingSchedule(false) }} aria-label="開始日" style={{ ...compactSelectStyle, width: 'auto' }} />
             </label>
             <span>→</span>
             <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -2165,17 +2432,51 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
                 type="date"
                 value={dueDraft}
                 onChange={(event) => setDueDraft(event.target.value)}
-                onKeyDown={(event) => { if (event.key === 'Enter') void saveSchedule() }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void saveSchedule()
+                  if (event.key === 'Escape') setEditingSchedule(false)
+                }}
+                aria-invalid={scheduleInvalid}
+                aria-describedby={scheduleInvalid ? scheduleErrorId : undefined}
                 aria-label="期限"
                 style={{ ...compactSelectStyle, width: 'auto' }}
               />
             </label>
             {listMode && dueDraft && (
-              <button onClick={() => setDueDraft('')} title="期限を外して、期限なしのリストにします" style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: '0.74rem' }}>期限なし</button>
+              <button onClick={() => setDueDraft('')} title="期限を外して、期限なしのリストにします" style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: 'var(--font-caption)' }}>期限なし</button>
+            )}
+            <span role="group" aria-label="期限を延ばす" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', width: '100%' }}>
+              <span aria-hidden="true" style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>期限を</span>
+              {[{ label: '+1日', days: 1 }, { label: '+3日', days: 3 }, { label: '+1週', days: 7 }].map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  onClick={() => shiftDueDraft(option.days)}
+                  title={`期限を${option.days}日後ろにします（${dueDraft ? '今の期限' : '今日'}から）`}
+                  style={dueShortcutStyle}
+                >
+                  {option.label}
+                </button>
+              ))}
+              <button type="button" onClick={nextFridayDraft} title="期限を来週の金曜にします" style={dueShortcutStyle}>来週金曜</button>
+            </span>
+            {!listMode && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                繰り返し
+                <select value={recurrenceDraft ?? ''} onChange={(event) => setRecurrenceDraft((event.target.value || null) as Todo['recurrence'])} aria-label="繰り返し" title="完了にすると次回分を自動で作ります" style={{ ...compactSelectStyle, width: 'auto' }}>
+                  <option value="">なし</option>
+                  {TODO_RECURRENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+            )}
+            {scheduleInvalid && (
+              <span id={scheduleErrorId} role="alert" style={{ width: '100%', fontSize: 'var(--font-caption)', color: 'var(--red-300)', fontWeight: 700 }}>
+                開始日が期限より後になっています。期限か開始日を直してください
+              </span>
             )}
             <button onClick={() => setEditingSchedule(false)} style={buttonStyle('var(--slate-700)')}>取消</button>
-            <button onClick={() => void saveSchedule()} disabled={saving} style={buttonStyle('var(--blue-600)')}>{saving ? '保存中…' : '保存'}</button>
-            <span style={{ width: '100%', fontSize: '0.66rem', color: 'var(--slate-500)' }}>依存関係のある後続タスクも自動で再計算されます</span>
+            <button onClick={() => void saveSchedule()} disabled={saving || scheduleInvalid} style={buttonStyle(scheduleInvalid ? 'var(--slate-800)' : 'var(--blue-600)', scheduleInvalid ? 'var(--text-subtle)' : undefined)}>{saving ? '保存中…' : '保存'}</button>
+            <span style={{ width: '100%', fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>依存関係のある後続タスクも自動で再計算されます</span>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.82rem' }}>
@@ -2184,13 +2485,18 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
               <span style={{ color: 'var(--indigo-300)' }} title="期限を決めるときは「変更」から入れます。使い終えたら「リストを終える」を押します">→ 期限なし</span>
             ) : (
               <>
-                <span style={{ color: 'var(--slate-600)' }}>→</span>
+                <span style={{ color: 'var(--text-subtle)' }}>→</span>
                 <span style={{ color: dueColor || 'var(--slate-300)', fontWeight: dueColor ? 700 : 400 }}>期限 {todo.due_date ? formatShortDate(todo.due_date) : '未設定'}</span>
-                {todo.due_date && todo.status !== 'done' && <span style={{ fontSize: '0.74rem', color: dueColor || 'var(--slate-500)' }}>（{dueRemainingLabel(todo.due_date)}）</span>}
+                {todo.due_date && todo.status !== 'done' && <span style={{ fontSize: 'var(--font-caption)', color: dueColor || 'var(--slate-500)' }}>（{dueRemainingLabel(todo.due_date)}）</span>}
               </>
             )}
             {!isArchived && (
-              <button onClick={openScheduleEditor} style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: '0.74rem' }}>変更</button>
+              <button ref={scheduleButtonRef} onClick={openScheduleEditor} aria-label="日程を変更" style={{ ...buttonStyle('var(--slate-700)'), padding: '3px 10px', fontSize: 'var(--font-caption)' }}>変更</button>
+            )}
+            {recurrenceLabel && (
+              <span title="完了にすると次回分を自動で作ります。変えるときは「編集」から" style={{ fontSize: 'var(--font-caption)', color: 'var(--indigo-300)', border: '1px solid var(--indigo-700)', borderRadius: 99, padding: '1px 8px', whiteSpace: 'nowrap' }}>
+                🔁 {recurrenceLabel}
+              </span>
             )}
           </div>
         )}
@@ -2199,8 +2505,27 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
   )
 }
 
+/** 編集欄の繰り返しの下に、次回分の日付を出す（毎年は基準の月日も） */
+function RecurrenceHint({ data }: { data: UpdateTodoInput }): React.JSX.Element | null {
+  const recurrence = data.recurrence ?? null
+  if (!recurrence) return null
+  const source = {
+    recurrence,
+    start_date: data.start_date ?? null,
+    due_date: data.due_date ?? null,
+    recurrence_skip_weekends: data.recurrence_skip_weekends ?? 0,
+    recurrence_skip_holidays: data.recurrence_skip_holidays ?? 0
+  }
+  const next = nextRecurrenceDue(source)
+  const label = todoRecurrenceLabel(source)
+  const text = next
+    ? `${label}。完了にすると、次回分を${next.kind} ${formatShortDate(next.dateKey)}${next.holidayMayShift ? '（祝日ならその後ろ）' : ''}で作ります`
+    : `${label}。日付がないので、次回分も日付なしで作ります`
+  return <div style={{ marginTop: 4, fontSize: 'var(--font-caption)', color: 'var(--slate-400)', lineHeight: 1.5 }}>{text}</div>
+}
+
 function Badge({ children, color }: { children: React.ReactNode; color: string }): React.JSX.Element {
-  return <div style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 999, background: 'var(--slate-900)', color, fontSize: '0.74rem', fontWeight: 600 }}>{children}</div>
+  return <div style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 999, background: 'var(--slate-900)', color, fontSize: 'var(--font-caption)', fontWeight: 600 }}>{children}</div>
 }
 
 function buttonStyle(background: string, color = textOnFill(background)): React.CSSProperties {

@@ -1,5 +1,6 @@
 import { getDb } from './connection'
 import { clampRunningSeconds, diffCalendarDays, getTodayKey } from './helpers'
+import { listUnreportedTodos } from './notifications'
 import type {
   TeamDashboard,
   TeamDeadlineItem,
@@ -121,6 +122,7 @@ export function getTeamWorkloads(includePrivate = true): TeamMemberWorkload[] {
       active_tasks: assigned.filter((todo) => todo.status !== 'on_hold').length,
       on_hold_tasks: assigned.filter((todo) => todo.status === 'on_hold').length,
       overdue_tasks: overdueTasks,
+      unreported_tasks: listUnreportedTodos(user.id, now, includePrivate).length,
       today_minutes: Math.round((loggedRow.total + runningToday) / 60)
     }
   })

@@ -52,7 +52,31 @@ export const REPORT_MEETING_WEEKDAY_SETTING = 'reportMeetingWeekday'
 /** 定例の前日の、この時刻（サーバーの時計の時）を過ぎたらリマインドを出す */
 export const REPORT_REMINDER_HOUR = 17
 /** この日数のあいだ進捗ログもメモの更新もない担当タスクを「報告がまだ」とする */
-const REPORT_REMINDER_LOOKBACK_DAYS = 7
+export const REPORT_REMINDER_LOOKBACK_DAYS = 7
+
+/**
+ * 報告がまだの担当タスク。直近7日に、担当（主・副）の進捗ログもメモの更新もない、進行中・開始日を過ぎた未着手のタスク
+ * （保留中・完了・ToDoリスト・まだ始まらないタスク・今日から始めるタスクは除く）。報告のリマインドとチームタブの「報告なし」で使う。
+ * 報告タブの「報告なし」（ReportView.tsx の buildRow）と同じ条件にする（報告タブは期間を選べる点だけが違う）
+ */
+export function listUnreportedTodos(userId: string, now = new Date(), includePrivate = true): Array<{ id: string; title: string }> {
+  const since = new Date(now)
+  since.setDate(since.getDate() - REPORT_REMINDER_LOOKBACK_DAYS)
+  const sinceIso = since.toISOString()
+  const privateClause = includePrivate ? '' : 'AND COALESCE(c.is_private, 0) = 0'
+  return getDb().prepare(
+    `SELECT t.id, t.title FROM Todos t LEFT JOIN Categories c ON t.category_id = c.id
+     WHERE t.assignee_id = ? AND t.status IN ('not_started', 'active') AND COALESCE(t.list_mode, 0) = 0
+       AND (t.status = 'active' OR (t.start_date IS NOT NULL AND substr(t.start_date, 1, 10) < ?))
+       AND NOT EXISTS (
+         SELECT 1 FROM ProgressNotes n WHERE n.todo_id = t.id AND n.created_at >= ?
+           AND (n.user_id = t.assignee_id OR n.user_id IN (SELECT ca.user_id FROM TodoCoAssignees ca WHERE ca.todo_id = t.id))
+       )
+       AND NOT EXISTS (SELECT 1 FROM TodoChangeLogs l WHERE l.todo_id = t.id AND l.field = 'memo' AND l.created_at >= ?)
+       ${privateClause}
+     ORDER BY t.due_date IS NULL, t.due_date, t.title`
+  ).all(userId, localDateKey(0, now), sinceIso, sinceIso) as Array<{ id: string; title: string }>
+}
 
 /**
  * 報告のリマインド。定例の前日の17時を過ぎたら、直近7日に進捗ログもメモの更新もない担当タスク
@@ -69,17 +93,7 @@ export function ensureReportReminder(userId: string, now = new Date()): UserNoti
     .get(userId, localDayStartIso(now))
   if (sent) return null
 
-  const since = new Date(now)
-  since.setDate(since.getDate() - REPORT_REMINDER_LOOKBACK_DAYS)
-  const sinceIso = since.toISOString()
-  const rows = db.prepare(
-    `SELECT t.id, t.title FROM Todos t
-     WHERE t.assignee_id = ? AND t.status IN ('not_started', 'active') AND COALESCE(t.list_mode, 0) = 0
-       AND (t.start_date IS NULL OR substr(t.start_date, 1, 10) <= ?)
-       AND NOT EXISTS (SELECT 1 FROM ProgressNotes n WHERE n.todo_id = t.id AND n.created_at >= ?)
-       AND NOT EXISTS (SELECT 1 FROM TodoChangeLogs l WHERE l.todo_id = t.id AND l.field = 'memo' AND l.created_at >= ?)
-     ORDER BY t.due_date IS NULL, t.due_date, t.title`
-  ).all(userId, localDateKey(0, now), sinceIso, sinceIso) as Array<{ id: string; title: string }>
+  const rows = listUnreportedTodos(userId, now)
   if (rows.length === 0) return null
 
   return createNotification({
@@ -96,6 +110,15 @@ export function runReportReminders(now = new Date()): string[] {
   return userIds.filter((userId) => ensureReportReminder(userId, now) != null)
 }
 
+/** 期限の通知の見出しと本文（今の期限で書く。日付は画面と同じ「10/22」の書き方） */
+function dueNotificationText(title: string, dueDate: string, today: string): { title: string; body: string } {
+  const [, month, day] = dueDate.slice(0, 10).split('-').map(Number)
+  return {
+    title: dueDate.slice(0, 10) < today ? '期限を過ぎたタスクがあります' : '期限が近いタスクがあります',
+    body: `「${title}」の期限は${month}/${day}です`
+  }
+}
+
 function ensureDueNotifications(userId: string): void {
   const db = getDb()
   const today = localDateKey()
@@ -105,14 +128,30 @@ function ensureDueNotifications(userId: string): void {
      WHERE t.status NOT IN ('done', 'archived') AND t.due_date IS NOT NULL
        AND t.due_date <= ? AND (t.assignee_id = ? OR ca.user_id = ?)`
   ).all(localDateKey(3), userId, userId) as Array<{ id: string; title: string; due_date: string }>
+  const current = new Map(rows.map((row) => [row.id, row]))
+
+  // まだ読んでいない期限の通知を、今のタスクに合わせる。完了した・期限を延ばした・担当を外れたタスクの通知は既読にし、
+  // 期限や名前が変わっただけなら今の内容に書き直す（古い期限のまま知らせ続けないように）
+  const unread = db.prepare(
+    "SELECT id, todo_id, title, body FROM Notifications WHERE user_id = ? AND type = 'task_due' AND read_at IS NULL"
+  ).all(userId) as Array<{ id: string; todo_id: string | null; title: string; body: string }>
+  const markRead = db.prepare('UPDATE Notifications SET read_at = ? WHERE id = ?')
+  const rewrite = db.prepare('UPDATE Notifications SET title = ?, body = ? WHERE id = ?')
+  const now = new Date().toISOString()
+  for (const notification of unread) {
+    const todo = notification.todo_id ? current.get(notification.todo_id) : undefined
+    if (!todo) {
+      markRead.run(now, notification.id)
+      continue
+    }
+    const text = dueNotificationText(todo.title, todo.due_date, today)
+    if (text.title !== notification.title || text.body !== notification.body) rewrite.run(text.title, text.body, notification.id)
+  }
+
   const exists = db.prepare("SELECT 1 FROM Notifications WHERE user_id = ? AND type = 'task_due' AND todo_id = ? AND created_at >= ? LIMIT 1")
   for (const row of rows) {
     if (exists.get(userId, row.id, localDayStartIso())) continue
-    createNotification({
-      userId, type: 'task_due', todoId: row.id,
-      title: row.due_date < today ? '期限を過ぎたタスクがあります' : '期限が近いタスクがあります',
-      body: `「${row.title}」の期限は${row.due_date}です`
-    })
+    createNotification({ userId, type: 'task_due', todoId: row.id, ...dueNotificationText(row.title, row.due_date, today) })
   }
 }
 

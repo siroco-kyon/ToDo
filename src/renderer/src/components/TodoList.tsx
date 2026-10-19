@@ -2,9 +2,10 @@ import React, { useMemo, useState, useRef } from 'react'
 import type { SubTask, Todo } from '../types'
 import { RunningTimerDisplay } from './TimerDisplay'
 import { QuickCheckItem } from './TodoChecklist'
-import { diffDaysFromToday, getDueDateColor, toDateKey } from '../lib/dueDate'
+import { diffDaysFromToday, formatShortDate, getDueDateColor, toDateKey } from '../lib/dueDate'
 import { checklistBadgeText, checklistBadgeTitle, type ChecklistSummary } from '../lib/todoList'
 import { dataInk } from '../lib/theme'
+import { todoRecurrenceLabel } from '../lib/recurrence'
 
 const EXPANDED_LISTS_KEY = 'todoList.expandedLists'
 
@@ -37,6 +38,8 @@ interface Props {
   hasOtherFilters?: boolean
   /** 絞り込む前にタスクが1件でもあるか。1件もないときは、絞り込みの案内ではなく最初のタスクを作る案内を出す */
   hasAnyTodos?: boolean
+  /** タスクをまだ読み込んでいる（「まだタスクがありません」を出さない） */
+  dataLoading?: boolean
   onClearSearch?: () => void
   onClearFilters?: () => void
   onAddTodo?: () => void
@@ -56,13 +59,12 @@ interface Props {
   onToggleListItem?: (item: SubTask) => void
 }
 
-/** 期限の表示。近いものは「今日まで」「3日遅れ」のように残り日数で出す（完了済みは日付だけ） */
+/** 期限の表示。近いものは「今日まで」「3日超過」のように残り日数で出す（完了済みは日付だけ） */
 function formatDueLabel(dueDate: string, done: boolean): string {
-  const [, m, d] = dueDate.slice(0, 10).split('-')
-  const date = `${Number(m)}/${Number(d)}`
+  const date = formatShortDate(dueDate)
   if (done) return date
   const diff = diffDaysFromToday(dueDate)
-  if (diff < 0) return `${date}・${Math.abs(diff)}日遅れ`
+  if (diff < 0) return `${date}・${Math.abs(diff)}日超過`
   if (diff === 0) return '今日まで'
   if (diff === 1) return '明日まで'
   if (diff <= 7) return `${date}・あと${diff}日`
@@ -120,7 +122,8 @@ function TodoItem({
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
   const isArchived = todo.status === 'archived'
   const listMode = Boolean(todo.list_mode)
-  const prog = listMode ? 0 : todo.progress ?? 0
+  // 完了したタスクは進捗率を出さない（完了の前の 40% などが残って紛らわしいため）
+  const prog = listMode || todo.status === 'done' ? 0 : todo.progress ?? 0
   const canExpand = listMode && !isArchived && onToggleListItem != null && (listItems?.length ?? 0) > 0
   const todayKey = toDateKey(new Date())
   const shownItems = canExpand && expanded ? expandedItemsOf(listItems ?? [], todayKey) : []
@@ -168,7 +171,7 @@ function TodoItem({
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
           {/* ドラッグハンドル */}
           {isManualSort && !isArchived && (
-            <span style={{ color: 'var(--slate-500)', fontSize: '0.8rem', cursor: 'grab', flexShrink: 0, marginTop: 2, userSelect: 'none' }}>⠿</span>
+            <span style={{ color: 'var(--text-subtle)', fontSize: '0.8rem', cursor: 'grab', flexShrink: 0, marginTop: 2, userSelect: 'none' }}>⠿</span>
           )}
 
           {/* 完了チェック。ToDoリストは中の項目をチェックして使うので、一覧からは終えられないようにする */}
@@ -184,18 +187,24 @@ function TodoItem({
             <button
               onClick={(e) => { e.stopPropagation(); onToggleDone() }}
               title={todo.status === 'done' ? '完了を取り消す' : '完了にする'}
-              aria-label={todo.status === 'done' ? '完了を取り消す' : '完了にする'}
+              aria-label={todo.status === 'done' ? `「${todo.title}」の完了を取り消す` : `「${todo.title}」を完了にする`}
+              // 見た目の丸は 17px のまま、押せる範囲を 27px に広げる（周りの余白を押しても効く）
               style={{
-                width: 17, height: 17, borderRadius: '50%', flexShrink: 0, marginTop: 2,
-                border: `2px solid ${todo.status === 'done' ? 'var(--green-400)' : 'var(--slate-600)'}`,
-                background: todo.status === 'done' ? 'var(--green-400)' : 'transparent',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                width: 27, height: 27, margin: '-3px -5px -5px', padding: 0, flexShrink: 0, border: 'none', borderRadius: '50%',
+                background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}
             >
-              {todo.status === 'done' && <span style={{ fontSize: 9, color: 'var(--slate-900)', fontWeight: 'bold' }}>✓</span>}
+              <span aria-hidden="true" style={{
+                width: 17, height: 17, borderRadius: '50%', boxSizing: 'border-box',
+                border: `2px solid ${todo.status === 'done' ? 'var(--green-400)' : 'var(--slate-500)'}`,
+                background: todo.status === 'done' ? 'var(--green-400)' : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                {todo.status === 'done' && <span style={{ fontSize: 9, color: 'var(--slate-900)', fontWeight: 'bold' }}>✓</span>}
+              </span>
             </button>
           ) : (
-            <span style={{ fontSize: '0.75rem', color: 'var(--slate-600)', flexShrink: 0, marginTop: 2 }}>📦</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', flexShrink: 0, marginTop: 2 }}>📦</span>
           )}
 
           {/* タイトル・メタ */}
@@ -206,7 +215,7 @@ function TodoItem({
                 color: isArchived || todo.status === 'done' ? 'var(--slate-400)' : 'var(--slate-200)',
                 textDecoration: todo.status === 'done' || isArchived ? 'line-through' : 'none',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0
-              }}>
+              }} title={todo.title}>
                 <Highlight text={todo.title} query={searchQuery} />
               </span>
               {isRunning && (
@@ -215,7 +224,7 @@ function TodoItem({
                 </span>
               )}
               {todo.recurrence && !isArchived && (
-                <span title={`繰り返し: ${todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : '毎月'}`}
+                <span title={`繰り返し: ${todoRecurrenceLabel(todo) ?? todo.recurrence}`}
                   style={{ fontSize: '0.75rem', color: 'var(--indigo-400)', flexShrink: 0 }}>🔁</span>
               )}
               {listMode && checklist && !isArchived && (
@@ -249,7 +258,7 @@ function TodoItem({
                     <>
                       {todo.status !== 'done' && (
                         isRunning
-                          ? <button onClick={onStopTimer} title="計測を停止" aria-label="計測を停止" style={actionBtn('var(--red-500)')}>■</button>
+                          ? <button onClick={onStopTimer} title="計測を止める" aria-label="計測を止める" style={actionBtn('var(--red-500)')}>■</button>
                           : <button onClick={onStartTimer} title="作業時間の計測を開始" aria-label="計測を開始" style={actionBtn('var(--green-400)')}>▶</button>
                       )}
                       <button onClick={onArchive} title="アーカイブ（一覧から片付ける。あとで戻せます）" aria-label="アーカイブ" style={actionBtn('var(--slate-500)')}>📦</button>
@@ -389,7 +398,7 @@ const TodoRow = React.memo(function TodoRow({ handlers, ...props }: TodoRowProps
 
 export function TodoList({
   todos, selectedId, runningTodoId, timerStartTime, isManualSort, searchQuery,
-  hasOtherFilters = false, hasAnyTodos = true, onClearSearch, onClearFilters, onAddTodo,
+  hasOtherFilters = false, hasAnyTodos = true, dataLoading = false, onClearSearch, onClearFilters, onAddTodo,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete, onReorder,
   onStartTimer, onStopTimer, checklistSummaries, listItemsByTodo, pendingItemIds, onToggleListItem
 }: Props): React.JSX.Element {
@@ -442,6 +451,11 @@ export function TodoList({
     dragOver: (id) => { if (dragging.current) setDragOverId(id) },
     drop: (id) => { void latestRef.current.handleDrop(id) }
   }), [])
+
+  // 読み込みが終わるまでは「まだタスクがありません」を出さない（あるのに一瞬「ない」と見える）
+  if (todos.length === 0 && dataLoading) {
+    return <div role="status" style={{ padding: '28px 18px', color: 'var(--slate-400)', textAlign: 'center', fontSize: '0.84rem' }}>タスクを読み込み中…</div>
+  }
 
   if (todos.length === 0 && !hasAnyTodos) {
     return (

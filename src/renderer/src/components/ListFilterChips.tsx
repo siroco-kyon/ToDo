@@ -18,7 +18,7 @@ export function ListFilterChips({ chips }: { chips: ListFilterChip[] }): React.J
       title="左のタスク一覧の絞り込みを、この画面にも反映しています"
       style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', minWidth: 0 }}
     >
-      <span style={{ fontSize: '0.68rem', color: 'var(--slate-500)', whiteSpace: 'nowrap' }}>絞り込み中</span>
+      <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', whiteSpace: 'nowrap' }}>絞り込み中</span>
       {chips.map((chip) => (
         <button key={chip.key} onClick={chip.clear} title={`${chip.label} の絞り込みを解除`} style={chipStyle}>
           {chip.label} ×

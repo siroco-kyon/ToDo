@@ -125,4 +125,15 @@ module.exports = function checkTaskData(api) {
   assert.deepEqual([history[2].old_value, history[2].new_value], ['2026-10-02', '2026-10-05'])
   assert.deepEqual([history[0].old_value, history[0].new_value], [null, null], 'メモの本文は返さない')
   assert.deepEqual(api.getTodoChangeHistory(historyTask.id, { limit: 1, offset: 1 }).map((entry) => entry.field), ['title'], '続きを取れる')
+
+  // 進捗を 0% より上にしたら、未着手のタスクは進行中になる（100% で完了になるのと同じく自動で）
+  const notStarted = api.createTodo({ title: '進め始めるタスク' })
+  assert.equal(notStarted.status, 'not_started')
+  assert.equal(api.updateTodo(notStarted.id, { progress: 0 }).status, 'not_started', '0% のままなら未着手')
+  assert.equal(api.updateTodo(notStarted.id, { progress: 40 }).status, 'active', '0% より上で進行中')
+  assert.equal(api.getTodoChangeHistory(notStarted.id, { limit: 5 }).some((entry) => entry.field === 'status' && entry.new_value === 'active'), true, '状態の変化も履歴に残る')
+  const held = api.createTodo({ title: '保留中のタスク', status: 'on_hold' })
+  assert.equal(api.updateTodo(held.id, { progress: 30 }).status, 'on_hold', '保留中は変えない')
+  const explicit = api.createTodo({ title: '状態を指定するタスク' })
+  assert.equal(api.updateTodo(explicit.id, { progress: 30, status: 'not_started' }).status, 'not_started', '状態を指定したらそれに従う')
 }

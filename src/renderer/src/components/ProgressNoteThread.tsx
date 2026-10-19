@@ -117,10 +117,10 @@ function CommentItem({
     <div style={{ marginLeft: Math.min(depth, MAX_INDENT_DEPTH) * 14 }}>
       <div style={{ borderLeft: `2px solid color-mix(in srgb, ${authorColor} 40%, transparent)`, paddingLeft: 9 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', fontSize: '0.72rem' }}>
-          <span style={{ color: 'var(--slate-500)' }}>↳</span>
+          <span style={{ color: 'var(--text-subtle)' }}>↳</span>
           <span style={{ color: dataInk(authorColor), fontWeight: 700 }}>{getAuthorName(comment.author_name)}</span>
-          <span style={{ color: 'var(--slate-500)' }}>{formatDateTime(comment.created_at)}</span>
-          {comment.updated_at !== comment.created_at && <span style={{ color: 'var(--slate-600)' }}>編集済み</span>}
+          <span style={{ color: 'var(--text-subtle)' }}>{formatDateTime(comment.created_at)}</span>
+          {comment.updated_at !== comment.created_at && <span style={{ color: 'var(--text-subtle)' }}>編集済み</span>}
           <ReactionBar
             reactions={comment.reactions}
             onToggle={onToggleReaction ? (emoji) => onToggleReaction(comment.id, emoji) : undefined}
@@ -186,10 +186,15 @@ export function ProgressNoteThread({
     if (ok) setEditing(false)
   }
 
+  // 送ったら入力欄が消えるので、フォーカスをこの投稿の「返信」へ戻す（ページの先頭へ飛ばないように）
+  const noteReplyButtonRef = useRef<HTMLButtonElement>(null)
   const submitReply = async (body: string, parentCommentId: string | null): Promise<boolean> => {
     if (!onReply) return false
     const ok = await onReply(note.id, body, parentCommentId)
-    if (ok) setReplyingTo(null)
+    if (ok) {
+      setReplyingTo(null)
+      window.setTimeout(() => noteReplyButtonRef.current?.focus({ preventScroll: true }), 0)
+    }
     return ok
   }
 
@@ -215,8 +220,8 @@ export function ProgressNoteThread({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.74rem' }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: authorColor, flexShrink: 0 }} />
         <span style={{ color: 'var(--slate-200)', fontWeight: 700 }}>{getAuthorName(note.author_name)}</span>
-        <span style={{ color: 'var(--slate-500)' }}>{formatDateTime(note.created_at)}</span>
-        {note.updated_at !== note.created_at && <span style={{ color: 'var(--slate-600)' }}>編集済み</span>}
+        <span style={{ color: 'var(--text-subtle)' }}>{formatDateTime(note.created_at)}</span>
+        {note.updated_at !== note.created_at && <span style={{ color: 'var(--text-subtle)' }}>編集済み</span>}
         {needsDiscussion && <span style={discussionBadgeStyle}>要相談</span>}
         {showTask && (
           onSelectTodo ? (
@@ -264,7 +269,7 @@ export function ProgressNoteThread({
         <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <ReactionBar reactions={note.reactions} onToggle={onToggleReaction ? (emoji) => onToggleReaction(note.id, emoji) : undefined} />
           {onReply && replyingTo !== 'note' && (
-            <button onClick={() => setReplyingTo('note')} style={inlineActionStyle}>返信</button>
+            <button ref={noteReplyButtonRef} onClick={() => setReplyingTo('note')} style={inlineActionStyle}>返信</button>
           )}
           <NoteMenu
             items={[
@@ -486,14 +491,17 @@ const textareaStyle: React.CSSProperties = {
   resize: 'vertical'
 }
 
+// 「返信」などの文字だけのボタン。押せる範囲は文字の周りにも広げる（高さ 1.75rem 以上）
 const inlineActionStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
   color: 'var(--slate-400)',
   cursor: 'pointer',
-  fontSize: '0.72rem',
+  fontSize: '0.76rem',
   fontWeight: 800,
-  padding: 0
+  padding: '0.25rem 0.4rem',
+  margin: '-0.25rem -0.4rem',
+  minHeight: '1.75rem'
 }
 
 const ghostButtonStyle: React.CSSProperties = {

@@ -1,4 +1,5 @@
 import React, { lazy, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import type { AddDailyPlanItemOptions, Category, CreateSubTaskInput, CreateTodoInput, DailyPlanItem, PublicUser, SubTask, Todo, UpdateDailyPlanItemInput, UpdateSubTaskInput, UpdateTodoInput, UserNotification } from './types'
 import { useTimer } from './hooks/useTimer'
 import { useProgressUnseenCount } from './hooks/useProgressUnseenCount'
@@ -21,6 +22,10 @@ import { buildChecklistSummaries, buildTodayGroups, countRemaining, groupListIte
 import { TodayTodoCard } from './components/TodayTodo'
 import { mergeSubsetOrder } from './lib/reorder'
 import { buildUrlSearch, parseUrlState } from './lib/urlState'
+import { recurrenceDoneMessage, recurrenceReopenMessage } from './lib/recurrence'
+import { elapsedSecondsSince } from './hooks/useElapsedSeconds'
+import { formatShortDate, shiftDateKey } from './lib/dueDate'
+import { FOCUS_PROGRESS_LOG_EVENT, FOCUS_TASK_DETAIL_EVENT } from './lib/appEvents'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 
 // 最初に開くガント・タスク一覧・詳細以外の画面と、設定などの小窓は、開いたときに読み込む（起動を軽くする）
@@ -29,6 +34,7 @@ const UserManagementModal = lazy(() => import('./components/UserManagementModal'
 const ProgressReportModal = lazy(() => import('./components/ProgressReportModal').then((module) => ({ default: module.ProgressReportModal })))
 const TaskReportWindow = lazy(() => import('./components/TaskReportWindow').then((module) => ({ default: module.TaskReportWindow })))
 const DesktopImportModal = lazy(() => import('./components/DesktopImportModal').then((module) => ({ default: module.DesktopImportModal })))
+const GettingStartedModal = lazy(() => import('./components/GettingStartedModal').then((module) => ({ default: module.GettingStartedModal })))
 const SetupWizardModal = lazy(() => import('./components/SetupWizardModal').then((module) => ({ default: module.SetupWizardModal })))
 const WorkLogSummary = lazy(() => import('./components/WorkLogSummary').then((module) => ({ default: module.WorkLogSummary })))
 const ProgressTimeline = lazy(() => import('./components/ProgressTimeline').then((module) => ({ default: module.ProgressTimeline })))
@@ -40,6 +46,43 @@ const ReportView = lazy(() => import('./components/ReportView').then((module) =>
 const TodoListsView = lazy(() => import('./components/TodoListsView').then((module) => ({ default: module.TodoListsView })))
 
 type SortField = 'created_at' | 'updated_at' | 'priority' | 'progress' | 'due_date' | 'title' | 'sort_order'
+
+// 一覧の並べ替えは端末に覚える（毎朝並べ直さなくて済むように）
+const LIST_SORT_STORAGE_KEY = 'task-list-sort'
+const SORT_FIELD_KEYS: readonly SortField[] = ['created_at', 'updated_at', 'priority', 'progress', 'due_date', 'title', 'sort_order']
+
+/** 並べ替えの最初の向き。期限とタイトルは近い順・あいうえお順、ほかは新しい順・大きい順 */
+function defaultSortDir(field: SortField): 'asc' | 'desc' {
+  return field === 'due_date' || field === 'title' ? 'asc' : 'desc'
+}
+
+/** 並べ替えのボタンのツールチップ（↑↓が何の順かを言葉で） */
+function sortDirTitle(field: SortField, dir: 'asc' | 'desc', active: boolean): string {
+  if (field === 'sort_order') return 'ドラッグで並べた順'
+  const labels: Record<Exclude<SortField, 'sort_order'>, [string, string]> = {
+    due_date: ['期限が近い順', '期限が遠い順'],
+    title: ['タイトルの昇順', 'タイトルの降順'],
+    created_at: ['作成が古い順', '作成が新しい順'],
+    updated_at: ['更新が古い順', '更新が新しい順'],
+    priority: ['優先度が低い順', '優先度が高い順'],
+    progress: ['進捗が少ない順', '進捗が多い順']
+  }
+  const [asc, desc] = labels[field]
+  if (!active) return `${dir === 'asc' ? asc : desc}に並べます`
+  return `${dir === 'asc' ? asc : desc}（もう一度押すと${dir === 'asc' ? desc : asc}）`
+}
+
+function loadListSort(): { field: SortField; dir: 'asc' | 'desc' } {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LIST_SORT_STORAGE_KEY) ?? 'null') as { field?: unknown; dir?: unknown } | null
+    if (parsed && SORT_FIELD_KEYS.includes(parsed.field as SortField) && (parsed.dir === 'asc' || parsed.dir === 'desc')) {
+      return { field: parsed.field as SortField, dir: parsed.dir }
+    }
+  } catch {
+    // 読めなければ既定の並び
+  }
+  return { field: 'created_at', dir: 'desc' }
+}
 type CenterView = 'detail' | 'overview' | 'log' | 'progress' | 'report' | 'plan' | 'gantt' | 'team' | 'kanban' | 'todo'
 type ScopeLens = 'personal' | 'team'
 type GanttSidePanelMode = 'detail' | 'today'
@@ -72,6 +115,9 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+// 右のパネル（今日の予定・ガントの詳細）の最小幅。これより狭いと、詳細の計測の「停止」や日程の欄が切れる
+const SIDE_PANE_MIN_WIDTH = 340
+
 function loadPaneWidths(): PaneWidths {
   try {
     const raw = window.localStorage.getItem('app-pane-widths')
@@ -80,7 +126,7 @@ function loadPaneWidths(): PaneWidths {
     return {
       category: clamp(Number(parsed.category) || DEFAULT_PANE_WIDTHS.category, 132, 320),
       list: clamp(Number(parsed.list) || DEFAULT_PANE_WIDTHS.list, 220, 460),
-      side: clamp(Number(parsed.side) || DEFAULT_PANE_WIDTHS.side, 280, 720)
+      side: clamp(Number(parsed.side) || DEFAULT_PANE_WIDTHS.side, SIDE_PANE_MIN_WIDTH, 720)
     }
   } catch {
     return DEFAULT_PANE_WIDTHS
@@ -97,6 +143,46 @@ interface PaneVisibility {
 const GANTT_PANES_STORAGE_KEY = 'gantt-pane-visibility'
 /** この幅より狭い画面では、ガントを初めて開いたときにパネルを畳んで時間軸を広く見せる */
 const GANTT_WIDE_SCREEN_MIN_WIDTH = 1600
+// ガント以外の画面で、右の「今日の予定」・カテゴリ一覧を自動で隠す画面の幅（これより狭いとき）。
+// カンバンは4列を並べるので、右のパネルはもっと広い画面まで隠す
+const NARROW_SIDE_PANEL_WIDTH = 1280
+const NARROW_CATEGORY_PANE_WIDTH = 1100
+// カンバンの4列（1列 200px と間・余白）が収まる幅。収まらないときは、右の「今日の予定」→カテゴリ一覧→タスク一覧の順に隠す
+const KANBAN_MIN_BOARD_WIDTH = 4 * 200 + 3 * 10 + 24 + 6
+/** 日程の変更と、依存関係で後続が動いた知らせの key（元に戻したら「元に戻しました」で置き換える） */
+const SCHEDULE_TOAST_KEY = 'schedule-change'
+/** これより狭いと、ガントの日付が数日分しか見えない（左の表の幅を含む） */
+const GANTT_COMFORT_WIDTH = 640
+const SIDE_PANEL_VIEWS_WITHOUT_RAIL: readonly CenterView[] = ['plan', 'team', 'progress', 'report', 'todo']
+// 中央の区分けの読み上げ名（上部のタブの名前と同じ）
+const CENTER_VIEW_LABELS: Record<CenterView, string> = {
+  detail: 'タスクの詳細', overview: '概要', log: '記録', progress: '進捗', report: '報告', plan: '計画', gantt: 'ガント', team: 'チーム', kanban: 'カンバン', todo: 'ToDo'
+}
+
+/** キーボードで最初に Tab を押したときだけ出る、区分けへ移るリンク（一覧や上部のボタンを1つずつ通らずに済む） */
+function SkipLinks({ showTaskList, showSidePanel, sidePanelLabel }: { showTaskList: boolean; showSidePanel: boolean; sidePanelLabel: string }): React.JSX.Element {
+  const focusRegion = (id: string): void => {
+    const region = document.getElementById(id)
+    if (!region) return
+    // 本文は区分けそのものへ（最初の部品が絞り込みを外すチップのとき、続けて Enter を押して外してしまわないように）。
+    // ほかは区分けの中の最初の操作できる部品へ。なければ区分けそのものへ
+    const first = id === 'hakobi-main' ? null : region.querySelector<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+    ;(first ?? region).focus()
+  }
+  return (
+    <div className="hakobi-skip-links">
+      <button type="button" onClick={() => focusRegion('hakobi-main')}>本文へ移動</button>
+      {showTaskList && <button type="button" onClick={() => focusRegion('hakobi-task-list')}>タスク一覧へ移動</button>}
+      {showSidePanel && <button type="button" onClick={() => focusRegion('hakobi-side-panel')}>{sidePanelLabel}へ移動</button>}
+    </div>
+  )
+}
+/** 日程の比較用（開始日と期限） */
+function scheduleKeyOf(todo: Todo): string {
+  return `${todo.start_date?.slice(0, 10) ?? ''}/${todo.due_date?.slice(0, 10) ?? ''}`
+}
+
+const KANBAN_STATUS_LABELS: Record<Todo['status'], string> = { not_started: '未着手', active: '進行中', on_hold: '保留中', done: '完了', archived: 'アーカイブ' }
 
 // ガントの画面のパネルの開閉は、ほかの画面とは別に覚える（ガントは横に広いほど見やすいため）。
 // まだ覚えていないときは、画面が狭ければすべて畳み、広ければほかの画面と同じにする
@@ -167,8 +253,12 @@ export function App(): React.JSX.Element {
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(initialUrlState.taskId)
   const [detailDirty, setDetailDirty] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
-  const [sortField, setSortField] = useState<SortField>('created_at')
-  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc')
+  const [initialListSort] = useState(loadListSort)
+  const [sortField, setSortField] = useState<SortField>(initialListSort.field)
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>(initialListSort.dir)
+  useEffect(() => {
+    try { window.localStorage.setItem(LIST_SORT_STORAGE_KEY, JSON.stringify({ field: sortField, dir: sortDir })) } catch { /* 覚えられなくても並べ替えはできる */ }
+  }, [sortDir, sortField])
   const [searchQuery, setSearchQuery] = useState('')
   const [savedTaskViews] = useState<SavedTaskView[]>(() => {
     try {
@@ -180,6 +270,7 @@ export function App(): React.JSX.Element {
   // 追加画面の初期値（ガントの見出しの「＋」から開いたときなど）。null は左の選択状態から決める
   const [quickAddDefaults, setQuickAddDefaults] = useState<{ categoryId?: string | null; assigneeId?: string | null; listMode?: boolean } | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [showGettingStarted, setShowGettingStarted] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const saved = window.localStorage.getItem('app-theme-mode')
     return saved === 'light' || saved === 'system' ? saved : 'dark'
@@ -236,9 +327,14 @@ export function App(): React.JSX.Element {
   }, [])
   const resizeRef = useRef<{ key: PaneKey; startX: number; startWidth: number } | null>(null)
 
-  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success', action?: { label: string; run: () => void }) => {
+  // action.key が同じ知らせは、新しいもので置き換える（進捗を続けて変えたときに知らせが積み重ならないように）
+  // ボタンのない知らせにも key を付けられる（「元に戻しました」で、前の知らせを置き換えるときなど）
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success', action?: { label?: string; run?: () => void; key?: string }) => {
     const id = ++toastIdRef.current
-    setToasts((prev) => [...prev, { id, message, type, actionLabel: action?.label, onAction: action?.run }])
+    setToasts((prev) => [
+      ...(action?.key ? prev.filter((toast) => toast.key !== action.key) : prev),
+      { id, message, type, actionLabel: action?.label && action.run ? action.label : undefined, onAction: action?.label ? action.run : undefined, key: action?.key }
+    ])
   }, [])
 
   const removeToast = useCallback((id: number) => {
@@ -259,14 +355,23 @@ export function App(): React.JSX.Element {
   }, [loadResource, loadTodayPlan])
   const loadAllSubTasks = useCallback(() => loadResource('allSubTasks', () => window.api.subtaskGetAll(), setAllSubTasks), [loadResource])
 
+  // 同じ日の計画を読み直すとき（予定を入れた・動かしたあと）は、画面を「読み込んでいます」に替えずに中身だけ差し替える
+  // （朝に何件も入れるたびに画面全体が消え、どこまで入れたか見失っていた）
+  const selectedPlanLoadedDateRef = useRef<string | null>(null)
   const loadSelectedPlan = useCallback(async (date: string) => {
     const requestId = ++selectedPlanRequestRef.current
-    setSelectedPlanLoading(true)
+    const sameDate = selectedPlanLoadedDateRef.current === date
+    if (!sameDate) {
+      setSelectedPlanLoading(true)
+      setSelectedPlanItems([])
+    }
     setSelectedPlanError(null)
-    setSelectedPlanItems([])
     try {
       const items = await window.api.dailyPlanGetByDate(date)
-      if (resourcesMountedRef.current && requestId === selectedPlanRequestRef.current) setSelectedPlanItems(items)
+      if (resourcesMountedRef.current && requestId === selectedPlanRequestRef.current) {
+        setSelectedPlanItems(items)
+        selectedPlanLoadedDateRef.current = date
+      }
     } catch (error) {
       if (resourcesMountedRef.current && requestId === selectedPlanRequestRef.current) {
         setSelectedPlanError(error instanceof Error ? error.message : '計画を読み込めませんでした')
@@ -307,6 +412,10 @@ export function App(): React.JSX.Element {
   }, [isFirstLaunch, loadSelectedPlan, planDate, showToast])
 
   const { isRunning, runningTodoId, startTime: timerStartTime, start: startTimer, stop: stopTimer, sync: syncTimer } = useTimer(loadTodos)
+  const runningTodo = useMemo(() => (runningTodoId ? todos.find((todo) => todo.id === runningTodoId) ?? null : null), [runningTodoId, todos])
+  const todosRef = useRef(todos)
+  todosRef.current = todos
+  const scheduleWatchRef = useRef<{ editedId: string; before: Map<string, string> } | null>(null)
 
   const stop = useCallback(async (note?: string) => {
     try { await stopTimer(note) }
@@ -317,6 +426,13 @@ export function App(): React.JSX.Element {
     }
   }, [showToast, stopTimer])
 
+  // ヘッダーの■から止めたときは、記録した時間を知らせる
+  const stopFromToolbar = useCallback(() => {
+    const seconds = elapsedSecondsSince(timerStartTime)
+    const recorded = seconds < 60 ? '1分未満' : `約${Math.round(seconds / 60)}分`
+    void stop().then(() => showToast(`計測を止めました（${recorded}を記録）`), () => { /* 失敗は stop が知らせる */ })
+  }, [showToast, stop, timerStartTime])
+
   const start = useCallback(async (todoId: string) => {
     if (todos.find((todo) => todo.id === todoId)?.status === 'on_hold') {
       if ((todoId !== selectedTodoId || activeView !== 'detail') && detailDirty && !window.confirm('未保存の変更があります。タスク詳細へ移動しますか？')) return
@@ -325,12 +441,15 @@ export function App(): React.JSX.Element {
       showToast('保留中のタスクは、進行中に戻してから計測を開始してください')
       return
     }
+    const previousTitle = runningTodoId && runningTodoId !== todoId ? todos.find((todo) => todo.id === runningTodoId)?.title ?? null : null
     try {
       await startTimer(todoId)
+      // 別のタスクを計測中だったときは、止めて切り替えたことを知らせる（黙って止まると記録が分かれたことに気付けない）
+      if (previousTitle) showToast(`「${previousTitle}」の計測を止めて、「${todos.find((todo) => todo.id === todoId)?.title ?? 'このタスク'}」の計測を始めました`)
     } catch (error) {
       showToast(error instanceof Error ? error.message : '計測を開始できませんでした', 'error')
     }
-  }, [activeView, detailDirty, selectedTodoId, showToast, startTimer, todos])
+  }, [activeView, detailDirty, runningTodoId, selectedTodoId, showToast, startTimer, todos])
 
   useEffect(() => {
     window.api.appIsFirstLaunch().then(setIsFirstLaunch)
@@ -413,13 +532,43 @@ export function App(): React.JSX.Element {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [isStandaloneGanttWindow, isStandaloneTaskReportWindow])
 
+  // フォーカスしていた部品が消えた（小窓を閉じた・画面を切り替えた・返信を送ったなど）ときは、
+  // ページの先頭（body）に落とさず、いた区分け（一覧・本文・右のパネル・小窓）へ戻す。次の Tab がそこから続く
+  useEffect(() => {
+    let lastFocused: HTMLElement | null = null
+    let lastRegion: HTMLElement | null = null
+    const handleFocusIn = (event: FocusEvent): void => {
+      if (!(event.target instanceof HTMLElement) || event.target === document.body) return
+      lastFocused = event.target
+      lastRegion = event.target.closest<HTMLElement>('[role="dialog"], [data-focus-region]')
+    }
+    const rescue = (): void => {
+      if (document.activeElement && document.activeElement !== document.body) return
+      // 何もない所を押して外した（部品はまだある）ときは、そのままにする
+      if (!lastFocused || lastFocused.isConnected) return
+      lastFocused = null
+      const target = lastRegion?.isConnected ? lastRegion : document.getElementById('hakobi-main')
+      if (!target) return
+      if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1')
+      target.focus({ preventScroll: true })
+    }
+    const observer = new MutationObserver(rescue)
+    observer.observe(document.body, { childList: true, subtree: true })
+    document.addEventListener('focusin', handleFocusIn)
+    return () => {
+      observer.disconnect()
+      document.removeEventListener('focusin', handleFocusIn)
+    }
+  }, [])
+
   // Ctrl+K（Mac は ⌘K）で移動・操作のパレットを開く
   useEffect(() => {
     if (isStandaloneGanttWindow || isStandaloneTaskReportWindow) return
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'k') return
       event.preventDefault()
-      setShowCommandPalette((previous) => !previous)
+      // すぐに描いて入力欄へフォーカスを移す（Ctrl+K の直後に打った文字を取りこぼさない）
+      flushSync(() => setShowCommandPalette((previous) => !previous))
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -505,17 +654,89 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     if (isFirstLaunch !== false || activeView !== 'gantt' || !ganttPanesNoticePendingRef.current) return
     ganttPanesNoticePendingRef.current = false
-    showToast('ガントを広く見せるため、左右のパネルを畳みました。上の「表示」から開けます', 'success', {
+    showToast('ガントを広く見せるため、左右のパネルを畳みました。上の「表示」から開けます', 'info', {
       label: 'パネルを開く',
       run: () => setGanttPanes({ category: true, task: true, side: true })
     })
   }, [activeView, isFirstLaunch, showToast])
 
+  // 画面が狭いときは、ガント以外の画面で右の「今日の予定」とカテゴリ一覧を自動で隠す（中央が細くなりすぎないように）。
+  // 狭いあいだに「表示」から開いたものは開いたままにし、広くなったら元の設定に戻る
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
+  useEffect(() => {
+    const update = (): void => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', update)
+    // resize が届かない環境（画面の拡大・埋め込みの表示など）でも幅の変化を拾う
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update)
+    observer?.observe(document.documentElement)
+    return () => {
+      window.removeEventListener('resize', update)
+      observer?.disconnect()
+    }
+  }, [])
+  // 文字を大きくしているときは、同じ幅でも入る量が減るので、文字の倍率で割った幅で決める
+  const fontScaleFactor = Math.max(1, (Number.parseFloat(fontScale) || 100) / 100)
+  const effectiveViewportWidth = viewportWidth / fontScaleFactor
+  // カンバンは、表示する設定のパネルの幅を足して、4列が収まらなければ右から順に隠す
+  const kanbanBoardWidth = (hide: { side: boolean; category: boolean }): number => viewportWidth
+    - (showTaskPane ? paneWidths.list : 0)
+    - (showCategoryPane && !hide.category ? paneWidths.category : 0)
+    - (showPlanRail && !hide.side ? paneWidths.side : 0)
+  const isKanban = activeView === 'kanban'
+  const autoHideSidePanel = isKanban
+    ? kanbanBoardWidth({ side: false, category: false }) < KANBAN_MIN_BOARD_WIDTH
+    : effectiveViewportWidth < NARROW_SIDE_PANEL_WIDTH
+  const autoHideCategoryPane = isKanban
+    ? kanbanBoardWidth({ side: true, category: false }) < KANBAN_MIN_BOARD_WIDTH
+    : effectiveViewportWidth < NARROW_CATEGORY_PANE_WIDTH
+  const autoHideTaskPane = (isKanban && kanbanBoardWidth({ side: true, category: true }) < KANBAN_MIN_BOARD_WIDTH)
+    || (activeView !== 'detail' && effectiveViewportWidth < 1000)
+  const [openedWhileNarrow, setOpenedWhileNarrow] = useState({ category: false, side: false, task: false })
+  useEffect(() => {
+    setOpenedWhileNarrow((previous) => {
+      const next = { category: previous.category && autoHideCategoryPane, side: previous.side && autoHideSidePanel, task: previous.task && autoHideTaskPane }
+      return next.category === previous.category && next.side === previous.side && next.task === previous.task ? previous : next
+    })
+  }, [autoHideCategoryPane, autoHideSidePanel, autoHideTaskPane])
+  // 自動で隠したことは、パネルが消えたと思われないよう知らせる。毎回出ると邪魔なので、この端末で種類ごとに一度だけ
+  useEffect(() => {
+    if (isFirstLaunch !== false || activeView === 'gantt') return
+    const hidden: string[] = []
+    if (autoHideCategoryPane && showCategoryPane && !openedWhileNarrow.category) hidden.push('カテゴリ一覧')
+    if (autoHideSidePanel && showPlanRail && !openedWhileNarrow.side && !SIDE_PANEL_VIEWS_WITHOUT_RAIL.includes(activeView)) hidden.push('右の「今日の予定」')
+    if (autoHideTaskPane && showTaskPane && !openedWhileNarrow.task) hidden.push('タスク一覧')
+    if (hidden.length === 0) return
+    // カンバンで隠すときは、4列を収めるためだと書く
+    const forKanbanOnly = isKanban
+    const noticeKey = `narrow-panes-notice:${forKanbanOnly ? 'kanban' : 'narrow'}`
+    try {
+      if (window.localStorage.getItem(noticeKey)) return
+      window.localStorage.setItem(noticeKey, '1')
+    } catch { /* 覚えられなくても知らせる */ }
+    showToast(forKanbanOnly
+      ? `カンバンの4列が収まるよう、${hidden.join('と')}を隠しました。上の「表示」から開けます`
+      : `画面の幅に合わせて、${hidden.join('と')}を隠しました。上の「表示」から開けます`, 'info')
+  }, [activeView, autoHideCategoryPane, autoHideSidePanel, autoHideTaskPane, isFirstLaunch, isKanban, openedWhileNarrow, showCategoryPane, showPlanRail, showTaskPane, showToast])
+
+  // 一覧の担当の絞り込みは、見ている人ごとに端末へ覚える（読み込み直すたびに「自分」へ戻らないように）。
+  // 覚えていなければ「自分」から始める
+  const assigneeFilterStorageKey = currentUser ? `hakobi-list-assignee:${currentUser.id}` : null
   useEffect(() => {
     if (assigneeDefaultApplied || !currentUser || users.length === 0) return
-    setSelectedAssigneeId(currentUser.id)
+    let stored: string | null = null
+    try { stored = window.localStorage.getItem(`hakobi-list-assignee:${currentUser.id}`) } catch { /* 読めなければ「自分」 */ }
+    setSelectedAssigneeId(stored === '__all__' ? null
+      : stored === '__none__' ? ''
+        : stored && users.some((user) => user.id === stored) ? stored
+          : currentUser.id)
     setAssigneeDefaultApplied(true)
-  }, [assigneeDefaultApplied, currentUser, users.length])
+  }, [assigneeDefaultApplied, currentUser, users])
+  useEffect(() => {
+    if (!assigneeDefaultApplied || !assigneeFilterStorageKey) return
+    try {
+      window.localStorage.setItem(assigneeFilterStorageKey, selectedAssigneeId === null ? '__all__' : selectedAssigneeId === '' ? '__none__' : selectedAssigneeId)
+    } catch { /* 覚えられなくても絞り込みは使える */ }
+  }, [assigneeDefaultApplied, assigneeFilterStorageKey, selectedAssigneeId])
 
   // 「OS に合わせる」のときは、OS のライト・ダークの切り替えにもついていく
   const [systemPrefersLight, setSystemPrefersLight] = useState(() => window.matchMedia?.('(prefers-color-scheme: light)').matches ?? false)
@@ -563,7 +784,7 @@ export function App(): React.JSX.Element {
           return { ...previous, list: clamp(current.startWidth + delta, 220, 460) }
         }
 
-        return { ...previous, side: clamp(current.startWidth - delta, 280, 720) }
+        return { ...previous, side: clamp(current.startWidth - delta, SIDE_PANE_MIN_WIDTH, 720) }
       })
     }
 
@@ -607,6 +828,19 @@ export function App(): React.JSX.Element {
       setInitialLoadError(error instanceof Error ? error.message : 'データを読み込めませんでした')
     })
   }, [isFirstLaunch, loadInitialData, syncTimer])
+
+  const gettingStartedKey = `hakobi-getting-started:${currentUser?.id ?? 'local'}`
+  useEffect(() => {
+    if (!initialDataLoaded || isFirstLaunch !== false || isStandaloneGanttWindow || isStandaloneTaskReportWindow) return
+    try {
+      if (window.localStorage.getItem(gettingStartedKey)) return
+      window.localStorage.setItem(gettingStartedKey, '1')
+    } catch { return }
+    const timer = window.setTimeout(() => {
+      showToast('はじめての方へ: 毎日することを3つの手順にまとめました', 'info', { label: '使い方を見る', run: () => setShowGettingStarted(true) })
+    }, 1200)
+    return () => window.clearTimeout(timer)
+  }, [gettingStartedKey, initialDataLoaded, isFirstLaunch, isStandaloneGanttWindow, isStandaloneTaskReportWindow, showToast])
 
   const handleExportClipboard = useCallback(async () => {
     const result = await window.api.markdownExport('clipboard')
@@ -754,6 +988,9 @@ export function App(): React.JSX.Element {
     if (sortField === 'sort_order') {
       return (a.sort_order ?? 0) - (b.sort_order ?? 0)
     }
+    // 並べ替えたときは、完了したタスクを後ろにまとめる（手動の並びはそのまま）
+    if (a.status === 'done' && b.status !== 'done') return 1
+    if (a.status !== 'done' && b.status === 'done') return -1
 
     let aVal: string | number
     let bVal: string | number
@@ -820,10 +1057,14 @@ export function App(): React.JSX.Element {
 
   const selectedTodo = lensTodos.find((todo) => todo.id === selectedTodoId) ?? null
 
+  // ほかの画面（チーム・報告など）からタスクを開いたときは、詳細にその画面へ戻るボタンを出す。タブで画面を変えたら消す
+  const [detailReturnView, setDetailReturnView] = useState<CenterView | null>(null)
+
   // 上部のタブで画面を切り替える。表示中のタブをもう一度押しても、ほかの画面には移らない
   const toggleCenterView = useCallback((view: CenterView) => {
     if (view === activeView) return
     if (detailDirty && !window.confirm('未保存の変更があります。別の画面へ移動しますか？')) return
+    setDetailReturnView(null)
     setActiveView(view)
     if (view === 'gantt') setGanttSidePanelMode('today')
   }, [activeView, detailDirty])
@@ -835,6 +1076,7 @@ export function App(): React.JSX.Element {
       setGanttSidePanelMode('detail')
       return
     }
+    if (activeView !== 'detail') setDetailReturnView(activeView)
     setActiveView('detail')
   }, [activeView, detailDirty, selectedTodoId])
 
@@ -966,10 +1208,34 @@ export function App(): React.JSX.Element {
   }, [])
 
   const handleUpdate = useCallback(async (id: string, data: UpdateTodoInput) => {
-    await window.api.todoUpdate(id, data)
+    // 日程を変えたときは、依存関係でほかのタスクが動いたかを読み込み後に確かめて知らせる
+    if (data.start_date !== undefined || data.due_date !== undefined) {
+      scheduleWatchRef.current = { editedId: id, before: new Map(todosRef.current.map((todo) => [todo.id, scheduleKeyOf(todo)])) }
+    }
+    try {
+      await window.api.todoUpdate(id, data)
+    } catch (error) {
+      scheduleWatchRef.current = null
+      throw error
+    }
     try { await Promise.all([loadTodos(), loadSelectedPlan(planDate), syncTimer()]) }
     catch (error) { showToast(`変更は保存しましたが、表示を更新できませんでした: ${error instanceof Error ? error.message : '再読み込みしてください'}`, 'error') }
   }, [loadTodos, loadSelectedPlan, planDate, showToast, syncTimer])
+
+  // 依存関係の後続が自動で動いたことの知らせ（後続はほかの人のタスクのこともあり、気づかないと計画を読み違える）
+  useEffect(() => {
+    const watch = scheduleWatchRef.current
+    if (!watch) return
+    scheduleWatchRef.current = null
+    const moved = todos.filter((todo) => todo.id !== watch.editedId && watch.before.has(todo.id) && watch.before.get(todo.id) !== scheduleKeyOf(todo))
+    if (moved.length === 0) return
+    const first = moved[0]
+    const range = `${first.start_date ? formatShortDate(first.start_date) : '—'}〜${first.due_date ? formatShortDate(first.due_date) : '—'}`
+    const owner = first.assignee_name ? `（${first.assignee_name}）` : ''
+    showToast(moved.length === 1
+      ? `依存関係で、後続の「${first.title}」${owner}も ${range} に動きました`
+      : `依存関係で、後続の${moved.length}件（「${first.title}」${owner}ほか）の日程も動きました`, 'success', { key: SCHEDULE_TOAST_KEY })
+  }, [todos, showToast])
 
   // ToDoリストの項目のチェック（右パネル・一覧の展開・ToDo タブ）。すぐ画面に反映し、失敗したら戻す
   const [pendingListItemIds, setPendingListItemIds] = useState<Set<string>>(() => new Set())
@@ -1061,11 +1327,28 @@ export function App(): React.JSX.Element {
       ? (todo.progress > 0 ? 'active' : 'not_started')
       : 'done'
     // 繰り返しタスクの次回分はDB層が完了時に自動生成する
-    await window.api.todoUpdate(todo.id, { status: newStatus })
+    try {
+      await window.api.todoUpdate(todo.id, { status: newStatus })
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '状態を変えられませんでした', 'error')
+      return
+    }
 
-    if (newStatus === 'done' && todo.recurrence) {
-      const recurrenceLabel = todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : '毎月'
-      showToast(`${recurrenceLabel}タスクを次回分として作成しました`)
+    // 一覧の丸は小さく押し間違えやすいので、完了にしたときは元に戻せるようにする
+    const recurrenceMessage = newStatus === 'done' ? recurrenceDoneMessage(todo) : recurrenceReopenMessage(todo)
+    if (newStatus === 'done') {
+      const previousStatus = todo.status
+      showToast(`「${todo.title}」を完了にしました${recurrenceMessage ? `。${recurrenceMessage}` : ''}`, 'success', {
+        label: '元に戻す',
+        run: () => {
+          void window.api.todoUpdate(todo.id, { status: previousStatus }).then(
+            () => { showToast(`「${todo.title}」の完了を取り消しました`); void loadTodos() },
+            (error: unknown) => showToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+          )
+        }
+      })
+    } else if (recurrenceMessage) {
+      showToast(`完了を取り消しました。${recurrenceMessage}`)
     }
 
     await loadTodos()
@@ -1075,23 +1358,38 @@ export function App(): React.JSX.Element {
   // 繰り返しタスクの次回分作成（DB層が自動生成）を通知する。
   const handleKanbanMove = useCallback(async (todo: Todo, status: Todo['status']) => {
     if (todo.status === status) return
-    await window.api.todoUpdate(todo.id, { status })
-    if (status === 'done' && todo.recurrence) {
-      const recurrenceLabel = todo.recurrence === 'daily' ? '毎日' : todo.recurrence === 'weekly' ? '毎週' : '毎月'
-      showToast(`${recurrenceLabel}タスクを次回分として作成しました`)
+    try {
+      await window.api.todoUpdate(todo.id, { status })
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '状態を変えられませんでした', 'error')
+      return
     }
+    // 列を移したことを知らせ、その場で戻せるようにする（キーボードで移したときの読み上げにもなる）
+    const recurrenceMessage = status === 'done' ? recurrenceDoneMessage(todo) : null
+    const previousStatus = todo.status
+    showToast(`「${todo.title}」を${KANBAN_STATUS_LABELS[status]}にしました${recurrenceMessage ? `。${recurrenceMessage}` : ''}`, 'success', {
+      label: '元に戻す',
+      run: () => {
+        void window.api.todoUpdate(todo.id, { status: previousStatus }).then(
+          () => { showToast(`「${todo.title}」を${KANBAN_STATUS_LABELS[previousStatus]}に戻しました`); void loadTodos() },
+          (error: unknown) => showToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+        )
+      }
+    })
     await loadTodos()
   }, [loadTodos, showToast])
 
   const handleKanbanCreate = useCallback(async (title: string, status: Todo['status']) => {
-    await window.api.todoCreate({
+    const created = await window.api.todoCreate({
       title,
       status: status === 'archived' ? 'not_started' : status,
       category_id: selectedCategoryId,
-      assignee_id: currentUser?.id ?? null
+      assignee_id: selectedAssigneeId === null ? currentUser?.id ?? null : selectedAssigneeId || null,
+      start_date: getTodayKey()
     })
     await loadTodos()
-  }, [loadTodos, selectedCategoryId, currentUser])
+    showToast(`「${created.title}」を追加しました`)
+  }, [loadTodos, selectedCategoryId, selectedAssigneeId, currentUser, showToast])
 
   const handleCategoryAdd = useCallback(async (name: string, color: string, isPrivate: boolean) => {
     await window.api.categoryCreate(name, color, isPrivate)
@@ -1320,9 +1618,11 @@ export function App(): React.JSX.Element {
                     if (active) setSortDir((prev) => prev === 'asc' ? 'desc' : 'asc')
                     else {
                       setSortField(key)
-                      setSortDir('desc')
+                      setSortDir(defaultSortDir(key))
                     }
                   }}
+                  title={sortDirTitle(key, active ? sortDir : defaultSortDir(key), active)}
+                  aria-pressed={active}
                   style={{ padding: '6px 9px', borderRadius: 999, border: `1px solid ${active ? 'var(--blue-500)' : 'var(--slate-700)'}`, background: active ? 'var(--blue-950)' : 'var(--gray-900)', color: active ? 'var(--blue-100)' : 'var(--slate-400)', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700 }}
                 >
                   {label}{active && key !== 'sort_order' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
@@ -1342,6 +1642,8 @@ export function App(): React.JSX.Element {
             onUpdateTodo={handleUpdate}
             onReorderTodos={handleReorder}
             groupByCategory={selectedCategoryId === null}
+            textScale={(Number.parseFloat(fontScale) || 100) / 100}
+            onShowToast={showToast}
             standalone
           />
         </div>
@@ -1358,19 +1660,39 @@ export function App(): React.JSX.Element {
   const isManualSort = sortField === 'sort_order'
   // ガントの画面だけ、パネルの開閉をほかの画面とは別に持つ
   const isGanttView = activeView === 'gantt'
-  const categoryPaneVisible = isGanttView ? ganttPanes.category : showCategoryPane
-  const taskPaneVisible = isGanttView ? ganttPanes.task : showTaskPane
-  const planRailVisible = isGanttView ? ganttPanes.side : showPlanRail
+  const categoryPaneVisible = isGanttView ? ganttPanes.category : showCategoryPane && (!autoHideCategoryPane || openedWhileNarrow.category)
+  const taskPaneVisible = isGanttView ? ganttPanes.task : showTaskPane && (!autoHideTaskPane || openedWhileNarrow.task)
+  const planRailVisible = isGanttView ? ganttPanes.side : showPlanRail && (!autoHideSidePanel || openedWhileNarrow.side)
   const togglePane = (key: keyof PaneVisibility): void => {
     if (isGanttView) {
-      setGanttPanes((previous) => ({ ...previous, [key]: !previous[key] }))
+      const next = { ...ganttPanes, [key]: !ganttPanes[key] }
+      setGanttPanes(next)
+      // 開いた結果、ガントが狭くなりすぎたら知らせる（狭い窓では日付が数日分しか見えなくなり、気づきにくい）
+      const chartWidth = viewportWidth
+        - (next.category ? paneWidths.category : 0)
+        - (next.task ? paneWidths.list : 0)
+        - (next.side ? paneWidths.side : 0)
+      if (next[key] && chartWidth < GANTT_COMFORT_WIDTH) {
+        showToast('ガントの幅が狭くなり、日付が数日分しか見えません', 'info', {
+          label: 'ほかのパネルを畳む',
+          run: () => setGanttPanes({ category: false, task: false, side: false, [key]: true })
+        })
+      }
       return
     }
-    if (key === 'category') setShowCategoryPane((previous) => !previous)
-    else if (key === 'task') setShowTaskPane((previous) => !previous)
-    else setShowPlanRail((previous) => !previous)
+    // 狭くて自動で隠しているパネルは、設定を変えずにその幅のあいだだけ開け閉めする
+    const visible = key === 'category' ? categoryPaneVisible : key === 'task' ? taskPaneVisible : planRailVisible
+    const autoHidden = key === 'category' ? autoHideCategoryPane : key === 'task' ? autoHideTaskPane : autoHideSidePanel
+    const setPreference = key === 'category' ? setShowCategoryPane : key === 'task' ? setShowTaskPane : setShowPlanRail
+    if (visible) {
+      if (autoHidden) setOpenedWhileNarrow((previous) => ({ ...previous, [key]: false }))
+      else setPreference(false)
+      return
+    }
+    setPreference(true)
+    if (autoHidden) setOpenedWhileNarrow((previous) => ({ ...previous, [key]: true }))
   }
-  const showRightPlanRail = showPlanRail && activeView !== 'plan' && activeView !== 'team' && activeView !== 'progress' && activeView !== 'report' && activeView !== 'todo'
+  const showRightPlanRail = planRailVisible && !SIDE_PANEL_VIEWS_WITHOUT_RAIL.includes(activeView)
   // Ctrl+K のパレットの項目（画面・操作）
   const paletteViews: { view: CenterView; label: string; keywords: string }[] = [
     { view: 'overview', label: '概要', keywords: 'overview ダッシュボード' },
@@ -1383,9 +1705,69 @@ export function App(): React.JSX.Element {
     { view: 'todo', label: 'ToDo', keywords: 'todo リスト チェック' },
     { view: 'log', label: '記録', keywords: 'log 作業時間' }
   ]
+  // いちばん新しい「元に戻す」などの操作つきの知らせ（キーボードで知らせまで行かなくても、Ctrl+K から押せるように）
+  const latestActionToast = [...toasts].reverse().find((toast) => toast.actionLabel && toast.onAction)
   const paletteCommands: PaletteCommand[] = [
-    ...paletteViews.map(({ view, label, keywords }) => ({ key: `view:${view}`, group: '画面' as const, label: `${label}を開く`, keywords, run: () => toggleCenterView(view) })),
+    ...(latestActionToast ? [{
+      key: `toast:${latestActionToast.id}`, group: '操作' as const,
+      label: `${latestActionToast.actionLabel}（${latestActionToast.message}）`,
+      keywords: '元に戻す 取り消し undo',
+      run: () => { latestActionToast.onAction?.(); removeToast(latestActionToast.id) }
+    }] : []),
+    // 画面を開いたら、フォーカスもその画面（本文）へ移す（パレットを開く前の場所に戻ると、続けて Tab で新しい画面に入れない）
+    ...paletteViews.map(({ view, label, keywords }) => ({
+      key: `view:${view}`, group: '画面' as const, label: `${label}を開く`, keywords,
+      run: () => {
+        toggleCenterView(view)
+        window.setTimeout(() => document.getElementById('hakobi-main')?.focus({ preventScroll: true }), 30)
+      }
+    })),
     { key: 'add', group: '操作', label: 'タスクを追加', keywords: 'new add 新規', run: () => openQuickAdd() },
+    // 開いているタスクへの操作（キーボードだけで「開く→進捗ログ→完了」まで進められるように）
+    ...(selectedTodo && selectedTodo.status !== 'archived' ? [
+      {
+        key: 'task-focus', group: '操作' as const, label: `「${selectedTodo.title}」の詳細へ移る`, keywords: '詳細 移動 フォーカス',
+        run: () => {
+          if (activeView !== 'detail' && !(activeView === 'gantt' && ganttSidePanelMode === 'detail')) setActiveView('detail')
+          window.setTimeout(() => window.dispatchEvent(new CustomEvent(FOCUS_TASK_DETAIL_EVENT)), 30)
+        }
+      },
+      {
+        key: 'task-log', group: '操作' as const, label: `「${selectedTodo.title}」の進捗ログを書く`, keywords: '進捗 ログ 報告 書く',
+        run: () => {
+          if (activeView !== 'detail' && !(activeView === 'gantt' && ganttSidePanelMode === 'detail')) setActiveView('detail')
+          window.setTimeout(() => window.dispatchEvent(new CustomEvent(FOCUS_PROGRESS_LOG_EVENT)), 0)
+        }
+      },
+      {
+        key: 'task-done', group: '操作' as const,
+        label: selectedTodo.status === 'done' ? `「${selectedTodo.title}」の完了を取り消す` : `「${selectedTodo.title}」を完了にする`,
+        keywords: '完了 done 終わり',
+        run: () => void handleToggleDone(selectedTodo)
+      },
+      {
+        key: 'task-timer', group: '操作' as const,
+        label: runningTodoId === selectedTodo.id ? `「${selectedTodo.title}」の計測を止める` : `「${selectedTodo.title}」の計測を始める`,
+        keywords: '計測 タイマー timer 開始 停止',
+        run: () => { if (runningTodoId === selectedTodo.id) stopFromToolbar(); else void start(selectedTodo.id) }
+      },
+      ...(selectedTodo.due_date && selectedTodo.status !== 'done' ? [{
+        key: 'task-due-1', group: '操作' as const, label: `「${selectedTodo.title}」の期限を1日延ばす（${formatShortDate(selectedTodo.due_date)} → ${formatShortDate(shiftDateKey(selectedTodo.due_date, 1))}）`,
+        keywords: '期限 延期 延ばす due',
+        run: () => {
+          const id = selectedTodo.id
+          const before = selectedTodo.due_date!.slice(0, 10)
+          const next = shiftDateKey(before, 1)
+          void handleUpdate(id, { due_date: next }).then(
+            () => showToast(`期限を${formatShortDate(next)}にしました`, 'success', {
+              label: '元に戻す',
+              run: () => void handleUpdate(id, { due_date: before }).then(() => showToast('期限を元に戻しました'), (error) => showToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error'))
+            }),
+            (error) => showToast(error instanceof Error ? error.message : '期限を変えられませんでした', 'error')
+          )
+        }
+      }] : [])
+    ] : []),
     ...(currentUser ? [{ key: 'mine', group: '操作' as const, label: '自分の担当だけを表示', keywords: '担当 絞り込み 自分', run: () => setSelectedAssigneeId(currentUser.id) }] : []),
     { key: 'clear-filters', group: '操作', label: '一覧の絞り込みを解除', keywords: '絞り込み 解除 全員', run: clearListFilters },
     { key: 'pane-category', group: '操作', label: categoryPaneVisible ? 'カテゴリ一覧を隠す' : 'カテゴリ一覧を表示', keywords: 'パネル 表示', run: () => togglePane('category') },
@@ -1394,7 +1776,8 @@ export function App(): React.JSX.Element {
     { key: 'archived', group: '操作', label: showArchived ? 'アーカイブしたタスクを隠す' : 'アーカイブしたタスクも表示', keywords: 'アーカイブ', run: () => setShowArchived((previous) => !previous) },
     ...(currentUser && multiUser ? [{ key: 'notifications', group: '操作' as const, label: '通知を開く', keywords: 'notification', run: () => openNotifications() }] : []),
     { key: 'report', group: '操作', label: '進捗レポートを開く', keywords: 'レポート 週報', run: () => { if (isAdmin && multiUser) setShowProgressReport(true); else setShowMySummary(true) } },
-    { key: 'settings', group: '操作', label: '設定を開く', keywords: 'settings テーマ フォント', run: () => setShowSettings(true) }
+    { key: 'settings', group: '操作', label: '設定を開く', keywords: 'settings テーマ フォント', run: () => setShowSettings(true) },
+    { key: 'getting-started', group: '操作', label: '使い方（はじめに）を開く', keywords: 'help ヘルプ 使い方 はじめに', run: () => setShowGettingStarted(true) }
   ]
   // 右の「今日の予定」の上に出す「今日のToDo」（ToDoリストを使う人だけ）
   const todayTodoCard = usesTodoLists ? (
@@ -1427,9 +1810,18 @@ export function App(): React.JSX.Element {
           サーバーに再接続しています… つながるまで、変更は保存できません。
         </div>
       )}
+      <SkipLinks
+        showTaskList={taskPaneVisible}
+        showSidePanel={showAuxiliaryPanel}
+        sidePanelLabel={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? 'タスクの詳細' : '今日の予定'}
+      />
       <Toolbar
         isTimerRunning={isRunning}
+        runningTask={runningTodo ? { title: runningTodo.title, startTime: timerStartTime } : null}
+        onOpenRunningTask={runningTodoId ? () => openTodoDetail(runningTodoId) : undefined}
+        onStopTimer={stopFromToolbar}
         onOpenQuickAdd={() => openQuickAdd()}
+        onOpenGettingStarted={() => setShowGettingStarted(true)}
         onOpenProgressReport={() => {
           if (isAdmin && multiUser) setShowProgressReport(true)
           else setShowMySummary(true)
@@ -1467,7 +1859,7 @@ export function App(): React.JSX.Element {
       />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minWidth: 0 }}>
-        <div style={{ width: paneWidths.category, flexShrink: 0, background: 'var(--c-0a0f1a)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: categoryPaneVisible ? 'block' : 'none' }}>
+        <nav aria-label="カテゴリ" style={{ width: paneWidths.category, flexShrink: 0, background: 'var(--c-0a0f1a)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: categoryPaneVisible ? 'block' : 'none' }}>
           <CategoryList
             categories={categories}
             selectedId={selectedCategoryId}
@@ -1477,14 +1869,14 @@ export function App(): React.JSX.Element {
             onDelete={handleCategoryDelete}
             onReorder={handleCategoryReorder}
           />
-        </div>
+        </nav>
 
         <div
           onPointerDown={(event) => beginResize('category', paneWidths.category, event)}
           style={{ ...resizeHandleStyle, display: categoryPaneVisible ? 'block' : 'none' }}
         />
 
-        <div style={{ width: paneWidths.list, flexShrink: 0, background: 'var(--c-0d1525)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: taskPaneVisible ? 'flex' : 'none', flexDirection: 'column' }}>
+        <section id="hakobi-task-list" data-focus-region tabIndex={-1} aria-label="タスク一覧" style={{ width: paneWidths.list, flexShrink: 0, background: 'var(--c-0d1525)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: taskPaneVisible ? 'flex' : 'none', flexDirection: 'column', outline: 'none' }}>
           <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--slate-800)' }}>
             <input
               value={searchQuery}
@@ -1560,9 +1952,11 @@ export function App(): React.JSX.Element {
                     if (active) setSortDir((prev) => prev === 'asc' ? 'desc' : 'asc')
                     else {
                       setSortField(key)
-                      setSortDir('desc')
+                      setSortDir(defaultSortDir(key))
                     }
                   }}
+                  title={sortDirTitle(key, active ? sortDir : defaultSortDir(key), active)}
+                  aria-pressed={active}
                   style={{
                     fontSize: '0.75rem',
                     padding: '2px 7px',
@@ -1592,6 +1986,7 @@ export function App(): React.JSX.Element {
               hasOtherFilters={selectedAssigneeId !== null || selectedCategoryId !== null || hiddenPrivateTodoIds.size > 0}
               // 「まだタスクがありません」は、集計外を隠しているだけのときには出さない（隠す前のタスクで判定する）
               hasAnyTodos={todos.length > 0}
+              dataLoading={!initialDataLoaded}
               onClearSearch={() => setSearchQuery('')}
               onClearFilters={clearListFilters}
               onAddTodo={() => openQuickAdd()}
@@ -1609,14 +2004,14 @@ export function App(): React.JSX.Element {
               onToggleListItem={handleToggleListItem}
             />
           </div>
-        </div>
+        </section>
 
         <div
           onPointerDown={(event) => beginResize('list', paneWidths.list, event)}
           style={{ ...resizeHandleStyle, display: taskPaneVisible ? 'block' : 'none' }}
         />
 
-        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: 'var(--slate-900)' }}>
+        <main id="hakobi-main" data-focus-region tabIndex={-1} aria-label={CENTER_VIEW_LABELS[activeView]} style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: 'var(--slate-900)', outline: 'none' }}>
           <ViewBoundary key={activeView}>
           {initialLoadError ? (
             <div role="alert" style={{ margin: 24, padding: 20, border: '1px solid var(--red-500)', borderRadius: 12, background: 'var(--red-950)', color: 'var(--red-200)' }}>
@@ -1644,11 +2039,15 @@ export function App(): React.JSX.Element {
               onSelectTodo={selectTodoStable}
               onUpdateTodo={handleUpdate}
               onReorderTodos={handleReorder}
+              focusTodoId={showGanttSidePanel && ganttSidePanelMode === 'detail' ? selectedTodoId : null}
               onOpenSeparateWindow={handleOpenGanttWindow}
               onAddTodo={openQuickAdd}
               listFilters={listFilters}
               hasAnyTodos={todos.length > 0}
+              dataLoading={!initialDataLoaded}
               groupByCategory={selectedCategoryId === null}
+              textScale={(Number.parseFloat(fontScale) || 100) / 100}
+              onShowToast={showToast}
             />
           ) : activeView === 'kanban' ? (
             <KanbanView
@@ -1730,7 +2129,16 @@ export function App(): React.JSX.Element {
               onShowToast={showToast}
             />
           ) : activeView === 'team' ? (
-            <TeamDashboard onSelectTodo={openTodoDetail} includePrivate={scopeLens === 'personal'} />
+            <TeamDashboard
+              todos={lensTodos}
+              onSelectTodo={openTodoDetail}
+              onSelectMember={(userId) => {
+                setSelectedAssigneeId(userId)
+                toggleCenterView('gantt')
+                showToast(`${users.find((user) => user.id === userId)?.display_name ?? 'メンバー'}さんのタスクに絞り込みました。見出しの横のチップで解除できます`)
+              }}
+              includePrivate={scopeLens === 'personal'}
+            />
           ) : (
             <TodoDetail
               key={`${currentUser?.id ?? 'local'}:${selectedTodo?.id ?? 'none'}`}
@@ -1748,10 +2156,11 @@ export function App(): React.JSX.Element {
               onAddToTodayPlan={handleAddToTodayPlan}
               onShowToast={showToast}
               onDirtyChange={setDetailDirty}
+              returnTo={detailReturnView ? { label: CENTER_VIEW_LABELS[detailReturnView], onReturn: () => toggleCenterView(detailReturnView) } : null}
             />
           )}
           </ViewBoundary>
-        </div>
+        </main>
 
         {showAuxiliaryPanel && (
           <>
@@ -1760,7 +2169,7 @@ export function App(): React.JSX.Element {
               style={resizeHandleStyle}
             />
 
-            <div style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <aside id="hakobi-side-panel" data-focus-region data-toast-avoid={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? '' : undefined} tabIndex={-1} aria-label={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? 'タスクの詳細' : '今日の予定'} style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column', outline: 'none' }}>
               {activeView === 'gantt' ? (
                 <>
                   <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -1829,7 +2238,7 @@ export function App(): React.JSX.Element {
                   topSlot={todayTodoCard}
                 />
               )}
-            </div>
+            </aside>
           </>
         )}
       </div>
@@ -1854,9 +2263,23 @@ export function App(): React.JSX.Element {
         <CommandPalette
           commands={paletteCommands}
           todos={lensTodos}
-          onOpenTodo={openTodoDetail}
+          onOpenTodo={(id) => {
+            openTodoDetail(id)
+            // パレットを閉じてフォーカスが元の場所に戻ったあとで、詳細の題名へ移す
+            window.setTimeout(() => window.dispatchEvent(new CustomEvent(FOCUS_TASK_DETAIL_EVENT)), 30)
+          }}
           onClose={() => setShowCommandPalette(false)}
         />
+      )}
+
+      {showGettingStarted && (
+        <ViewBoundary fallback={null} onDismiss={() => setShowGettingStarted(false)}>
+          <GettingStartedModal
+            multiUser={multiUser}
+            onOpenReport={() => toggleCenterView('report')}
+            onClose={() => setShowGettingStarted(false)}
+          />
+        </ViewBoundary>
       )}
 
       {showSettings && (
@@ -1910,6 +2333,7 @@ export function App(): React.JSX.Element {
           users={users}
           includePrivate={scopeLens === 'personal'}
           visibleTodos={filteredTodos}
+          allTodos={lensTodos}
           onClose={() => setShowProgressReport(false)}
           onShowToast={showToast}
         />
@@ -1934,6 +2358,7 @@ export function App(): React.JSX.Element {
           currentUser={currentUser}
           includePrivate={scopeLens === 'personal'}
           visibleTodos={filteredTodos}
+          allTodos={lensTodos}
           onClose={() => setShowMySummary(false)}
           onShowToast={showToast}
         />

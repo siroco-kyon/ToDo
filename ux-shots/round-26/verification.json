@@ -1,0 +1,97 @@
+{
+  "date": "2026-10-20",
+  "branch": "ux-improve",
+  "codeCommit": "3b232d1",
+  "builds": [
+    "npm run build",
+    "npm run build:web"
+  ],
+  "typeChecks": [
+    "npx tsc --noEmit -p web/tsconfig.json",
+    "npx tsc --noEmit -p tsconfig.node.json",
+    "npm --prefix server run typecheck"
+  ],
+  "functionalTests": [
+    {
+      "test": "test:quality",
+      "exit": 0
+    },
+    {
+      "test": "test:hakobi",
+      "exit": 0
+    },
+    {
+      "test": "test:progress-timeline",
+      "exit": 0
+    },
+    {
+      "test": "test:progress-report",
+      "exit": 0
+    },
+    {
+      "test": "test:links-members",
+      "exit": 0
+    },
+    {
+      "test": "test:on-hold",
+      "exit": 0
+    },
+    {
+      "test": "test:todo-list",
+      "exit": 0
+    },
+    {
+      "test": "test:reorder",
+      "exit": 0
+    },
+    {
+      "test": "test:url",
+      "exit": 0
+    },
+    {
+      "test": "test:yearly",
+      "exit": 0
+    },
+    {
+      "test": "test:gantt-scroll",
+      "exit": 0
+    },
+    {
+      "test": "test:installer",
+      "exit": 0
+    },
+    {
+      "test": "server/test:overview",
+      "exit": 0
+    },
+    {
+      "test": "server/test:mention",
+      "exit": 0
+    },
+    {
+      "test": "server/test:report-reminder",
+      "exit": 0
+    },
+    {
+      "test": "server/test:due-notifications",
+      "exit": 0
+    },
+    {
+      "test": "server/test:backup",
+      "exit": 0
+    },
+    {
+      "test": "ux-usability-electron",
+      "exit": 0
+    }
+  ],
+  "additionalPackageCheck": {
+    "exit": 1,
+    "command": "node tests/hakobi-package.cjs",
+    "distributionRebuilt": false,
+    "reason": "Stale packaged build: main\\index.js; existing dist app.asar differs from current out"
+  },
+  "lint": "No script or configuration",
+  "scope": "Local disposable test database only; no publication",
+  "screenshots": 28
+}

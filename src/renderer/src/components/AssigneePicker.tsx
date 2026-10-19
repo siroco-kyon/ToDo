@@ -19,6 +19,8 @@ interface PickerProps {
   onChange: (assigneeId: string | null) => void
   selectStyle?: React.CSSProperties
   unassignedLabel?: string
+  /** 読み上げる名前（見出しと同じ言葉。既定は「担当」） */
+  label?: string
 }
 
 /** Dropdown to choose the user a task is assigned to. Shows the chosen user's color as a dot. */
@@ -27,7 +29,8 @@ export function AssigneePicker({
   value,
   onChange,
   selectStyle,
-  unassignedLabel = '未割り当て'
+  unassignedLabel = '未割り当て',
+  label = '担当'
 }: PickerProps): React.JSX.Element {
   const selected = users.find((user) => user.id === value) ?? null
 
@@ -36,6 +39,7 @@ export function AssigneePicker({
       <span aria-hidden style={dotStyle(selected?.color ?? null, 11)} />
       <select
         value={value ?? ''}
+        aria-label={label}
         onChange={(event) => onChange(event.target.value || null)}
         style={{ ...baseSelectStyle, ...selectStyle }}
       >

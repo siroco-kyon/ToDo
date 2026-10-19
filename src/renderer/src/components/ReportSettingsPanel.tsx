@@ -65,7 +65,7 @@ export function ReportSettingsPanel({ settings, onChange, categoryOptions, hidde
     <section id="report-view-settings" aria-label="報告の表示設定" style={panelStyle}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <strong style={{ fontSize: '0.86rem', color: 'var(--slate-200)' }}>表示設定</strong>
-        <span style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>自分の画面だけに反映されます（ほかの人の報告タブは変わりません）</span>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>自分の画面だけに反映されます（ほかの人の報告タブは変わりません）</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button onClick={resetAll} title="カテゴリ・状態・対象・サブタスク・小見出しを既定に戻します（個別に隠したタスクはそのまま）" style={smallButtonStyle}>既定に戻す</button>
           <button onClick={onClose} style={smallButtonStyle}>閉じる</button>
@@ -82,7 +82,7 @@ export function ReportSettingsPanel({ settings, onChange, categoryOptions, hidde
                   <input type="checkbox" checked={shown} onChange={() => toggleCategory(option.key)} style={{ accentColor: 'var(--indigo-500)', margin: 0 }} />
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: option.color ?? 'var(--slate-600)', flexShrink: 0 }} />
                   {option.label}
-                  <span style={{ color: 'var(--slate-500)', fontWeight: 600 }}>{option.count}</span>
+                  <span style={{ color: 'var(--text-subtle)', fontWeight: 600 }}>{option.count}</span>
                 </label>
                 {categoryOptions.length > 1 && (
                   <button onClick={() => showOnlyCategory(option.key)} title={`「${option.label}」だけを出します`} style={onlyButtonStyle}>これだけ</button>
@@ -156,14 +156,14 @@ export function ReportSettingsPanel({ settings, onChange, categoryOptions, hidde
               style={{ accentColor: 'var(--indigo-500)' }}
             />
             {subGroupLabel}
-            <span style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>（折りたたんだ小見出しは、次に開いたときも折りたたんだまま）</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>（折りたたんだ小見出しは、次に開いたときも折りたたんだまま）</span>
           </label>
         </Row>
       )}
 
       <Row label="隠したタスク" hint="カードの「隠す」で出さないことにしたタスク">
         {hiddenTodos.length === 0 ? (
-          <span style={{ fontSize: '0.76rem', color: 'var(--slate-500)' }}>ありません</span>
+          <span style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>ありません</span>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {hiddenTodos.map((todo) => (
@@ -187,7 +187,7 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid var(--slate-800)' }}>
       <div style={{ width: 110, flexShrink: 0, paddingTop: 2 }}>
         <div style={{ fontSize: '0.78rem', color: 'var(--slate-300)', fontWeight: 700 }}>{label}</div>
-        {hint && <div style={{ fontSize: '0.66rem', color: 'var(--slate-500)', marginTop: 2, lineHeight: 1.4 }}>{hint}</div>}
+        {hint && <div style={{ fontSize: '0.66rem', color: 'var(--text-subtle)', marginTop: 2, lineHeight: 1.4 }}>{hint}</div>}
       </div>
       <div style={{ flex: '1 1 320px', minWidth: 0 }}>{children}</div>
     </div>

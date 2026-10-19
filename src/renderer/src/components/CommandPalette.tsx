@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import type { Todo } from '../types'
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
+import type { Todo } from '../types'
+import { formatShortDate } from '../lib/dueDate'
 
 /** パレットの1項目（画面の切り替え・操作）。タスクは別に並べる */
 export interface PaletteCommand {
@@ -30,12 +32,15 @@ const MAX_TASKS = 30
 
 // Ctrl+K で開く移動・操作のパレット。タスク名で探して開く、画面の切り替え、よく使う操作をキーボードだけでできる
 export function CommandPalette({ commands, todos, onOpenTodo, onClose }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
+  // 描いた直後（画面に出る前）にフォーカスする。開いてすぐ打った文字も入力欄に入る
+  useLayoutEffect(() => {
     inputRef.current?.focus()
   }, [])
 
@@ -55,11 +60,15 @@ export function CommandPalette({ commands, todos, onOpenTodo, onClose }: Props):
         key: `todo:${todo.id}`,
         group: 'タスク' as const,
         label: todo.title,
-        detail: [todo.category_name, todo.assignee_name, todo.status === 'done' ? '完了' : todo.status === 'on_hold' ? '保留中' : null].filter(Boolean).join('・'),
+        // 同じ名前の繰り返しの回を見分けられるよう、期限も出す
+        detail: [todo.category_name, todo.assignee_name, todo.due_date ? `期限 ${formatShortDate(todo.due_date)}` : null, todo.status === 'done' ? '完了' : todo.status === 'on_hold' ? '保留中' : null].filter(Boolean).join('・'),
         run: () => onOpenTodo(todo.id)
       }))
-    // 何も入れていないときは画面と操作を先に、入れたらタスクを先に出す
-    return q ? [...taskItems, ...commandItems] : [...commandItems, ...taskItems]
+    // 何も入れていないときは画面と操作を先に出す。入れたときは、操作の名前（「」で囲んだタスク名を除く）に
+    // 入れた語があるもの（「通知」→「通知を開く」）を先に、次にタスク、名前以外の言葉で当たった操作を最後に出す
+    if (!q) return [...commandItems, ...taskItems]
+    const namedCommand = (item: PaletteItem): boolean => item.label.replace(/「[^」]*」/g, '').toLowerCase().includes(q)
+    return [...commandItems.filter(namedCommand), ...taskItems, ...commandItems.filter((item) => !namedCommand(item))]
   }, [commands, onOpenTodo, query, todos])
 
   useEffect(() => {
@@ -99,7 +108,7 @@ export function CommandPalette({ commands, todos, onOpenTodo, onClose }: Props):
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'color-mix(in srgb, var(--slate-950) 60%, transparent)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '12vh' }}
     >
-      <div role="dialog" aria-modal="true" aria-label="移動・操作" style={{ width: 'min(640px, calc(100vw - 32px))', background: 'var(--slate-900)', border: '1px solid var(--slate-700)', borderRadius: 12, boxShadow: '0 24px 60px color-mix(in srgb, var(--slate-950) 70%, transparent)', overflow: 'hidden' }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="移動・操作" style={{ width: 'min(640px, calc(100vw - 32px))', background: 'var(--slate-900)', border: '1px solid var(--slate-700)', borderRadius: 12, boxShadow: '0 24px 60px color-mix(in srgb, var(--slate-950) 70%, transparent)', overflow: 'hidden' }}>
         <input
           ref={inputRef}
           value={query}
@@ -129,10 +138,10 @@ export function CommandPalette({ commands, todos, onOpenTodo, onClose }: Props):
                   aria-selected={active}
                   onMouseEnter={() => setActiveIndex(index)}
                   onMouseDown={(event) => { event.preventDefault(); choose(item) }}
-                  style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: active ? 'var(--slate-800)' : 'transparent' }}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 4, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: active ? 'var(--slate-800)' : 'transparent' }}
                 >
-                  <span style={{ color: 'var(--slate-200)', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{item.label}</span>
-                  {item.detail && <span style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--slate-400)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{item.detail}</span>}
+                  <span style={{ color: 'var(--slate-200)', fontSize: '0.88rem', overflowWrap: 'anywhere', minWidth: 0 }}>{item.label}</span>
+                  {item.detail && <span style={{ color: 'var(--slate-400)', fontSize: 'var(--font-caption)', overflowWrap: 'anywhere' }}>{item.detail}</span>}
                 </div>
               </React.Fragment>
             )

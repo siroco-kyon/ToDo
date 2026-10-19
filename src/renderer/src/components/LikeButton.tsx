@@ -101,14 +101,25 @@ function ReactionPicker({ reactions, onPick }: {
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLSpanElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLSpanElement>(null)
+  // 閉じたら「☺＋」へフォーカスを戻す（キーボードで選んだあと、ページの先頭へ飛ばないように）
+  const close = (): void => {
+    setOpen(false)
+    buttonRef.current?.focus()
+  }
 
   useEffect(() => {
     if (!open) return
+    // 開いたら最初の項目へ。中は ← → で選び、Esc で閉じる
+    menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitemcheckbox"]')?.focus()
     const handlePointerDown = (event: PointerEvent): void => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
     }
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      if (rootRef.current?.contains(document.activeElement)) buttonRef.current?.focus()
     }
     document.addEventListener('pointerdown', handlePointerDown)
     document.addEventListener('keydown', handleKeyDown)
@@ -121,6 +132,7 @@ function ReactionPicker({ reactions, onPick }: {
   return (
     <span ref={rootRef} style={{ position: 'relative', display: 'inline-flex' }}>
       <button
+        ref={buttonRef}
         onClick={() => setOpen((value) => !value)}
         aria-label="リアクションを付ける"
         aria-haspopup="menu"
@@ -131,7 +143,23 @@ function ReactionPicker({ reactions, onPick }: {
         ☺＋
       </button>
       {open && (
-        <span role="menu" style={pickerMenuStyle}>
+        <span
+          ref={menuRef}
+          role="menu"
+          aria-label="リアクション"
+          onKeyDown={(event) => {
+            if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
+            const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemcheckbox"]') ?? [])
+            if (items.length === 0) return
+            event.preventDefault()
+            const current = items.indexOf(document.activeElement as HTMLButtonElement)
+            const forward = event.key === 'ArrowRight' || event.key === 'ArrowDown'
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+              : forward ? (current + 1) % items.length : (current - 1 + items.length) % items.length
+            items[next].focus()
+          }}
+          style={pickerMenuStyle}
+        >
           {REACTION_OPTIONS.map((option) => {
             const active = Boolean(reactions.get(option.emoji)?.reacted_by_me)
             return (
@@ -140,7 +168,8 @@ function ReactionPicker({ reactions, onPick }: {
                 role="menuitemcheckbox"
                 aria-checked={active}
                 title={active ? `${option.label}を取り消す` : option.label}
-                onClick={() => { setOpen(false); onPick(option.emoji) }}
+                tabIndex={-1}
+                onClick={() => { close(); onPick(option.emoji) }}
                 style={pickerItemStyle(active)}
               >
                 <span style={{ fontSize: '1.05rem', lineHeight: 1 }}>{option.emoji}</span>
@@ -177,7 +206,7 @@ function pickerButtonStyle(open: boolean): React.CSSProperties {
     background: open ? 'var(--slate-800)' : 'transparent',
     border: '1px solid transparent',
     borderRadius: 999,
-    color: 'var(--slate-500)',
+    color: 'var(--text-subtle)',
     cursor: 'pointer',
     fontSize: '0.7rem',
     fontWeight: 700,

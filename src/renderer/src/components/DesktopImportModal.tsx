@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { DesktopImportResult, PublicUser } from '../types'
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
 // デスクトップ版の todo.db をアップロードしてサーバー版に取り込む管理者用モーダル。
 // まずドライランで件数を確認してから本実行する流れを想定している。
 export function DesktopImportModal({ users, onClose, onShowToast }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const [file, setFile] = useState<File | null>(null)
   const [targetUserId, setTargetUserId] = useState('')
   const [busy, setBusy] = useState(false)
@@ -58,7 +61,7 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div style={{
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="デスクトップDBの取り込み" style={{
         background: 'var(--slate-800)', borderRadius: 14, padding: 28, width: 560,
         maxHeight: '88vh', overflowY: 'auto',
         boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid var(--slate-700)',
@@ -66,7 +69,7 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)', margin: 0 }}>💾 デスクトップDBの取り込み</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--slate-500)', cursor: 'pointer', fontSize: '1.2rem', padding: '2px 6px' }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: '1.2rem', padding: '2px 6px' }}>×</button>
         </div>
 
         <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)', lineHeight: 1.6 }}>
@@ -83,7 +86,7 @@ export function DesktopImportModal({ users, onClose, onShowToast }: Props): Reac
             onChange={(event) => { setFile(event.target.files?.[0] ?? null); setResult(null) }}
             style={{ ...inputStyle, padding: 8 }}
           />
-          {file && <div style={{ marginTop: 4, fontSize: '0.74rem', color: 'var(--slate-500)' }}>{file.name}（{Math.max(1, Math.round(file.size / 1024))} KB）</div>}
+          {file && <div style={{ marginTop: 4, fontSize: '0.74rem', color: 'var(--text-subtle)' }}>{file.name}（{Math.max(1, Math.round(file.size / 1024))} KB）</div>}
         </div>
 
         <div>
@@ -148,7 +151,7 @@ function ResultRow({ label, value, note }: { label: string; value: number; note?
     <tr>
       <td style={{ padding: '2px 16px 2px 0', color: 'var(--slate-400)' }}>{label}</td>
       <td style={{ padding: '2px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{value} 件</td>
-      <td style={{ padding: '2px 0 2px 8px', color: 'var(--slate-500)', fontSize: '0.72rem' }}>{note ?? ''}</td>
+      <td style={{ padding: '2px 0 2px 8px', color: 'var(--text-subtle)', fontSize: '0.72rem' }}>{note ?? ''}</td>
     </tr>
   )
 }

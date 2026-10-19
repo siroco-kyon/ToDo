@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import Database from 'better-sqlite3'
 import { isItemRecurrence, normalizeRecurrenceDay } from '../shared/recurring-period'
+import { isTodoRecurrence } from '../shared/todo-recurrence'
 
 /**
  * Imports a single-user desktop (Electron) `todo.db` into the multi-user web
@@ -224,7 +225,8 @@ export function importDesktopDb(options: ImportOptions): ImportResult {
         asNullableText(todo.start_date),
         asNullableText(todo.due_date),
         asInt(todo.sort_order, 0),
-        asNullableText(todo.recurrence),
+        // 知らない繰り返しの値は取り込まない（DB の制約で取り込み全体が止まらないように）
+        isTodoRecurrence(todo.recurrence) ? todo.recurrence : null,
         asInt(todo.recurrence_copy_subtasks, 0),
         asInt(todo.recurrence_skip_weekends, 0),
         asInt(todo.recurrence_skip_holidays, 0),

@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { UserNotification } from '../types'
 
 interface Props {
@@ -18,6 +19,14 @@ export function NotificationPanel({
   onMarkAllRead,
   onShowToast
 }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  // 開いたら最初の通知へ（なければ見出しへ）。「すべて既読」に置くと、続けて Enter を押しただけで全部既読になる
+  const firstItemRef = useRef<HTMLButtonElement>(null)
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  useLayoutEffect(() => {
+    ;(firstItemRef.current ?? titleRef.current)?.focus()
+  }, [])
+  useDialogFocus(dialogRef)
   const [tab, setTab] = useState<'unread' | 'all'>('unread')
   const [showSettings, setShowSettings] = useState(false)
   const [preferences, setPreferences] = useState<Record<string, boolean>>({})
@@ -50,10 +59,10 @@ export function NotificationPanel({
 
   return (
     <div style={backdropStyle} onMouseDown={onClose}>
-      <section role="dialog" aria-modal="true" aria-labelledby="notification-title" style={panelStyle} onMouseDown={(event) => event.stopPropagation()}>
+      <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="notification-title" style={panelStyle} onMouseDown={(event) => event.stopPropagation()}>
         <header style={headerStyle}>
           <div>
-            <h2 id="notification-title" style={titleStyle}>通知</h2>
+            <h2 id="notification-title" ref={titleRef} tabIndex={-1} style={titleStyle}>通知</h2>
             <div style={subtitleStyle}>未読 {unreadCount} 件</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -61,7 +70,7 @@ export function NotificationPanel({
               すべて既読
             </button>
             <button onClick={() => setShowSettings((value) => !value)} style={closeButtonStyle}>通知設定</button>
-            <button onClick={onClose} style={closeButtonStyle}>閉じる</button>
+            <button onClick={onClose} title="閉じる（Esc）" style={closeButtonStyle}>閉じる</button>
           </div>
         </header>
 
@@ -80,11 +89,12 @@ export function NotificationPanel({
           {visibleNotifications.length === 0 ? (
             <div style={emptyStyle}>{tab === 'unread' ? '未読の通知はありません' : '通知履歴はありません'}</div>
           ) : (
-            visibleNotifications.map((notification) => {
+            visibleNotifications.map((notification, index) => {
               const unread = notification.read_at == null
               return (
                 <button
                   key={notification.id}
+                  ref={index === 0 ? firstItemRef : undefined}
                   onClick={() => onSelect(notification)}
                   style={itemStyle(unread)}
                 >
@@ -130,7 +140,8 @@ const backdropStyle: React.CSSProperties = {
 }
 
 const panelStyle: React.CSSProperties = {
-  width: 'min(420px, calc(100vw - 36px))',
+  // 文字を大きくしたときにボタンや件数が折り返さないよう、幅も文字の大きさに合わせる（100% で 420px）
+  width: 'min(26.25rem, calc(100vw - 36px))',
   maxHeight: 'min(620px, calc(100vh - 76px))',
   background: 'var(--slate-900)',
   border: '1px solid var(--slate-700)',
@@ -173,7 +184,7 @@ const listStyle: React.CSSProperties = {
 
 const emptyStyle: React.CSSProperties = {
   padding: '28px 12px',
-  color: 'var(--slate-500)',
+  color: 'var(--text-subtle)',
   textAlign: 'center',
   fontSize: '0.86rem'
 }
@@ -229,7 +240,7 @@ const metaStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   gap: 8,
-  color: 'var(--slate-500)',
+  color: 'var(--text-subtle)',
   fontSize: '0.72rem'
 }
 
@@ -242,7 +253,8 @@ function buttonStyle(enabled: boolean): React.CSSProperties {
     color: enabled ? 'var(--on-fill-blue-50)' : 'var(--slate-500)',
     cursor: enabled ? 'pointer' : 'default',
     fontSize: '0.76rem',
-    fontWeight: 700
+    fontWeight: 700,
+    whiteSpace: 'nowrap'
   }
 }
 
@@ -254,5 +266,6 @@ const closeButtonStyle: React.CSSProperties = {
   color: 'var(--slate-300)',
   cursor: 'pointer',
   fontSize: '0.76rem',
-  fontWeight: 700
+  fontWeight: 700,
+  whiteSpace: 'nowrap'
 }

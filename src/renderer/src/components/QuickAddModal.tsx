@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import type { Category, CreateTodoInput, PublicUser, Todo } from '../types'
+import { useDialogFocus } from '../hooks/useDialogFocus'
+import type { Category, CreateTodoInput, PublicUser, Todo, TodoRecurrence } from '../types'
 import { AssigneePicker } from './AssigneePicker'
-import { toDateKey } from '../lib/dueDate'
+import { formatShortDate, toDateKey } from '../lib/dueDate'
+import { TODO_RECURRENCE_OPTIONS, todoRecurrenceLabel } from '../lib/recurrence'
 
 interface Props {
   categories: Category[]
@@ -76,6 +78,8 @@ export function QuickAddModal({
   onClose,
   onShowToast
 }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const templates = useMemo(() => {
     try {
       const parsed = JSON.parse(window.localStorage.getItem('todo-templates') ?? '[]') as unknown
@@ -91,6 +95,8 @@ export function QuickAddModal({
     } catch { return {} }
   }, [])
   const [title, setTitle] = useState(savedDraft.title ?? '')
+  // 前回の書きかけを戻したか（戻したときは、そう知らせる。古い下書きをうっかり追加しないように）
+  const [restoredDraft, setRestoredDraft] = useState(() => Boolean(savedDraft.title?.trim() || savedDraft.description?.trim() || savedDraft.memo?.trim()))
   const [description, setDescription] = useState(savedDraft.description ?? '')
   const [memo, setMemo] = useState(savedDraft.memo ?? '')
   const [categoryId, setCategoryId] = useState(() => (
@@ -101,13 +107,19 @@ export function QuickAddModal({
   ))
   const [status, setStatus] = useState<NonNullable<CreateTodoInput['status']>>('not_started')
   const [priority, setPriority] = useState(3)
+  // 繰り返し（完了にすると次回分を作る）。ToDoリストには付けない
+  const [recurrence, setRecurrence] = useState<TodoRecurrence | null>(null)
   // 開始日を入れておくと、ガントに今日から1日のバーとして出る（日付なしだと下の「未配置」に回る）
   const [startDate, setStartDate] = useState(() => toDateKey(new Date()))
   const [dueDate, setDueDate] = useState('')
   // ToDoリスト（中の項目を毎日・毎週などでチェックし直すタスク）として作る。期限は「なし」のままでも決めてもよい
   const [listMode, setListMode] = useState(defaultListMode)
   const [submitting, setSubmitting] = useState(false)
-  const [keepOpen, setKeepOpen] = useState(false)
+  const submittingRef = useRef(false)
+  // 「追加後も続けて入力する」は、続けて何件も入れる人のために端末に覚える
+  const [keepOpen, setKeepOpen] = useState(() => {
+    try { return window.localStorage.getItem('quick-add-keep-open') === '1' } catch { return false }
+  })
   const [showDetails, setShowDetails] = useState(() => Boolean(savedDraft.description?.trim() || savedDraft.memo?.trim()))
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const duePresets = useMemo(buildDuePresets, [])
@@ -128,6 +140,7 @@ export function QuickAddModal({
   }, [description, memo, title])
 
   const requestClose = (): void => {
+    if (submittingRef.current) return
     if ((title.trim() || description.trim() || memo.trim()) && !window.confirm('入力中の内容があります。閉じてもよいですか？\n下書きは次回まで保存されます。')) return
     onClose()
   }
@@ -162,8 +175,9 @@ export function QuickAddModal({
   }
 
   const submit = async (): Promise<void> => {
-    if (!canSubmit) return
+    if (!canSubmit || submittingRef.current) return
 
+    submittingRef.current = true
     setSubmitting(true)
     const remainingTitles = [...titles]
     const created: Todo[] = []
@@ -180,6 +194,7 @@ export function QuickAddModal({
           priority,
           start_date: startDate || null,
           due_date: dueDate || null,
+          recurrence: listMode ? null : recurrence,
           list_mode: listMode ? 1 : 0
         })
         created.push(todo)
@@ -198,6 +213,7 @@ export function QuickAddModal({
       const detail = error instanceof Error ? error.message : '追加できませんでした'
       onShowToast(created.length > 0 ? `${created.length}件は追加済みです。残りを再試行できます: ${detail}` : detail, 'error')
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
@@ -225,6 +241,7 @@ export function QuickAddModal({
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="quick-add-title"
@@ -232,7 +249,7 @@ export function QuickAddModal({
           background: 'var(--slate-800)',
           borderRadius: 12,
           padding: 20,
-          width: 560,
+          width: '36rem',
           maxWidth: '100%',
           maxHeight: '100%',
           overflowY: 'auto',
@@ -246,6 +263,7 @@ export function QuickAddModal({
         </h2>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <fieldset disabled={submitting} style={{ border: 0, minWidth: 0, margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {templates.length > 0 && (
             <div>
               <label htmlFor="quick-add-template" style={labelStyle}>テンプレート</label>
@@ -274,7 +292,26 @@ export function QuickAddModal({
               rows={titles.length > 1 ? Math.min(6, titles.length + 1) : 2}
               style={{ ...selectStyle, fontSize: '1rem', resize: 'vertical', lineHeight: 1.5 }}
             />
-            <div style={{ marginTop: 4, fontSize: '0.7rem', color: 'var(--slate-500)' }}>
+            {restoredDraft && (
+              <div role="status" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem', color: 'var(--amber-300)' }}>
+                前回の書きかけを戻しました
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTitle('')
+                    setDescription('')
+                    setMemo('')
+                    setRestoredDraft(false)
+                    try { window.localStorage.removeItem('quick-add-draft') } catch { /* 消せなくても入力欄は空にする */ }
+                    inputRef.current?.focus()
+                  }}
+                  style={{ ...presetButtonStyle(false), padding: '2px 8px', fontSize: '0.72rem' }}
+                >
+                  消して新しく書く
+                </button>
+              </div>
+            )}
+            <div style={{ marginTop: 4, fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
               Enter で追加・Shift+Enter で改行。複数行にすると1行ずつ別のタスクになります
               {titles.length > 1 && <span style={{ color: 'var(--blue-300)', fontWeight: 700 }}>（{titles.length}件）</span>}
             </div>
@@ -282,14 +319,21 @@ export function QuickAddModal({
 
           <div>
             <span style={labelStyle}>種類</span>
-            <div role="radiogroup" aria-label="種類" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button type="button" role="radio" aria-checked={!listMode} onClick={() => setListMode(false)} style={presetButtonStyle(!listMode)} title="開始日と期限を決めて進め、終わったら完了にします">
+            <div role="radiogroup" aria-label="種類" onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
+              event.preventDefault()
+              const next = event.key === 'Home' ? false : event.key === 'End' ? true : !listMode
+              setListMode(next)
+              event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[next ? 1 : 0]?.focus()
+            }} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button type="button" role="radio" tabIndex={listMode ? -1 : 0} aria-checked={!listMode} onClick={() => setListMode(false)} style={presetButtonStyle(!listMode)} title="開始日と期限を決めて進め、終わったら完了にします">
                 タスク
               </button>
-              <button type="button" role="radio" aria-checked={listMode} onClick={() => setListMode(true)} style={presetButtonStyle(listMode)} title="毎日・毎週のチェックや細かいやることをまとめるリストです">
+              <button type="button" role="radio" tabIndex={listMode ? 0 : -1} aria-checked={listMode} onClick={() => setListMode(true)} style={presetButtonStyle(listMode)} title="毎日・毎週のチェックや細かいやることをまとめるリストです">
                 ToDoリスト
               </button>
             </div>
+            {!listMode && <p style={{ marginTop: 6, fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', lineHeight: 1.6 }}>タスクは、開始日・期限・進捗で管理する仕事です。毎日の確認事項をまとめたいときは「ToDoリスト」を選びます。</p>}
             {listMode && (
               <div style={{ marginTop: 4, fontSize: '0.7rem', color: 'var(--indigo-300)', lineHeight: 1.5 }}>
                 毎日・毎週のチェックや細かいやることをまとめるリストです。期限は「なし」のままでも、決めても使えます。作ったあと、詳細か ToDo タブで項目を追加します。項目ごとに「毎日・平日・毎週・毎月」を選ぶと、決めた日が来るたびに未チェックに戻ります。
@@ -301,11 +345,11 @@ export function QuickAddModal({
             <span style={labelStyle}>期限</span>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               {duePresets.map((preset) => (
-                <button key={preset.label} type="button" onClick={() => setDueDate(preset.value)} style={presetButtonStyle(dueDate === preset.value)}>
+                <button key={preset.label} type="button" aria-pressed={dueDate === preset.value} onClick={() => setDueDate(preset.value)} style={presetButtonStyle(dueDate === preset.value)}>
                   {preset.label}
                 </button>
               ))}
-              <button type="button" onClick={() => setDueDate('')} style={presetButtonStyle(dueDate === '')}>なし</button>
+              <button type="button" aria-pressed={dueDate === ''} onClick={() => setDueDate('')} style={presetButtonStyle(dueDate === '')}>なし</button>
               <input
                 type="date"
                 aria-label="期限"
@@ -320,7 +364,7 @@ export function QuickAddModal({
             {users.length > 0 && (
               <div>
                 <label style={labelStyle}>担当者</label>
-                <AssigneePicker users={users} value={assigneeId} onChange={setAssigneeId} />
+                <AssigneePicker label="担当者" users={users} value={assigneeId} onChange={setAssigneeId} />
               </div>
             )}
             <div>
@@ -333,7 +377,7 @@ export function QuickAddModal({
                   ))}
                 </select>
               ) : (
-                <div style={{ ...selectStyle, color: 'var(--slate-500)' }}>カテゴリ未登録</div>
+                <div style={{ ...selectStyle, color: 'var(--text-subtle)' }}>カテゴリ未登録</div>
               )}
             </div>
           </div>
@@ -365,7 +409,7 @@ export function QuickAddModal({
             aria-expanded={showDetails}
             style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, color: 'var(--blue-300)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}
           >
-            {showDetails ? '▾ 詳しい設定を閉じる' : '▸ 詳しく設定（説明・メモ・状態・優先度）'}
+            {showDetails ? '▾ 詳しい設定を閉じる' : '▸ 詳しく設定（説明・メモ・状態・優先度・繰り返し）'}
           </button>
 
           {showDetails && (
@@ -420,18 +464,42 @@ export function QuickAddModal({
                   </select>
                 </div>
               </div>
+              {!listMode && (
+                <div>
+                  <label htmlFor="quick-add-recurrence" style={labelStyle}>繰り返し（完了にすると次回分を自動で作ります）</label>
+                  <select id="quick-add-recurrence" value={recurrence ?? ''} onChange={(event) => setRecurrence((event.target.value || null) as TodoRecurrence | null)} style={selectStyle}>
+                    <option value="">なし</option>
+                    {TODO_RECURRENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  {recurrence && (
+                    <div style={{ marginTop: 4, fontSize: '0.72rem', color: 'var(--slate-400)', lineHeight: 1.5 }}>
+                      {todoRecurrenceLabel({ recurrence, start_date: startDate || null, due_date: dueDate || null })}。{dueDate || startDate ? '完了にすると、次回分を作ります' : '日付がないので、次回分も日付なしで作ります'}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
           {isDateRangeInvalid && (
-            <div role="alert" style={{ fontSize: '0.76rem', color: 'var(--red-300)' }}>
-              開始日は期限以前にしてください。
+            <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.76rem', color: 'var(--red-300)' }}>
+              <span>期限 {formatShortDate(dueDate)} が、開始日 {formatShortDate(startDate)} より前になっています。</span>
+              <button type="button" onClick={() => setStartDate(dueDate)} style={presetButtonStyle(false)}>開始日を期限と同じ日にする</button>
+            </div>
+          )}
+          {!isDateRangeInvalid && dueDate && dueDate < toDateKey(new Date()) && (
+            <div role="status" style={{ fontSize: '0.76rem', color: 'var(--amber-300)' }}>
+              期限 {formatShortDate(dueDate)} は過ぎた日付です（このまま追加すると「期限超過」になります）
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
+          {/* 「詳しく設定」を開いて小窓が長くなっても、追加・キャンセルは下に見えたままにする */}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', marginTop: 2, flexWrap: 'wrap', position: 'sticky', bottom: -20, margin: '2px -20px -20px', padding: '10px 20px 16px', background: 'var(--slate-800)', borderTop: '1px solid var(--slate-700)', borderRadius: '0 0 12px 12px', zIndex: 1 }}>
             <label style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--slate-400)', fontSize: '0.78rem', cursor: 'pointer' }}>
-              <input type="checkbox" checked={keepOpen} onChange={(event) => setKeepOpen(event.target.checked)} />
+              <input type="checkbox" checked={keepOpen} onChange={(event) => {
+                setKeepOpen(event.target.checked)
+                try { window.localStorage.setItem('quick-add-keep-open', event.target.checked ? '1' : '0') } catch { /* 覚えられなくてもよい */ }
+              }} />
               追加後も続けて入力する
             </label>
             <button
@@ -464,6 +532,7 @@ export function QuickAddModal({
               {submitting ? '追加中...' : titles.length > 1 ? `${titles.length}件を追加` : '追加'}
             </button>
           </div>
+          </fieldset>
         </form>
       </div>
     </div>

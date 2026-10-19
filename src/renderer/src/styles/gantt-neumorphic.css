@@ -112,12 +112,20 @@
 
 /* 「保留する」ボタンは保留中でない行では隠し、行にマウスを乗せたとき・キーボードで選んだときだけ出す。
    場所は空けたままにして、タスク名の幅が動かないようにする */
+/* タスク名の列が狭いとき（狭い窓・左右のパネルを開いたとき）の行の「保留」「＋」は、マウスを乗せた行・キーボードで選んだ行だけに出す */
+/* ボタンにはインラインの display が付いているので !important で上書きする */
+.tarbo-gantt .tarbo-gantt-row:not(:hover):not(:focus-within) .tarbo-gantt-compact-tool {
+  display: none !important;
+}
+
+/* 保留していない行はホバー・キーボード操作中だけ表示する（AGENTS.mdの行表示規則）。 */
 .tarbo-gantt .tarbo-gantt-hold-toggle {
   opacity: 0;
   transition: opacity 0.12s ease;
 }
 
 .tarbo-gantt .tarbo-gantt-row:hover .tarbo-gantt-hold-toggle,
+.tarbo-gantt .tarbo-gantt-row:focus-within .tarbo-gantt-hold-toggle,
 .tarbo-gantt .tarbo-gantt-hold-toggle:focus-visible {
   opacity: 1;
 }

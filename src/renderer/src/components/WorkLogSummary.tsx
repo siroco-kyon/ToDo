@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import type { WorkLogSummaryRow } from '../types'
 import { dataInk } from '../lib/theme'
 
@@ -44,8 +44,10 @@ function formatTime(isoStr: string): string {
 }
 
 function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.round((seconds % 3600) / 60)
+  if (seconds > 0 && seconds < 60) return '1分未満'
+  const minutes = Math.round(seconds / 60)
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
   if (h > 0) return `${h}時間${m > 0 ? `${m}分` : ''}`
   return `${m}分`
 }
@@ -74,16 +76,25 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
   const [days, setDays] = useState(7)
   const [groups, setGroups] = useState<TaskGroup[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const requestRef = useRef(0)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   const load = useCallback(async (d: number) => {
+    const request = ++requestRef.current
     setLoading(true)
-    const rows = await window.api.worklogGetSummary(d)
-    setGroups(groupByTask(rows.filter((row) => !hiddenTodoIds.has(row.todo_id))))
-    setLoading(false)
+    setError(null)
+    try {
+      const rows = await window.api.worklogGetSummary(d)
+      if (request === requestRef.current) setGroups(groupByTask(rows.filter((row) => !hiddenTodoIds.has(row.todo_id))))
+    } catch (failure) {
+      if (request === requestRef.current) setError(failure instanceof Error ? failure.message : '作業ログを読み込めませんでした')
+    } finally {
+      if (request === requestRef.current) setLoading(false)
+    }
   }, [hiddenTodoIds])
 
-  useEffect(() => { load(days) }, [days, load])
+  useEffect(() => { void load(days); return () => { requestRef.current++ } }, [days, load])
 
   const toggleExpand = (id: string): void => {
     setExpandedIds((prev) => {
@@ -100,23 +111,25 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
       {/* ヘッダー */}
       <div style={{
         padding: '14px 20px 10px', borderBottom: '1px solid var(--slate-800)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, flexWrap: 'wrap', gap: 10
       }}>
         <div>
-          <div style={{ fontSize: '1rem', color: 'var(--slate-200)', fontWeight: 'bold' }}>作業ログ</div>
-          {totalSeconds > 0 && (
-            <div style={{ fontSize: '0.78rem', color: 'var(--slate-500)', marginTop: 2 }}>
+          <div style={{ fontSize: '1rem', color: 'var(--slate-200)', fontWeight: 'bold' }}>記録</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: 4 }}>タイマーで計測した作業時間</div>
+          {!loading && !error && totalSeconds > 0 && (
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: 2 }}>
               合計 <span style={{ color: 'var(--green-400)', fontWeight: 'bold' }}>{formatDuration(totalSeconds)}</span>
               {' / '}{groups.length}タスク
             </div>
           )}
         </div>
         {/* 期間切替 */}
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div role="group" aria-label="集計期間" style={{ display: 'flex', gap: 4 }}>
           {DAY_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               onClick={() => setDays(opt.value)}
+              aria-pressed={days === opt.value}
               style={{
                 padding: '4px 10px', borderRadius: 6, fontSize: '0.8rem', cursor: 'pointer',
                 background: days === opt.value ? 'var(--indigo-500)' : 'var(--slate-800)',
@@ -133,19 +146,24 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
 
       {/* コンテンツ */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+        {error && <div role="alert" style={{ padding: 24, border: '1px solid var(--red-500)', borderRadius: 10, color: 'var(--slate-200)' }}>
+          <p>作業ログを読み込めませんでした。</p><p style={{ marginTop: 6, fontSize: '0.85rem' }}>{error}</p>
+          <button onClick={() => void load(days)} style={{ marginTop: 12, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--slate-600)', background: 'var(--slate-800)', color: 'var(--slate-100)', cursor: 'pointer' }}>再試行</button>
+        </div>}
         {loading && (
-          <div style={{ color: 'var(--slate-600)', textAlign: 'center', padding: 24, fontSize: '0.9rem' }}>
+          <div style={{ color: 'var(--text-subtle)', textAlign: 'center', padding: 24, fontSize: '0.9rem' }}>
             読み込み中…
           </div>
         )}
 
-        {!loading && groups.length === 0 && (
-          <div style={{ color: 'var(--slate-600)', textAlign: 'center', padding: 32, fontSize: '0.9rem' }}>
+        {!loading && !error && groups.length === 0 && (
+          <div style={{ color: 'var(--text-subtle)', textAlign: 'center', padding: 32, fontSize: '0.9rem' }}>
             この期間の作業ログはありません
+            <p style={{ marginTop: 10, lineHeight: 1.7, fontSize: '0.82rem' }}>タスクの詳細で「計測開始」を押し、作業後に「停止」すると記録されます。<br />過去の記録は上の期間を切り替えて確認できます。</p>
           </div>
         )}
 
-        {!loading && groups.map((group) => {
+        {!loading && !error && groups.map((group) => {
           const expanded = expandedIds.has(group.todo_id)
 
           // エントリを日付ごとにグループ化（表示用）
@@ -167,13 +185,14 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
               {/* タスクヘッダー */}
               <button
                 onClick={() => toggleExpand(group.todo_id)}
+                aria-expanded={expanded}
                 style={{
                   width: '100%', padding: '12px 14px', background: 'none', border: 'none',
                   cursor: 'pointer', textAlign: 'left', display: 'flex',
                   alignItems: 'center', gap: 10
                 }}
               >
-                <span style={{ color: 'var(--slate-500)', fontSize: '0.8rem', flexShrink: 0 }}>
+                <span style={{ color: 'var(--text-subtle)', fontSize: '0.8rem', flexShrink: 0 }}>
                   {expanded ? '▼' : '▶'}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -195,7 +214,7 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
                   <div style={{ fontSize: '1rem', color: 'var(--green-400)', fontWeight: 'bold' }}>
                     {formatDuration(group.total_seconds)}
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--slate-600)' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
                     {group.entries.length}件
                   </div>
                 </div>
@@ -219,7 +238,7 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
                           }}>
                             {dateLabel}
                           </span>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--slate-500)' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
                             {formatDuration(dayTotal)}
                           </span>
                         </div>
@@ -240,7 +259,7 @@ export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): Reac
                               {formatDuration(entry.duration_seconds)}
                             </span>
                             {entry.note && (
-                              <span style={{ fontSize: '0.78rem', color: 'var(--slate-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <span style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 — {entry.note}
                               </span>
                             )}

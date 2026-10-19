@@ -40,7 +40,7 @@ export function TaskReportWindow(): React.JSX.Element {
     return (
       <div style={emptyStateStyle}>
         <p>表示するレポートがありません。</p>
-        <p style={{ color: 'var(--slate-500)', fontSize: '0.85rem' }}>
+        <p style={{ color: 'var(--text-subtle)', fontSize: '0.85rem' }}>
           メインウィンドウの進捗レポートで「集計する」を実行してから「別ウィンドウで開く」を押してください。
         </p>
       </div>
@@ -53,7 +53,7 @@ export function TaskReportWindow(): React.JSX.Element {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h1 style={{ fontSize: '1.3rem', margin: 0 }}>📊 タスク別レポート</h1>
-            <p style={{ color: 'var(--slate-500)', fontSize: '0.85rem', margin: '6px 0 0' }}>
+            <p style={{ color: 'var(--text-subtle)', fontSize: '0.85rem', margin: '6px 0 0' }}>
               期間 {snapshot.from} 〜 {snapshot.to} ・ 生成: {formatDateTime(snapshot.generatedAt)}
             </p>
           </div>
@@ -74,7 +74,7 @@ export function TaskReportWindow(): React.JSX.Element {
         </div>
 
         {rows.length === 0 ? (
-          <div style={{ color: 'var(--slate-500)', fontSize: '0.9rem' }}>
+          <div style={{ color: 'var(--text-subtle)', fontSize: '0.9rem' }}>
             {showOnlyActiveTasks ? 'この期間に進捗記録があるタスクがありません。' : '表示するタスクがありません。'}
           </div>
         ) : (

@@ -13,7 +13,8 @@ import type {
   Todo,
   TodoCoAssignee
 } from '../types'
-import { dataInk } from '../lib/theme'
+import { dataInk } from '../lib/theme'
+import { changeFieldLabel } from '../lib/changeFields'
 
 interface Props {
   todos: Todo[]
@@ -67,7 +68,7 @@ function formatElapsed(seconds: number): string {
 function formatDueLabel(dueDate: string | null): string {
   if (!dueDate) return '期限未設定'
   const diffDays = diffCalendarDays(dueDate, getTodayKey())
-  if (diffDays < 0) return `${Math.abs(diffDays)}日遅れ`
+  if (diffDays < 0) return `${Math.abs(diffDays)}日超過`
   if (diffDays === 0) return '今日が期限'
   if (diffDays === 1) return '明日が期限'
   return `あと${diffDays}日`
@@ -107,15 +108,19 @@ function SummaryCard({
   label,
   value,
   detail,
-  tone
+  tone,
+  description
 }: {
   label: string
   value: string
   detail: string
   tone: string
+  /** 数字の意味（ツールチップ） */
+  description?: string
 }): React.JSX.Element {
   return (
     <div
+      title={description}
       style={{
         background: 'var(--gray-900)',
         border: '1px solid var(--gray-800)',
@@ -124,7 +129,7 @@ function SummaryCard({
         minWidth: 0
       }}
     >
-      <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         {label}
       </div>
       <div style={{ fontSize: '1.5rem', color: tone, fontWeight: 700, marginTop: 8 }}>
@@ -161,7 +166,7 @@ function Section({
           {title}
         </div>
         {subtitle && (
-          <div style={{ fontSize: '0.76rem', color: 'var(--slate-500)' }}>
+          <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>
             {subtitle}
           </div>
         )}
@@ -197,10 +202,10 @@ function CategoryRow({ category }: { category: OverviewCategoryStat }): React.JS
           <div style={{ fontSize: '0.88rem', color: 'var(--gray-200)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {category.categoryName}
           </div>
-          <div style={{ fontSize: '0.74rem', color: 'var(--slate-500)', marginTop: 2 }}>
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', marginTop: 2 }}>
             {category.doneTasks}/{category.totalTasks}件 完了
             {'  ・  '}
-            {category.activeTasks}件 進行中
+            未完了 {category.activeTasks}件
             {category.overdueTasks > 0 ? `  ・  ${category.overdueTasks}件 期限超過` : ''}
           </div>
         </div>
@@ -208,7 +213,7 @@ function CategoryRow({ category }: { category: OverviewCategoryStat }): React.JS
           <div style={{ fontSize: '0.92rem', color: 'var(--slate-50)', fontWeight: 700 }}>
             {category.completionScore}%
           </div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
             平均 {category.avgActiveProgress}%
           </div>
         </div>
@@ -240,14 +245,14 @@ function AssigneeLabels({
 }): React.JSX.Element {
   const names = [assigneeName, ...coAssignees.map((item) => item.display_name)].filter((name): name is string => Boolean(name))
   if (names.length === 0) {
-    return <span style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{label ? `${label}: ` : ''}未割り当て</span>
+    return <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>{label ? `${label}: ` : ''}未割り当て</span>
   }
 
   const visibleCoAssignees = coAssignees.slice(0, assigneeName ? 1 : 2)
   const hiddenCount = coAssignees.length - visibleCoAssignees.length
   return (
     <span title={names.join('、')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', minWidth: 0 }}>
-      {label && <span style={{ fontSize: '0.68rem', color: 'var(--slate-500)' }}>{label}:</span>}
+      {label && <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>{label}:</span>}
       {assigneeName && (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: 'var(--slate-300)' }}>
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: assigneeColor ?? 'var(--slate-500)' }} />
@@ -260,7 +265,7 @@ function AssigneeLabels({
           {item.display_name}
         </span>
       ))}
-      {hiddenCount > 0 && <span style={{ fontSize: '0.68rem', color: 'var(--slate-500)' }}>+{hiddenCount}</span>}
+      {hiddenCount > 0 && <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>+{hiddenCount}</span>}
     </span>
   )
 }
@@ -279,7 +284,7 @@ function buildRecentMemberActivity(user: ProgressDigestUser): RecentMemberActivi
     ...user.added_todos.map((item) => ({ id: `todo-${item.id}`, at: item.created_at, kind: 'タスク追加', todoTitle: item.title })),
     ...user.completed_todos.map((item) => ({ id: `done-${item.id}`, at: item.completed_at, kind: 'タスク完了', todoTitle: item.title })),
     ...user.added_subtasks.map((item) => ({ id: `sub-${item.id}`, at: item.created_at, kind: 'サブタスク追加', todoTitle: item.todo_title, detail: item.title })),
-    ...user.task_changes.map((item) => ({ id: `change-${item.id}`, at: item.created_at, kind: 'タスク変更', todoTitle: item.todo_title, detail: item.field }))
+    ...user.task_changes.map((item) => ({ id: `change-${item.id}`, at: item.created_at, kind: 'タスク変更', todoTitle: item.todo_title, detail: changeFieldLabel(item.field) }))
   ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 3)
 }
 
@@ -318,7 +323,7 @@ function MemberActivityCard({
     `サブタスク ${user.added_subtasks.length}`,
     `変更 ${user.task_changes.length}`,
     `進捗 ${user.notes.length}`,
-    `コメント ${user.comments.length}`
+    `返信 ${user.comments.length}`
   ]
 
   return (
@@ -336,14 +341,14 @@ function MemberActivityCard({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
         <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)', fontWeight: 700 }}>進捗ログ（{notes.length}件）</div>
         {notes.length === 0 ? (
-          <span style={{ color: 'var(--slate-500)', fontSize: '0.74rem' }}>この期間の進捗ログはありません。</span>
+          <span style={{ color: 'var(--text-subtle)', fontSize: '0.74rem' }}>この期間の進捗ログはありません。</span>
         ) : notes.map((item) => {
           const note = notesById.get(item.id)
           return note ? (
             <ProgressNoteThread key={item.id} note={note} showTask onSelectTodo={onSelectTodo} />
           ) : (
             <div key={item.id} style={{ background: 'var(--gray-900)', border: '1px solid var(--gray-800)', borderRadius: 10, padding: '9px 11px', fontSize: '0.8rem' }}>
-              <div style={{ color: 'var(--slate-500)', fontSize: '0.72rem' }}>{formatShortDateTime(item.created_at)} ・ {item.todo_title}</div>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.72rem' }}>{formatShortDateTime(item.created_at)} ・ {item.todo_title}</div>
               <div style={{ marginTop: 4, color: 'var(--slate-200)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{item.body}</div>
             </div>
           )
@@ -355,7 +360,7 @@ function MemberActivityCard({
           {orphanComments.map((comment) => (
             <div key={comment.id} style={{ borderLeft: '2px solid color-mix(in srgb, var(--violet-400) 40%, transparent)', paddingLeft: 9 }}>
               <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', fontSize: '0.72rem' }}>
-                <span style={{ color: 'var(--slate-500)' }}>{formatShortDateTime(comment.created_at)}</span>
+                <span style={{ color: 'var(--text-subtle)' }}>{formatShortDateTime(comment.created_at)}</span>
                 <button
                   onClick={() => onSelectTodo(comment.todo_id)}
                   style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--blue-300)', fontSize: '0.72rem', fontWeight: 700 }}
@@ -373,13 +378,13 @@ function MemberActivityCard({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 12 }}>
         <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)', fontWeight: 700 }}>その他の活動（直近）</div>
         {recent.length === 0 ? (
-          <span style={{ color: 'var(--slate-500)', fontSize: '0.74rem' }}>この期間のその他の活動はありません。</span>
+          <span style={{ color: 'var(--text-subtle)', fontSize: '0.74rem' }}>この期間のその他の活動はありません。</span>
         ) : recent.map((item) => (
           <div key={item.id} style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '2px 8px', fontSize: '0.72rem' }}>
             <span style={{ color: 'var(--violet-400)' }}>{item.kind}</span>
             <span style={{ color: 'var(--slate-300)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.todoTitle}</span>
-            <span style={{ color: 'var(--slate-600)' }}>{formatDateTime(item.at)}</span>
-            {item.detail ? <span title={item.detail} style={{ color: 'var(--slate-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.detail}</span> : <span />}
+            <span style={{ color: 'var(--text-subtle)' }}>{formatDateTime(item.at)}</span>
+            {item.detail ? <span title={item.detail} style={{ color: 'var(--text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.detail}</span> : <span />}
           </div>
         ))}
       </div>
@@ -462,7 +467,7 @@ function TaskRow({
             サブタスク {item.subTaskDone}/{item.subTaskTotal}
           </span>
         )}
-        <span style={{ fontSize: '0.75rem', color: 'var(--slate-500)', marginLeft: 'auto' }}>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginLeft: 'auto' }}>
           {formatIdleLabel(item.updatedAt)}
         </span>
       </div>
@@ -487,7 +492,7 @@ function TaskList({
     <Section title={title} subtitle={subtitle}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {items.length === 0 ? (
-          <div style={{ color: 'var(--slate-500)', fontSize: '0.82rem', padding: '8px 2px' }}>
+          <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem', padding: '8px 2px' }}>
             {emptyLabel}
           </div>
         ) : (
@@ -546,7 +551,7 @@ function CompletedSubTaskRow({
             {item.category_name}
           </span>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--slate-500)' }}>
+        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
           {formatDateTime(item.completed_at)}
         </span>
       </div>
@@ -657,7 +662,7 @@ export function OverviewDashboard({
             </div>
             {listFilters}
           </div>
-          <div style={{ fontSize: '0.82rem', color: 'var(--slate-500)', marginTop: 4 }}>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-subtle)', marginTop: 4 }}>
             {data?.categories.length ?? 0}カテゴリを1画面で俯瞰
           </div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, border: '1px solid var(--slate-700)', background: 'var(--gray-900)', borderRadius: 999, padding: '3px 9px', fontSize: '0.74rem', color: 'var(--slate-300)' }}>
@@ -666,14 +671,14 @@ export function OverviewDashboard({
           </div>
         </div>
         {data && (
-          <div style={{ fontSize: '0.78rem', color: 'var(--slate-500)' }}>
-            進行中 {data.summary.activeTasks}件 / 完了 {data.summary.doneTasks}件
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
+            未完了 {data.summary.activeTasks}件 / 完了 {data.summary.doneTasks}件
           </div>
         )}
       </div>
 
       {loading && !data ? (
-        <div style={{ color: 'var(--slate-500)', fontSize: '0.9rem', paddingTop: 24 }}>
+        <div style={{ color: 'var(--text-subtle)', fontSize: '0.9rem', paddingTop: 24 }}>
           ダッシュボードを読み込み中...
         </div>
       ) : null}
@@ -697,12 +702,14 @@ export function OverviewDashboard({
               label="進捗スコア"
               value={`${data.summary.completionScore}%`}
               detail={`進行中平均 ${data.summary.avgActiveProgress}%`}
+              description="すべてのタスクの進み具合の平均（完了は100%として数える）。進行中平均は、進行中のタスクだけの進捗率の平均です"
               tone="var(--blue-400)"
             />
             <SummaryCard
-              label="進行中"
+              // 数えているのは完了していないタスク（未着手・進行中・保留中）。カンバンの「進行中」の列と混同しないように「未完了」と書く
+              label="未完了"
               value={`${data.summary.activeTasks}`}
-              detail="現在動いているタスク"
+              detail="完了していないタスク（未着手・進行中・保留中）"
               tone="var(--slate-50)"
             />
             <SummaryCard
@@ -727,11 +734,11 @@ export function OverviewDashboard({
 
           <Section title={selectedAssigneeId === null ? 'メンバーそれぞれの活動' : `${scopeLabel}の活動`} subtitle={`${data.activityFrom}〜${data.activityTo}・作業 ${formatMinutes(activityWorkMinutes)} / ${activityLogCount}回 記録`}>
             {selectedAssigneeId === '' ? (
-              <div style={{ color: 'var(--slate-500)', fontSize: '0.82rem', padding: '8px 2px' }}>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem', padding: '8px 2px' }}>
                 未割り当てタスクには、メンバーに紐づく活動集計はありません。
               </div>
             ) : data.memberActivity.length === 0 ? (
-              <div style={{ color: 'var(--slate-500)', fontSize: '0.82rem', padding: '8px 2px' }}>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem', padding: '8px 2px' }}>
                 この期間に表示できるメンバー活動はありません。
               </div>
             ) : (
@@ -752,7 +759,7 @@ export function OverviewDashboard({
           <Section title="今週完了したサブタスク" subtitle={`${data.completedSubTasks.length}件を表示`}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {data.completedSubTasks.length === 0 ? (
-                <div style={{ color: 'var(--slate-500)', fontSize: '0.82rem', padding: '8px 2px' }}>
+                <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem', padding: '8px 2px' }}>
                   今週完了したサブタスクはありません。
                 </div>
               ) : (
@@ -832,7 +839,7 @@ export function OverviewDashboard({
                     </div>
                   </button>
                 ) : (
-                  <div style={{ color: 'var(--slate-500)', fontSize: '0.82rem', padding: '8px 2px' }}>
+                  <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem', padding: '8px 2px' }}>
                     どれかのタスクでタイマーを始めると、ここに表示されます。
                   </div>
                 )}

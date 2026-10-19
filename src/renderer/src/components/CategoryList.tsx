@@ -117,6 +117,8 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                       key={c}
                       type="button"
                       onClick={() => setEditColor(c)}
+                      aria-label={`色 ${c}`}
+                      aria-pressed={editColor === c}
                       style={{
                         width: 18, height: 18, borderRadius: '50%', background: c,
                         border: `2px solid ${editColor === c ? 'var(--white)' : 'transparent'}`,
@@ -138,7 +140,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                 </label>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button type="submit" style={btnStyle('var(--indigo-500)')}>保存</button>
-                  <button type="button" onClick={() => setEditingId(null)} style={btnStyle('var(--slate-700)')}>×</button>
+                  <button type="button" onClick={() => setEditingId(null)} aria-label="編集をやめる" title="編集をやめる" style={btnStyle('var(--slate-700)')}>×</button>
                 </div>
               </form>
             ) : (
@@ -218,6 +220,8 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
                 key={c}
                 type="button"
                 onClick={() => setNewColor(c)}
+                aria-label={`色 ${c}`}
+                aria-pressed={newColor === c}
                 style={{
                   width: 18, height: 18, borderRadius: '50%', background: c, border: `2px solid ${newColor === c ? 'var(--white)' : 'transparent'}`,
                   cursor: 'pointer', padding: 0
@@ -231,7 +235,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
           </label>
           <div style={{ display: 'flex', gap: 4 }}>
             <button type="submit" style={btnStyle('var(--indigo-500)')}>追加</button>
-            <button type="button" onClick={() => setAdding(false)} style={btnStyle('var(--slate-700)')}>×</button>
+            <button type="button" onClick={() => setAdding(false)} aria-label="追加をやめる" title="追加をやめる" style={btnStyle('var(--slate-700)')}>×</button>
           </div>
         </form>
       ) : (

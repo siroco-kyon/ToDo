@@ -23,8 +23,23 @@
       }
       button, input, select, textarea {
         font-family: inherit;
+        /* 文字の大きさを書いていないボタン・入力欄も、設定の文字の大きさに合わせる（標準ではブラウザの既定と同じ 13.33px） */
+        font-size: 0.8333rem;
       }
       :focus-visible { outline: 3px solid var(--sky-400, #38bdf8); outline-offset: 2px; }
+      /* 入力欄は部品の書き方（outline: none）に関係なく、キーボードで入ったことが分かる枠を出す */
+      input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--sky-400, #38bdf8) !important; outline-offset: 0 !important; }
+      /* 画面全体（本文の区分け）にフォーカスを移したときは、内側に枠を出す（外側だと画面の端で切れる） */
+      /* チェックボックス・ラジオは文字の大きさに合わせる（ブラウザの既定は 13px のまま変わらない） */
+      input[type="checkbox"], input[type="radio"] { width: 1rem; height: 1rem; }
+      /* 狭い窓（1180px 以下）で隠す説明・出す短い表記。ほかの窓と並べて使う人の画面で、上の説明が中身を押し出さないように */
+      .hakobi-show-narrow { display: none; }
+      /* 1行に並べて横にスクロールするチップの列。中の部品は縮めず折り返さない */
+      .hakobi-chip-strip > * { flex-shrink: 0; white-space: nowrap; }
+      @media (max-width: 1180px) { .hakobi-hide-narrow { display: none !important; } .hakobi-show-narrow { display: inline; } }
+      /* スクロールバーの色をテーマに合わせる（色を書いていない所だけ、ダークの中に明るいスクロールバーが出ていた） */
+      html { scrollbar-color: var(--slate-600, #475569) transparent; }
+      [data-focus-region]:focus-visible { outline: 3px solid var(--sky-400, #38bdf8) !important; outline-offset: -3px !important; }
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
       }

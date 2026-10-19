@@ -1,7 +1,11 @@
 import { LinkedText } from './LinkedText'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { writeTaskReportSnapshot } from '../lib/taskReportSnapshot'
+import { recurrenceKindLabel } from '../lib/recurrence'
+import { changeFieldLabel } from '../lib/changeFields'
+import { formatShortDate } from '../lib/dueDate'
 import type {
   ProgressDigest,
   ProgressDigestNote,
@@ -26,6 +30,8 @@ interface Props {
   includePrivate?: boolean
   /** 現在のタスク一覧（フィルタ・ソート済み）。タスク別レポートをこの並び順で出す */
   visibleTodos: Todo[]
+  /** 一覧の絞り込みに関係ない、すべてのタスク。一覧で絞っていても、集計したメンバーのタスクは載せる */
+  allTodos?: Todo[]
 }
 
 const STATUS_LABEL: Record<TodoStatus, string> = {
@@ -44,28 +50,7 @@ const STATUS_COLOR: Record<TodoStatus, string> = {
   archived: 'var(--slate-600)'
 }
 
-const CHANGE_FIELD_LABEL: Record<string, string> = {
-  title: 'タイトル',
-  description: '説明',
-  memo: 'メモ',
-  category: 'カテゴリ',
-  assignee: '主担当',
-  co_assignees: 'サブ担当',
-  status: 'ステータス',
-  priority: '優先度',
-  progress: '進捗',
-  start_date: '開始日',
-  due_date: '期限',
-  recurrence: '繰り返し',
-  recurrence_copy_subtasks: 'サブタスク引継ぎ',
-  list_mode: '種類'
-}
 
-const RECURRENCE_LABEL: Record<string, string> = {
-  daily: '毎日',
-  weekly: '毎週',
-  monthly: '毎月'
-}
 
 interface TaskActivityEvent {
   id: string
@@ -142,14 +127,14 @@ function formatChangeValue(field: string, value: string | null): string {
   if (field === 'status' && value) return STATUS_LABEL[value as TodoStatus] ?? value
   if (field === 'progress' && value) return `${value}%`
   if (field === 'priority' && value) return `レベル${value}`
-  if (field === 'recurrence' && value) return RECURRENCE_LABEL[value] ?? value
+  if (field === 'recurrence' && value) return recurrenceKindLabel(value) ?? value
   if (field === 'recurrence_copy_subtasks') return value === '1' ? 'する' : 'しない'
   if (field === 'list_mode') return value === '1' ? 'ToDoリスト' : 'タスク'
   return compactText(value)
 }
 
 function formatTaskChange(change: ProgressDigestTaskChange): string {
-  const label = CHANGE_FIELD_LABEL[change.field] ?? change.field
+  const label = changeFieldLabel(change.field)
   return `${label}: ${formatChangeValue(change.field, change.old_value)} → ${formatChangeValue(change.field, change.new_value)}`
 }
 
@@ -391,7 +376,9 @@ function digestToMarkdown(digest: ProgressDigest, perTaskReport: TaskReportRow[]
   return lines.join('\n')
 }
 
-export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = false, currentUser = null, includePrivate = true, visibleTodos }: Props): React.JSX.Element {
+export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = false, currentUser = null, includePrivate = true, visibleTodos, allTodos }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const today = new Date()
   const [from, setFrom] = useState(() => toDateInput(addDays(today, -6)))
   const [to, setTo] = useState(() => toDateInput(today))
@@ -399,6 +386,8 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
     () => new Set(users.filter((u) => u.is_active === 1).map((u) => u.id))
   )
   const [digest, setDigest] = useState<ProgressDigest | null>(null)
+  // 最後に集計した時刻（「集計し直す」を押したことが分かるように）
+  const [digestAt, setDigestAt] = useState<Date | null>(null)
   const [taskNotes, setTaskNotes] = useState<ProgressNote[] | null>(null)
   const [taskSubTasks, setTaskSubTasks] = useState<SubTask[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -428,6 +417,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
       setDigest(result)
       setTaskNotes(notes)
       setTaskSubTasks(subTasks)
+      setDigestAt(new Date())
     } catch (err) {
       onShowToast(err instanceof Error ? err.message : '進捗レポートの取得に失敗しました', 'error')
     } finally {
@@ -442,7 +432,17 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
   )
   const authorFiltered = reportAuthorIds.size > 0
   const reportNotes = useMemo(() => filterNotesByAuthors(taskNotes ?? [], reportAuthorIds), [taskNotes, reportAuthorIds])
-  const perTaskReport = buildPerTaskReport(visibleTodos, reportNotes, taskSubTasks ?? [])
+  // タスク別レポートは一覧の表示順。一覧で担当を絞っていても、集計したメンバーの担当タスク・書き込みのあるタスクは後ろに足す
+  const reportTodos = useMemo(() => {
+    if (!allTodos || reportAuthorIds.size === 0) return visibleTodos
+    const visibleIds = new Set(visibleTodos.map((todo) => todo.id))
+    const notedTodoIds = new Set(reportNotes.map((note) => note.todo_id))
+    const relevant = (todo: Todo): boolean => (todo.assignee_id != null && reportAuthorIds.has(todo.assignee_id))
+      || (todo.co_assignees ?? []).some((item) => reportAuthorIds.has(item.user_id))
+      || notedTodoIds.has(todo.id)
+    return [...visibleTodos.filter(relevant), ...allTodos.filter((todo) => !visibleIds.has(todo.id) && relevant(todo))]
+  }, [allTodos, reportAuthorIds, reportNotes, visibleTodos])
+  const perTaskReport = buildPerTaskReport(reportTodos, reportNotes, taskSubTasks ?? [])
   const displayedTaskReport = showOnlyActiveTasks ? perTaskReport.filter((row) => row.notes.length > 0) : perTaskReport
 
   const handleCopyMarkdown = useCallback(async (): Promise<void> => {
@@ -519,17 +519,21 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div style={{
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="進捗レポート" style={{
         background: 'var(--slate-800)', borderRadius: 14, padding: 28, width: 680,
         maxHeight: '88vh', overflowY: 'auto',
         boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid var(--slate-700)',
         display: 'flex', flexDirection: 'column', gap: 22
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* 見出しはスクロールしても上に残す（長いレポートを読み進めても、閉じる・コピーを押せるように） */}
+        <div style={{ position: 'sticky', top: -28, zIndex: 2, margin: '-28px -28px 0', padding: '18px 28px 12px', background: 'var(--slate-800)', borderBottom: '1px solid var(--slate-700)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)', margin: 0 }}>
             {selfOnly ? '📊 自分の進捗サマリー' : '📊 進捗レポート'}
           </h2>
-          <button onClick={onClose} style={closeBtnStyle}>×</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {digest && <button onClick={() => void handleCopyMarkdown()} style={copyBtn}>📋 Markdownをコピー</button>}
+            <button onClick={onClose} aria-label="閉じる" title="閉じる（Esc）" style={closeBtnStyle}>×</button>
+          </div>
         </div>
 
         {/* ─── 期間 ─── */}
@@ -537,7 +541,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
           <h3 style={sectionHead}>期間</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={dateInputStyle} />
-            <span style={{ color: 'var(--slate-500)' }}>〜</span>
+            <span style={{ color: 'var(--text-subtle)' }}>〜</span>
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={dateInputStyle} />
             <div style={{ display: 'flex', gap: 6, marginLeft: 4 }}>
               <button onClick={() => applyPreset(1)} style={presetBtn}>今日</button>
@@ -587,8 +591,13 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => void fetchDigest()} disabled={loading} style={primaryBtn}>
-            {loading ? '集計中…' : '集計する'}
+            {loading ? '集計中…' : digest ? '集計し直す' : '集計する'}
           </button>
+          {digestAt && !loading && (
+            <span role="status" style={{ alignSelf: 'center', fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
+              {digestAt.getHours()}:{String(digestAt.getMinutes()).padStart(2, '0')} に集計しました
+            </span>
+          )}
           {digest && (
             <button onClick={() => void handleCopyMarkdown()} style={copyBtn}>
               📋 Markdownをコピー
@@ -600,7 +609,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
         {digest && (
           <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-              <h3 style={sectionHead}>タスク別レポート（一覧の表示順）</h3>
+              <h3 style={sectionHead}>タスク別レポート（集計したメンバーのタスク・一覧の表示順）</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.76rem', color: 'var(--slate-400)', cursor: 'pointer' }}>
                   <input
@@ -617,14 +626,14 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
               </div>
             </div>
             {authorFiltered && (
-              <div style={{ color: 'var(--slate-500)', fontSize: '0.76rem' }}>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.76rem' }}>
                 {selfOnly
                   ? '自分が書いた進捗ログ・返信だけを載せています（副担当など他の人のログは含みません）。'
                   : '選択したメンバーが書いた進捗ログ・返信だけを載せています。'}
               </div>
             )}
             {displayedTaskReport.length === 0 ? (
-              <div style={{ color: 'var(--slate-500)', fontSize: '0.84rem' }}>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.84rem' }}>
                 {showOnlyActiveTasks
                   ? selfOnly && authorFiltered
                     ? 'この期間に自分が書いた進捗ログがあるタスクはありません。'
@@ -655,10 +664,10 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
         <section style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <h3 style={sectionHead}>メンバー別の活動集計</h3>
           {loading && !digest && (
-            <div style={{ color: 'var(--slate-500)', fontSize: '0.84rem' }}>読み込み中…</div>
+            <div style={{ color: 'var(--text-subtle)', fontSize: '0.84rem' }}>読み込み中…</div>
           )}
           {digest && digest.users.length === 0 && (
-            <div style={{ color: 'var(--slate-500)', fontSize: '0.84rem' }}>対象メンバーがいません。</div>
+            <div style={{ color: 'var(--text-subtle)', fontSize: '0.84rem' }}>対象メンバーがいません。</div>
           )}
           {digest && digest.users.map((user) => (
             <UserDigestCard key={user.user_id ?? user.display_name} user={user} />
@@ -684,7 +693,7 @@ export function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Eleme
         )}
         <span style={{ ...statBadge, marginLeft: 'auto' }}>{todo.progress}%</span>
         <span style={{ ...statBadge, ...(dueColor ? { color: dueColor, borderColor: `color-mix(in srgb, ${dueColor} 37.6%, transparent)` } : {}) }}>
-          {todo.due_date ? `期限 ${todo.due_date.slice(0, 10)}` : '期限なし'}
+          {todo.due_date ? `期限 ${formatShortDate(todo.due_date)}` : '期限なし'}
         </span>
       </div>
       {assignees && (
@@ -701,18 +710,18 @@ export function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Eleme
               <span style={{ color: sub.done ? 'var(--slate-500)' : 'var(--slate-300)', textDecoration: sub.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                 {sub.title}
               </span>
-              <span style={rowMeta}>{sub.progress}%{sub.due_date ? `・${sub.due_date.slice(0, 10)}` : ''}</span>
+              <span style={rowMeta}>{sub.progress}%{sub.due_date ? `・期限 ${formatShortDate(sub.due_date)}` : ''}</span>
             </div>
           ))}
         </div>
       )}
       <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {notes.length === 0 ? (
-          <div style={{ color: 'var(--slate-600)', fontSize: '0.78rem' }}>進捗記録なし</div>
+          <div style={{ color: 'var(--text-subtle)', fontSize: '0.78rem' }}>進捗記録なし</div>
         ) : (
           notes.map((note) => (
             <div key={note.id} style={{ background: 'var(--slate-800)', borderRadius: 8, padding: '7px 9px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.72rem', color: 'var(--slate-500)', marginBottom: 3 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.72rem', color: 'var(--text-subtle)', marginBottom: 3 }}>
                 <span>{formatDateTime(note.created_at)}</span>
                 <span style={{ color: 'var(--blue-300)' }}>{note.author_name ?? '不明'}</span>
               </div>
@@ -762,18 +771,18 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
         <span style={{ width: 12, height: 12, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
         <span style={{ fontSize: '0.95rem', color: 'var(--slate-200)', fontWeight: 700 }}>{user.display_name}</span>
         <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
-          <span style={statBadge}>タスク {user.added_todos.length}</span>
+          <span style={statBadge} title="この期間に追加したタスクの数">追加 {user.added_todos.length}</span>
           <span style={statBadge}>完了 {user.completed_todos.length}</span>
           <span style={statBadge}>サブタスク {user.added_subtasks.length}</span>
           <span style={statBadge}>変更 {taskChangeCount}</span>
           <span style={statBadge}>進捗ログ {user.notes.length}</span>
-          <span style={statBadge}>コメント {user.comments.length}</span>
+          <span style={statBadge}>返信 {user.comments.length}</span>
           <span style={statBadge}>作業 {formatMinutes(user.work_minutes)}</span>
         </div>
       </div>
 
       {!hasActivity ? (
-        <div style={{ color: 'var(--slate-600)', fontSize: '0.8rem', marginTop: 10 }}>この期間の活動はありません。</div>
+        <div style={{ color: 'var(--text-subtle)', fontSize: '0.8rem', marginTop: 10 }}>この期間の活動はありません。</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 14 }}>
           {user.added_todos.length > 0 && (
@@ -831,10 +840,10 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
                     <span style={{ color: sub.done ? 'var(--green-500)' : 'var(--slate-600)', fontSize: '0.82rem', flexShrink: 0 }}>
                       {sub.done ? '✓' : '○'}
                     </span>
-                    <span style={{ fontSize: '0.74rem', color: 'var(--slate-500)', flexShrink: 0, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', flexShrink: 0, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {sub.todo_title}
                     </span>
-                    <span style={{ color: 'var(--slate-600)', flexShrink: 0 }}>›</span>
+                    <span style={{ color: 'var(--text-subtle)', flexShrink: 0 }}>›</span>
                     <span style={rowTitle}>{sub.title}</span>
                     <span style={rowMeta}>{formatDateTime(sub.created_at)}</span>
                   </div>
@@ -854,12 +863,12 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.category_color ?? 'var(--slate-500)' }} />
                       )}
                       <span style={{ fontSize: '0.78rem', color: 'var(--blue-300)', fontWeight: 700 }}>{group.todo_title}</span>
-                      {group.category_name && <span style={{ fontSize: '0.68rem', color: 'var(--slate-500)' }}>{group.category_name}</span>}
+                      {group.category_name && <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>{group.category_name}</span>}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                       {group.events.map((event) => (
                         <div key={event.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, fontSize: '0.78rem', lineHeight: 1.45 }}>
-                          <span style={{ color: 'var(--slate-500)', flexShrink: 0 }}>{formatDateTime(event.created_at)}</span>
+                          <span style={{ color: 'var(--text-subtle)', flexShrink: 0 }}>{formatDateTime(event.created_at)}</span>
                           <span style={{ color: event.kind === 'change' ? 'var(--amber-400)' : 'var(--green-400)', flexShrink: 0 }}>
                             {event.kind === 'change' ? '変更' : '進捗'}
                           </span>
@@ -888,7 +897,7 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
                       <span style={{ fontSize: '0.74rem', color: 'var(--blue-300)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360 }}>
                         {comment.todo_title}
                       </span>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>{formatDateTime(comment.created_at)}</span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>{formatDateTime(comment.created_at)}</span>
                     </div>
                     <div style={{ fontSize: '0.82rem', color: 'var(--slate-300)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}><LinkedText text={comment.body} /></div>
                   </div>
@@ -903,12 +912,12 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
 }
 
 const sectionHead: React.CSSProperties = {
-  fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase',
+  fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase',
   letterSpacing: '0.08em', fontWeight: 'bold', margin: 0
 }
 
 const closeBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: 'var(--slate-500)',
+  background: 'none', border: 'none', color: 'var(--text-subtle)',
   cursor: 'pointer', fontSize: '1.2rem', padding: '2px 6px'
 }
 
@@ -957,7 +966,7 @@ const rowTitle: React.CSSProperties = {
 }
 
 const rowMeta: React.CSSProperties = {
-  fontSize: '0.72rem', color: 'var(--slate-500)', whiteSpace: 'nowrap', flexShrink: 0
+  fontSize: '0.72rem', color: 'var(--text-subtle)', whiteSpace: 'nowrap', flexShrink: 0
 }
 
 const statusPill: React.CSSProperties = {

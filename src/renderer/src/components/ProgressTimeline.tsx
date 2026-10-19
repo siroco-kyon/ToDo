@@ -3,12 +3,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProgressNote, ProgressNoteComment, PublicUser, Todo } from '../types'
 import { ReactionBar, countReactions } from './LikeButton'
 import { MentionTextarea } from './MentionTextarea'
-import { ON_TRACK_NOTE, ProgressNoteHelpers, withProgressNoteTemplate } from './ProgressNoteHelpers'
+import { ON_TRACK_NOTE, ProgressNoteHelpers, cleanProgressNote, withProgressNoteTemplate } from './ProgressNoteHelpers'
 import { isAddressedToUser, isUnseen, noteHasUnseen, readProgressSeenAt, writeProgressSeenAt } from '../lib/progressActivity'
 import { serverNow } from '../lib/serverClock'
 import { NoteMenu, discussionBadgeStyle } from './ProgressNoteThread'
 import { subscribeProgressDraftChanges } from '../lib/legacyProgressDrafts'
-import { dataInk } from '../lib/theme'
+import { dataInk } from '../lib/theme'
+import { taskOptionLabel } from '../lib/taskLabel'
 
 export interface ProgressTimelineFocusTarget {
   date?: string | null
@@ -69,6 +70,10 @@ function loadSortMode(): SortMode {
     // localStorage が使えない環境では既定値を使う
   }
   return 'newest'
+}
+
+function noteReplyButtonId(noteId: string): string {
+  return `progress-note-reply-${noteId}`
 }
 
 function compareNewest(a: ProgressNote, b: ProgressNote): number {
@@ -242,6 +247,9 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   const draftSuffix = currentUser?.id ? `:${currentUser.id}` : ''
   const [noteDrafts, setNoteDrafts] = useStoredDrafts(`progress-timeline-note-drafts${draftSuffix}`)
   const [savingNote, setSavingNote] = useState(false)
+  const savingNoteRef = useRef(false)
+  const pendingRepliesRef = useRef(new Set<string>())
+  const [pendingReplies, setPendingReplies] = useState(new Set<string>())
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [editingNoteDraft, setEditingNoteDraft] = useState('')
   const [commentDrafts, setCommentDrafts] = useStoredDrafts(`progress-timeline-comment-drafts${draftSuffix}`)
@@ -378,10 +386,15 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
 
   // bodyOverride を渡すと（「予定どおり」）、入力中の文には触らずにその文を投稿する
   const handleCreateNote = async (bodyOverride?: string): Promise<void> => {
-    const body = (bodyOverride ?? noteDraft).trim()
-    if (!selectedTodoId || !body || savingNote) return
+    const body = cleanProgressNote(bodyOverride ?? noteDraft)
+    if (!selectedTodoId || savingNoteRef.current) return
+    if (!body) {
+      if (noteDraft.trim()) onShowToast('ひな形の見出しだけでは投稿できません。やったことなどを書いてください', 'error')
+      return
+    }
 
     try {
+      savingNoteRef.current = true
       setSavingNote(true)
       const created = await window.api.progressNoteCreate(selectedTodoId, body)
       if (bodyOverride === undefined) setNoteDraft('')
@@ -389,9 +402,11 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       if (isInRange(getDateKeyFromIso(created.created_at), range)) {
         setNotes((previous) => [normalizeNote(created), ...previous])
       }
+      onShowToast('進捗ログを投稿しました')
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '進捗ログを追加できませんでした', 'error')
     } finally {
+      savingNoteRef.current = false
       setSavingNote(false)
     }
   }
@@ -463,16 +478,26 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   const handleCreateComment = async (noteId: string, parentCommentId: string | null = null): Promise<void> => {
     const key = draftKey(noteId, parentCommentId)
     const body = (commentDrafts[key] ?? '').trim()
-    if (!body) return
+    if (!body || pendingRepliesRef.current.has(key)) return
 
+    pendingRepliesRef.current.add(key)
+    setPendingReplies(new Set(pendingRepliesRef.current))
     try {
       const updated = await window.api.progressNoteCommentCreate(noteId, body, parentCommentId)
       setNotes((previous) => patchNote(previous, updated))
       setCommentDrafts((previous) => ({ ...previous, [key]: '' }))
       if (parentCommentId) setReplyingToCommentId(null)
       else setCommentingOnNoteId(null)
+      // 新しい順では返信した投稿が先頭へ移るので、見失わないようにその投稿へ移る。
+      // フォーカスもその投稿の「返信」へ戻す（入力欄が消えて、ページの先頭へ飛ばないように）
+      setFocusedNoteId(noteId)
+      onShowToast('返信を送信しました')
+      window.setTimeout(() => document.getElementById(noteReplyButtonId(noteId))?.focus({ preventScroll: true }), 0)
     } catch (error) {
-      onShowToast(error instanceof Error ? error.message : 'コメントを追加できませんでした', 'error')
+      onShowToast(error instanceof Error ? error.message : '返信を追加できませんでした', 'error')
+    } finally {
+      pendingRepliesRef.current.delete(key)
+      setPendingReplies(new Set(pendingRepliesRef.current))
     }
   }
 
@@ -484,7 +509,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       setNotes((previous) => patchNote(previous, updated))
       setEditingCommentId(null)
     } catch (error) {
-      onShowToast(error instanceof Error ? error.message : 'コメントを更新できませんでした', 'error')
+      onShowToast(error instanceof Error ? error.message : '返信を更新できませんでした', 'error')
     }
   }
 
@@ -494,7 +519,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       const updated = await window.api.progressNoteCommentDelete(commentId)
       setNotes((previous) => patchNote(previous, updated))
     } catch (error) {
-      onShowToast(error instanceof Error ? error.message : 'コメントを削除できませんでした', 'error')
+      onShowToast(error instanceof Error ? error.message : '返信を削除できませんでした', 'error')
     }
   }
 
@@ -560,9 +585,10 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   const renderComposer = (noteId: string, parentComment: ProgressNoteComment | null, onCancel?: () => void): React.JSX.Element => {
     const key = draftKey(noteId, parentComment?.id ?? null)
     const value = commentDrafts[key] ?? ''
+    const sending = pendingReplies.has(key)
     const placeholder = parentComment
       ? `${getAuthorName(parentComment.author_name)} に返信`
-      : 'コメントを書く'
+      : 'この投稿に返信を書く'
 
     return (
       <div style={composerRowStyle(parentComment ? 1 : 0)}>
@@ -570,6 +596,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
         <div style={{ flex: 1, minWidth: 0 }}>
           <MentionTextarea
             value={value}
+            disabled={sending}
             onValueChange={(next) => setCommentDrafts((previous) => ({ ...previous, [key]: next }))}
             users={mentionCandidates}
             onKeyDown={(event) => {
@@ -579,21 +606,23 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
               }
             }}
             placeholder={placeholder}
+            // 「返信」を押して開いたら、そのまま打てるように入力欄へ移る
+            autoFocus
             rows={parentComment ? 2 : 1}
             style={{ ...inputStyle, width: '100%', minHeight: parentComment ? 54 : 40, resize: 'vertical', lineHeight: 1.5 }}
           />
           <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
             {onCancel && (
-              <button onClick={onCancel} style={ghostButtonStyle}>
+              <button disabled={sending} onClick={onCancel} style={ghostButtonStyle}>
                 取消
               </button>
             )}
             <button
               onClick={() => void handleCreateComment(noteId, parentComment?.id ?? null)}
-              disabled={!value.trim()}
-              style={pillButtonStyle(Boolean(value.trim()))}
+              disabled={sending || !value.trim()}
+              style={pillButtonStyle(Boolean(value.trim()) && !sending)}
             >
-              {parentComment ? '返信' : '送信'}
+              {sending ? '送信中…' : parentComment ? '返信' : '送信'}
             </button>
           </div>
         </div>
@@ -622,7 +651,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
         <div style={{ flex: 1, minWidth: 0, paddingBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
             <span style={{ color: 'var(--slate-200)', fontSize: '0.82rem', fontWeight: 800 }}>{authorName}</span>
-            <span style={{ color: 'var(--slate-500)', fontSize: '0.72rem' }}>{formatDateTime(comment.created_at)}</span>
+            <span style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-caption)' }}>{formatDateTime(comment.created_at)}</span>
             {comment.updated_at !== comment.created_at && <span style={editedStyle}>編集済み</span>}
             {userId && isUnseen(comment, userId, seenBefore) && <span style={newBadgeStyle}>新着</span>}
           </div>
@@ -675,8 +704,8 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       <div style={headerStyle}>
         <div>
           <div style={{ fontSize: '1rem', color: 'var(--slate-50)', fontWeight: 800 }}>進捗タイムライン</div>
-          <div style={{ marginTop: 3, color: 'var(--slate-500)', fontSize: '0.78rem' }}>
-            {range.from === range.to ? range.from : `${range.from} ～ ${range.to}`} ・ 投稿 {visibleNotes.length}件 / コメント {totalComments}件
+          <div style={{ marginTop: 3, color: 'var(--text-subtle)', fontSize: 'var(--font-control)' }}>
+            {range.from === range.to ? range.from : `${range.from} ～ ${range.to}`} ・ 投稿 {visibleNotes.length}件 / 返信 {totalComments}件
             {unseenCount > 0 && <span style={{ color: 'var(--blue-300)', fontWeight: 700 }}> ・ 新着 {unseenCount}件</span>}
           </div>
         </div>
@@ -694,7 +723,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
             }}
             style={inputStyle}
           />
-          <span style={{ color: 'var(--slate-500)', fontSize: '0.8rem' }}>～</span>
+          <span style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-control)' }}>～</span>
           <input
             type="date"
             aria-label="表示期間の終了日"
@@ -736,10 +765,10 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                 onClick={() => setTimelineFilter(active && chip.value !== 'all' ? 'all' : chip.value)}
                 disabled={muted && !active}
                 aria-pressed={active}
-                title={muted ? `${chip.label}の投稿はありません` : `${chip.title}${active ? '（もう一度押すと解除）' : ''}`}
+                title={muted ? `${chip.label}の投稿はありません` : chip.value === 'all' ? (active ? '絞り込まずに表示しています' : '絞り込みを外して、すべて表示します') : `${chip.title}${active ? '（もう一度押すと解除）' : ''}`}
                 style={filterChipStyle(chip.color, active, muted)}
               >
-                {chip.label} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{count}</span>
+                {active && <span aria-hidden="true">✓ </span>}{chip.label} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{count}</span>
               </button>
             )
           })}
@@ -748,13 +777,15 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <div style={feedStyle}>
-          <div style={newPostStyle}>
+          <details open={Boolean(noteDraft.trim()) || undefined} style={{ ...newPostStyle, display: 'block' }}>
+          <summary style={{ cursor: 'pointer', color: 'var(--slate-100)', fontWeight: 700, padding: '4px 0' }}>進捗ログを書く{noteDraft.trim() ? '（書きかけがあります）' : ''}</summary>
+          <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
             <Avatar name={currentAuthorName} color={currentAuthorColor} size={42} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <select
                 value={selectedTodoId}
                 onChange={(event) => setSelectedTodoId(event.target.value)}
-                disabled={taskOptions.length === 0}
+                disabled={savingNote || taskOptions.length === 0}
                 aria-label="進捗を書くタスク"
                 style={{ ...inputStyle, width: '100%', marginBottom: 8, color: selectedTodoId ? 'var(--slate-200)' : 'var(--slate-400)' }}
               >
@@ -766,7 +797,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                     {taskOptionGroups.map((group) => (
                       <optgroup key={group.label} label={group.label}>
                         {group.todos.map((todo) => (
-                          <option key={todo.id} value={todo.id}>{todo.title}</option>
+                          <option key={todo.id} value={todo.id}>{taskOptionLabel(todo)}</option>
                         ))}
                       </optgroup>
                     ))}
@@ -775,7 +806,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
               </select>
               <MentionTextarea
                 value={noteDraft}
-                disabled={!selectedTodoId}
+                disabled={savingNote || !selectedTodoId}
                 onValueChange={setNoteDraft}
                 users={mentionCandidates}
                 onKeyDown={(event) => {
@@ -794,9 +825,9 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                     draft={noteDraft}
                     disabled={!selectedTodoId || savingNote}
                     onInsertTemplate={() => setNoteDraft(withProgressNoteTemplate(noteDraft))}
-                    onPostOnTrack={() => void handleCreateNote(ON_TRACK_NOTE)}
+                    onInsertOnTrack={() => setNoteDraft(ON_TRACK_NOTE)}
                   />
-                  <span style={{ color: 'var(--slate-400)', fontSize: '0.74rem' }}>{noteDraft.length}文字</span>
+                  <span style={{ color: 'var(--slate-400)', fontSize: 'var(--font-caption)' }}>{noteDraft.length}文字</span>
                 </span>
                 <button onClick={() => void handleCreateNote()} disabled={!selectedTodoId || !noteDraft.trim() || savingNote} style={primaryPostButtonStyle(Boolean(selectedTodoId && noteDraft.trim() && !savingNote))}>
                   {savingNote ? '投稿中' : '投稿'}
@@ -804,6 +835,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
               </div>
             </div>
           </div>
+          </details>
 
           {loading && <div style={emptyStyle}>読み込み中...</div>}
           {!loading && visibleNotes.length === 0 && <div style={emptyStyle}>選択した期間・投稿者の進捗ログはまだありません。</div>}
@@ -836,9 +868,9 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ color: 'var(--slate-50)', fontSize: '0.9rem', fontWeight: 800 }}>{authorName}</span>
-                    <span style={{ color: 'var(--slate-500)', fontSize: '0.74rem' }}>{formatDateTime(note.created_at)}</span>
+                    <span style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-caption)' }}>{formatDateTime(note.created_at)}</span>
                     {note.last_reply_at && (
-                      <span style={{ color: 'var(--slate-400)', fontSize: '0.74rem' }}>最終返信：{formatDateTime(note.last_reply_at)}</span>
+                      <span style={{ color: 'var(--slate-400)', fontSize: 'var(--font-caption)' }}>最終返信：{formatDateTime(note.last_reply_at)}</span>
                     )}
                     {note.updated_at !== note.created_at && <span style={editedStyle}>編集済み</span>}
                     {note.needs_discussion === 1 && (
@@ -869,8 +901,8 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                   {!editingNote && (
                     <div style={postActionRowStyle}>
                       <ReactionBar reactions={note.reactions} onToggle={(emoji) => void handleToggleReaction(note.id, emoji)} />
-                      <span style={actionMetaStyle}>コメント {commentCount}</span>
-                      <button onClick={() => setCommentingOnNoteId(note.id)} style={inlineActionStyle}>返信</button>
+                      <span style={actionMetaStyle}>返信 {commentCount}</span>
+                      <button id={noteReplyButtonId(note.id)} onClick={() => setCommentingOnNoteId(note.id)} style={inlineActionStyle}>返信</button>
                       {/* 報告タブと同じく、要相談・編集・削除は ⋯ にまとめる */}
                       <NoteMenu
                         items={[
@@ -929,7 +961,7 @@ function Avatar({ name, color, size }: { name: string; color: string; size: numb
 }
 
 const newBadgeStyle: React.CSSProperties = {
-  fontSize: '0.66rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 800,
   color: 'var(--blue-200)',
   background: 'var(--blue-900)',
@@ -948,17 +980,18 @@ const groupHeadingStyle: React.CSSProperties = {
   background: 'var(--slate-900)',
   borderBottom: '1px solid var(--slate-800)',
   color: 'var(--slate-400)',
-  fontSize: '0.74rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 800,
   letterSpacing: '0.02em'
 }
 
+// 選んでいるチップは色で塗って「✓」を付ける（色だけで選んでいるかを示さない）。0件のチップは点線の枠で、文字は読める濃さにする
 function filterChipStyle(color: string, active: boolean, muted: boolean): React.CSSProperties {
   return {
-    fontSize: '0.74rem',
-    color: muted ? 'var(--slate-600)' : active ? 'var(--slate-900)' : color,
+    fontSize: 'var(--font-caption)',
+    color: muted ? 'var(--text-subtle)' : active ? 'var(--slate-900)' : color,
     background: active ? color : 'var(--gray-900)',
-    border: `1px solid ${active ? color : muted ? 'var(--gray-800)' : `color-mix(in srgb, ${color} 33.3%, transparent)`}`,
+    border: `${active ? 2 : 1}px ${muted && !active ? 'dashed' : 'solid'} ${active ? color : muted ? 'var(--slate-700)' : `color-mix(in srgb, ${color} 33.3%, transparent)`}`,
     borderRadius: 999,
     padding: '3px 10px',
     fontWeight: 700,
@@ -1033,7 +1066,7 @@ function chipStyle(active: boolean): React.CSSProperties {
     background: active ? 'var(--blue-950)' : 'var(--gray-900)',
     color: active ? 'var(--blue-100)' : 'var(--slate-400)',
     cursor: 'pointer',
-    fontSize: '0.8rem',
+    fontSize: 'var(--font-control)',
     fontWeight: 800
   }
 }
@@ -1045,7 +1078,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   background: 'var(--gray-900)',
   color: 'var(--slate-300)',
   cursor: 'pointer',
-  fontSize: '0.8rem',
+  fontSize: 'var(--font-control)',
   fontWeight: 800
 }
 
@@ -1070,7 +1103,7 @@ function pillButtonStyle(active: boolean): React.CSSProperties {
     background: active ? 'var(--blue-950)' : 'var(--slate-800)',
     color: active ? 'var(--blue-100)' : 'var(--slate-500)',
     cursor: active ? 'pointer' : 'not-allowed',
-    fontSize: '0.76rem',
+    fontSize: 'var(--font-control)',
     fontWeight: 900
   }
 }
@@ -1082,7 +1115,7 @@ const ghostButtonStyle: React.CSSProperties = {
   background: 'var(--slate-900)',
   color: 'var(--slate-400)',
   cursor: 'pointer',
-  fontSize: '0.76rem',
+  fontSize: 'var(--font-control)',
   fontWeight: 800
 }
 
@@ -1120,19 +1153,22 @@ const commentActionRowStyle: React.CSSProperties = {
   flexWrap: 'wrap'
 }
 
+// 「返信」などの文字だけのボタン。押せる範囲は文字の周りにも広げる（高さ 1.75rem 以上）
 const inlineActionStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
   color: 'var(--slate-400)',
   cursor: 'pointer',
-  fontSize: '0.72rem',
+  fontSize: 'var(--font-control)',
   fontWeight: 800,
-  padding: 0
+  padding: '0.25rem 0.4rem',
+  margin: '-0.25rem -0.4rem',
+  minHeight: '1.75rem'
 }
 
 const actionMetaStyle: React.CSSProperties = {
-  color: 'var(--slate-500)',
-  fontSize: '0.72rem',
+  color: 'var(--text-subtle)',
+  fontSize: 'var(--font-caption)',
   fontWeight: 800
 }
 
@@ -1141,7 +1177,7 @@ const taskLinkStyle: React.CSSProperties = {
   border: 'none',
   padding: 0,
   cursor: 'pointer',
-  fontSize: '0.78rem',
+  fontSize: 'var(--font-control)',
   fontWeight: 800,
   textAlign: 'left'
 }
@@ -1152,13 +1188,13 @@ const categoryPillStyle: React.CSSProperties = {
   borderRadius: 999,
   background: 'var(--slate-900)',
   border: '1px solid var(--slate-700)',
-  fontSize: '0.68rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 800
 }
 
 const editedStyle: React.CSSProperties = {
-  color: 'var(--slate-500)',
-  fontSize: '0.68rem',
+  color: 'var(--text-subtle)',
+  fontSize: 'var(--font-caption)',
   fontWeight: 700
 }
 
@@ -1189,7 +1225,7 @@ const verticalLineStyle: React.CSSProperties = {
 
 const emptyStyle: React.CSSProperties = {
   padding: 32,
-  color: 'var(--slate-500)',
+  color: 'var(--text-subtle)',
   fontSize: '0.9rem',
   textAlign: 'center',
   borderBottom: '1px solid var(--slate-800)'

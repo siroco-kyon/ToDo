@@ -22,6 +22,59 @@
   outline: none;
 }
 
+/* キーボードで選んでいる項目は、色の差だけでなく枠でも示す */
+.hakobi-toolbar-menu-item:focus-visible {
+  outline: 2px solid var(--sky-400);
+  outline-offset: -2px;
+}
+
+/* 狭い窓では、上部のバーを1段に収めるため、移動の文字・ユーザー名などを隠してアイコンだけにする（読み上げ名とツールチップは残す） */
+.hakobi-toolbar-narrow-only {
+  display: none;
+}
+.hakobi-toolbar-search-label { display: none; }
+.hakobi-view-tabs > button { flex-shrink: 0; }
+.hakobi-view-tabs > button:focus-visible { outline-offset: -3px; }
+
+/* 「移動」の文字は、もう少し狭くなるまで残す（Ctrl+K で開けることに気付けるように） */
+@media (max-width: 1040px) {
+  .hakobi-toolbar-search-label { display: inline; }
+  .hakobi-toolbar-roomy-only {
+    display: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  .hakobi-toolbar-wide-only {
+    display: none;
+  }
+
+  .hakobi-toolbar-narrow-only {
+    display: inline;
+  }
+}
+
+/* 区分けへ移るリンク（本文へ移動など）。キーボードでフォーカスしたときだけ左上に出す */
+.hakobi-skip-links button {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 3000;
+  transform: translateY(-200%);
+  padding: 8px 14px;
+  border: 1px solid var(--sky-400);
+  border-radius: 8px;
+  background: var(--slate-900);
+  color: var(--slate-100);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hakobi-skip-links button:focus {
+  transform: none;
+}
+
 .hakobi-toolbar-menu-check {
   width: 14px;
   flex-shrink: 0;

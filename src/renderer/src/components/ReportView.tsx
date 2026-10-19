@@ -1,10 +1,12 @@
 import { LinkedText } from './LinkedText'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { copyTextToClipboard } from '../lib/clipboard'
 import { dateStamp, downloadCsv, toCsv } from '../lib/csv'
-import { diffDaysFromToday, getDueDateColor, isoToDateKey, toDateKey } from '../lib/dueDate'
+import { diffDaysFromToday, dueStateSuffix, formatShortDate as formatShortDateKey, getDueDateColor, isoToDateKey, toDateKey } from '../lib/dueDate'
 import { MentionTextarea } from './MentionTextarea'
-import { ON_TRACK_NOTE, ProgressNoteHelpers, withProgressNoteTemplate } from './ProgressNoteHelpers'
+import { ON_TRACK_NOTE, ProgressNoteHelpers, cleanProgressNote, withProgressNoteTemplate } from './ProgressNoteHelpers'
+import { countPostponements } from '../lib/dueChanges'
+import { behindDaysLabel, behindDaysOf, isBehindSchedule, isScheduleTracked, loadScheduleSettings } from '../lib/scheduleHealth'
 import { ProgressNoteThread, discussionBadgeStyle } from './ProgressNoteThread'
 import { ProgressSlider } from './ProgressSlider'
 import { ReportSettingsPanel } from './ReportSettingsPanel'
@@ -84,7 +86,7 @@ interface DateRange {
 
 type PeriodPreset = 'thisWeek' | 'lastWeek' | '7' | '14' | '30' | 'custom'
 /** 件数チップを押して絞り込む条件。myNeedsReport は「自分の未報告」の案内から使う */
-type QuickFilter = 'all' | 'needsReport' | 'discussion' | 'onHold' | 'overdue' | 'postponed' | 'myNeedsReport'
+type QuickFilter = 'all' | 'needsReport' | 'discussion' | 'onHold' | 'overdue' | 'behind' | 'postponed' | 'myNeedsReport'
 type GroupMode = 'assignee' | 'category'
 type AssigneeFilter = 'all' | 'mine' | 'mineWithSubTasks' | `user:${string}`
 /** list: ToDoリスト（中の項目をチェックして使うタスク）。報告の有無では判定しない */
@@ -105,6 +107,8 @@ interface ReportRow extends ChangeSummary {
   discussions: ProgressNote[]
   /** ToDoリストの繰り返しの項目ごとの、期間中の実施状況（項目のID → 状況） */
   checkSummaries: Map<string, SubTaskCheckSummary>
+  /** 進捗が予定より遅れている日数（ガントの「遅れ」と同じ判定。遅れていない・判定しないときは null） */
+  behind: { days: number; expectedProgress: number } | null
 }
 
 /** 期間中の進捗・期限の変化（タスク・サブタスク共通） */
@@ -197,6 +201,47 @@ function loadPreset(): Exclude<PeriodPreset, 'custom'> {
   return PRESETS.some((preset) => preset.value === stored) ? stored as Exclude<PeriodPreset, 'custom'> : '7'
 }
 
+// タブを開いているあいだだけ覚えるもの（ほかの画面へ行って戻ったときに続きから見られるように）
+const SESSION_KEYS = { quickFilter: 'report.quickFilter', scrollTop: 'report.scrollTop' }
+const QUICK_FILTERS: readonly QuickFilter[] = ['all', 'needsReport', 'discussion', 'onHold', 'overdue', 'behind', 'postponed', 'myNeedsReport']
+
+function loadSessionQuickFilter(): QuickFilter {
+  try {
+    const stored = window.sessionStorage.getItem(SESSION_KEYS.quickFilter)
+    return QUICK_FILTERS.includes(stored as QuickFilter) ? stored as QuickFilter : 'all'
+  } catch {
+    return 'all'
+  }
+}
+
+function loadSessionScrollTop(): number | null {
+  try {
+    const stored = Number(window.sessionStorage.getItem(SESSION_KEYS.scrollTop))
+    return Number.isFinite(stored) && stored > 0 ? stored : null
+  } catch {
+    return null
+  }
+}
+
+/** 期間の日数（両端を含む） */
+function rangeDays(range: DateRange): number {
+  return Math.round((new Date(`${range.to}T00:00:00`).getTime() - new Date(`${range.from}T00:00:00`).getTime()) / 86400000) + 1
+}
+
+/** 定例の進み具合を読む。12時間より前に始めたもの（前の定例の残り）は使わない */
+const MEETING_KEEP_MS = 12 * 60 * 60 * 1000
+function loadMeetingState(key: string): MeetingState | null {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) ?? 'null') as MeetingState | null
+    if (!parsed || typeof parsed.startedAt !== 'number' || Date.now() - parsed.startedAt > MEETING_KEEP_MS) return null
+    if (typeof parsed.notes !== 'object' || typeof parsed.spentSeconds !== 'object' || typeof parsed.createdTasks !== 'object') return null
+    // 開いたまま離れた（閉じた時刻がない）ときは、読んだ時刻から止まっていたことにする
+    return parsed.pausedAt == null ? { ...parsed, pausedAt: Date.now() } : parsed
+  } catch {
+    return null
+  }
+}
+
 function loadAssigneeFilter(): AssigneeFilter {
   const stored = readStorage(STORAGE_KEYS.assigneeFilter)
   if (stored === 'all' || stored === 'mine' || stored === 'mineWithSubTasks') return stored
@@ -231,15 +276,14 @@ function matchesQuickFilter(row: ReportRow, filter: QuickFilter, currentUserId: 
     case 'discussion': return row.discussions.length > 0
     case 'onHold': return row.todo.status === 'on_hold'
     case 'overdue': return isOverdue(row.todo)
+    case 'behind': return row.behind != null
     case 'postponed': return row.postponedCount > 0
     case 'myNeedsReport': return currentUserId != null && needsReport(row.freshness) && isMyTask(row.todo, [], currentUserId)
   }
 }
 
 function formatShortDate(dateKey: string | null): string {
-  if (!dateKey) return '未設定'
-  const [, m, d] = dateKey.slice(0, 10).split('-')
-  return `${Number(m)}/${Number(d)}`
+  return dateKey ? formatShortDateKey(dateKey) : '未設定'
 }
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
@@ -267,7 +311,7 @@ function formatDaysAgo(iso: string): string {
 function formatDueLabel(dueDate: string | null, status: TodoStatus): string | null {
   if (!dueDate || status === 'done') return null
   const diff = diffDaysFromToday(dueDate)
-  if (diff < 0) return `${Math.abs(diff)}日遅れ`
+  if (diff < 0) return `${Math.abs(diff)}日超過`
   if (diff === 0) return '今日が期限'
   return `あと${diff}日`
 }
@@ -318,7 +362,8 @@ function buildRow(
   range: DateRange,
   changes: TodoChangeEntry[],
   discussions: ProgressNote[],
-  checkSummaries: Map<string, SubTaskCheckSummary>
+  checkSummaries: Map<string, SubTaskCheckSummary>,
+  behind: ReportRow['behind']
 ): ReportRow {
   const lastNoteAt = activity?.last_note_at ?? null
   const lastMemoAt = activity?.last_memo_at ?? null
@@ -326,6 +371,10 @@ function buildRow(
   // 最終更新だけでは、過去の期間を選んだときに期間中の更新を見落とすので、期間中の変更履歴も見る
   const memoUpdatedInPeriod = (lastMemoAt != null && isInRange(isoToDateKey(lastMemoAt), range))
     || changes.some((change) => change.subtask_id == null && change.field === 'memo')
+  // 「報告あり」は担当（主・サブ）の書いた進捗ログで数える。リーダーなどほかの人の書き込みだけでは、本人が報告したことにしない。
+  // 担当がいないタスク・デスクトップ版（書いた人の記録がない）は、すべての書き込みを数える
+  const memberIds = new Set([todo.assignee_id, ...(todo.co_assignees ?? []).map((item) => item.user_id)].filter((id): id is string => Boolean(id)))
+  const memberNotes = memberIds.size === 0 ? notes : notes.filter((note) => note.user_id == null || memberIds.has(note.user_id))
 
   let freshness: Freshness
   if (todo.status === 'done') {
@@ -335,7 +384,7 @@ function buildRow(
     freshness = 'list'
   } else if (todo.status === 'on_hold') {
     freshness = 'onHold'
-  } else if (notes.length > 0 || memoUpdatedInPeriod) {
+  } else if (memberNotes.length > 0 || memoUpdatedInPeriod) {
     freshness = 'fresh'
   } else if (todo.status === 'not_started' && (
     !todo.start_date
@@ -358,7 +407,7 @@ function buildRow(
     addedInPeriod: isInRange(isoToDateKey(subTask.created_at), range)
   }]))
 
-  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, reportedInPeriod: notes.length > 0 || memoUpdatedInPeriod, ...summary, subTaskSummaries, discussions, checkSummaries }
+  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, reportedInPeriod: memberNotes.length > 0 || memoUpdatedInPeriod, ...summary, subTaskSummaries, discussions, checkSummaries, behind }
 }
 
 function summarizeChanges(changes: TodoChangeEntry[]): ChangeSummary {
@@ -366,9 +415,7 @@ function summarizeChanges(changes: TodoChangeEntry[]): ChangeSummary {
   const progressChanges = changes.filter((change) => change.field === 'progress')
   const progressStart = progressChanges.length > 0 ? Number(progressChanges[0].old_value ?? 0) : null
   const dueChanges = changes.filter((change) => change.field === 'due_date')
-  const postponedCount = dueChanges.filter((change) =>
-    change.old_value != null && change.new_value != null && change.new_value.slice(0, 10) > change.old_value.slice(0, 10)
-  ).length
+  const postponedCount = countPostponements(dueChanges)
   return { progressStart, dueChanges, postponedCount }
 }
 
@@ -527,7 +574,8 @@ function freshnessText(row: ReportRow): string {
     case 'fresh':
       return '期間内に報告あり'
     case 'quiet':
-      return '期間内の報告なし'
+      // 担当でない人（リーダーなど）の書き込みだけがあるときは、そう書く（「最終報告」の日付と食い違って見えないように）
+      return row.notes.length > 0 ? '担当者の報告なし（ほかの人の書き込みだけ）' : '期間内の報告なし'
     case 'stale':
       return row.lastReportAt ? `${formatDaysAgo(row.lastReportAt).replace('前', '')}報告なし` : '報告なし'
     case 'none':
@@ -841,14 +889,52 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const [groupMode, setGroupMode] = useState<GroupMode>(() => readStorage(STORAGE_KEYS.groupMode) === 'category' ? 'category' : 'assignee')
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>(loadAssigneeFilter)
   const [excludeCoAssigned, setExcludeCoAssigned] = useState(() => readStorage(STORAGE_KEYS.excludeCoAssigned) === '1')
-  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all')
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>(loadSessionQuickFilter)
+  // この画面を開いてから進捗ログを書いたタスク（「報告なし」で絞っていても、書いた直後は残す）
+  const [reportedNowIds, setReportedNowIds] = useState<Set<string>>(() => new Set())
+  useEffect(() => {
+    try { window.sessionStorage.setItem(SESSION_KEYS.quickFilter, quickFilter) } catch { /* 覚えられなくても絞り込みはできる */ }
+  }, [quickFilter])
+  // 読み込み直したときに、前に見ていた位置へ戻す（タスクを開いて報告タブへ戻ったとき）
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const lastScrollTopRef = useRef(0)
+  const scrollRestoreRef = useRef<number | null>(loadSessionScrollTop())
+  // 画面を離れるとき（DOM が消える前）に位置を覚える
+  useLayoutEffect(() => () => {
+    const top = scrollContainerRef.current?.scrollTop ?? lastScrollTopRef.current
+    try { window.sessionStorage.setItem(SESSION_KEYS.scrollTop, String(top)) } catch { /* 位置は覚えなくてもよい */ }
+  }, [])
   // 表示設定（カテゴリ・状態・対象・サブタスク・個別に隠したタスク・小見出し）。見ている人ごとに保存する
   const [settingsState, setSettingsState] = useState(() => ({ userId: settingsUserId, settings: loadReportViewSettings(settingsUserId) }))
   const settings = settingsState.userId === settingsUserId ? settingsState.settings : loadReportViewSettings(settingsUserId)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [customDatesOpen, setCustomDatesOpen] = useState(false)
   // 定例モード（担当者を1人ずつ大きく表示する）。閉じても、この画面を開いている間は進み具合を残す
   const [meetingOpen, setMeetingOpen] = useState(false)
-  const [meetingState, setMeetingState] = useState<MeetingState | null>(null)
+  // 定例の進み具合（メモ・決まったこと・持ち時間）は、ほかの画面を見に行っても消えないよう端末に覚える（見ている人ごと）
+  // 読み込み直した直後はログイン中の人がまだ分からず、保存先が変わる。保存先が変わったら、その人の進み具合を読み直す
+  // （以前は空の状態のまま新しい保存先に書いてしまい、再読み込みで定例の途中経過が消えていた）
+  const meetingStorageKey = `report.meeting:${settingsUserId ?? 'local'}`
+  const [meetingStore, setMeetingStore] = useState<{ key: string; state: MeetingState | null }>(() => ({ key: meetingStorageKey, state: loadMeetingState(meetingStorageKey) }))
+  if (meetingStore.key !== meetingStorageKey) setMeetingStore({ key: meetingStorageKey, state: loadMeetingState(meetingStorageKey) })
+  const meetingState = meetingStore.key === meetingStorageKey ? meetingStore.state : null
+  const setMeetingState = useCallback((next: MeetingState | null | ((previous: MeetingState | null) => MeetingState | null)): void => {
+    setMeetingStore((previous) => ({ key: previous.key, state: typeof next === 'function' ? next(previous.state) : next }))
+  }, [])
+  useEffect(() => {
+    try {
+      if (meetingState) window.localStorage.setItem(meetingStorageKey, JSON.stringify(meetingState))
+      else window.localStorage.removeItem(meetingStorageKey)
+    } catch { /* 覚えられなくても定例は続けられる */ }
+  }, [meetingState, meetingStorageKey])
+  // 定例モードを開いたままほかの画面へ移ったときは、その時刻を「閉じた時刻」として覚え、戻ったときに離れていた時間を除く
+  const meetingStateRef = useRef(meetingState)
+  meetingStateRef.current = meetingState
+  useEffect(() => () => {
+    const state = meetingStateRef.current
+    if (!state || state.pausedAt != null) return
+    try { window.localStorage.setItem(meetingStorageKey, JSON.stringify({ ...state, pausedAt: Date.now() })) } catch { /* 覚えられなくてもよい */ }
+  }, [meetingStorageKey])
   // 折りたたんだ担当者（カテゴリ）の見出しキー。定例で話し終えた人を畳んでおける
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
   const [notes, setNotes] = useState<ProgressNote[]>([])
@@ -856,7 +942,9 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const [changes, setChanges] = useState<TodoChangeEntry[]>([])
   const [discussions, setDiscussions] = useState<ProgressNote[]>([])
   const [checkSummaries, setCheckSummaries] = useState<SubTaskCheckSummary[]>([])
-  const [loaded, setLoaded] = useState(false)
+  const [hasLoaded, setLoaded] = useState(false)
+  const [loadedRangeKey, setLoadedRangeKey] = useState('')
+  const loaded = hasLoaded && loadedRangeKey === `${range.from}|${range.to}`
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const requestIdRef = useRef(0)
@@ -888,6 +976,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       setDiscussions(nextDiscussions)
       setCheckSummaries(nextCheckSummaries)
       setLoadError(null)
+      setLoadedRangeKey(`${range.from}|${range.to}`)
       setLoaded(true)
     } catch (error) {
       if (requestId !== requestIdRef.current) return
@@ -900,6 +989,15 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (!loaded || scrollRestoreRef.current == null) return
+    const top = scrollRestoreRef.current
+    scrollRestoreRef.current = null
+    lastScrollTopRef.current = top
+    // 読み込んだ内容はこの時点で描かれているので、そのまま位置を戻す
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = top
+  }, [loaded])
 
   useEffect(() => {
     const unsubscribe = window.api.onDataChanged((scope) => {
@@ -1000,6 +1098,30 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     return map
   }, [checkSummaries])
 
+  // 進捗の遅れ（ガントの表示設定の「遅れとみなす日数」「土日・祝日を数えない」に合わせる）
+  const [scheduleSettings] = useState(loadScheduleSettings)
+  const [holidayNames, setHolidayNames] = useState<ReadonlyMap<string, string>>(() => new Map())
+  useEffect(() => {
+    if (!scheduleSettings.workingDaysOnly) return
+    let cancelled = false
+    void import('@holiday-jp/holiday_jp')
+      .then((module) => {
+        const library = ((module as { default?: unknown }).default ?? module) as { holidays: Record<string, { name: string }> }
+        if (!cancelled) setHolidayNames(new Map(Object.entries(library.holidays).map(([date, holiday]) => [date, holiday.name])))
+      })
+      .catch(() => { /* 祝日が読めなくても土日だけ除いて数える */ })
+    return () => { cancelled = true }
+  }, [scheduleSettings.workingDaysOnly])
+  const todayKey = toDateKey(new Date())
+  const behindOf = useCallback((todo: Todo): ReportRow['behind'] => {
+    // 期限を過ぎたものは「期限超過」で出すので、ここでは期限前のものだけ
+    if (!isScheduleTracked(todo) || !todo.start_date || !todo.due_date) return null
+    const bar = { startDate: todo.start_date.slice(0, 10), endDate: todo.due_date.slice(0, 10) }
+    if (bar.endDate < bar.startDate || todayKey > bar.endDate) return null
+    const { behindDays, expectedProgress } = behindDaysOf(todo.progress, bar, todayKey, { ...scheduleSettings, holidayNames })
+    return isBehindSchedule(expectedProgress, todo.progress, behindDays, scheduleSettings.behindThresholdDays) ? { days: behindDays, expectedProgress } : null
+  }, [holidayNames, scheduleSettings, todayKey])
+
   const hiddenTodoIdSet = useMemo(() => new Set(settings.hiddenTodoIds), [settings.hiddenTodoIds])
   const hiddenCategoryKeySet = useMemo(() => new Set(settings.hiddenCategoryKeys), [settings.hiddenCategoryKeys])
 
@@ -1019,10 +1141,11 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       range,
       changesByTodo.get(todo.id) ?? [],
       discussionsByTodo.get(todo.id) ?? [],
-      checkSummariesByTodo.get(todo.id) ?? new Map()
+      checkSummariesByTodo.get(todo.id) ?? new Map(),
+      behindOf(todo)
     ))
     .filter((row) => matchesScopeSetting(row, settings.scope, range)),
-  [activity, changesByTodo, checkSummariesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, hiddenCategoryKeySet, hiddenTodoIdSet, notesByTodo, range, selectedUserId, settings.scope, settings.statuses, subTasksByTodo, todos])
+  [activity, behindOf, changesByTodo, checkSummariesByTodo, discussionsByTodo, effectiveAssigneeFilter, excludeCoAssigned, hiddenCategoryKeySet, hiddenTodoIdSet, notesByTodo, range, selectedUserId, settings.scope, settings.statuses, subTasksByTodo, todos])
 
   // 表示設定のカテゴリの選択肢。検索などで今は出ていないカテゴリも選べるよう、カテゴリ一覧のすべてを並べる（未分類は最後）
   const categoryOptions = useMemo(() => {
@@ -1045,10 +1168,12 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   // 自分の未報告の案内はサーバー版でログインしているときだけ
   const effectiveQuickFilter: QuickFilter = quickFilter === 'myNeedsReport' && !(multiUser && currentUserId) ? 'all' : quickFilter
   const rows = useMemo(() => baseRows
-    .filter((row) => matchesQuickFilter(row, effectiveQuickFilter, currentUserId))
+    // 「報告なし」で絞っているあいだに書いたタスクは、すぐに消さず残す（書いた内容を確かめ・直せるように）
+    .filter((row) => matchesQuickFilter(row, effectiveQuickFilter, currentUserId)
+      || ((effectiveQuickFilter === 'needsReport' || effectiveQuickFilter === 'myNeedsReport') && reportedNowIds.has(row.todo.id)))
     // 保留中だけを見るときは、保留が長いものから並べる
     .sort((a, b) => effectiveQuickFilter === 'onHold' ? (a.todo.on_hold_since ?? '9999').localeCompare(b.todo.on_hold_since ?? '9999') : 0),
-  [baseRows, currentUserId, effectiveQuickFilter])
+  [baseRows, currentUserId, effectiveQuickFilter, reportedNowIds])
 
   const groups = useMemo(
     () => groupRows(rows, effectiveGroupMode, users, currentUser?.id ?? null, selectedUserId),
@@ -1096,12 +1221,14 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const reportedCount = baseRows.filter((row) => row.reportedInPeriod).length
   const noteCount = baseRows.reduce((sum, row) => sum + row.notes.length, 0)
   const myNeedsReportCount = multiUser && currentUserId ? countOf('myNeedsReport') : 0
+  const myTaskCount = multiUser && currentUserId ? baseRows.filter((row) => isMyTask(row.todo, [], currentUserId)).length : 0
   const quickFilterChips: Array<{ value: QuickFilter; label: string; count: number; color: string; title: string }> = [
     { value: 'all', label: 'すべて', count: baseRows.length, color: 'var(--slate-300)', title: '絞り込まずに表示' },
-    { value: 'needsReport', label: '報告なし', count: countOf('needsReport'), color: 'var(--amber-200)', title: '進行中なのに、この期間の進捗ログ・メモ更新がないタスク' },
+    { value: 'needsReport', label: '報告なし', count: countOf('needsReport'), color: 'var(--amber-200)', title: '進行中（または開始日を過ぎた未着手）なのに、この期間に担当（主・副）の進捗ログもメモの更新もないタスク。チームタブの「報告なし（直近7日）」は、期間を直近7日にした同じ数え方' },
     { value: 'discussion', label: '要相談', count: countOf('discussion'), color: 'var(--c-d6b38a)', title: '「要相談」が付いた進捗ログがあるタスク（期間に関係なく）' },
     { value: 'onHold', label: '保留中', count: countOf('onHold'), color: 'var(--purple-300)', title: '保留中のタスク（保留が長い順）' },
     { value: 'overdue', label: '期限超過', count: countOf('overdue'), color: 'var(--red-300)', title: '期限を過ぎて完了していないタスク' },
+    { value: 'behind', label: '進捗の遅れ', count: countOf('behind'), color: 'var(--amber-200)', title: `期限前だが、今日時点の予定の進捗より${scheduleSettings.behindThresholdDays}日分以上、または半分以上遅れているタスク（ガントの「遅れ」と同じ判定）` },
     { value: 'postponed', label: '期間中に延期', count: countOf('postponed'), color: 'var(--amber-200)', title: 'この期間に期限を後ろへずらしたタスク' }
   ]
   const toggleGroupCollapsed = (key: string): void => {
@@ -1120,7 +1247,13 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       next.delete(key)
       return next
     })
-    window.requestAnimationFrame(() => document.getElementById(groupDomId(key))?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    // スクロールに合わせてフォーカスも移す（キーボードで続けて、その担当者の欄の中を Tab で進めるように）
+    window.requestAnimationFrame(() => {
+      const section = document.getElementById(groupDomId(key))
+      if (!section) return
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      section.focus({ preventScroll: true })
+    })
   }
 
   const canModifyNote = useCallback(
@@ -1144,6 +1277,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     try {
       const created = await window.api.progressNoteCreate(todo.id, trimmed)
       if (needsDiscussion) await window.api.progressNoteSetNeedsDiscussion(created.id, true)
+      setReportedNowIds((previous) => new Set(previous).add(todo.id))
       await load()
       onShowToast('進捗ログを投稿しました')
       return true
@@ -1336,7 +1470,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       <>
         {discussions.length > 0 && (
           <div style={discussionBoxStyle}>
-            <div style={{ fontSize: '0.8rem', color: 'var(--slate-300)', fontWeight: 700 }}>要相談（{discussions.length}件）</div>
+            <div style={{ fontSize: 'var(--font-control)', color: 'var(--slate-300)', fontWeight: 700 }}>要相談（{discussions.length}件）</div>
             {discussions.map((note) => <InteractiveNote key={`meeting-discussion-${note.id}`} note={note} actions={actions} showTask />)}
           </div>
         )}
@@ -1348,10 +1482,10 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     ? { title, status: 'not_started', start_date: toDateKey(new Date()), assignee_id: users.some((user) => user.id === groupKey) ? groupKey : null }
     : { title, status: 'not_started', start_date: toDateKey(new Date()), category_id: categories.some((category) => category.id === groupKey) ? groupKey : null, assignee_id: currentUser?.id ?? null }
   const createMeetingTask = onCreateTodo
-    ? async (groupKey: string, title: string): Promise<boolean> => {
+    ? async (groupKey: string, title: string, dueDate: string | null): Promise<boolean> => {
         try {
-          await onCreateTodo(meetingTaskInput(groupKey, title))
-          onShowToast(`タスク「${title}」を作りました`)
+          await onCreateTodo({ ...meetingTaskInput(groupKey, title), due_date: dueDate })
+          onShowToast(`タスク「${title}」を作りました${dueDate ? `（期限 ${formatShortDate(dueDate)}）` : ''}`)
           return true
         } catch (error) {
           onShowToast(error instanceof Error ? error.message : 'タスクを作れませんでした', 'error')
@@ -1375,19 +1509,20 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', background: 'var(--slate-900)' }}>
+    <div ref={scrollContainerRef} onScroll={(event) => { lastScrollTopRef.current = event.currentTarget.scrollTop }} style={{ height: '100%', overflowY: 'auto', background: 'var(--slate-900)' }}>
       <div style={{ padding: '18px 20px 40px', display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 1400, margin: '0 auto' }}>
         {/* ─── 見出し・操作 ─── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ fontSize: '1.15rem', color: 'var(--slate-50)', fontWeight: 800 }}>報告</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)', fontWeight: 700 }}>
+            <div style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)', fontWeight: 700 }}>
               {formatShortDate(range.from)}（{weekdayLabel(range.from)}）～ {formatShortDate(range.to)}（{weekdayLabel(range.to)}）
             </div>
             {listFilters}
-            <div style={{ fontSize: '0.76rem', color: 'var(--slate-500)' }}>
-              定例用に、タスクごとの進捗と報告（進捗ログ・メモ）を1ページにまとめて表示します。状態・日程・進捗・メモはその場で変えられます
-            </div>
+            <details style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>
+              <summary style={{ cursor: 'pointer' }}>使い方</summary>
+              <p style={{ marginTop: 8, lineHeight: 1.7 }}>定例用に、タスクごとの進捗と報告（進捗ログ・メモ）をまとめます。状態・日程・進捗・メモはその場で変更できます。報告の担当は、この画面の「報告の担当」で選びます。</p>
+            </details>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1398,6 +1533,8 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                 </button>
               ))}
             </div>
+            <button onClick={() => setCustomDatesOpen((open) => !open)} aria-expanded={customDatesOpen} aria-controls="report-custom-dates" style={secondaryButtonStyle}>日付を指定</button>
+            {customDatesOpen && <div id="report-custom-dates" role="group" aria-label="報告期間の日付指定" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <input
               type="date"
               aria-label="報告期間の開始日"
@@ -1410,7 +1547,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               }}
               style={inputStyle}
             />
-            <span style={{ color: 'var(--slate-500)', fontSize: '0.8rem' }}>～</span>
+            <span style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-control)' }}>～</span>
             <input
               type="date"
               aria-label="報告期間の終了日"
@@ -1424,20 +1561,27 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               style={inputStyle}
             />
 
+            </div>}
+            {preset === 'thisWeek' && rangeDays(range) <= 2 && (
+              <span role="note" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-control)', color: 'var(--amber-200)', border: '1px solid var(--yellow-700)', background: 'var(--yellow-950)', borderRadius: 999, padding: '3px 4px 3px 10px' }}>
+                今週はまだ{rangeDays(range)}日分です。報告の有無は直近7日で見るのがおすすめです
+                <button onClick={() => applyPreset('7')} style={{ ...chipStyle(false), padding: '2px 10px' }}>直近7日にする</button>
+              </span>
+            )}
             <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
               <button onClick={() => void load()} disabled={loading} style={secondaryButtonStyle}>{loading ? '更新中…' : '更新'}</button>
-              <button onClick={() => void handleCopyMarkdown()} title="表示中の内容をMarkdownでコピーします（議事録などに貼れます）" style={secondaryButtonStyle}>Markdownをコピー</button>
-              <button onClick={handleDownloadCsv} title="表示中の内容をCSVで保存します（Excelで開けます）" style={secondaryButtonStyle}>CSV</button>
+              <button onClick={() => void handleCopyMarkdown()} disabled={loading || !loaded || Boolean(loadError)} title="表示中の内容をMarkdownでコピーします（議事録などに貼れます）" style={secondaryButtonStyle}>Markdownをコピー</button>
+              <button onClick={handleDownloadCsv} disabled={loading || !loaded || Boolean(loadError)} title="表示中の内容をCSVで保存します（Excelで開けます）" style={secondaryButtonStyle}>CSV</button>
               <button
                 onClick={openMeeting}
-                disabled={!loaded || groups.length === 0}
+                disabled={loading || !loaded || Boolean(loadError) || groups.length === 0}
                 title="担当者を1人ずつ大きく表示し、持ち時間を計りながら進めます。決まったことはその場でタスクにでき、終わったら議事録をコピーできます"
                 style={{ ...secondaryButtonStyle, borderColor: 'var(--indigo-600)', color: 'var(--indigo-200)' }}
               >
                 {meetingState ? '定例モードに戻る' : '定例モード'}
               </button>
               {meetingState && !meetingOpen && (
-                <button onClick={() => setMeetingState(null)} title="定例モードの進み具合（時間・メモ）を消して、最初からにします" style={secondaryButtonStyle}>定例をリセット</button>
+                <button onClick={() => { if (window.confirm('定例のメモ・決まったこと・持ち時間を消して、最初からにしますか？')) setMeetingState(null) }} title="定例モードの進み具合（時間・メモ）を消して、最初からにします" style={secondaryButtonStyle}>定例をリセット</button>
               )}
             </div>
           </div>
@@ -1451,7 +1595,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
             )}
             {multiUser && currentUser && (
               <label style={checkboxLabelStyle}>
-                担当
+                報告の担当
                 <select value={assigneeFilter} onChange={(event) => changeAssigneeFilter(event.target.value as AssigneeFilter)} style={inputStyle}>
                   <option value="all">全員</option>
                   <option value="mine">自分の担当のみ</option>
@@ -1523,24 +1667,33 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                 <button
                   key={chip.value}
                   onClick={() => setQuickFilter(active && chip.value !== 'all' ? 'all' : chip.value)}
-                  disabled={muted && !active}
+                  disabled={!loaded || (muted && !active)}
                   aria-pressed={active}
-                  title={muted ? `${chip.label}のタスクはありません` : `${chip.title}${active ? '（もう一度押すと解除）' : '（押すと絞り込み）'}`}
+                  title={muted ? `${chip.label}のタスクはありません` : chip.value === 'all' ? (active ? '絞り込まずに表示しています' : '絞り込みを外して、すべて表示します') : `${chip.title}${active ? '（もう一度押すと解除）' : '（押すと絞り込み）'}`}
                   style={quickFilterChipStyle(chip.color, active, muted)}
                 >
-                  {chip.label} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{chip.count}</span>
+                  {active && <span aria-hidden="true">✓ </span>}{chip.label} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{loaded ? chip.count : '…'}</span>
                 </button>
               )
             })}
-            <span style={{ fontSize: '0.72rem', color: 'var(--slate-500)', marginLeft: 4 }}>
-              期間内に報告あり {reportedCount}件 ・ 進捗ログ {noteCount}件
+            <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', marginLeft: 4 }}>
+              {loaded ? `期間内に報告あり ${reportedCount}件 ・ 進捗ログ ${noteCount}件` : loadError ? 'この期間の件数は未取得です' : 'この期間の報告を取得しています'}
             </span>
           </div>
 
-          {myNeedsReportCount > 0 && effectiveQuickFilter !== 'myNeedsReport' && (
+          {loaded && myNeedsReportCount > 0 && effectiveQuickFilter !== 'myNeedsReport' && (
             <div role="status" style={myReminderStyle}>
-              <span>あなたの担当で、この期間まだ報告がないタスクが <strong>{myNeedsReportCount}件</strong> あります。進捗ログかメモで一言残しておきましょう。</span>
+              <span>あなたの担当で、この期間まだ報告がないタスクが <strong>{myNeedsReportCount}件</strong> あります。<span className="hakobi-hide-narrow">進捗ログかメモで一言残しておきましょう。</span></span>
               <button onClick={() => setQuickFilter('myNeedsReport')} style={{ ...secondaryButtonStyle, marginLeft: 'auto' }}>自分の未報告だけ表示</button>
+            </div>
+          )}
+          {/* 自分の報告が済んだら、注意が消えるだけでなく「済んだ」と出す（定例の前に安心できるように） */}
+          {loaded && multiUser && currentUserId && myNeedsReportCount === 0 && myTaskCount > 0 && effectiveQuickFilter !== 'myNeedsReport' && (
+            <div role="status" style={myDoneStyle}>
+              <span>✓ この期間の自分の報告は済んでいます（担当 {myTaskCount}件）</span>
+              {effectiveGroupMode === 'assignee' && groups.some((group) => group.key === currentUserId) && (
+                <button onClick={() => jumpToGroup(currentUserId)} style={{ ...secondaryButtonStyle, marginLeft: 'auto' }}>自分の欄へ</button>
+              )}
             </div>
           )}
           {effectiveQuickFilter === 'myNeedsReport' && (
@@ -1551,19 +1704,14 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
           )}
 
           {loaded && (groups.length > 1 || visibleSubGroupKeys.length > 1) && (
-            <nav aria-label={effectiveGroupMode === 'assignee' ? '担当者へ移動' : 'カテゴリへ移動'} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', paddingTop: 2 }}>
-              {groups.length > 1 && <span style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{effectiveGroupMode === 'assignee' ? '担当者へ移動:' : 'カテゴリへ移動:'}</span>}
-              {groups.length > 1 && groups.map((group) => {
-                const needs = group.rows.filter((row) => needsReport(row.freshness)).length
-                return (
-                  <button key={group.key} onClick={() => jumpToGroup(group.key)} title={`${group.label}の欄へ移動`} style={jumpChipStyle}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.color ?? 'var(--slate-600)', flexShrink: 0 }} />
-                    {group.label}
-                    <span style={{ color: 'var(--slate-500)', fontWeight: 600 }}>{group.rows.length}</span>
-                    {needs > 0 && <span style={{ color: 'var(--amber-200)', fontWeight: 700 }}>報告なし{needs}</span>}
-                  </button>
-                )
-              })}
+            <nav aria-label={effectiveGroupMode === 'assignee' ? '担当者へ移動' : 'カテゴリへ移動'} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {groups.length > 1 && <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>
+                {effectiveGroupMode === 'assignee' ? '担当者へ移動' : 'カテゴリへ移動'}
+                <select value="" onChange={(event) => { if (event.target.value.startsWith('group:')) jumpToGroup(event.target.value.slice(6)) }} style={{ ...inputStyle, maxWidth: 'min(360px, 100%)' }}>
+                  <option value="">選んで移動…</option>
+                  {groups.map((group) => <option key={group.key} value={`group:${group.key}`}>{group.label}（{group.rows.length}件・報告なし {group.rows.filter((row) => needsReport(row.freshness)).length}件）</option>)}
+                </select>
+              </label>}
               {groups.length > 1 && (
                 <button onClick={() => setCollapsedGroups(collapsedGroups.size > 0 ? new Set() : new Set(groups.map((group) => group.key)))} style={{ ...inlineActionStyle, marginLeft: 4 }}>
                   {collapsedGroups.size > 0 ? 'すべて開く' : 'すべて折りたたむ'}
@@ -1582,7 +1730,9 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
 
         {loadError && (
           <div role="alert" style={{ padding: '10px 14px', border: '1px solid var(--red-700)', borderRadius: 10, background: 'var(--red-950)', color: 'var(--red-200)', fontSize: '0.82rem' }}>
-            {loadError}
+            <p>報告データを読み込めませんでした。{loadError}</p>
+            <p style={{ marginTop: 6 }}>{loaded ? '前回取得した内容を表示しています。' : 'この期間の報告はまだ取得できていません。'} 社内LANへの接続を確認して、もう一度お試しください。</p>
+            <button disabled={loading} onClick={() => void load()} style={{ ...secondaryButtonStyle, marginTop: 8 }}>再試行</button>
           </div>
         )}
 
@@ -1590,7 +1740,9 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
 
         {loaded && groups.length === 0 && (
           <div style={emptyStyle}>
-            {effectiveQuickFilter !== 'all'
+            {effectiveQuickFilter === 'myNeedsReport'
+              ? <>この期間の自分の報告はすべて済んでいます。<button onClick={() => setQuickFilter('all')} style={{ ...inlineActionStyle, marginLeft: 8, fontSize: '0.82rem' }}>すべて表示</button></>
+              : effectiveQuickFilter !== 'all'
               ? <>条件に合うタスクはありません。<button onClick={() => setQuickFilter('all')} style={{ ...inlineActionStyle, marginLeft: 8, fontSize: '0.82rem' }}>すべて表示</button></>
               : settingsChips.length > 0
                 ? '表示できるタスクがありません。「表示設定」の横に出ている条件も確認してください。'
@@ -1620,7 +1772,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
             .sort((a, b) => b.created_at.localeCompare(a.created_at))
           const collapsed = collapsedGroups.has(group.key)
           return (
-            <section key={`${effectiveGroupMode}:${group.key}`} id={groupDomId(group.key)} style={{ display: 'flex', flexDirection: 'column', gap: 10, scrollMarginTop: 4 }}>
+            <section key={`${effectiveGroupMode}:${group.key}`} id={groupDomId(group.key)} tabIndex={-1} aria-label={`${group.label}（${group.rows.length}件）`} style={{ display: 'flex', flexDirection: 'column', gap: 10, scrollMarginTop: 4, outlineOffset: -2 }}>
               <div style={groupHeaderStyle}>
                 <button
                   onClick={() => toggleGroupCollapsed(group.key)}
@@ -1633,21 +1785,21 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                 </button>
                 <span style={{ width: 11, height: 11, borderRadius: '50%', background: group.color ?? 'var(--slate-600)', flexShrink: 0 }} />
                 <span style={{ fontSize: '0.98rem', color: 'var(--slate-100)', fontWeight: 800 }}>{group.label}</span>
-                {group.isMe && <span style={{ fontSize: '0.68rem', color: 'var(--indigo-200)', background: 'var(--indigo-900)', borderRadius: 999, padding: '1px 7px' }}>自分</span>}
-                <span style={{ fontSize: '0.76rem', color: 'var(--slate-400)' }}>{group.rows.length}件</span>
-                <span style={{ fontSize: '0.76rem', color: 'var(--green-300)' }}>報告あり {groupReported}</span>
-                <span style={{ fontSize: '0.76rem', color: groupNeeds > 0 ? 'var(--amber-200)' : 'var(--slate-500)', fontWeight: groupNeeds > 0 ? 700 : 400 }}>
+                {group.isMe && <span style={{ fontSize: 'var(--font-caption)', color: 'var(--indigo-200)', background: 'var(--indigo-900)', borderRadius: 999, padding: '1px 7px' }}>自分</span>}
+                <span style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>{group.rows.length}件</span>
+                <span style={{ fontSize: 'var(--font-control)', color: 'var(--green-300)' }}>報告あり {groupReported}</span>
+                <span style={{ fontSize: 'var(--font-control)', color: groupNeeds > 0 ? 'var(--amber-200)' : 'var(--slate-500)', fontWeight: groupNeeds > 0 ? 700 : 400 }}>
                   報告なし {groupNeeds}
                 </span>
                 {groupDiscussions.length > 0 && (
-                  <span style={{ fontSize: '0.76rem', color: 'var(--c-d6b38a)' }}>要相談 {groupDiscussions.length}</span>
+                  <span style={{ fontSize: 'var(--font-control)', color: 'var(--c-d6b38a)' }}>要相談 {groupDiscussions.length}</span>
                 )}
               </div>
               {!collapsed && groupDiscussions.length > 0 && (
                 <div style={discussionBoxStyle}>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--slate-300)', fontWeight: 700 }}>
+                  <div style={{ fontSize: 'var(--font-control)', color: 'var(--slate-300)', fontWeight: 700 }}>
                     要相談（{groupDiscussions.length}件）
-                    <span style={{ marginLeft: 8, fontSize: '0.7rem', color: 'var(--slate-500)', fontWeight: 400 }}>相談が済んだら ⋯ から外します</span>
+                    <span style={{ marginLeft: 8, fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', fontWeight: 400 }}>相談が済んだら ⋯ から外します</span>
                   </div>
                   {groupDiscussions.map((note) => (
                     <InteractiveNote key={`discussion-${note.id}`} note={note} actions={actions} showTask />
@@ -1675,9 +1827,9 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                       </button>
                       <span style={{ width: 9, height: 9, borderRadius: subGroupMode === 'category' ? 2 : '50%', background: subGroup.color ?? 'var(--slate-600)', flexShrink: 0 }} />
                       <span style={{ fontSize: '0.86rem', color: 'var(--slate-200)', fontWeight: 800 }}>{subGroup.label}</span>
-                      <span style={{ fontSize: '0.74rem', color: 'var(--slate-400)' }}>{subGroup.rows.length}件</span>
-                      {subNeeds > 0 && <span style={{ fontSize: '0.74rem', color: 'var(--amber-200)', fontWeight: 700 }}>報告なし {subNeeds}</span>}
-                      {subDiscussions > 0 && <span style={{ fontSize: '0.74rem', color: 'var(--c-d6b38a)' }}>要相談 {subDiscussions}</span>}
+                      <span style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>{subGroup.rows.length}件</span>
+                      {subNeeds > 0 && <span style={{ fontSize: 'var(--font-caption)', color: 'var(--amber-200)', fontWeight: 700 }}>報告なし {subNeeds}</span>}
+                      {subDiscussions > 0 && <span style={{ fontSize: 'var(--font-caption)', color: 'var(--c-d6b38a)' }}>要相談 {subDiscussions}</span>}
                     </div>
                     {!subCollapsed && subGroup.rows.map((row) => renderCard(row))}
                   </div>
@@ -1795,7 +1947,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <label style={{ display: 'flex', alignItems: 'baseline', gap: 7, fontSize: '0.78rem', cursor: 'pointer' }}>
+      <label style={{ display: 'flex', alignItems: 'baseline', gap: 7, fontSize: 'var(--font-control)', cursor: 'pointer' }}>
         <input
           type="checkbox"
           checked={done}
@@ -1809,7 +1961,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
         <span style={{ flex: 1, minWidth: 0, color: done ? 'var(--slate-500)' : 'var(--slate-300)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word' }}>
           {subTask.title}
           {subTask.assignee_name && (
-            <span style={{ marginLeft: 6, fontSize: '0.7rem', color: dataInk(subTask.assignee_color ?? 'var(--slate-400)'), display: 'inline-block' }}>
+            <span style={{ marginLeft: 6, fontSize: 'var(--font-caption)', color: dataInk(subTask.assignee_color ?? 'var(--slate-400)'), display: 'inline-block' }}>
               {subTask.assignee_name}
             </span>
           )}
@@ -1829,7 +1981,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
               aria-label={`${subTask.title}の開始日`}
               autoFocus
               disabled={saving}
-              style={{ ...inputStyle, padding: '2px 6px', fontSize: '0.72rem' }}
+              style={{ ...inputStyle, padding: '2px 6px', fontSize: 'var(--font-caption)' }}
             />
             <button onClick={() => void saveStart()} disabled={saving} style={{ ...inlineActionStyle, color: 'var(--blue-300)' }}>保存</button>
             <button onClick={() => setEditingStart(false)} style={inlineActionStyle}>取消</button>
@@ -1839,7 +1991,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
             onClick={openStartEditor}
             disabled={saving}
             title="開始日を変更"
-            style={{ ...inlineActionStyle, textDecoration: 'none', color: 'var(--slate-500)', flexShrink: 0 }}
+            style={{ ...inlineActionStyle, textDecoration: 'none', color: 'var(--text-subtle)', flexShrink: 0 }}
           >
             {subTask.start_date ? `開始 ${formatShortDate(subTask.start_date)}` : '開始日なし'}
           </button>
@@ -1856,7 +2008,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
               }}
               aria-label={`${subTask.title}の期限`}
               autoFocus
-              style={{ ...inputStyle, padding: '2px 6px', fontSize: '0.72rem' }}
+              style={{ ...inputStyle, padding: '2px 6px', fontSize: 'var(--font-caption)' }}
             />
             <button onClick={() => void saveDue()} disabled={saving} style={{ ...inlineActionStyle, color: 'var(--blue-300)' }}>保存</button>
             <button onClick={() => setEditingDue(false)} style={inlineActionStyle}>取消</button>
@@ -1868,7 +2020,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
             title="期限を変更"
             style={{ ...inlineActionStyle, textDecoration: 'none', color: dueColor || 'var(--slate-500)', fontWeight: dueColor ? 800 : 600, flexShrink: 0 }}
           >
-            {subTask.due_date ? `期限 ${formatShortDate(subTask.due_date)}` : '期限なし'}
+            {subTask.due_date ? `期限 ${formatShortDate(subTask.due_date)}${dueStateSuffix(subTask.due_date, done)}` : '期限なし'}
           </button>
         )}
         <ProgressSlider
@@ -1880,7 +2032,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
         />
       </div>
       {change && (
-        <div style={{ paddingLeft: 20, fontSize: '0.68rem', color: changeColor }}>{change}</div>
+        <div style={{ paddingLeft: 20, fontSize: 'var(--font-caption)', color: changeColor }}>{change}</div>
       )}
     </div>
   )
@@ -1929,7 +2081,7 @@ function AddSubTaskForm({ todo, actions }: { todo: Todo; actions: ReportCardActi
 
   if (!open) {
     return (
-      <button onClick={openForm} style={{ ...inlineActionStyle, textDecoration: 'none', alignSelf: 'flex-start', color: 'var(--slate-500)' }}>
+      <button onClick={openForm} style={{ ...inlineActionStyle, textDecoration: 'none', alignSelf: 'flex-start', color: 'var(--text-subtle)' }}>
         ＋ サブタスクを追加
       </button>
     )
@@ -1960,11 +2112,11 @@ function AddSubTaskForm({ todo, actions }: { todo: Todo; actions: ReportCardActi
             {activeUsers.map((user) => <option key={user.id} value={user.id}>{user.display_name}</option>)}
           </select>
         )}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.74rem', color: 'var(--slate-400)' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
           開始日
           <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} aria-label="追加するサブタスクの開始日" style={inputStyle} />
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.74rem', color: 'var(--slate-400)' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
           期限
           <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} aria-label="追加するサブタスクの期限" style={inputStyle} />
         </label>
@@ -1995,10 +2147,10 @@ function rateTone(checked: number, periods: number): string {
 
 /** 周期（毎日・毎週・毎月）ごとの1行。終わった回の実施と、今の回の進み具合を分けて出す */
 function RepeatGroupLine({ group }: { group: RepeatGroupDigest }): React.JSX.Element {
-  const muted: React.CSSProperties = { fontSize: '0.7rem', color: 'var(--slate-500)' }
+  const muted: React.CSSProperties = { fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }
   const currentDone = group.current != null && group.current.checked >= group.current.total
   return (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', fontSize: '0.8rem' }}>
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', fontSize: 'var(--font-control)' }}>
       <span style={{ color: 'var(--slate-400)' }}>{group.label} {group.itemCount}件</span>
       {group.periods > 0 && (
         <span
@@ -2028,7 +2180,7 @@ function RepeatGroupLine({ group }: { group: RepeatGroupDigest }): React.JSX.Ele
  */
 function ListItemsSummary({ row, period }: { row: ReportRow; period: DateRange }): React.JSX.Element {
   const digest = digestRow(row, period)
-  const labelStyle: React.CSSProperties = { fontSize: '0.7rem', color: 'var(--slate-500)' }
+  const labelStyle: React.CSSProperties = { fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }
   const items = splitListItems(row.subTasks, period)
   const missed = missedText(digest, 3)
   return (
@@ -2049,16 +2201,16 @@ function ListItemsSummary({ row, period }: { row: ReportRow; period: DateRange }
                   return <span key={day} title={label} style={{ width: 11, height: 11, borderRadius: 2, background, boxSizing: 'border-box', border: today ? '1px solid var(--slate-400)' : 'none' }} />
                 })}
               </span>
-              <span style={{ ...labelStyle, fontSize: '0.66rem' }}>{formatShortDate(digest.days[0].day)}〜{formatShortDate(digest.days[digest.days.length - 1].day)}</span>
+              <span style={{ ...labelStyle, fontSize: 'var(--font-caption)' }}>{formatShortDate(digest.days[0].day)}〜{formatShortDate(digest.days[digest.days.length - 1].day)}</span>
             </div>
           )}
         </React.Fragment>
       ))}
       {missed && (
-        <div style={{ fontSize: '0.74rem', color: digest.missed.length > 0 ? 'var(--amber-200)' : 'var(--green-300)' }}>{missed}</div>
+        <div style={{ fontSize: 'var(--font-caption)', color: digest.missed.length > 0 ? 'var(--amber-200)' : 'var(--green-300)' }}>{missed}</div>
       )}
       {(digest.open.length > 0 || digest.doneInPeriod.length > 0) && (
-        <div style={{ fontSize: '0.74rem', color: 'var(--slate-400)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <span>やること</span>
           {digest.overdue.length > 0 && (
             <span style={{ color: 'var(--red-300)', fontWeight: 700 }}>期限切れ {digest.overdue.length}件（{namesText(digest.overdue.map((item) => item.title), 2)}）</span>
@@ -2071,25 +2223,25 @@ function ListItemsSummary({ row, period }: { row: ReportRow; period: DateRange }
       )}
       {row.subTasks.length > 0 && (
         <details>
-          <summary style={{ cursor: 'pointer', fontSize: '0.7rem', color: 'var(--slate-500)' }}>項目ごとに見る</summary>
+          <summary style={{ cursor: 'pointer', fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>項目ごとに見る</summary>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingTop: 5 }}>
             {items.repeat.map((item) => (
-              <div key={item.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.76rem' }}>
+              <div key={item.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 'var(--font-control)' }}>
                 <span style={{ flex: 1, minWidth: 0, color: 'var(--slate-300)', overflowWrap: 'anywhere' }}>{item.title}</span>
-                <span style={{ fontSize: '0.66rem', color: 'var(--indigo-300)', flexShrink: 0 }}>{repeatLabel(item)}</span>
+                <span style={{ fontSize: 'var(--font-caption)', color: 'var(--indigo-300)', flexShrink: 0 }}>{repeatLabel(item)}</span>
                 <span style={{ color: 'var(--slate-400)', fontVariantNumeric: 'tabular-nums', flexShrink: 0, minWidth: 40, textAlign: 'right', whiteSpace: 'nowrap' }}>
                   {itemStatusText(itemCheckStatus(item, row.checkSummaries.get(item.id))) ?? '—'}
                 </span>
               </div>
             ))}
             {items.open.map((item) => (
-              <div key={item.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: '0.76rem' }}>
+              <div key={item.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 'var(--font-control)' }}>
                 <span style={{ flex: 1, minWidth: 0, color: 'var(--slate-300)', overflowWrap: 'anywhere' }}>☐ {item.title}</span>
-                {itemPeriodText(item) && <span style={{ fontSize: '0.68rem', color: getDueDateColor(item.due_date) || 'var(--slate-500)', flexShrink: 0 }}>{itemPeriodText(item)}</span>}
+                {itemPeriodText(item) && <span style={{ fontSize: 'var(--font-caption)', color: getDueDateColor(item.due_date) || 'var(--slate-500)', flexShrink: 0 }}>{itemPeriodText(item)}</span>}
               </div>
             ))}
             {items.doneInPeriod.map((item) => (
-              <div key={item.id} style={{ fontSize: '0.76rem', color: 'var(--slate-500)', textDecoration: 'line-through', overflowWrap: 'anywhere' }}>☑ {item.title}</div>
+              <div key={item.id} style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)', textDecoration: 'line-through', overflowWrap: 'anywhere' }}>☑ {item.title}</div>
             ))}
           </div>
         </details>
@@ -2145,13 +2297,13 @@ function ReportTaskCard({
   // ToDoリストは進捗率を使わないので、切り替える前の進捗の変化も出さない
   const progressDelta = todo.list_mode ? null : progressDeltaText(row, row.todo.progress)
   const dueChange = dueChangeText(row)
-  const canPost = !posting && draft.trim().length > 0
+  const canPost = !posting && cleanProgressNote(draft).length > 0
   const memoChanged = memoDraft !== todo.memo
 
   const submitNote = async (): Promise<void> => {
     if (!canPost) return
     setPosting(true)
-    const ok = await actions.onCreateNote(todo, draft, draftNeedsDiscussion)
+    const ok = await actions.onCreateNote(todo, cleanProgressNote(draft), draftNeedsDiscussion)
     setPosting(false)
     if (ok) {
       setDraft('')
@@ -2217,14 +2369,14 @@ function ReportTaskCard({
         padding: '14px 16px'
       }}
     >
-      {/* ─── 左: タスク情報（ステータス・日程・進捗はその場で変更できる） ─── */}
+      {/* ─── 左: タスク情報（状態・日程・進捗はその場で変更できる） ─── */}
       <div style={{ flex: '1 1 300px', maxWidth: 440, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
           <button onClick={() => onSelectTodo(todo.id)} title="タスク詳細を開く" style={taskTitleButtonStyle}>
             {todo.title}
           </button>
           {todo.priority >= 4 && (
-            <span style={{ fontSize: '0.72rem', color: todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)', fontWeight: 800, flexShrink: 0, marginTop: 2 }}>
+            <span style={{ fontSize: 'var(--font-caption)', color: todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)', fontWeight: 800, flexShrink: 0, marginTop: 2 }}>
               {'!'.repeat(todo.priority - 3)}
             </span>
           )}
@@ -2234,9 +2386,9 @@ function ReportTaskCard({
           <select
             value={todo.status}
             disabled={saving}
-            onChange={(event) => void updateField({ status: event.target.value as TodoStatus }, 'ステータスを更新しました')}
-            aria-label="ステータス"
-            title="ステータスを変更"
+            onChange={(event) => void updateField({ status: event.target.value as TodoStatus }, '状態を変えました')}
+            aria-label="状態"
+            title="状態を変える"
             style={{ ...pillSelectStyle, color: STATUS_COLOR[todo.status], borderColor: `color-mix(in srgb, ${STATUS_COLOR[todo.status]} 50.2%, transparent)` }}
           >
             <option value="not_started">未着手</option>
@@ -2255,7 +2407,7 @@ function ReportTaskCard({
             </span>
           )}
           {(todo.co_assignees ?? []).length > 0 && (
-            <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>
+            <span style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)' }}>
               副: {(todo.co_assignees ?? []).map((assignee) => assignee.display_name).join('、')}
             </span>
           )}
@@ -2264,8 +2416,8 @@ function ReportTaskCard({
         {todo.status === 'on_hold' && (
           <div style={{ background: 'var(--purple-950)', border: '1px solid var(--purple-500)', borderRadius: 10, padding: '12px 14px', color: 'var(--purple-200)', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <strong style={{ fontSize: '0.92rem' }}>保留中 · {hold.durationLabel}</strong>
-            <div style={{ fontSize: '0.8rem' }}>保留開始: {hold.sinceLabel}</div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--purple-300)' }}>作業を停止しています。保留理由や再開の条件をメモに残せます。</div>
+            <div style={{ fontSize: 'var(--font-control)' }}>保留開始: {hold.sinceLabel}</div>
+            <div style={{ fontSize: 'var(--font-caption)', color: 'var(--purple-300)' }}>作業を停止しています。保留理由や再開の条件をメモに残せます。</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
               <button onClick={() => void updateField({ status: 'active' }, '進行中に戻しました')} disabled={saving} style={secondaryButtonStyle}>進行中に戻す</button>
               <button onClick={openMemoEditor} style={secondaryButtonStyle}>{memo ? 'メモを編集' : '保留理由をメモする'}</button>
@@ -2275,40 +2427,40 @@ function ReportTaskCard({
 
         {editingSchedule ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--gray-900)', border: '1px solid var(--slate-700)', borderRadius: 8, padding: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: '0.76rem', color: 'var(--slate-400)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 開始
                 <input type="date" value={startDraft} onChange={(event) => setStartDraft(event.target.value)} aria-label="開始日" style={inputStyle} />
               </label>
-              <span style={{ color: 'var(--slate-600)' }}>→</span>
+              <span style={{ color: 'var(--text-subtle)' }}>→</span>
               <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 期限
                 <input type="date" value={dueDraft} onChange={(event) => setDueDraft(event.target.value)} aria-label="期限" style={inputStyle} />
               </label>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '0.68rem', color: 'var(--slate-500)', flex: 1 }}>依存関係のある後続タスクも再計算されます</span>
+              <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', flex: 1 }}>依存関係のある後続タスクも再計算されます</span>
               <button onClick={() => setEditingSchedule(false)} style={secondaryButtonStyle}>キャンセル</button>
               <button onClick={() => void saveSchedule()} disabled={saving} style={primaryButtonStyle(!saving)}>{saving ? '保存中…' : '保存'}</button>
             </div>
           </div>
         ) : todo.list_mode && !todo.due_date ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.8rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 'var(--font-control)' }}>
             <span style={{ color: 'var(--slate-400)' }}>開始 {formatShortDate(todo.start_date)}</span>
             <span style={{ color: 'var(--indigo-300)' }} title="期限のない ToDoリストです。使い終えたら「リストを終える」を押します">→ 期限なし</span>
             <button onClick={openScheduleEditor} title="開始日・期限を変更" style={inlineActionStyle}>変更</button>
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.8rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 'var(--font-control)' }}>
             <span style={{ color: 'var(--slate-400)' }}>開始 {formatShortDate(todo.start_date)}</span>
-            <span style={{ color: 'var(--slate-600)' }}>→</span>
+            <span style={{ color: 'var(--text-subtle)' }}>→</span>
             <span style={{ color: dueColor || 'var(--slate-300)', fontWeight: dueColor ? 700 : 400 }}>期限 {formatShortDate(todo.due_date)}</span>
-            {dueLabel && <span style={{ color: dueColor || 'var(--slate-500)', fontSize: '0.74rem' }}>（{dueLabel}）</span>}
+            {dueLabel && <span style={{ color: dueColor || 'var(--slate-500)', fontSize: 'var(--font-caption)' }}>（{dueLabel}）</span>}
             <button onClick={openScheduleEditor} title="開始日・期限を変更" style={inlineActionStyle}>変更</button>
           </div>
         )}
         {!editingSchedule && dueChange && (
-          <div style={{ fontSize: '0.72rem', color: row.postponedCount > 0 ? 'var(--amber-200)' : 'var(--slate-400)', fontWeight: row.postponedCount > 0 ? 700 : 400 }}>
+          <div style={{ fontSize: 'var(--font-caption)', color: row.postponedCount > 0 ? 'var(--amber-200)' : 'var(--slate-400)', fontWeight: row.postponedCount > 0 ? 700 : 400 }}>
             期間中の期限変更: {dueChange}
           </div>
         )}
@@ -2320,7 +2472,7 @@ function ReportTaskCard({
               label={`${todo.title}の進捗率`}
               onCommit={(progress) => updateField({ progress }, `進捗を${progress}%に更新しました`)}
             />
-            <div style={{ fontSize: '0.72rem', color: progressDeltaColor(row, row.todo.progress), marginTop: -2 }}>
+            <div style={{ fontSize: 'var(--font-caption)', color: progressDeltaColor(row, row.todo.progress), marginTop: -2 }}>
               {progressDelta ? `期間中 ${progressDelta}` : '期間中の進捗の変更なし'}
             </div>
           </div>
@@ -2331,7 +2483,7 @@ function ReportTaskCard({
         ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 2, paddingTop: 8, borderTop: '1px dashed var(--slate-800)' }}>
           {subTasks.length > 0 && (
-            <div style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>
+            <div style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>
               サブタスク {subTasks.filter((subTask) => subTask.done).length}/{subTasks.length} 完了
             </div>
           )}
@@ -2340,7 +2492,7 @@ function ReportTaskCard({
           ))}
           {foldedSubTasks.length > 0 && (
             <details>
-              <summary style={{ cursor: 'pointer', fontSize: '0.76rem', color: 'var(--slate-400)', padding: '5px 0' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 'var(--font-control)', color: 'var(--slate-400)', padding: '5px 0' }}>
                 {foldedLabel}
               </summary>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingTop: 5 }}>
@@ -2358,10 +2510,18 @@ function ReportTaskCard({
       {/* ─── 右: 報告内容（メモ・進捗ログ） ─── */}
       <div style={{ flex: '2 1 420px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.74rem', fontWeight: 700, color: tone.color, background: tone.background, border: `1px solid ${tone.border}`, borderRadius: 999, padding: '2px 9px' }}>
+          <span style={{ fontSize: 'var(--font-caption)', fontWeight: 700, color: tone.color, background: tone.background, border: `1px solid ${tone.border}`, borderRadius: 999, padding: '2px 9px' }}>
             {freshnessText(row)}
           </span>
-          <span style={{ fontSize: '0.74rem', color: 'var(--slate-500)' }}>
+          {row.behind && (
+            <span
+              title={`今日時点の予定 ${row.behind.expectedProgress}% ／ 実績 ${todo.progress}%（ガントの「遅れ」と同じ判定）`}
+              style={{ fontSize: 'var(--font-caption)', fontWeight: 700, color: 'var(--amber-200)', background: 'var(--amber-950)', border: '1px solid var(--amber-500)', borderRadius: 999, padding: '2px 9px' }}
+            >
+              進捗 {behindDaysLabel(row.behind.days)}
+            </span>
+          )}
+          <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>
             {lastReportAt ? `最終報告 ${formatDateTime(lastReportAt)}（${formatDaysAgo(lastReportAt)}）` : '最終報告 なし'}
           </span>
           {row.discussions.length > 0 && (
@@ -2378,7 +2538,7 @@ function ReportTaskCard({
               onClick={() => actions.onHideTodo(todo)}
               aria-label={`${todo.title}を報告に出さない`}
               title="このタスクを報告に出さない（自分の表示だけ。表示設定から戻せます）"
-              style={{ ...inlineActionStyle, textDecoration: 'none', color: 'var(--slate-500)', fontWeight: 700, padding: '0 2px' }}
+              style={{ ...inlineActionStyle, textDecoration: 'none', color: 'var(--text-subtle)', fontWeight: 700, padding: '0 2px' }}
             >
               隠す
             </button>
@@ -2409,12 +2569,7 @@ function ReportTaskCard({
                 disabled={posting}
                 showOnTrack={showOnTrackHelper}
                 onInsertTemplate={() => setDraft(withProgressNoteTemplate(draft))}
-                onPostOnTrack={() => void (async () => {
-                  setPosting(true)
-                  const ok = await actions.onCreateNote(todo, ON_TRACK_NOTE, false)
-                  setPosting(false)
-                  if (ok) setComposerOpen(false)
-                })()}
+                onInsertOnTrack={() => setDraft(ON_TRACK_NOTE)}
               />
               <label style={{ ...checkboxLabelStyle, marginRight: 'auto', color: draftNeedsDiscussion ? 'var(--c-d6b38a)' : 'var(--slate-400)' }}>
                 <input type="checkbox" checked={draftNeedsDiscussion} onChange={(event) => setDraftNeedsDiscussion(event.target.checked)} style={{ accentColor: 'var(--indigo-500)' }} />
@@ -2430,7 +2585,7 @@ function ReportTaskCard({
 
         {editingMemo ? (
           <div style={{ background: 'var(--gray-900)', border: '1px solid var(--slate-700)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>メモ（現状・次にやること・引き継ぎなど。上書き保存）</div>
+            <div style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>メモ（現状・次にやること・引き継ぎなど。上書き保存）</div>
             <textarea
               value={memoDraft}
               onChange={(event) => setMemoDraft(event.target.value)}
@@ -2446,7 +2601,7 @@ function ReportTaskCard({
               style={{ ...inputStyle, width: '100%', resize: 'vertical', lineHeight: 1.55 }}
             />
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '0.7rem', color: memoChanged ? 'var(--blue-300)' : 'var(--slate-500)', flex: 1 }}>
+              <span style={{ fontSize: 'var(--font-caption)', color: memoChanged ? 'var(--blue-300)' : 'var(--slate-500)', flex: 1 }}>
                 {memoChanged ? '未保存の変更があります（Ctrl+Enterで保存）' : '変更なし'}
               </span>
               <button onClick={() => setEditingMemo(false)} style={secondaryButtonStyle}>キャンセル</button>
@@ -2458,7 +2613,7 @@ function ReportTaskCard({
         ) : memo ? (
           <div style={{ background: 'var(--gray-900)', border: '1px dashed var(--slate-700)', borderRadius: 10, padding: '8px 11px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-              <span style={{ fontSize: '0.7rem', color: 'var(--slate-500)' }}>メモ{lastMemoAt ? `（更新 ${formatDateTime(lastMemoAt)}）` : ''}</span>
+              <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>メモ{lastMemoAt ? `（更新 ${formatDateTime(lastMemoAt)}）` : ''}</span>
               <button onClick={openMemoEditor} style={{ ...inlineActionStyle, marginLeft: 'auto' }}>編集</button>
             </div>
             <div style={{ fontSize: '0.82rem', color: 'var(--slate-300)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
@@ -2468,7 +2623,7 @@ function ReportTaskCard({
         ) : null}
 
         {notes.length === 0 ? (
-          <div style={{ fontSize: '0.8rem', color: 'var(--slate-600)', padding: '4px 2px' }}>この期間の進捗ログはありません。</div>
+          <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)', padding: '4px 2px' }}>この期間の進捗ログはありません。</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {notes.map((note) => <InteractiveNote key={note.id} note={note} actions={actions} />)}
@@ -2487,7 +2642,7 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid var(--slate-700)',
   borderRadius: 7,
   color: 'var(--slate-200)',
-  fontSize: '0.8rem',
+  fontSize: 'var(--font-control)',
   outline: 'none'
 }
 
@@ -2509,7 +2664,7 @@ function chipStyle(active: boolean): React.CSSProperties {
     borderRadius: 7,
     color: active ? 'var(--on-fill-blue-50)' : 'var(--slate-400)',
     cursor: 'pointer',
-    fontSize: '0.78rem',
+    fontSize: 'var(--font-control)',
     fontWeight: 700,
     whiteSpace: 'nowrap'
   }
@@ -2522,7 +2677,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   borderRadius: 7,
   color: 'var(--slate-300)',
   cursor: 'pointer',
-  fontSize: '0.78rem',
+  fontSize: 'var(--font-control)',
   fontWeight: 700,
   whiteSpace: 'nowrap'
 }
@@ -2535,7 +2690,7 @@ function primaryButtonStyle(enabled: boolean): React.CSSProperties {
     borderRadius: 7,
     color: enabled ? 'var(--on-fill-blue-50)' : 'var(--slate-500)',
     cursor: enabled ? 'pointer' : 'default',
-    fontSize: '0.78rem',
+    fontSize: 'var(--font-control)',
     fontWeight: 700,
     whiteSpace: 'nowrap'
   }
@@ -2549,18 +2704,19 @@ function reportButtonStyle(emphasized: boolean): React.CSSProperties {
     borderRadius: 999,
     color: emphasized ? 'var(--blue-100)' : 'var(--slate-400)',
     cursor: 'pointer',
-    fontSize: '0.74rem',
+    fontSize: 'var(--font-caption)',
     fontWeight: 700,
     whiteSpace: 'nowrap'
   }
 }
 
+// 選んでいるチップは色で塗って「✓」を付ける（色だけで選んでいるかを示さない）。0件のチップは点線の枠で、文字は読める濃さにする
 function quickFilterChipStyle(color: string, active: boolean, muted: boolean): React.CSSProperties {
   return {
-    fontSize: '0.76rem',
-    color: muted ? 'var(--slate-600)' : active ? 'var(--slate-900)' : color,
+    fontSize: 'var(--font-control)',
+    color: muted ? 'var(--text-subtle)' : active ? 'var(--slate-900)' : color,
     background: active ? color : 'var(--gray-900)',
-    border: `1px solid ${active ? color : muted ? 'var(--gray-800)' : `color-mix(in srgb, ${color} 33.3%, transparent)`}`,
+    border: `${active ? 2 : 1}px ${muted && !active ? 'dashed' : 'solid'} ${active ? color : muted ? 'var(--slate-700)' : `color-mix(in srgb, ${color} 33.3%, transparent)`}`,
     borderRadius: 999,
     padding: '3px 11px',
     fontWeight: 700,
@@ -2574,12 +2730,25 @@ const myReminderStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 10,
   flexWrap: 'wrap',
-  padding: '8px 12px',
+  padding: '5px 6px 5px 12px',
   borderRadius: 10,
   border: '1px solid var(--yellow-700)',
   background: 'var(--c-1c1408)',
   color: 'var(--amber-200)',
-  fontSize: '0.8rem'
+  fontSize: 'var(--font-control)'
+}
+
+const myDoneStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  flexWrap: 'wrap',
+  padding: '5px 6px 5px 12px',
+  borderRadius: 10,
+  border: '1px solid var(--green-700)',
+  background: 'var(--green-950)',
+  color: 'var(--green-200)',
+  fontSize: 'var(--font-control)'
 }
 
 const jumpChipStyle: React.CSSProperties = {
@@ -2592,7 +2761,7 @@ const jumpChipStyle: React.CSSProperties = {
   background: 'var(--c-0b1220)',
   color: 'var(--slate-200)',
   cursor: 'pointer',
-  fontSize: '0.74rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 700,
   whiteSpace: 'nowrap'
 }
@@ -2607,7 +2776,7 @@ function collapseButtonStyle(collapsed: boolean): React.CSSProperties {
     color: 'var(--slate-400)',
     cursor: 'pointer',
     padding: 0,
-    fontSize: '0.8rem',
+    fontSize: 'var(--font-control)',
     lineHeight: 1,
     transform: collapsed ? 'rotate(-90deg)' : 'none',
     transition: 'transform 0.15s ease',
@@ -2619,7 +2788,7 @@ const checkboxLabelStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 6,
-  fontSize: '0.78rem',
+  fontSize: 'var(--font-control)',
   color: 'var(--slate-400)',
   cursor: 'pointer'
 }
@@ -2645,7 +2814,7 @@ const settingsChipStyle: React.CSSProperties = {
   background: 'var(--indigo-950)',
   color: 'var(--indigo-200)',
   cursor: 'pointer',
-  fontSize: '0.68rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 600,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
@@ -2671,14 +2840,14 @@ const pillStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 5,
-  fontSize: '0.7rem',
+  fontSize: 'var(--font-caption)',
   border: '1px solid var(--slate-700)',
   borderRadius: 999,
   padding: '1px 8px'
 }
 
 const pillSelectStyle: React.CSSProperties = {
-  fontSize: '0.7rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 700,
   background: 'var(--slate-900)',
   border: '1px solid var(--slate-700)',
@@ -2705,7 +2874,7 @@ const inlineActionStyle: React.CSSProperties = {
   border: 'none',
   color: 'var(--slate-400)',
   cursor: 'pointer',
-  fontSize: '0.72rem',
+  fontSize: 'var(--font-caption)',
   fontWeight: 800,
   padding: 0,
   textDecoration: 'underline',
@@ -2726,7 +2895,7 @@ const taskTitleButtonStyle: React.CSSProperties = {
 }
 
 const emptyStyle: React.CSSProperties = {
-  color: 'var(--slate-500)',
+  color: 'var(--text-subtle)',
   fontSize: '0.86rem',
   padding: '20px 4px'
 }

@@ -1,12 +1,22 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import type { TeamDashboard as TeamDashboardData, TeamDeadlineItem, TeamMemberWorkload, TeamNowItem } from '../types'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { TeamDashboard as TeamDashboardData, TeamDeadlineItem, TeamMemberWorkload, TeamNowItem, Todo } from '../types'
 import { AssigneeChip } from './AssigneePicker'
 import { dataInk } from '../lib/theme'
+import { formatShortDate } from '../lib/dueDate'
+import { behindDaysOf, isBehindSchedule, isScheduleTracked, loadScheduleSettings } from '../lib/scheduleHealth'
 
 interface Props {
   onSelectTodo: (id: string) => void
+  /** メンバーのカードを押したとき（そのメンバーで一覧を絞ってガントを開く） */
+  onSelectMember?: (userId: string) => void
   /** false のときプライベートカテゴリのタスクを集計から除外（全体レンズ） */
   includePrivate?: boolean
+  /** メンバーごとの「遅れ」を数えるタスク（ガント・報告タブと同じ判定にする） */
+  todos?: Todo[]
+}
+
+function toDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 const EMPTY: TeamDashboardData = { now: [], overdue: [], dueSoon: [], workloads: [] }
@@ -30,30 +40,39 @@ function formatMinutes(minutes: number): string {
 function dueSoonLabel(days: number): string {
   if (days <= 0) return '今日'
   if (days === 1) return '明日'
-  return `${days}日後`
+  return `あと${days}日`
 }
 
-export function TeamDashboard({ onSelectTodo, includePrivate = true }: Props): React.JSX.Element {
+export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = true, todos = [] }: Props): React.JSX.Element {
   const [data, setData] = useState<TeamDashboardData>(EMPTY)
   const [loadedAt, setLoadedAt] = useState<number>(Date.now())
   const [nowMs, setNowMs] = useState<number>(Date.now())
   const [hasLoaded, setHasLoaded] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const requestRef = useRef(0)
 
   const load = useCallback(async () => {
+    const request = ++requestRef.current
+    setLoading(true)
     try {
       const next = await window.api.teamGetDashboard(includePrivate)
+      if (request !== requestRef.current) return
       setData(next)
       setLoadedAt(Date.now())
       setNowMs(Date.now())
-    } catch (error) {
-      console.error('Failed to load team dashboard', error)
-    } finally {
       setHasLoaded(true)
+      setLoadError(null)
+    } catch (error) {
+      if (request === requestRef.current) setLoadError(error instanceof Error ? error.message : 'チーム状況を読み込めませんでした')
+    } finally {
+      if (request === requestRef.current) setLoading(false)
     }
   }, [includePrivate])
 
   useEffect(() => {
     void load()
+    return () => { requestRef.current++ }
   }, [load])
 
   useEffect(() => {
@@ -78,12 +97,50 @@ export function TeamDashboard({ onSelectTodo, includePrivate = true }: Props): R
 
   const secondsSinceLoad = Math.max(0, Math.floor((nowMs - loadedAt) / 1000))
 
+  // 遅れ（期限前で、予定の進捗より遅れている主担当のタスク）。ガントの表示設定の「遅れとみなす日数」「土日・祝日を数えない」に合わせる
+  const [scheduleSettings] = useState(loadScheduleSettings)
+  const [holidayNames, setHolidayNames] = useState<ReadonlyMap<string, string>>(() => new Map())
+  useEffect(() => {
+    if (!scheduleSettings.workingDaysOnly) return
+    let cancelled = false
+    void import('@holiday-jp/holiday_jp')
+      .then((module) => {
+        const library = ((module as { default?: unknown }).default ?? module) as { holidays: Record<string, { name: string }> }
+        if (!cancelled) setHolidayNames(new Map(Object.entries(library.holidays).map(([date, holiday]) => [date, holiday.name])))
+      })
+      .catch(() => { /* 祝日が読めなくても土日だけ除いて数える */ })
+    return () => { cancelled = true }
+  }, [scheduleSettings.workingDaysOnly])
+  const todayKey = toDateKey(new Date(nowMs))
+  const behindCountByUser = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const todo of todos) {
+      if (!todo.assignee_id || !isScheduleTracked(todo) || !todo.start_date || !todo.due_date) continue
+      const bar = { startDate: todo.start_date.slice(0, 10), endDate: todo.due_date.slice(0, 10) }
+      // 期限を過ぎたものは「超過」で数える
+      if (bar.endDate < bar.startDate || todayKey > bar.endDate) continue
+      const { behindDays, expectedProgress } = behindDaysOf(todo.progress, bar, todayKey, { ...scheduleSettings, holidayNames })
+      if (isBehindSchedule(expectedProgress, todo.progress, behindDays, scheduleSettings.behindThresholdDays)) {
+        counts.set(todo.assignee_id, (counts.get(todo.assignee_id) ?? 0) + 1)
+      }
+    }
+    return counts
+  }, [holidayNames, scheduleSettings, todayKey, todos])
+
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 22 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <h1 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--slate-50)' }}>チーム状況</h1>
-        <button onClick={() => void load()} style={refreshButtonStyle}>更新</button>
+        <button disabled={loading} onClick={() => void load()} style={refreshButtonStyle}>{loading ? '更新中…' : '更新'}</button>
       </div>
+      {loadError && <div role="alert" style={{ padding: 16, border: '1px solid var(--red-500)', borderRadius: 10, color: 'var(--slate-200)' }}>
+        <p>チーム状況を読み込めませんでした。{loadError}</p>
+        <p style={{ marginTop: 6, fontSize: 'var(--font-control)' }}>{hasLoaded ? '前回取得した内容を表示しています。' : '件数はまだ取得できていません。'} 社内LANへの接続を確認して、もう一度お試しください。</p>
+        <button disabled={loading} onClick={() => void load()} style={{ ...refreshButtonStyle, marginTop: 10 }}>再試行</button>
+      </div>}
+      {!hasLoaded && loading && <p role="status">チーム状況を読み込み中…</p>}
+      {hasLoaded && <>
+      <p style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-control)', marginTop: -10 }}>タスクの件数は現在の状態、作業時間は今日、報告なしは直近7日を集計しています。</p>
 
       <section>
         <SectionHeader title="いま稼働中" accent="var(--green-400)" count={data.now.length} />
@@ -93,6 +150,20 @@ export function TeamDashboard({ onSelectTodo, includePrivate = true }: Props): R
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
             {data.now.map((item) => (
               <NowCard key={`${item.user_id}-${item.todo_id}`} item={item} extraSeconds={secondsSinceLoad} onSelectTodo={onSelectTodo} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* メンバーごとの数（遅れ・報告なしなど）は朝いちばんに見るので、期限の一覧より先に出す */}
+      <section>
+        <SectionHeader title="メンバーの負荷" accent="var(--blue-400)" count={data.workloads.length} />
+        {data.workloads.length === 0 ? (
+          <EmptyNote text="メンバーがいません。" />
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 330px), 1fr))', gap: 8 }}>
+            {data.workloads.map((member) => (
+              <WorkloadCard key={member.user_id} member={member} behindCount={behindCountByUser.get(member.user_id) ?? 0} onSelect={onSelectMember ? () => onSelectMember(member.user_id) : undefined} />
             ))}
           </div>
         )}
@@ -125,19 +196,7 @@ export function TeamDashboard({ onSelectTodo, includePrivate = true }: Props): R
           )}
         </section>
       </div>
-
-      <section>
-        <SectionHeader title="メンバーの負荷" accent="var(--blue-400)" count={data.workloads.length} />
-        {data.workloads.length === 0 ? (
-          <EmptyNote text="メンバーがいません。" />
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
-            {data.workloads.map((member) => (
-              <WorkloadCard key={member.user_id} member={member} />
-            ))}
-          </div>
-        )}
-      </section>
+      </>}
     </div>
   )
 }
@@ -147,13 +206,13 @@ function SectionHeader({ title, accent, count }: { title: string; accent: string
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
       <span style={{ width: 8, height: 8, borderRadius: '50%', background: accent }} />
       <span style={{ fontSize: '0.9rem', color: 'var(--slate-200)', fontWeight: 700 }}>{title}</span>
-      <span style={{ fontSize: '0.74rem', color: 'var(--slate-500)' }}>{count}件</span>
+      <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>{count}件</span>
     </div>
   )
 }
 
 function EmptyNote({ text }: { text: string }): React.JSX.Element {
-  return <div style={{ fontSize: '0.84rem', color: 'var(--slate-500)', padding: '8px 0' }}>{text}</div>
+  return <div style={{ fontSize: '0.84rem', color: 'var(--text-subtle)', padding: '8px 0' }}>{text}</div>
 }
 
 function NowCard({ item, extraSeconds, onSelectTodo }: { item: TeamNowItem; extraSeconds: number; onSelectTodo: (id: string) => void }): React.JSX.Element {
@@ -194,7 +253,7 @@ function DeadlineRow({ item, accent, label, onSelectTodo }: { item: TeamDeadline
         <span style={{ flexShrink: 0, fontSize: '0.72rem', color: accent, fontWeight: 700 }}>{label}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.7rem', color: 'var(--slate-400)' }}>
-        <span>期限 {item.due_date.slice(0, 10)}</span>
+        <span>期限 {formatShortDate(item.due_date)}</span>
         {item.category_name && <span style={{ color: dataInk(item.category_color ?? 'var(--indigo-300)') }}>{item.category_name}</span>}
         <span>{item.progress}%</span>
         <span style={{ marginLeft: 'auto' }}>
@@ -205,27 +264,37 @@ function DeadlineRow({ item, accent, label, onSelectTodo }: { item: TeamDeadline
   )
 }
 
-function WorkloadCard({ member }: { member: TeamMemberWorkload }): React.JSX.Element {
+function WorkloadCard({ member, behindCount, onSelect }: { member: TeamMemberWorkload; behindCount: number; onSelect?: () => void }): React.JSX.Element {
+  const Container = onSelect ? 'button' : 'div'
   return (
-    <div style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <Container
+      type={onSelect ? 'button' : undefined}
+      onClick={onSelect}
+      title={onSelect ? `${member.display_name}さんのタスクだけをガントで見る` : undefined}
+      style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 10, padding: '8px 12px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 14px', textAlign: 'left', color: 'inherit', font: 'inherit', cursor: onSelect ? 'pointer' : 'default', width: '100%' }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '7.5rem', minWidth: 0 }}>
         <span style={{ width: 11, height: 11, borderRadius: '50%', background: member.user_color }} />
         <span style={{ fontSize: '0.86rem', color: 'var(--slate-200)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.display_name}</span>
       </div>
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        <Metric label="進行中" value={`${member.active_tasks}`} color="var(--slate-200)" />
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+        <Metric label="未完了" title="未着手と進行中の数（保留中は別に数える）" value={`${member.active_tasks}`} color="var(--slate-200)" />
         <Metric label="保留中" value={`${member.on_hold_tasks}`} color="var(--purple-300)" />
-        <Metric label="超過" value={`${member.overdue_tasks}`} color={member.overdue_tasks > 0 ? 'var(--red-400)' : 'var(--slate-500)'} />
+        <Metric label="超過" title="期限を過ぎた未完了のタスク" value={`${member.overdue_tasks}`} color={member.overdue_tasks > 0 ? 'var(--red-400)' : 'var(--slate-500)'} />
+        <Metric label="遅れ" title="期限前で、予定の進捗より遅れているタスク（ガントの「遅れ」と同じ判定）" value={`${behindCount}`} color={behindCount > 0 ? 'var(--amber-300)' : 'var(--slate-500)'} />
+        {member.unreported_tasks !== undefined && (
+          <Metric label="報告なし（直近7日）" title="直近7日に、担当（主・副）の進捗ログもメモの更新もない、進行中（または開始日を過ぎた未着手）の主担当のタスク。報告タブの「報告なし」と同じ数え方で、期間を直近7日にしたもの（報告のリマインドも同じ条件）" value={`${member.unreported_tasks}`} color={member.unreported_tasks > 0 ? 'var(--amber-200)' : 'var(--slate-500)'} />
+        )}
         <Metric label="今日" value={formatMinutes(member.today_minutes)} color="var(--green-400)" />
       </div>
-    </div>
+    </Container>
   )
 }
 
-function Metric({ label, value, color }: { label: string; value: string; color: string }): React.JSX.Element {
+function Metric({ label, value, color, title }: { label: string; value: string; color: string; title?: string }): React.JSX.Element {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <span style={{ fontSize: '0.64rem', color: 'var(--slate-500)' }}>{label}</span>
+    <div title={title} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <span style={{ fontSize: '0.64rem', color: 'var(--text-subtle)' }}>{label}</span>
       <span style={{ fontSize: '0.92rem', color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
     </div>
   )

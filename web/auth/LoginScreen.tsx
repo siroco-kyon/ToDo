@@ -153,6 +153,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     cursor: 'pointer'
   },
-  hint: { fontSize: '0.74rem', color: 'var(--slate-500)', lineHeight: 1.6, marginTop: 4 },
+  hint: { fontSize: '0.74rem', color: 'var(--text-subtle)', lineHeight: 1.6, marginTop: 4 },
   link: { fontSize: '0.78rem', color: 'var(--teal-300)', alignSelf: 'flex-start' }
 }

@@ -1,7 +1,10 @@
-﻿import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+﻿import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AddDailyPlanItemOptions, DailyPlanItem, Todo, UpdateDailyPlanItemInput } from '../types'
 import { checklistBadgeText, hasRemainingToday, type ChecklistSummary } from '../lib/todoList'
 import { dataInk } from '../lib/theme'
+
+// 優先度の表記（ほかの画面の「低・中・高」とそろえる）
+const PRIORITY_LABELS: Record<number, string> = { 1: '最低', 2: '低', 3: '中', 4: '高', 5: '最高' }
 
 interface Props {
   date: string
@@ -80,6 +83,8 @@ const COMPACT_BLOCK_THRESHOLD = 64
 const EDGE_SCROLL_THRESHOLD = 72
 const EDGE_SCROLL_PIXELS = 24
 const AUTO_SCROLL_LEAD_MINUTES = 60
+/** 今日以外の計画を開いたときに見せ始める時刻（始業のころ） */
+const WORKDAY_START_HOUR = 8
 
 function getTodayKey(): string {
   const now = new Date()
@@ -104,11 +109,17 @@ function diffCalendarDays(dateStr: string, baseDateStr: string): number {
 
 function formatDueLabel(dueDate: string | null, todayKey: string): string {
   if (!dueDate) return '期限なし'
+  const isToday = todayKey === getTodayKey()
   const diffDays = diffCalendarDays(dueDate, todayKey)
-  if (diffDays < 0) return `${Math.abs(diffDays)}日遅れ`
-  if (diffDays === 0) return '今日が期限'
-  if (diffDays === 1) return '明日が期限'
+  if (diffDays < 0) return `${Math.abs(diffDays)}日超過`
+  if (diffDays === 0) return isToday ? '今日が期限' : 'この日が期限'
+  if (diffDays === 1) return isToday ? '明日が期限' : '翌日が期限'
   return `あと${diffDays}日`
+}
+
+/** 「今日に入れる」のボタンの文言。今日以外の計画では「この日に入れる」 */
+function addToDayLabel(dateKey: string): string {
+  return dateKey === getTodayKey() ? '今日に入れる' : 'この日に入れる'
 }
 
 function formatMinutes(minutes: number): string {
@@ -312,12 +323,10 @@ function SummaryCard({
   tone: string
 }): React.JSX.Element {
   return (
-    <div style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 14px' }}>
-      <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
-      <div style={{ fontSize: '1.08rem', color: tone, fontWeight: 700, marginTop: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {value}
-      </div>
-      <div style={{ fontSize: '0.76rem', color: 'var(--slate-400)', marginTop: 6 }}>{detail}</div>
+    <div title={detail} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+      <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>{label}</span>
+      <span style={{ fontSize: '0.95rem', color: tone, fontWeight: 700, whiteSpace: 'nowrap' }}>{value}</span>
+      <span style={{ fontSize: '0.7rem', color: 'var(--slate-400)' }}>{detail}</span>
     </div>
   )
 }
@@ -343,7 +352,7 @@ function Section({
     >
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <div style={{ fontSize: '0.95rem', color: 'var(--slate-50)', fontWeight: 700 }}>{title}</div>
-        {subtitle && <div style={{ fontSize: '0.76rem', color: 'var(--slate-500)' }}>{subtitle}</div>}
+        {subtitle && <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>{subtitle}</div>}
       </div>
       {children}
     </section>
@@ -351,7 +360,7 @@ function Section({
 }
 
 function EmptyState({ label }: { label: string }): React.JSX.Element {
-  return <div style={{ color: 'var(--slate-500)', fontSize: '0.82rem', padding: '4px 2px', lineHeight: 1.6 }}>{label}</div>
+  return <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem', padding: '4px 2px', lineHeight: 1.6 }}>{label}</div>
 }
 
 const inputStyle: React.CSSProperties = {
@@ -424,6 +433,8 @@ function CandidateCard({
   onPrepareDrag: () => void
   placementActive: boolean
 }): React.JSX.Element {
+  const [adding, setAdding] = useState(false)
+  const addingRef = useRef(false)
   return (
     <div
       draggable
@@ -467,7 +478,7 @@ function CandidateCard({
             </span>
           )}
           <span style={{ fontSize: '0.72rem', color: 'var(--slate-300)' }}>{formatDueLabel(todo.due_date, todayKey)}</span>
-          <span style={{ fontSize: '0.72rem', color: 'var(--amber-400)' }}>P{todo.priority}</span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--amber-400)' }}>優先度 {PRIORITY_LABELS[todo.priority] ?? todo.priority}</span>
           {plannedCount > 0 && (
             <span style={{ fontSize: '0.68rem', color: 'var(--blue-300)', background: 'color-mix(in srgb, var(--blue-900) 25.1%, transparent)', borderRadius: 999, padding: '2px 8px' }}>
               配置済み ×{plannedCount}
@@ -487,17 +498,23 @@ function CandidateCard({
             })
           }}
           style={actionBtn(placementActive ? 'var(--blue-700)' : 'var(--slate-800)', 'var(--blue-100)', placementActive ? 'var(--blue-400)' : 'var(--slate-700)')}
+          aria-label={placementActive ? `「${todo.title}」を置く時刻を選んでいます` : `「${todo.title}」を時間割に置く`}
         >
           {placementActive ? '配置中' : '時間に置く'}
         </button>
         <button
           onClick={(event) => {
             event.stopPropagation()
-            void onAdd(todo.id)
+            if (addingRef.current) return
+            addingRef.current = true
+            setAdding(true)
+            void onAdd(todo.id).finally(() => { addingRef.current = false; setAdding(false) })
           }}
+          disabled={adding}
           style={actionBtn('var(--blue-950)', 'var(--blue-200)', 'var(--blue-600)')}
+          aria-label={`「${todo.title}」を${todayKey === getTodayKey() ? '今日' : 'この日'}の計画に入れる`}
         >
-          今日に入れる
+          {adding ? '追加中…' : addToDayLabel(todayKey)}
         </button>
       </div>
     </div>
@@ -583,6 +600,7 @@ function UnscheduledCard({
             })
           }}
           style={actionBtn(placementActive ? 'var(--blue-700)' : 'var(--slate-800)', 'var(--blue-100)', placementActive ? 'var(--blue-400)' : 'var(--slate-700)')}
+          aria-label={placementActive ? `「${item.title}」を置く時刻を選んでいます` : `「${item.title}」を時間割に置く`}
         >
           {placementActive ? '配置中' : '時間に置く'}
         </button>
@@ -616,6 +634,20 @@ export function PlanView({
   listFilters,
   checklistSummaries
 }: Props): React.JSX.Element {
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionPending, setActionPending] = useState(false)
+  const actionPendingRef = useRef(false)
+  const reportActionError = useCallback((error: unknown): void => {
+    setActionError(error instanceof Error ? error.message : '計画を変更できませんでした')
+  }, [])
+  const runAction = useCallback(async (action: () => Promise<unknown>): Promise<void> => {
+    if (actionPendingRef.current) return
+    actionPendingRef.current = true
+    setActionPending(true)
+    try { await action(); setActionError(null) } catch (error) { reportActionError(error) }
+    finally { actionPendingRef.current = false; setActionPending(false) }
+  }, [reportActionError])
+  useEffect(() => setActionError(null), [date])
   const timelineRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<InteractionState | null>(null)
@@ -728,13 +760,20 @@ export function PlanView({
 
   useLayoutEffect(() => {
     const todayKey = getTodayKey()
-    if (date !== todayKey) return
 
     const scrollContainer = scrollContainerRef.current
     if (!scrollContainer) return
 
+    const earliestScheduled = planItems
+      .filter((item) => item.scheduled_start)
+      .map((item) => clockToMinutes(item.scheduled_start!) - TIMELINE_START_HOUR * 60)
+      .sort((a, b) => a - b)[0]
+    const otherDayStart = Math.min(earliestScheduled ?? Number.POSITIVE_INFINITY, WORKDAY_START_HOUR * 60 - TIMELINE_START_HOUR * 60) - 30
+
     const applyScroll = (): void => {
-      const startOffset = clamp(nowOffsetMinutes() - AUTO_SCROLL_LEAD_MINUTES, 0, TIMELINE_TOTAL_MINUTES)
+      const startOffset = date === todayKey
+        ? clamp(nowOffsetMinutes() - AUTO_SCROLL_LEAD_MINUTES, 0, TIMELINE_TOTAL_MINUTES)
+        : clamp(otherDayStart, 0, TIMELINE_TOTAL_MINUTES)
       const targetTop = startOffset * PIXELS_PER_MINUTE
       const maxScrollTop = Math.max(scrollContainer.scrollHeight - scrollContainer.clientHeight, 0)
       scrollContainer.scrollTop = clamp(targetTop, 0, maxScrollTop)
@@ -820,11 +859,11 @@ export function PlanView({
         }
       })
 
-      void onUpdateItem(current.itemId, {
+      void runAction(() => onUpdateItem(current.itemId, {
         scheduled_start: offsetToClock(current.previewStart),
         estimated_minutes: current.previewDuration,
         lane: current.previewLane
-      }).then(() => onReorder(reorderIdsByTime(nextItems)))
+      }).then(() => onReorder(reorderIdsByTime(nextItems))))
     }
 
     window.addEventListener('pointermove', handlePointerMove)
@@ -834,7 +873,7 @@ export function PlanView({
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
     }
-  }, [interaction, onReorder, onUpdateItem, planItems])
+  }, [interaction, onReorder, onUpdateItem, planItems, runAction])
 
   const clearPlacement = (): void => {
     setPlacementDraft(null)
@@ -974,34 +1013,43 @@ export function PlanView({
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 20 }}>
+    <div aria-busy={actionPending} style={{ height: '100%', overflowY: 'auto', padding: 20 }}>
+      {actionPending && <div role="status" style={{ position: 'sticky', top: 0, zIndex: 11, padding: 10, background: 'var(--slate-800)', color: 'var(--slate-100)', borderRadius: 8, marginBottom: 10 }}>計画を更新中…</div>}
+      {actionError && <div role="alert" style={{ position: 'sticky', top: 0, zIndex: 10, marginBottom: 12, padding: 12, borderRadius: 10, border: '1px solid var(--red-500)', background: 'var(--slate-900)', color: 'var(--slate-100)' }}>
+        <p>計画の操作を完了できませんでした。{actionError}</p>
+        <p style={{ marginTop: 6, fontSize: 'var(--font-control)' }}>社内LANへの接続と表示中の予定を確認し、同じ操作をもう一度お試しください。</p>
+        <button onClick={() => setActionError(null)} style={{ ...miniActionBtn('var(--slate-800)', 'var(--slate-200)'), marginTop: 8 }}>閉じる</button>
+      </div>}
       {onDateChange && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <button onClick={() => onDateChange(shiftDateKey(date, -1))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}>← 前日</button>
-          <input type="date" value={date} onChange={(event) => onDateChange(event.target.value)} style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)' }} />
+          <input type="date" aria-label="計画の日付" disabled={actionPending} value={date} onChange={(event) => { if (event.target.value) onDateChange(event.target.value) }} style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)' }} />
           <button onClick={() => onDateChange(shiftDateKey(date, 1))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}>翌日 →</button>
           <button onClick={() => onDateChange(getTodayKey())} style={miniActionBtn('var(--blue-950)', 'var(--blue-100)')}>今日</button>
-          {onCarryOver && <button onClick={() => void onCarryOver()} style={miniActionBtn('var(--green-900)', 'var(--green-100)')}>前日の未完了を繰り越す</button>}
+          {onCarryOver && <button onClick={() => void runAction(onCarryOver)} style={miniActionBtn('var(--green-900)', 'var(--green-100)')}>前日の未完了を繰り越す</button>}
           {listFilters && <span style={{ marginLeft: 'auto' }}>{listFilters}</span>}
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(320px, 0.9fr)', gap: 16, alignItems: 'start' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+      {/* 2列（時間割と候補）。狭いときは候補を時間割の下へ回す（時間割が細くならないように） */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+        <div style={{ flex: '1.5 1 440px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+            {/* 日付と件数は1行にまとめる（時間割を上に寄せる） */}
             <div
+              title="今日の時間割をまとめて調整できます"
               style={{
-                display: 'grid',
-                gridTemplateColumns: 'minmax(160px, 1.3fr) repeat(3, minmax(120px, 0.7fr))',
-              gap: 10,
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'baseline',
+                gap: '6px 18px',
               background: 'var(--gray-900)',
               border: '1px solid var(--gray-800)',
-              borderRadius: 14,
-              padding: 12
+              borderRadius: 12,
+              padding: '8px 14px'
             }}
             >
-              <div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>日付</div>
-              <div style={{ marginTop: 6, fontSize: '1rem', color: 'var(--slate-50)', fontWeight: 700 }}>{date}</div>
-              <div style={{ marginTop: 4, fontSize: '0.76rem', color: 'var(--slate-400)' }}>今日の時間割をまとめて調整できます</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>日付</span>
+              <span style={{ fontSize: '0.95rem', color: 'var(--slate-50)', fontWeight: 700 }}>{date}</span>
             </div>
             <SummaryCard label="予定" value={`${timedCount}件`} detail="時間あり" tone="var(--blue-400)" />
             <SummaryCard label="未定" value={`${unscheduledItems.length}件`} detail="まだ時刻なし" tone="var(--amber-400)" />
@@ -1064,7 +1112,7 @@ export function PlanView({
                           right: 0,
                           textAlign: 'right',
                           fontSize: '0.72rem',
-                          color: 'var(--slate-500)'
+                          color: 'var(--text-subtle)'
                         }}
                       >
                         {String(hour).padStart(2, '0')}:00
@@ -1075,6 +1123,8 @@ export function PlanView({
 
                 <div
                   ref={timelineRef}
+                  role="group"
+                  aria-label="計画の時間割"
                   onMouseMove={(event) => {
                     if (!placementDraft || interaction) return
 
@@ -1101,7 +1151,7 @@ export function PlanView({
                     const lane = getDropLane(event.clientX)
                     if (minutes == null || lane == null) return
 
-                    void handlePlaceDraft(minutes, lane)
+                    void runAction(() => handlePlaceDraft(minutes, lane))
                   }}
                   onDragOver={(event) => {
                     const types = Array.from(event.dataTransfer.types)
@@ -1125,7 +1175,7 @@ export function PlanView({
                     setDragPreview(readDragPreview(event))
                   }}
                   onDragLeave={handleTimelineDragLeave}
-                  onDrop={(event) => void handleTimelineDrop(event)}
+                  onDrop={(event) => void runAction(() => handleTimelineDrop(event))}
                   style={{ position: 'relative', height: TIMELINE_HEIGHT, cursor: placementDraft ? 'copy' : 'default' }}
                 >
                   {Array.from({ length: TIMELINE_END_HOUR - TIMELINE_START_HOUR }, (_, index) => (
@@ -1331,12 +1381,12 @@ export function PlanView({
                               </span>
                             )}
                             {!compactBlock && <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void onShiftItem(item.id, -15)} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分早める">−15</button>
-                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void onShiftItem(item.id, 15)} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分遅らせる">+15</button>
+                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void runAction(() => onShiftItem(item.id, -15))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分早める">−15</button>
+                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void runAction(() => onShiftItem(item.id, 15))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分遅らせる">+15</button>
                               {onShiftFollowing && (
                                 <button
                                   onPointerDown={(event) => event.stopPropagation()}
-                                  onClick={() => void onShiftFollowing(item.id, 15)}
+                                  onClick={() => void runAction(() => onShiftFollowing!(item.id, 15))}
                                   style={miniActionBtn('var(--blue-950)', 'var(--blue-200)')}
                                   title="この予定と、これ以降の予定を15分遅らせる"
                                 >
@@ -1345,7 +1395,7 @@ export function PlanView({
                               )}
                               <button
                                 onPointerDown={(event) => event.stopPropagation()}
-                                onClick={() => void duplicateBlock(item)}
+                                onClick={() => void runAction(() => duplicateBlock(item))}
                                 style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
                                 title="同じタスクをこの直後にもう1つ置く"
                               >
@@ -1358,7 +1408,7 @@ export function PlanView({
                                     if (planItem.id !== item.id) return planItem
                                     return { ...planItem, scheduled_start: null }
                                   })
-                                  void onUpdateItem(item.id, { scheduled_start: null }).then(() => onReorder(reorderIdsByTime(nextItems)))
+                                  void runAction(() => onUpdateItem(item.id, { scheduled_start: null }).then(() => onReorder(reorderIdsByTime(nextItems))))
                                 }}
                                 style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
                                 title="未定に戻す"
@@ -1367,7 +1417,7 @@ export function PlanView({
                               </button>
                               <button
                                 onPointerDown={(event) => event.stopPropagation()}
-                                onClick={() => void onRemoveItem(item.id)}
+                                onClick={() => void runAction(() => onRemoveItem(item.id))}
                                 style={miniActionBtn('var(--c-3f1d1d)', 'var(--red-300)')}
                                 title="今日の計画から外す"
                               >
@@ -1429,7 +1479,7 @@ export function PlanView({
             </div>
           </Section>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        <div style={{ flex: '0.9 1 320px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <Section title="時刻が未定のタスク" subtitle="まだ時刻を決めていないタスクです。ドラッグかクリックで時間割に置けます。">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {unscheduledItems.length === 0 ? (
@@ -1441,7 +1491,7 @@ export function PlanView({
                     item={item}
                     todayKey={date}
                     onSelect={onSelectTodo}
-                    onRemove={onRemoveItem}
+                    onRemove={async (id) => { await runAction(() => onRemoveItem(id)) }}
                     onSchedule={(draft) => {
                       setPlacementDraft(draft)
                       setPlacementTarget(null)
@@ -1454,7 +1504,7 @@ export function PlanView({
             </div>
           </Section>
 
-          <Section title="候補" subtitle="おすすめのタスクをそのまま時間割へ置けます。">
+          <Section title="候補" subtitle={`「${addToDayLabel(date)}」は時刻未定で追加。「時間に置く」は押したあと、時間割の空き時間を選びます。`}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {suggestions.length === 0 ? (
                 <EmptyState label="おすすめのタスクはありません。「タスクを探す」から計画に追加してください。" />
@@ -1468,7 +1518,7 @@ export function PlanView({
                         todo={todo}
                         todayKey={date}
                         note={todo.list_mode && checklistSummaries?.get(todo.id) ? `ToDoリスト: ${checklistBadgeText(checklistSummaries.get(todo.id)!)}` : undefined}
-                        onAdd={async (todoId) => { await onAddTodo(todoId) }}
+                        onAdd={async (todoId) => { await runAction(() => onAddTodo(todoId)) }}
                         onSchedule={(draft) => {
                           setPlacementDraft(draft)
                           setPlacementTarget(null)
@@ -1500,7 +1550,7 @@ export function PlanView({
                     todo={todo}
                     todayKey={date}
                     plannedCount={plannedCountByTodoId.get(todo.id) ?? 0}
-                    onAdd={async (todoId) => { await onAddTodo(todoId) }}
+                    onAdd={async (todoId) => { await runAction(() => onAddTodo(todoId)) }}
                     onSchedule={(draft) => {
                       setPlacementDraft(draft)
                       setPlacementTarget(null)

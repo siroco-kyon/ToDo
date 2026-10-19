@@ -81,7 +81,7 @@ function StatusCard({
 }): React.JSX.Element {
   return (
     <div style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 14px' }}>
-      <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{label}</div>
       {item ? (
         <>
           <button
@@ -95,7 +95,7 @@ function StatusCard({
           </div>
         </>
       ) : (
-        <div style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--slate-500)', lineHeight: 1.5 }}>{emptyLabel}</div>
+        <div style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--text-subtle)', lineHeight: 1.5 }}>{emptyLabel}</div>
       )}
     </div>
   )
@@ -129,7 +129,7 @@ export function TodayFlowRail({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <div>
             <div style={{ color: 'var(--slate-50)', fontSize: '0.95rem', fontWeight: 700 }}>今日の予定</div>
-            <div style={{ color: 'var(--slate-500)', fontSize: '0.74rem', marginTop: 4 }}>{date}</div>
+            <div style={{ color: 'var(--text-subtle)', fontSize: '0.74rem', marginTop: 4 }}>{date}</div>
           </div>
           <button
             onClick={onOpenPlan}
@@ -171,11 +171,11 @@ export function TodayFlowRail({
         <section style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--slate-200)' }}>予定一覧</div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--slate-500)' }}>{timedItems.length}件</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>{timedItems.length}件</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
             {timedItems.length === 0 ? (
-              <div style={{ color: 'var(--slate-500)', fontSize: '0.78rem', lineHeight: 1.5 }}>まだ時刻付きの予定はありません。</div>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.78rem', lineHeight: 1.5 }}>まだ時刻付きの予定はありません。</div>
             ) : (
               timedItems.map((item) => {
                 const active = runningTodoId === item.todo_id || currentItem?.id === item.id
@@ -198,7 +198,7 @@ export function TodayFlowRail({
                       <span style={{ fontSize: '0.72rem', color: active ? 'var(--on-fill-blue-100)' : 'var(--blue-300)', fontWeight: 700 }}>
                         {formatClock(item.startMinutes)} - {formatClock(item.endMinutes)}
                       </span>
-                      <span style={{ fontSize: '0.68rem', color: 'var(--slate-500)' }}>{formatDuration(item.durationMinutes)}</span>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>{formatDuration(item.durationMinutes)}</span>
                       {active && (
                         <span style={{ fontSize: '0.62rem', color: 'var(--on-fill-blue-100)', background: 'var(--blue-700)', borderRadius: 999, padding: '1px 6px' }}>
                           進行中
@@ -241,7 +241,7 @@ export function TodayFlowRail({
                   }}
                 >
                   <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>{item.status === 'on_hold' && <span style={{ color: 'var(--purple-300)' }}>保留中 · </span>}{item.title}</div>
-                  <div style={{ marginTop: 4, fontSize: '0.68rem', color: 'var(--slate-500)' }}>
+                  <div style={{ marginTop: 4, fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
                     {formatDuration(normalizeDuration(item.estimated_minutes))}
                   </div>
                 </button>

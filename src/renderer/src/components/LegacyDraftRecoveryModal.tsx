@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { PublicUser } from '../types'
 import { copyTextToClipboard } from '../lib/clipboard'
 import {
@@ -16,6 +17,8 @@ interface Props {
 }
 
 export function LegacyDraftRecoveryModal({ onClose, onShowToast }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const [user, setUser] = useState<PublicUser | null>(null)
   const [titles, setTitles] = useState<Record<string, string>>({})
   const [drafts, setDrafts] = useState<LegacyProgressDraft[]>([])
@@ -83,7 +86,7 @@ export function LegacyDraftRecoveryModal({ onClose, onShowToast }: Props): React
   }
 
   return <div style={backdrop} onClick={(event) => { if (event.target === event.currentTarget && !restoring) onClose() }}>
-    <div role="dialog" aria-modal="true" aria-label="旧版の下書きを復元" style={panel}>
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="旧版の下書きを復元" style={panel}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <h2 style={{ fontSize: '1.1rem', margin: 0 }}>旧版の下書きを復元</h2>
         <button type="button" aria-label="閉じる" disabled={restoring} onClick={onClose} style={button}>閉じる</button>
