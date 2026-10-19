@@ -154,7 +154,7 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--indigo-100)' }}>今日やること</span>
             <span style={{ fontSize: '0.76rem', color: remaining > 0 ? 'var(--indigo-200)' : 'var(--green-400)' }}>{todayGroups.length === 0 ? '' : remaining > 0 ? `残り ${remaining}` : 'すべて済み'}</span>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>繰り返しの項目と、開始日が来たやること・期限が今日までのやること</span>
+            <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>各リストから、今日やる項目をまとめて表示</span>
           </div>
           <TodayTodoItems
             groups={todayGroups}
@@ -167,7 +167,10 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
         )}
 
         {!showIntro && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 16, alignItems: 'start' }}>
+          <details open={todayGroups.length === 0 || undefined} style={{ borderTop: '1px solid var(--slate-700)', paddingTop: 12 }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 700, color: 'var(--slate-200)', fontSize: '0.9rem', padding: '6px 0' }}>リストと項目を管理・追加する（{lists.length}リスト）</summary>
+          <p style={{ margin: '6px 0 14px', color: 'var(--text-subtle)', fontSize: 'var(--font-caption)' }}>上の「今日やること」と同じ項目です。ここでは、日付・繰り返しの設定や項目の追加ができます。</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 420px), 1fr))', gap: 16, alignItems: 'start' }}>
             {lists.map((todo) => {
               const items = itemsByTodo.get(todo.id) ?? []
               return (
@@ -200,6 +203,7 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
               )
             })}
           </div>
+          </details>
         )}
       </div>
     </div>

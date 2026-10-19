@@ -250,8 +250,8 @@ export function Toolbar({
         )}
 
         {onOpenCommandPalette && (
-          <button onClick={onOpenCommandPalette} title="タスクや画面へすぐ移動します（Ctrl+K）" aria-label="移動（Ctrl+K）" aria-keyshortcuts="Control+K" style={menuButtonStyle(false)}>
-            🔍<span className="hakobi-toolbar-roomy-only"> 移動</span><span className="hakobi-toolbar-search-label">検索</span>
+          <button onClick={onOpenCommandPalette} title="タスクや画面を検索して移動します（Ctrl+K）" aria-label="移動・検索（Ctrl+K）" aria-keyshortcuts="Control+K" style={menuButtonStyle(false)}>
+            🔍<span className="hakobi-toolbar-roomy-only"> 移動・検索</span><span className="hakobi-toolbar-search-label">検索</span>
             <span aria-hidden="true" className="hakobi-toolbar-wide-only" style={{ fontSize: '0.66rem', color: 'var(--slate-400)', border: '1px solid var(--slate-700)', borderRadius: 4, padding: '0 4px' }}>Ctrl+K</span>
           </button>
         )}

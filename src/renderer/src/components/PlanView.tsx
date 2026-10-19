@@ -1476,7 +1476,7 @@ export function PlanView({
             </div>
           </Section>
 
-          <Section title="候補" subtitle="おすすめのタスクをそのまま時間割へ置けます。">
+          <Section title="候補" subtitle={`「${addToDayLabel(date)}」は時刻未定で追加。「時間に置く」は押したあと、時間割の空き時間を選びます。`}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {suggestions.length === 0 ? (
                 <EmptyState label="おすすめのタスクはありません。「タスクを探す」から計画に追加してください。" />

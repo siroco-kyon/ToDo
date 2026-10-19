@@ -333,6 +333,7 @@ export function QuickAddModal({
                 ToDoリスト
               </button>
             </div>
+            {!listMode && <p style={{ marginTop: 6, fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', lineHeight: 1.6 }}>タスクは、開始日・期限・進捗で管理する仕事です。毎日の確認事項をまとめたいときは「ToDoリスト」を選びます。</p>}
             {listMode && (
               <div style={{ marginTop: 4, fontSize: '0.7rem', color: 'var(--indigo-300)', lineHeight: 1.5 }}>
                 毎日・毎週のチェックや細かいやることをまとめるリストです。期限は「なし」のままでも、決めても使えます。作ったあと、詳細か ToDo タブで項目を追加します。項目ごとに「毎日・平日・毎週・毎月」を選ぶと、決めた日が来るたびに未チェックに戻ります。
