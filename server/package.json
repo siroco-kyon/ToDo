@@ -14,6 +14,7 @@
     "test:yearly": "tsx --test tests/yearly-recurrence.test.ts",
     "test:mention": "tsx --test tests/mention.test.ts",
     "test:report-reminder": "tsx --test tests/report-reminder.test.ts",
+    "test:due-notifications": "tsx --test tests/due-notifications.test.ts",
     "test:backup": "tsx --test tests/backup.test.ts",
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",

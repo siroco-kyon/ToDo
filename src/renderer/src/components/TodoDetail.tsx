@@ -1179,7 +1179,12 @@ export function TodoDetail({
           {!editing && !listMode && (
             <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: '12px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>進捗 <span style={{ color: 'var(--text-subtle)', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span></span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>
+                  進捗{' '}
+                  {todo.status === 'done'
+                    ? <span style={{ color: 'var(--green-400)', fontSize: '0.7rem', fontWeight: 700 }}>完了済み（数字は完了にしたときの進捗）</span>
+                    : <span style={{ color: 'var(--text-subtle)', fontSize: '0.68rem' }}>バーをドラッグ（←→キーでも可）。100%で完了になります</span>}
+                </span>
                 {!isArchived && (
                   <button
                     type="button"
@@ -2085,8 +2090,10 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
   const [editingSchedule, setEditingSchedule] = useState(false)
   const [startDraft, setStartDraft] = useState('')
   const [dueDraft, setDueDraft] = useState('')
+  const [recurrenceDraft, setRecurrenceDraft] = useState<Todo['recurrence']>(null)
   const isArchived = todo.status === 'archived'
   const listMode = isListTodo(todo)
+  const scheduleErrorId = useId()
   // キーボードで使う人のために、日程の欄を開いたら開始日へ、閉じたら「変更」へフォーカスを移す
   const startInputRef = useRef<HTMLInputElement>(null)
   const scheduleButtonRef = useRef<HTMLButtonElement>(null)
@@ -2126,16 +2133,21 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
   const openScheduleEditor = (): void => {
     setStartDraft(todo.start_date?.slice(0, 10) ?? '')
     setDueDraft(todo.due_date?.slice(0, 10) ?? '')
+    setRecurrenceDraft(todo.recurrence ?? null)
     setEditingSchedule(true)
   }
 
+  // 開始日が期限より後なら、その場で知らせて保存させない
+  const scheduleInvalid = Boolean(startDraft && dueDraft && startDraft > dueDraft)
+
   const saveSchedule = async (): Promise<void> => {
-    if (startDraft && dueDraft && startDraft > dueDraft) {
-      onShowToast('開始日は期限以前にしてください', 'error')
-      return
-    }
+    if (scheduleInvalid) return
     const data: UpdateTodoInput = {}
     const undo: UpdateTodoInput = {}
+    if (!listMode && (recurrenceDraft ?? null) !== (todo.recurrence ?? null)) {
+      data.recurrence = recurrenceDraft
+      undo.recurrence = todo.recurrence ?? null
+    }
     if ((startDraft || null) !== (todo.start_date?.slice(0, 10) ?? null)) {
       data.start_date = startDraft || null
       undo.start_date = todo.start_date?.slice(0, 10) ?? null
@@ -2150,7 +2162,9 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
     }
     const message = data.due_date !== undefined && data.due_date
       ? `期限を${formatShortDate(data.due_date)}にしました`
-      : '日程を変更しました'
+      : data.recurrence !== undefined && Object.keys(data).length === 1
+        ? `繰り返しを「${recurrenceKindLabel(data.recurrence) ?? 'なし'}」にしました`
+        : '日程を変更しました'
     if (await save(data, message, undo)) setEditingSchedule(false)
   }
 
@@ -2268,6 +2282,8 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
                   if (event.key === 'Enter') void saveSchedule()
                   if (event.key === 'Escape') setEditingSchedule(false)
                 }}
+                aria-invalid={scheduleInvalid}
+                aria-describedby={scheduleInvalid ? scheduleErrorId : undefined}
                 aria-label="期限"
                 style={{ ...compactSelectStyle, width: 'auto' }}
               />
@@ -2289,8 +2305,22 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
               ))}
               <button type="button" onClick={nextFridayDraft} title="期限を来週の金曜にします" style={dueShortcutStyle}>来週金曜</button>
             </span>
+            {!listMode && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                繰り返し
+                <select value={recurrenceDraft ?? ''} onChange={(event) => setRecurrenceDraft((event.target.value || null) as Todo['recurrence'])} aria-label="繰り返し" title="完了にすると次回分を自動で作ります" style={{ ...compactSelectStyle, width: 'auto' }}>
+                  <option value="">なし</option>
+                  {TODO_RECURRENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+            )}
+            {scheduleInvalid && (
+              <span id={scheduleErrorId} role="alert" style={{ width: '100%', fontSize: '0.74rem', color: 'var(--red-300)', fontWeight: 700 }}>
+                開始日が期限より後になっています。期限か開始日を直してください
+              </span>
+            )}
             <button onClick={() => setEditingSchedule(false)} style={buttonStyle('var(--slate-700)')}>取消</button>
-            <button onClick={() => void saveSchedule()} disabled={saving} style={buttonStyle('var(--blue-600)')}>{saving ? '保存中…' : '保存'}</button>
+            <button onClick={() => void saveSchedule()} disabled={saving || scheduleInvalid} style={buttonStyle(scheduleInvalid ? 'var(--slate-800)' : 'var(--blue-600)', scheduleInvalid ? 'var(--text-subtle)' : undefined)}>{saving ? '保存中…' : '保存'}</button>
             <span style={{ width: '100%', fontSize: '0.66rem', color: 'var(--text-subtle)' }}>依存関係のある後続タスクも自動で再計算されます</span>
           </div>
         ) : (

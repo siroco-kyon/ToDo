@@ -270,10 +270,12 @@ export function Toolbar({
         <ToolbarMenu
           menuKey="account"
           label={currentUser ? `${currentUser.display_name}のメニュー` : 'メニュー'}
-          title={currentUser ? `${currentUser.display_name}（${currentUser.username}）でログイン中` : undefined}
+          title={currentUser ? `${currentUser.display_name}（${currentUser.username}）でログイン中。設定・進捗レポートはここから` : '設定・進捗レポートはここから'}
           buttonContent={currentUser ? (
             <>
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: currentUser.color, flexShrink: 0 }} />
+              {/* 狭いときは名前の代わりに歯車を出し、設定がここにあると分かるようにする */}
+              <span aria-hidden="true" className="hakobi-toolbar-narrow-only">⚙</span>
               <span className="hakobi-toolbar-wide-only">{currentUser.display_name}</span>
               {currentUser.role === 'admin' && (
                 <span className="hakobi-toolbar-wide-only" style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--amber-400)', background: 'var(--amber-950)', borderRadius: 6, padding: '1px 6px' }}>管理者</span>

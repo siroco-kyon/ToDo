@@ -150,7 +150,8 @@ export function ProgressSlider({
           outlineOffset: 2
         }}
       >
-        <div ref={trackRef} style={{ position: 'relative', height, background: 'var(--slate-800)', borderRadius: 999 }}>
+        {/* 溝は枠線でも示す（ライトでは地の色と近く、0% のときにバーがあることに気付けなかったため） */}
+        <div ref={trackRef} style={{ position: 'relative', height, background: 'var(--slate-900)', boxShadow: 'inset 0 0 0 1px var(--slate-600)', borderRadius: 999 }}>
           <div
             style={{
               width: `${shown}%`,
@@ -172,10 +173,11 @@ export function ProgressSlider({
                 marginLeft: -thumbSize / 2,
                 marginTop: -thumbSize / 2,
                 borderRadius: '50%',
-                background: 'var(--slate-50)',
+                // つまみは両方のテーマで白（ライトで黒い点に見えないように）。触れていないときも、つかめることが分かる濃さにする
+                background: 'var(--on-fill-white)',
                 border: `2px solid ${fillColor}`,
-                boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
-                opacity: active ? 1 : 0.55,
+                boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
+                opacity: active ? 1 : 0.9,
                 transform: dragging ? 'scale(1.15)' : 'none',
                 transition: dragging ? 'none' : 'left 0.15s ease, opacity 0.15s ease'
               }}

@@ -108,15 +108,19 @@ function SummaryCard({
   label,
   value,
   detail,
-  tone
+  tone,
+  description
 }: {
   label: string
   value: string
   detail: string
   tone: string
+  /** 数字の意味（ツールチップ） */
+  description?: string
 }): React.JSX.Element {
   return (
     <div
+      title={description}
       style={{
         background: 'var(--gray-900)',
         border: '1px solid var(--gray-800)',
@@ -698,6 +702,7 @@ export function OverviewDashboard({
               label="進捗スコア"
               value={`${data.summary.completionScore}%`}
               detail={`進行中平均 ${data.summary.avgActiveProgress}%`}
+              description="すべてのタスクの進み具合の平均（完了は100%として数える）。進行中平均は、進行中のタスクだけの進捗率の平均です"
               tone="var(--blue-400)"
             />
             <SummaryCard

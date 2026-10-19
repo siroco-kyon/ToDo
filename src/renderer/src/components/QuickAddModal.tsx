@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDialogFocus } from '../hooks/useDialogFocus'
-import type { Category, CreateTodoInput, PublicUser, Todo } from '../types'
+import type { Category, CreateTodoInput, PublicUser, Todo, TodoRecurrence } from '../types'
 import { AssigneePicker } from './AssigneePicker'
-import { toDateKey } from '../lib/dueDate'
+import { toDateKey } from '../lib/dueDate'
+import { TODO_RECURRENCE_OPTIONS, todoRecurrenceLabel } from '../lib/recurrence'
 
 interface Props {
   categories: Category[]
@@ -104,6 +105,8 @@ export function QuickAddModal({
   ))
   const [status, setStatus] = useState<NonNullable<CreateTodoInput['status']>>('not_started')
   const [priority, setPriority] = useState(3)
+  // 繰り返し（完了にすると次回分を作る）。ToDoリストには付けない
+  const [recurrence, setRecurrence] = useState<TodoRecurrence | null>(null)
   // 開始日を入れておくと、ガントに今日から1日のバーとして出る（日付なしだと下の「未配置」に回る）
   const [startDate, setStartDate] = useState(() => toDateKey(new Date()))
   const [dueDate, setDueDate] = useState('')
@@ -183,6 +186,7 @@ export function QuickAddModal({
           priority,
           start_date: startDate || null,
           due_date: dueDate || null,
+          recurrence: listMode ? null : recurrence,
           list_mode: listMode ? 1 : 0
         })
         created.push(todo)
@@ -369,7 +373,7 @@ export function QuickAddModal({
             aria-expanded={showDetails}
             style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, color: 'var(--blue-300)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}
           >
-            {showDetails ? '▾ 詳しい設定を閉じる' : '▸ 詳しく設定（説明・メモ・状態・優先度）'}
+            {showDetails ? '▾ 詳しい設定を閉じる' : '▸ 詳しく設定（説明・メモ・状態・優先度・繰り返し）'}
           </button>
 
           {showDetails && (
@@ -424,6 +428,20 @@ export function QuickAddModal({
                   </select>
                 </div>
               </div>
+              {!listMode && (
+                <div>
+                  <label htmlFor="quick-add-recurrence" style={labelStyle}>繰り返し（完了にすると次回分を自動で作ります）</label>
+                  <select id="quick-add-recurrence" value={recurrence ?? ''} onChange={(event) => setRecurrence((event.target.value || null) as TodoRecurrence | null)} style={selectStyle}>
+                    <option value="">なし</option>
+                    {TODO_RECURRENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  {recurrence && (
+                    <div style={{ marginTop: 4, fontSize: '0.72rem', color: 'var(--slate-400)', lineHeight: 1.5 }}>
+                      {todoRecurrenceLabel({ recurrence, start_date: startDate || null, due_date: dueDate || null })}。{dueDate || startDate ? '完了にすると、次回分を作ります' : '日付がないので、次回分も日付なしで作ります'}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

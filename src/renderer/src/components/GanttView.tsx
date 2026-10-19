@@ -912,7 +912,7 @@ function buildTodoBarTooltip(options: {
     const gap = health.status === 'behind' || (health.status === 'overdue' && health.behindDays >= 0.5)
       ? `（約${gapDays(health.behindDays)}日分の遅れ）`
       : health.status === 'ahead' ? `（約${gapDays(-health.behindDays)}日分の先行）`
-        : Math.abs(health.behindDays) >= 0.5 ? `（予定より約${gapDays(Math.abs(health.behindDays))}日分${health.behindDays > 0 ? '少なめ' : '多め'}）` : ''
+        : Math.abs(health.behindDays) >= 0.5 ? `（予定より約${gapDays(Math.abs(health.behindDays))}日分${health.behindDays > 0 ? '少なめ。遅れとみなす日数には届いていません' : '多め'}）` : ''
     lines.push(`今日時点の予定 ${health.expectedProgress}% ／ 実績 ${progress}%${gap}`)
   }
   lines.push('')
@@ -3162,7 +3162,7 @@ function GanttViewContent({
           <button
             onClick={() => void performUndo()}
             disabled={!lastUndoEntry || undoPending}
-            title={lastUndoEntry ? `戻す: ${lastUndoEntry.label}（Ctrl+Z）` : '直前の変更を元に戻す'}
+            title={lastUndoEntry ? `戻す: ${lastUndoEntry.label}（Ctrl+Z）` : 'ガントで動かした日程や依存関係を1つ戻せます（いまは戻すものがありません）。詳細での変更は、知らせの「元に戻す」で戻せます'}
             style={{
               ...headerActionButtonStyle,
               border: `1px solid ${lastUndoEntry && !undoPending ? 'var(--green-600)' : 'var(--slate-700)'}`,

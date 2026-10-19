@@ -29,9 +29,17 @@
 }
 
 /* 狭い窓では、上部のバーを1段に収めるため、移動の文字・ユーザー名などを隠してアイコンだけにする（読み上げ名とツールチップは残す） */
+.hakobi-toolbar-narrow-only {
+  display: none;
+}
+
 @media (max-width: 1180px) {
   .hakobi-toolbar-wide-only {
     display: none;
+  }
+
+  .hakobi-toolbar-narrow-only {
+    display: inline;
   }
 }
 

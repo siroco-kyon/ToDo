@@ -96,6 +96,15 @@ export function runReportReminders(now = new Date()): string[] {
   return userIds.filter((userId) => ensureReportReminder(userId, now) != null)
 }
 
+/** 期限の通知の見出しと本文（今の期限で書く。日付は画面と同じ「10/22」の書き方） */
+function dueNotificationText(title: string, dueDate: string, today: string): { title: string; body: string } {
+  const [, month, day] = dueDate.slice(0, 10).split('-').map(Number)
+  return {
+    title: dueDate.slice(0, 10) < today ? '期限を過ぎたタスクがあります' : '期限が近いタスクがあります',
+    body: `「${title}」の期限は${month}/${day}です`
+  }
+}
+
 function ensureDueNotifications(userId: string): void {
   const db = getDb()
   const today = localDateKey()
@@ -105,14 +114,30 @@ function ensureDueNotifications(userId: string): void {
      WHERE t.status NOT IN ('done', 'archived') AND t.due_date IS NOT NULL
        AND t.due_date <= ? AND (t.assignee_id = ? OR ca.user_id = ?)`
   ).all(localDateKey(3), userId, userId) as Array<{ id: string; title: string; due_date: string }>
+  const current = new Map(rows.map((row) => [row.id, row]))
+
+  // まだ読んでいない期限の通知を、今のタスクに合わせる。完了した・期限を延ばした・担当を外れたタスクの通知は既読にし、
+  // 期限や名前が変わっただけなら今の内容に書き直す（古い期限のまま知らせ続けないように）
+  const unread = db.prepare(
+    "SELECT id, todo_id, title, body FROM Notifications WHERE user_id = ? AND type = 'task_due' AND read_at IS NULL"
+  ).all(userId) as Array<{ id: string; todo_id: string | null; title: string; body: string }>
+  const markRead = db.prepare('UPDATE Notifications SET read_at = ? WHERE id = ?')
+  const rewrite = db.prepare('UPDATE Notifications SET title = ?, body = ? WHERE id = ?')
+  const now = new Date().toISOString()
+  for (const notification of unread) {
+    const todo = notification.todo_id ? current.get(notification.todo_id) : undefined
+    if (!todo) {
+      markRead.run(now, notification.id)
+      continue
+    }
+    const text = dueNotificationText(todo.title, todo.due_date, today)
+    if (text.title !== notification.title || text.body !== notification.body) rewrite.run(text.title, text.body, notification.id)
+  }
+
   const exists = db.prepare("SELECT 1 FROM Notifications WHERE user_id = ? AND type = 'task_due' AND todo_id = ? AND created_at >= ? LIMIT 1")
   for (const row of rows) {
     if (exists.get(userId, row.id, localDayStartIso())) continue
-    createNotification({
-      userId, type: 'task_due', todoId: row.id,
-      title: row.due_date < today ? '期限を過ぎたタスクがあります' : '期限が近いタスクがあります',
-      body: `「${row.title}」の期限は${row.due_date}です`
-    })
+    createNotification({ userId, type: 'task_due', todoId: row.id, ...dueNotificationText(row.title, row.due_date, today) })
   }
 }
 
