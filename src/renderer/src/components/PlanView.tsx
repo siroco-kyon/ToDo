@@ -1,7 +1,7 @@
-﻿import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+﻿import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AddDailyPlanItemOptions, DailyPlanItem, Todo, UpdateDailyPlanItemInput } from '../types'
 import { checklistBadgeText, hasRemainingToday, type ChecklistSummary } from '../lib/todoList'
-import { dataInk } from '../lib/theme'
+import { dataInk } from '../lib/theme'
 
 // 優先度の表記（ほかの画面の「低・中・高」とそろえる）
 const PRIORITY_LABELS: Record<number, string> = { 1: '最低', 2: '低', 3: '中', 4: '高', 5: '最高' }
@@ -433,6 +433,8 @@ function CandidateCard({
   onPrepareDrag: () => void
   placementActive: boolean
 }): React.JSX.Element {
+  const [adding, setAdding] = useState(false)
+  const addingRef = useRef(false)
   return (
     <div
       draggable
@@ -503,12 +505,16 @@ function CandidateCard({
         <button
           onClick={(event) => {
             event.stopPropagation()
-            void onAdd(todo.id)
+            if (addingRef.current) return
+            addingRef.current = true
+            setAdding(true)
+            void onAdd(todo.id).finally(() => { addingRef.current = false; setAdding(false) })
           }}
+          disabled={adding}
           style={actionBtn('var(--blue-950)', 'var(--blue-200)', 'var(--blue-600)')}
           aria-label={`「${todo.title}」を${todayKey === getTodayKey() ? '今日' : 'この日'}の計画に入れる`}
         >
-          {addToDayLabel(todayKey)}
+          {adding ? '追加中…' : addToDayLabel(todayKey)}
         </button>
       </div>
     </div>
@@ -628,6 +634,20 @@ export function PlanView({
   listFilters,
   checklistSummaries
 }: Props): React.JSX.Element {
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionPending, setActionPending] = useState(false)
+  const actionPendingRef = useRef(false)
+  const reportActionError = useCallback((error: unknown): void => {
+    setActionError(error instanceof Error ? error.message : '計画を変更できませんでした')
+  }, [])
+  const runAction = useCallback(async (action: () => Promise<unknown>): Promise<void> => {
+    if (actionPendingRef.current) return
+    actionPendingRef.current = true
+    setActionPending(true)
+    try { await action(); setActionError(null) } catch (error) { reportActionError(error) }
+    finally { actionPendingRef.current = false; setActionPending(false) }
+  }, [reportActionError])
+  useEffect(() => setActionError(null), [date])
   const timelineRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<InteractionState | null>(null)
@@ -839,11 +859,11 @@ export function PlanView({
         }
       })
 
-      void onUpdateItem(current.itemId, {
+      void runAction(() => onUpdateItem(current.itemId, {
         scheduled_start: offsetToClock(current.previewStart),
         estimated_minutes: current.previewDuration,
         lane: current.previewLane
-      }).then(() => onReorder(reorderIdsByTime(nextItems)))
+      }).then(() => onReorder(reorderIdsByTime(nextItems))))
     }
 
     window.addEventListener('pointermove', handlePointerMove)
@@ -853,7 +873,7 @@ export function PlanView({
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
     }
-  }, [interaction, onReorder, onUpdateItem, planItems])
+  }, [interaction, onReorder, onUpdateItem, planItems, runAction])
 
   const clearPlacement = (): void => {
     setPlacementDraft(null)
@@ -993,14 +1013,20 @@ export function PlanView({
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 20 }}>
+    <div aria-busy={actionPending} style={{ height: '100%', overflowY: 'auto', padding: 20 }}>
+      {actionPending && <div role="status" style={{ position: 'sticky', top: 0, zIndex: 11, padding: 10, background: 'var(--slate-800)', color: 'var(--slate-100)', borderRadius: 8, marginBottom: 10 }}>計画を更新中…</div>}
+      {actionError && <div role="alert" style={{ position: 'sticky', top: 0, zIndex: 10, marginBottom: 12, padding: 12, borderRadius: 10, border: '1px solid var(--red-500)', background: 'var(--slate-900)', color: 'var(--slate-100)' }}>
+        <p>計画の操作を完了できませんでした。{actionError}</p>
+        <p style={{ marginTop: 6, fontSize: 'var(--font-control)' }}>社内LANへの接続と表示中の予定を確認し、同じ操作をもう一度お試しください。</p>
+        <button onClick={() => setActionError(null)} style={{ ...miniActionBtn('var(--slate-800)', 'var(--slate-200)'), marginTop: 8 }}>閉じる</button>
+      </div>}
       {onDateChange && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <button onClick={() => onDateChange(shiftDateKey(date, -1))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}>← 前日</button>
-          <input type="date" value={date} onChange={(event) => onDateChange(event.target.value)} style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)' }} />
+          <input type="date" aria-label="計画の日付" disabled={actionPending} value={date} onChange={(event) => { if (event.target.value) onDateChange(event.target.value) }} style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)' }} />
           <button onClick={() => onDateChange(shiftDateKey(date, 1))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}>翌日 →</button>
           <button onClick={() => onDateChange(getTodayKey())} style={miniActionBtn('var(--blue-950)', 'var(--blue-100)')}>今日</button>
-          {onCarryOver && <button onClick={() => void onCarryOver()} style={miniActionBtn('var(--green-900)', 'var(--green-100)')}>前日の未完了を繰り越す</button>}
+          {onCarryOver && <button onClick={() => void runAction(onCarryOver)} style={miniActionBtn('var(--green-900)', 'var(--green-100)')}>前日の未完了を繰り越す</button>}
           {listFilters && <span style={{ marginLeft: 'auto' }}>{listFilters}</span>}
         </div>
       )}
@@ -1097,6 +1123,8 @@ export function PlanView({
 
                 <div
                   ref={timelineRef}
+                  role="group"
+                  aria-label="計画の時間割"
                   onMouseMove={(event) => {
                     if (!placementDraft || interaction) return
 
@@ -1123,7 +1151,7 @@ export function PlanView({
                     const lane = getDropLane(event.clientX)
                     if (minutes == null || lane == null) return
 
-                    void handlePlaceDraft(minutes, lane)
+                    void runAction(() => handlePlaceDraft(minutes, lane))
                   }}
                   onDragOver={(event) => {
                     const types = Array.from(event.dataTransfer.types)
@@ -1147,7 +1175,7 @@ export function PlanView({
                     setDragPreview(readDragPreview(event))
                   }}
                   onDragLeave={handleTimelineDragLeave}
-                  onDrop={(event) => void handleTimelineDrop(event)}
+                  onDrop={(event) => void runAction(() => handleTimelineDrop(event))}
                   style={{ position: 'relative', height: TIMELINE_HEIGHT, cursor: placementDraft ? 'copy' : 'default' }}
                 >
                   {Array.from({ length: TIMELINE_END_HOUR - TIMELINE_START_HOUR }, (_, index) => (
@@ -1353,12 +1381,12 @@ export function PlanView({
                               </span>
                             )}
                             {!compactBlock && <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void onShiftItem(item.id, -15)} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分早める">−15</button>
-                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void onShiftItem(item.id, 15)} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分遅らせる">+15</button>
+                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void runAction(() => onShiftItem(item.id, -15))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分早める">−15</button>
+                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void runAction(() => onShiftItem(item.id, 15))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分遅らせる">+15</button>
                               {onShiftFollowing && (
                                 <button
                                   onPointerDown={(event) => event.stopPropagation()}
-                                  onClick={() => void onShiftFollowing(item.id, 15)}
+                                  onClick={() => void runAction(() => onShiftFollowing!(item.id, 15))}
                                   style={miniActionBtn('var(--blue-950)', 'var(--blue-200)')}
                                   title="この予定と、これ以降の予定を15分遅らせる"
                                 >
@@ -1367,7 +1395,7 @@ export function PlanView({
                               )}
                               <button
                                 onPointerDown={(event) => event.stopPropagation()}
-                                onClick={() => void duplicateBlock(item)}
+                                onClick={() => void runAction(() => duplicateBlock(item))}
                                 style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
                                 title="同じタスクをこの直後にもう1つ置く"
                               >
@@ -1380,7 +1408,7 @@ export function PlanView({
                                     if (planItem.id !== item.id) return planItem
                                     return { ...planItem, scheduled_start: null }
                                   })
-                                  void onUpdateItem(item.id, { scheduled_start: null }).then(() => onReorder(reorderIdsByTime(nextItems)))
+                                  void runAction(() => onUpdateItem(item.id, { scheduled_start: null }).then(() => onReorder(reorderIdsByTime(nextItems))))
                                 }}
                                 style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
                                 title="未定に戻す"
@@ -1389,7 +1417,7 @@ export function PlanView({
                               </button>
                               <button
                                 onPointerDown={(event) => event.stopPropagation()}
-                                onClick={() => void onRemoveItem(item.id)}
+                                onClick={() => void runAction(() => onRemoveItem(item.id))}
                                 style={miniActionBtn('var(--c-3f1d1d)', 'var(--red-300)')}
                                 title="今日の計画から外す"
                               >
@@ -1463,7 +1491,7 @@ export function PlanView({
                     item={item}
                     todayKey={date}
                     onSelect={onSelectTodo}
-                    onRemove={onRemoveItem}
+                    onRemove={async (id) => { await runAction(() => onRemoveItem(id)) }}
                     onSchedule={(draft) => {
                       setPlacementDraft(draft)
                       setPlacementTarget(null)
@@ -1490,7 +1518,7 @@ export function PlanView({
                         todo={todo}
                         todayKey={date}
                         note={todo.list_mode && checklistSummaries?.get(todo.id) ? `ToDoリスト: ${checklistBadgeText(checklistSummaries.get(todo.id)!)}` : undefined}
-                        onAdd={async (todoId) => { await onAddTodo(todoId) }}
+                        onAdd={async (todoId) => { await runAction(() => onAddTodo(todoId)) }}
                         onSchedule={(draft) => {
                           setPlacementDraft(draft)
                           setPlacementTarget(null)
@@ -1522,7 +1550,7 @@ export function PlanView({
                     todo={todo}
                     todayKey={date}
                     plannedCount={plannedCountByTodoId.get(todo.id) ?? 0}
-                    onAdd={async (todoId) => { await onAddTodo(todoId) }}
+                    onAdd={async (todoId) => { await runAction(() => onAddTodo(todoId)) }}
                     onSchedule={(draft) => {
                       setPlacementDraft(draft)
                       setPlacementTarget(null)
