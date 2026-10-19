@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { TeamDashboard as TeamDashboardData, TeamDeadlineItem, TeamMemberWorkload, TeamNowItem, Todo } from '../types'
 import { AssigneeChip } from './AssigneePicker'
 import { dataInk } from '../lib/theme'
@@ -48,22 +48,31 @@ export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = t
   const [loadedAt, setLoadedAt] = useState<number>(Date.now())
   const [nowMs, setNowMs] = useState<number>(Date.now())
   const [hasLoaded, setHasLoaded] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const requestRef = useRef(0)
 
   const load = useCallback(async () => {
+    const request = ++requestRef.current
+    setLoading(true)
     try {
       const next = await window.api.teamGetDashboard(includePrivate)
+      if (request !== requestRef.current) return
       setData(next)
       setLoadedAt(Date.now())
       setNowMs(Date.now())
-    } catch (error) {
-      console.error('Failed to load team dashboard', error)
-    } finally {
       setHasLoaded(true)
+      setLoadError(null)
+    } catch (error) {
+      if (request === requestRef.current) setLoadError(error instanceof Error ? error.message : 'チーム状況を読み込めませんでした')
+    } finally {
+      if (request === requestRef.current) setLoading(false)
     }
   }, [includePrivate])
 
   useEffect(() => {
     void load()
+    return () => { requestRef.current++ }
   }, [load])
 
   useEffect(() => {
@@ -122,8 +131,16 @@ export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = t
     <div style={{ height: '100%', overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 22 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <h1 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--slate-50)' }}>チーム状況</h1>
-        <button onClick={() => void load()} style={refreshButtonStyle}>更新</button>
+        <button disabled={loading} onClick={() => void load()} style={refreshButtonStyle}>{loading ? '更新中…' : '更新'}</button>
       </div>
+      {loadError && <div role="alert" style={{ padding: 16, border: '1px solid var(--red-500)', borderRadius: 10, color: 'var(--slate-200)' }}>
+        <p>チーム状況を読み込めませんでした。{loadError}</p>
+        <p style={{ marginTop: 6, fontSize: 'var(--font-control)' }}>{hasLoaded ? '前回取得した内容を表示しています。' : '件数はまだ取得できていません。'} 社内LANへの接続を確認して、もう一度お試しください。</p>
+        <button disabled={loading} onClick={() => void load()} style={{ ...refreshButtonStyle, marginTop: 10 }}>再試行</button>
+      </div>}
+      {!hasLoaded && loading && <p role="status">チーム状況を読み込み中…</p>}
+      {hasLoaded && <>
+      <p style={{ color: 'var(--text-subtle)', fontSize: 'var(--font-control)', marginTop: -10 }}>タスクの件数は現在の状態、作業時間は今日、報告なしは直近7日を集計しています。</p>
 
       <section>
         <SectionHeader title="いま稼働中" accent="var(--green-400)" count={data.now.length} />
@@ -179,7 +196,7 @@ export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = t
           )}
         </section>
       </div>
-
+      </>}
     </div>
   )
 }

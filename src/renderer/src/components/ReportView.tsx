@@ -942,7 +942,9 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const [changes, setChanges] = useState<TodoChangeEntry[]>([])
   const [discussions, setDiscussions] = useState<ProgressNote[]>([])
   const [checkSummaries, setCheckSummaries] = useState<SubTaskCheckSummary[]>([])
-  const [loaded, setLoaded] = useState(false)
+  const [hasLoaded, setLoaded] = useState(false)
+  const [loadedRangeKey, setLoadedRangeKey] = useState('')
+  const loaded = hasLoaded && loadedRangeKey === `${range.from}|${range.to}`
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const requestIdRef = useRef(0)
@@ -974,6 +976,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       setDiscussions(nextDiscussions)
       setCheckSummaries(nextCheckSummaries)
       setLoadError(null)
+      setLoadedRangeKey(`${range.from}|${range.to}`)
       setLoaded(true)
     } catch (error) {
       if (requestId !== requestIdRef.current) return
@@ -1664,28 +1667,28 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                 <button
                   key={chip.value}
                   onClick={() => setQuickFilter(active && chip.value !== 'all' ? 'all' : chip.value)}
-                  disabled={muted && !active}
+                  disabled={!loaded || (muted && !active)}
                   aria-pressed={active}
                   title={muted ? `${chip.label}のタスクはありません` : chip.value === 'all' ? (active ? '絞り込まずに表示しています' : '絞り込みを外して、すべて表示します') : `${chip.title}${active ? '（もう一度押すと解除）' : '（押すと絞り込み）'}`}
                   style={quickFilterChipStyle(chip.color, active, muted)}
                 >
-                  {active && <span aria-hidden="true">✓ </span>}{chip.label} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{chip.count}</span>
+                  {active && <span aria-hidden="true">✓ </span>}{chip.label} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{loaded ? chip.count : '…'}</span>
                 </button>
               )
             })}
             <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', marginLeft: 4 }}>
-              期間内に報告あり {reportedCount}件 ・ 進捗ログ {noteCount}件
+              {loaded ? `期間内に報告あり ${reportedCount}件 ・ 進捗ログ ${noteCount}件` : loadError ? 'この期間の件数は未取得です' : 'この期間の報告を取得しています'}
             </span>
           </div>
 
-          {myNeedsReportCount > 0 && effectiveQuickFilter !== 'myNeedsReport' && (
+          {loaded && myNeedsReportCount > 0 && effectiveQuickFilter !== 'myNeedsReport' && (
             <div role="status" style={myReminderStyle}>
               <span>あなたの担当で、この期間まだ報告がないタスクが <strong>{myNeedsReportCount}件</strong> あります。<span className="hakobi-hide-narrow">進捗ログかメモで一言残しておきましょう。</span></span>
               <button onClick={() => setQuickFilter('myNeedsReport')} style={{ ...secondaryButtonStyle, marginLeft: 'auto' }}>自分の未報告だけ表示</button>
             </div>
           )}
           {/* 自分の報告が済んだら、注意が消えるだけでなく「済んだ」と出す（定例の前に安心できるように） */}
-          {multiUser && currentUserId && myNeedsReportCount === 0 && myTaskCount > 0 && effectiveQuickFilter !== 'myNeedsReport' && (
+          {loaded && multiUser && currentUserId && myNeedsReportCount === 0 && myTaskCount > 0 && effectiveQuickFilter !== 'myNeedsReport' && (
             <div role="status" style={myDoneStyle}>
               <span>✓ この期間の自分の報告は済んでいます（担当 {myTaskCount}件）</span>
               {effectiveGroupMode === 'assignee' && groups.some((group) => group.key === currentUserId) && (
@@ -1727,7 +1730,9 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
 
         {loadError && (
           <div role="alert" style={{ padding: '10px 14px', border: '1px solid var(--red-700)', borderRadius: 10, background: 'var(--red-950)', color: 'var(--red-200)', fontSize: '0.82rem' }}>
-            {loadError}
+            <p>報告データを読み込めませんでした。{loadError}</p>
+            <p style={{ marginTop: 6 }}>{loaded ? '前回取得した内容を表示しています。' : 'この期間の報告はまだ取得できていません。'} 社内LANへの接続を確認して、もう一度お試しください。</p>
+            <button disabled={loading} onClick={() => void load()} style={{ ...secondaryButtonStyle, marginTop: 8 }}>再試行</button>
           </div>
         )}
 
