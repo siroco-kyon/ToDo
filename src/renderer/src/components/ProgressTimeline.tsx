@@ -247,6 +247,9 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   const draftSuffix = currentUser?.id ? `:${currentUser.id}` : ''
   const [noteDrafts, setNoteDrafts] = useStoredDrafts(`progress-timeline-note-drafts${draftSuffix}`)
   const [savingNote, setSavingNote] = useState(false)
+  const savingNoteRef = useRef(false)
+  const pendingRepliesRef = useRef(new Set<string>())
+  const [pendingReplies, setPendingReplies] = useState(new Set<string>())
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [editingNoteDraft, setEditingNoteDraft] = useState('')
   const [commentDrafts, setCommentDrafts] = useStoredDrafts(`progress-timeline-comment-drafts${draftSuffix}`)
@@ -384,13 +387,14 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   // bodyOverride を渡すと（「予定どおり」）、入力中の文には触らずにその文を投稿する
   const handleCreateNote = async (bodyOverride?: string): Promise<void> => {
     const body = cleanProgressNote(bodyOverride ?? noteDraft)
-    if (!selectedTodoId || savingNote) return
+    if (!selectedTodoId || savingNoteRef.current) return
     if (!body) {
       if (noteDraft.trim()) onShowToast('ひな形の見出しだけでは投稿できません。やったことなどを書いてください', 'error')
       return
     }
 
     try {
+      savingNoteRef.current = true
       setSavingNote(true)
       const created = await window.api.progressNoteCreate(selectedTodoId, body)
       if (bodyOverride === undefined) setNoteDraft('')
@@ -398,9 +402,11 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       if (isInRange(getDateKeyFromIso(created.created_at), range)) {
         setNotes((previous) => [normalizeNote(created), ...previous])
       }
+      onShowToast('進捗ログを投稿しました')
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '進捗ログを追加できませんでした', 'error')
     } finally {
+      savingNoteRef.current = false
       setSavingNote(false)
     }
   }
@@ -472,8 +478,10 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   const handleCreateComment = async (noteId: string, parentCommentId: string | null = null): Promise<void> => {
     const key = draftKey(noteId, parentCommentId)
     const body = (commentDrafts[key] ?? '').trim()
-    if (!body) return
+    if (!body || pendingRepliesRef.current.has(key)) return
 
+    pendingRepliesRef.current.add(key)
+    setPendingReplies(new Set(pendingRepliesRef.current))
     try {
       const updated = await window.api.progressNoteCommentCreate(noteId, body, parentCommentId)
       setNotes((previous) => patchNote(previous, updated))
@@ -483,9 +491,13 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       // 新しい順では返信した投稿が先頭へ移るので、見失わないようにその投稿へ移る。
       // フォーカスもその投稿の「返信」へ戻す（入力欄が消えて、ページの先頭へ飛ばないように）
       setFocusedNoteId(noteId)
+      onShowToast('返信を送信しました')
       window.setTimeout(() => document.getElementById(noteReplyButtonId(noteId))?.focus({ preventScroll: true }), 0)
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '返信を追加できませんでした', 'error')
+    } finally {
+      pendingRepliesRef.current.delete(key)
+      setPendingReplies(new Set(pendingRepliesRef.current))
     }
   }
 
@@ -573,6 +585,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   const renderComposer = (noteId: string, parentComment: ProgressNoteComment | null, onCancel?: () => void): React.JSX.Element => {
     const key = draftKey(noteId, parentComment?.id ?? null)
     const value = commentDrafts[key] ?? ''
+    const sending = pendingReplies.has(key)
     const placeholder = parentComment
       ? `${getAuthorName(parentComment.author_name)} に返信`
       : 'この投稿に返信を書く'
@@ -583,6 +596,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
         <div style={{ flex: 1, minWidth: 0 }}>
           <MentionTextarea
             value={value}
+            disabled={sending}
             onValueChange={(next) => setCommentDrafts((previous) => ({ ...previous, [key]: next }))}
             users={mentionCandidates}
             onKeyDown={(event) => {
@@ -599,16 +613,16 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
           />
           <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
             {onCancel && (
-              <button onClick={onCancel} style={ghostButtonStyle}>
+              <button disabled={sending} onClick={onCancel} style={ghostButtonStyle}>
                 取消
               </button>
             )}
             <button
               onClick={() => void handleCreateComment(noteId, parentComment?.id ?? null)}
-              disabled={!value.trim()}
-              style={pillButtonStyle(Boolean(value.trim()))}
+              disabled={sending || !value.trim()}
+              style={pillButtonStyle(Boolean(value.trim()) && !sending)}
             >
-              {parentComment ? '返信' : '送信'}
+              {sending ? '送信中…' : parentComment ? '返信' : '送信'}
             </button>
           </div>
         </div>
@@ -771,7 +785,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
               <select
                 value={selectedTodoId}
                 onChange={(event) => setSelectedTodoId(event.target.value)}
-                disabled={taskOptions.length === 0}
+                disabled={savingNote || taskOptions.length === 0}
                 aria-label="進捗を書くタスク"
                 style={{ ...inputStyle, width: '100%', marginBottom: 8, color: selectedTodoId ? 'var(--slate-200)' : 'var(--slate-400)' }}
               >
@@ -792,7 +806,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
               </select>
               <MentionTextarea
                 value={noteDraft}
-                disabled={!selectedTodoId}
+                disabled={savingNote || !selectedTodoId}
                 onValueChange={setNoteDraft}
                 users={mentionCandidates}
                 onKeyDown={(event) => {
