@@ -258,7 +258,7 @@ function TodoItem({
                     <>
                       {todo.status !== 'done' && (
                         isRunning
-                          ? <button onClick={onStopTimer} title="計測を停止" aria-label="計測を停止" style={actionBtn('var(--red-500)')}>■</button>
+                          ? <button onClick={onStopTimer} title="計測を止める" aria-label="計測を止める" style={actionBtn('var(--red-500)')}>■</button>
                           : <button onClick={onStartTimer} title="作業時間の計測を開始" aria-label="計測を開始" style={actionBtn('var(--green-400)')}>▶</button>
                       )}
                       <button onClick={onArchive} title="アーカイブ（一覧から片付ける。あとで戻せます）" aria-label="アーカイブ" style={actionBtn('var(--slate-500)')}>📦</button>

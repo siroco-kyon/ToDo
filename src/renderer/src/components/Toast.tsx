@@ -24,7 +24,11 @@ export function Toast({ toasts, onRemove }: Props): React.JSX.Element {
   useEffect(() => {
     if (toasts.length === 0) return
     const update = (): void => {
-      const sidePanel = document.getElementById('hakobi-side-panel')
+      // 知らせを押そうとしている（マウスを乗せている・フォーカスがある）間は動かさない（「元に戻す」が1回で押せなかった）
+      const active = document.activeElement
+      if ((active instanceof HTMLElement && active.closest('[data-toast]')) || document.querySelector('[data-toast]:hover')) return
+      // 右のパネルにタスクの詳細を開いているとき（ガント）だけ、パネルの左に出す。今日の予定のパネルは覆ってもよい
+      const sidePanel = document.querySelector<HTMLElement>('#hakobi-side-panel[data-toast-avoid]')
       const sideWidth = sidePanel && sidePanel.getClientRects().length > 0 ? sidePanel.getBoundingClientRect().width : 0
       // パネルの左に出すと狭すぎる（知らせが 280px 入らない）ときは、これまでどおり右下に出す
       const offset = sideWidth > 0 && window.innerWidth - sideWidth - 40 >= 280 ? sideWidth + 20 : 20
@@ -38,7 +42,6 @@ export function Toast({ toasts, onRemove }: Props): React.JSX.Element {
       }
       // 開いているメニュー・候補の一覧も隠さない（進捗ログの「⋯」のメニューなど）
       const popupCovered = Array.from(document.querySelectorAll('[role="menu"], [role="listbox"]')).some((element) => !element.closest('[data-toast]') && covers(element))
-      const active = document.activeElement
       const activeCovered = active instanceof HTMLElement && active !== document.body && !active.closest('[data-toast]') && covers(active)
       setPlaceTop(popupCovered || activeCovered)
     }

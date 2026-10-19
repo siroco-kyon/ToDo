@@ -36,7 +36,7 @@ interface Props {
   onStartTimer: (todoId: string) => Promise<void>
   onStopTimer: (note?: string) => Promise<void>
   onAddToTodayPlan: (todoId: string) => Promise<DailyPlanItem>
-  onShowToast: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void; key?: string }) => void
+  onShowToast: (message: string, type?: 'success' | 'error', action?: { label?: string; run?: () => void; key?: string }) => void
   onDirtyChange?: (dirty: boolean) => void
   /** ほかの画面（チーム・報告など）から開いたとき、その画面へ戻るボタン */
   returnTo?: { label: string; onReturn: () => void } | null
@@ -455,6 +455,8 @@ export function TodoDetail({
     const saved = lastSavedProgressRef.current
     if (saved && saved.todoId === todo?.id && saved.progress === todo?.progress) lastSavedProgressRef.current = null
   }, [todo?.id, todo?.progress])
+  // サブタスクをチェックする前の進捗（チェックを外したときに戻す）
+  const progressBeforeDoneRef = useRef(new Map<string, number>())
   // 続けて進捗を変えたときは、知らせを1枚にまとめ、「元に戻す」で最初の値まで戻す
   const progressUndoBaseRef = useRef<{ todoId: string; progress: number; status: Todo['status']; at: number } | null>(null)
   const handleProgressCommit = (progress: number): Promise<void> => {
@@ -1461,7 +1463,16 @@ export function TodoDetail({
                       <ReadonlySubTaskItem
                         subTask={subTask}
                         users={users}
-                        onToggle={() => void window.api.subtaskUpdate(subTask.id, { done: !subTask.done, expected_values: { done: Boolean(subTask.done) } }).then((updated) => setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))).catch((error) => onShowToast(error instanceof Error ? error.message : 'サブタスクを更新できませんでした', 'error'))}
+                        onToggle={() => {
+                          // チェックを外したときは、チェックする前の進捗に戻す（覚えていないときは、これまでどおり 99%）
+                          const nextDone = !subTask.done
+                          const restoreProgress = nextDone ? undefined : progressBeforeDoneRef.current.get(subTask.id)
+                          if (nextDone) progressBeforeDoneRef.current.set(subTask.id, subTask.progress)
+                          else progressBeforeDoneRef.current.delete(subTask.id)
+                          void window.api.subtaskUpdate(subTask.id, { done: nextDone, ...(restoreProgress !== undefined ? { progress: restoreProgress } : {}), expected_values: { done: Boolean(subTask.done) } })
+                            .then((updated) => setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item)))
+                            .catch((error) => onShowToast(error instanceof Error ? error.message : 'サブタスクを更新できませんでした', 'error'))
+                        }}
                         onSave={async (data) => {
                           const updated = await window.api.subtaskUpdate(subTask.id, data)
                           setSubTasks((previous) => previous.map((item) => item.id === updated.id ? updated : item))
@@ -1565,8 +1576,8 @@ export function TodoDetail({
                 <input type="number" min={0} max={60} value={dependencyDraft.lagDays} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, lagDays: event.target.value }))} placeholder="待機日数" aria-label="待機日数" title="先行タスクの完了から、何日空けて始めるか" style={{ ...inputStyle, flex: '0 0 88px', width: 88 }} />
                 <button onClick={() => void handleCreateDependency()} style={buttonStyle('var(--blue-600)')}>追加</button>
               </div>
-              <DependencyList title="先行タスク" items={predecessorDependencies} getTodoId={(item) => item.predecessor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.predecessor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} />
-              <DependencyList title="後続タスク" items={successorDependencies} getTodoId={(item) => item.successor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.successor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} />
+              <DependencyList title="先行タスク" items={predecessorDependencies} getTodoId={(item) => item.predecessor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.predecessor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} onShowToast={onShowToast} />
+              <DependencyList title="後続タスク" items={successorDependencies} getTodoId={(item) => item.successor_todo_id} getTitle={(item) => allTodos.find((candidate) => candidate.id === item.successor_todo_id)?.title ?? '不明なタスク'} reload={() => todoId ? loadDependencies(todoId) : Promise.resolve()} onShowToast={onShowToast} />
             </div>
           </section>
           )}
@@ -1829,7 +1840,50 @@ function TodoHistory({ todoId, refreshKey }: { todoId: string; refreshKey: strin
   )
 }
 
-function DependencyList({ title, items, getTodoId, getTitle, reload }: { title: string; items: TodoDependency[]; getTodoId: (item: TodoDependency) => string; getTitle: (item: TodoDependency) => string; reload: () => Promise<void> }): React.JSX.Element {
+function DependencyList({ title, items, getTodoId, getTitle, reload, onShowToast }: { title: string; items: TodoDependency[]; getTodoId: (item: TodoDependency) => string; getTitle: (item: TodoDependency) => string; reload: () => Promise<void>; onShowToast: Props['onShowToast'] }): React.JSX.Element {
+  // 待機日数を変える・依存関係を外すと、後続のタスクの日程が自動で動く。何件動いたかを知らせ、元に戻せるようにする
+  // （期限の変更と同じ。黙って動くと、ほかの人のタスクの日程が変わったことに気付けない）
+  const scheduleKey = (todo: Todo): string => `${todo.start_date?.slice(0, 10) ?? ''}/${todo.due_date?.slice(0, 10) ?? ''}`
+  const movedTodosAfter = async (change: () => Promise<unknown>): Promise<Todo[]> => {
+    const before = new Map((await window.api.todoGetAll()).map((todo) => [todo.id, scheduleKey(todo)]))
+    await change()
+    await reload()
+    return (await window.api.todoGetAll()).filter((todo) => before.has(todo.id) && before.get(todo.id) !== scheduleKey(todo))
+  }
+  const movedText = (moved: Todo[]): string => moved.length === 0 ? '' : `。後続の${moved.length}件（「${moved[0].title}」${moved.length > 1 ? 'ほか' : ''}）の日程も動きました`
+  const changeLag = async (item: TodoDependency, nextLag: number): Promise<void> => {
+    if (nextLag === item.lag_days) return
+    try {
+      const moved = await movedTodosAfter(() => window.api.todoDependencyUpdate(item.id, nextLag))
+      onShowToast(`「${getTitle(item)}」との待機を${nextLag}日にしました${movedText(moved)}`, 'success', {
+        label: '元に戻す',
+        run: () => {
+          void window.api.todoDependencyUpdate(item.id, item.lag_days).then(() => reload()).then(
+            () => onShowToast('待機日数を元に戻しました'),
+            (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+          )
+        }
+      })
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '待機日数を変えられませんでした', 'error')
+    }
+  }
+  const removeDependency = async (item: TodoDependency): Promise<void> => {
+    try {
+      const moved = await movedTodosAfter(() => window.api.todoDependencyDelete(item.id))
+      onShowToast(`「${getTitle(item)}」との依存関係を外しました${movedText(moved)}`, 'success', {
+        label: '元に戻す',
+        run: () => {
+          void window.api.todoDependencyCreate(item.predecessor_todo_id, item.successor_todo_id, item.lag_days).then(() => reload()).then(
+            () => onShowToast('依存関係を元に戻しました'),
+            (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+          )
+        }
+      })
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '依存関係を外せませんでした', 'error')
+    }
+  }
   return (
     <div>
       <div style={{ fontSize: '0.72rem', color: 'var(--slate-400)', marginBottom: 6 }}>{title}</div>
@@ -1842,9 +1896,10 @@ function DependencyList({ title, items, getTodoId, getTitle, reload }: { title: 
               <button onClick={() => void window.api.windowOpenTodo(getTodoId(item))} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>{getTitle(item)}</button>
               <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>待機 {item.lag_days}日</span>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <button onClick={() => void window.api.todoDependencyUpdate(item.id, clampLag(item.lag_days - 1)).then(() => reload())} style={buttonStyle('var(--slate-700)')}>-1日</button>
-                <button onClick={() => void window.api.todoDependencyUpdate(item.id, clampLag(item.lag_days + 1)).then(() => reload())} style={buttonStyle('var(--slate-700)')}>+1日</button>
-                <button onClick={() => void window.api.todoDependencyDelete(item.id).then(() => reload())} style={buttonStyle('var(--red-900)')}>削除</button>
+                {/* 期限の「+1日」と見分けられるよう「待機」と書く */}
+                <button onClick={() => void changeLag(item, clampLag(item.lag_days - 1))} aria-label={`「${getTitle(item)}」との待機を1日減らす`} title="待機日数を1日減らします（後続の日程も動きます）" style={buttonStyle('var(--slate-700)')}>待機 -1日</button>
+                <button onClick={() => void changeLag(item, clampLag(item.lag_days + 1))} aria-label={`「${getTitle(item)}」との待機を1日増やす`} title="待機日数を1日増やします（後続の日程も動きます）" style={buttonStyle('var(--slate-700)')}>待機 +1日</button>
+                <button onClick={() => void removeDependency(item)} aria-label={`「${getTitle(item)}」との依存関係を外す`} style={buttonStyle('var(--red-900)')}>外す</button>
               </div>
             </div>
           ))}
@@ -2171,7 +2226,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
   categories: Category[]
   users: PublicUser[]
   onUpdate: (id: string, data: UpdateTodoInput) => Promise<void>
-  onShowToast: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
+  onShowToast: (message: string, type?: 'success' | 'error', action?: { label?: string; run?: () => void; key?: string }) => void
 }): React.JSX.Element {
   const [saving, setSaving] = useState(false)
   const [editingSchedule, setEditingSchedule] = useState(false)
@@ -2198,12 +2253,13 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
     setSaving(true)
     try {
       await onUpdate(todo.id, data)
-      // 日程などは、知らせから元に戻せるようにする（依存関係の後続も元の日程で計算し直される）
+      // 日程などは、知らせから元に戻せるようにする（依存関係の後続も元の日程で計算し直される）。
+      // 戻したら、後続が動いた知らせを「元に戻しました」で置き換える（古い知らせが残って、戻ったか分からなくならないように）
       onShowToast(message, 'success', undo ? {
         label: '元に戻す',
         run: () => {
           void onUpdate(todo.id, undo).then(
-            () => onShowToast('元に戻しました'),
+            () => onShowToast('元に戻しました', 'success', { key: 'schedule-change' }),
             (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
           )
         }

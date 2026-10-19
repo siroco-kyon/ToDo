@@ -83,6 +83,8 @@ const COMPACT_BLOCK_THRESHOLD = 64
 const EDGE_SCROLL_THRESHOLD = 72
 const EDGE_SCROLL_PIXELS = 24
 const AUTO_SCROLL_LEAD_MINUTES = 60
+/** 今日以外の計画を開いたときに見せ始める時刻（始業のころ） */
+const WORKDAY_START_HOUR = 8
 
 function getTodayKey(): string {
   const now = new Date()
@@ -107,11 +109,17 @@ function diffCalendarDays(dateStr: string, baseDateStr: string): number {
 
 function formatDueLabel(dueDate: string | null, todayKey: string): string {
   if (!dueDate) return '期限なし'
+  const isToday = todayKey === getTodayKey()
   const diffDays = diffCalendarDays(dueDate, todayKey)
   if (diffDays < 0) return `${Math.abs(diffDays)}日超過`
-  if (diffDays === 0) return '今日が期限'
-  if (diffDays === 1) return '明日が期限'
+  if (diffDays === 0) return isToday ? '今日が期限' : 'この日が期限'
+  if (diffDays === 1) return isToday ? '明日が期限' : '翌日が期限'
   return `あと${diffDays}日`
+}
+
+/** 「今日に入れる」のボタンの文言。今日以外の計画では「この日に入れる」 */
+function addToDayLabel(dateKey: string): string {
+  return dateKey === getTodayKey() ? '今日に入れる' : 'この日に入れる'
 }
 
 function formatMinutes(minutes: number): string {
@@ -488,6 +496,7 @@ function CandidateCard({
             })
           }}
           style={actionBtn(placementActive ? 'var(--blue-700)' : 'var(--slate-800)', 'var(--blue-100)', placementActive ? 'var(--blue-400)' : 'var(--slate-700)')}
+          aria-label={placementActive ? `「${todo.title}」を置く時刻を選んでいます` : `「${todo.title}」を時間割に置く`}
         >
           {placementActive ? '配置中' : '時間に置く'}
         </button>
@@ -497,8 +506,9 @@ function CandidateCard({
             void onAdd(todo.id)
           }}
           style={actionBtn('var(--blue-950)', 'var(--blue-200)', 'var(--blue-600)')}
+          aria-label={`「${todo.title}」を${todayKey === getTodayKey() ? '今日' : 'この日'}の計画に入れる`}
         >
-          今日に入れる
+          {addToDayLabel(todayKey)}
         </button>
       </div>
     </div>
@@ -584,6 +594,7 @@ function UnscheduledCard({
             })
           }}
           style={actionBtn(placementActive ? 'var(--blue-700)' : 'var(--slate-800)', 'var(--blue-100)', placementActive ? 'var(--blue-400)' : 'var(--slate-700)')}
+          aria-label={placementActive ? `「${item.title}」を置く時刻を選んでいます` : `「${item.title}」を時間割に置く`}
         >
           {placementActive ? '配置中' : '時間に置く'}
         </button>
@@ -729,13 +740,20 @@ export function PlanView({
 
   useLayoutEffect(() => {
     const todayKey = getTodayKey()
-    if (date !== todayKey) return
 
     const scrollContainer = scrollContainerRef.current
     if (!scrollContainer) return
 
+    const earliestScheduled = planItems
+      .filter((item) => item.scheduled_start)
+      .map((item) => clockToMinutes(item.scheduled_start!) - TIMELINE_START_HOUR * 60)
+      .sort((a, b) => a - b)[0]
+    const otherDayStart = Math.min(earliestScheduled ?? Number.POSITIVE_INFINITY, WORKDAY_START_HOUR * 60 - TIMELINE_START_HOUR * 60) - 30
+
     const applyScroll = (): void => {
-      const startOffset = clamp(nowOffsetMinutes() - AUTO_SCROLL_LEAD_MINUTES, 0, TIMELINE_TOTAL_MINUTES)
+      const startOffset = date === todayKey
+        ? clamp(nowOffsetMinutes() - AUTO_SCROLL_LEAD_MINUTES, 0, TIMELINE_TOTAL_MINUTES)
+        : clamp(otherDayStart, 0, TIMELINE_TOTAL_MINUTES)
       const targetTop = startOffset * PIXELS_PER_MINUTE
       const maxScrollTop = Math.max(scrollContainer.scrollHeight - scrollContainer.clientHeight, 0)
       scrollContainer.scrollTop = clamp(targetTop, 0, maxScrollTop)

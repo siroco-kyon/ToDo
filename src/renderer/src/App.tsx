@@ -149,6 +149,8 @@ const NARROW_SIDE_PANEL_WIDTH = 1280
 const NARROW_CATEGORY_PANE_WIDTH = 1100
 // カンバンの4列（1列 200px と間・余白）が収まる幅。収まらないときは、右の「今日の予定」→カテゴリ一覧→タスク一覧の順に隠す
 const KANBAN_MIN_BOARD_WIDTH = 4 * 200 + 3 * 10 + 24 + 6
+/** 日程の変更と、依存関係で後続が動いた知らせの key（元に戻したら「元に戻しました」で置き換える） */
+const SCHEDULE_TOAST_KEY = 'schedule-change'
 /** これより狭いと、ガントの日付が数日分しか見えない（左の表の幅を含む） */
 const GANTT_COMFORT_WIDTH = 640
 const SIDE_PANEL_VIEWS_WITHOUT_RAIL: readonly CenterView[] = ['plan', 'team', 'progress', 'report', 'todo']
@@ -326,11 +328,12 @@ export function App(): React.JSX.Element {
   const resizeRef = useRef<{ key: PaneKey; startX: number; startWidth: number } | null>(null)
 
   // action.key が同じ知らせは、新しいもので置き換える（進捗を続けて変えたときに知らせが積み重ならないように）
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success', action?: { label: string; run: () => void; key?: string }) => {
+  // ボタンのない知らせにも key を付けられる（「元に戻しました」で、前の知らせを置き換えるときなど）
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success', action?: { label?: string; run?: () => void; key?: string }) => {
     const id = ++toastIdRef.current
     setToasts((prev) => [
       ...(action?.key ? prev.filter((toast) => toast.key !== action.key) : prev),
-      { id, message, type, actionLabel: action?.label, onAction: action?.run, key: action?.key }
+      { id, message, type, actionLabel: action?.label && action.run ? action.label : undefined, onAction: action?.label ? action.run : undefined, key: action?.key }
     ])
   }, [])
 
@@ -352,14 +355,23 @@ export function App(): React.JSX.Element {
   }, [loadResource, loadTodayPlan])
   const loadAllSubTasks = useCallback(() => loadResource('allSubTasks', () => window.api.subtaskGetAll(), setAllSubTasks), [loadResource])
 
+  // 同じ日の計画を読み直すとき（予定を入れた・動かしたあと）は、画面を「読み込んでいます」に替えずに中身だけ差し替える
+  // （朝に何件も入れるたびに画面全体が消え、どこまで入れたか見失っていた）
+  const selectedPlanLoadedDateRef = useRef<string | null>(null)
   const loadSelectedPlan = useCallback(async (date: string) => {
     const requestId = ++selectedPlanRequestRef.current
-    setSelectedPlanLoading(true)
+    const sameDate = selectedPlanLoadedDateRef.current === date
+    if (!sameDate) {
+      setSelectedPlanLoading(true)
+      setSelectedPlanItems([])
+    }
     setSelectedPlanError(null)
-    setSelectedPlanItems([])
     try {
       const items = await window.api.dailyPlanGetByDate(date)
-      if (resourcesMountedRef.current && requestId === selectedPlanRequestRef.current) setSelectedPlanItems(items)
+      if (resourcesMountedRef.current && requestId === selectedPlanRequestRef.current) {
+        setSelectedPlanItems(items)
+        selectedPlanLoadedDateRef.current = date
+      }
     } catch (error) {
       if (resourcesMountedRef.current && requestId === selectedPlanRequestRef.current) {
         setSelectedPlanError(error instanceof Error ? error.message : '計画を読み込めませんでした')
@@ -1221,7 +1233,7 @@ export function App(): React.JSX.Element {
     const owner = first.assignee_name ? `（${first.assignee_name}）` : ''
     showToast(moved.length === 1
       ? `依存関係で、後続の「${first.title}」${owner}も ${range} に動きました`
-      : `依存関係で、後続の${moved.length}件（「${first.title}」${owner}ほか）の日程も動きました`)
+      : `依存関係で、後続の${moved.length}件（「${first.title}」${owner}ほか）の日程も動きました`, 'success', { key: SCHEDULE_TOAST_KEY })
   }, [todos, showToast])
 
   // ToDoリストの項目のチェック（右パネル・一覧の展開・ToDo タブ）。すぐ画面に反映し、失敗したら戻す
@@ -2154,7 +2166,7 @@ export function App(): React.JSX.Element {
               style={resizeHandleStyle}
             />
 
-            <aside id="hakobi-side-panel" data-focus-region tabIndex={-1} aria-label={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? 'タスクの詳細' : '今日の予定'} style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column', outline: 'none' }}>
+            <aside id="hakobi-side-panel" data-focus-region data-toast-avoid={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? '' : undefined} tabIndex={-1} aria-label={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? 'タスクの詳細' : '今日の予定'} style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column', outline: 'none' }}>
               {activeView === 'gantt' ? (
                 <>
                   <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>

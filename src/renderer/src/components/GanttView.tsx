@@ -30,7 +30,7 @@ interface Props {
   /** 文字の大きさの倍率（設定の文字の大きさ。1 = 100%）。大きいときは左の表の幅も広げる */
   textScale?: number
   /** 知らせを出す（キーで日程を変えたときに「元に戻す」付きで知らせる） */
-  onShowToast?: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
+  onShowToast?: (message: string, type?: 'success' | 'error', action?: { label?: string; run?: () => void; key?: string }) => void
 }
 
 /** チャートの最小の高さ（これより低い窓では、ガントの画面ごとスクロールする） */
@@ -139,6 +139,8 @@ interface NewSubTaskDraft {
 interface UndoEntry {
   label: string
   run: () => Promise<void>
+  /** この変更の知らせの key（「1つ戻る」で戻したら、その知らせを「元に戻しました」で置き換える） */
+  toastKey?: string
 }
 
 type EditableTodoField = 'start_date' | 'due_date' | 'progress' | 'assignee_id'
@@ -2226,7 +2228,7 @@ function GanttViewContent({
   const shiftTodoByKeyboard = useCallback((todo: Todo, days: number, moveWhole: boolean): void => {
     const start = todo.start_date?.slice(0, 10) ?? null
     const due = todo.due_date?.slice(0, 10) ?? null
-    const notify = (message: string, type: 'success' | 'error' = 'success', action?: { label: string; run: () => void }): void => {
+    const notify = (message: string, type: 'success' | 'error' = 'success', action?: { label?: string; run?: () => void; key?: string }): void => {
       if (onShowToast) onShowToast(message, type, action)
       else setDependencyFeedback(message)
     }
@@ -2262,11 +2264,13 @@ function GanttViewContent({
       const latestTodos = await window.api.todoGetAll()
       await shiftSubTasksForMovedTodos(previousSnapshots, previousSubTaskSnapshots, latestTodos)
       ensureRangeIncludesTodos(affectedTodoIds, latestTodos)
-      if (previousSnapshots.length > 0) setLastUndoEntry({ label, run: undo })
+      const toastKey = `gantt-schedule:${todo.id}`
+      if (previousSnapshots.length > 0) setLastUndoEntry({ label, run: undo, toastKey })
       const range = moveWhole
         ? `${update.start_date ? formatShortDate(update.start_date) : '—'}〜${update.due_date ? formatShortDate(update.due_date) : '—'}`
         : formatShortDate(update.due_date!)
       notify(`「${todo.title}」の${moveWhole ? '日程' : '期限'}を${range}にしました`, 'success', {
+        key: toastKey,
         label: '元に戻す',
         run: () => {
           setLastUndoEntry(null)
@@ -2284,12 +2288,14 @@ function GanttViewContent({
       await lastUndoEntry.run()
       setLastUndoEntry(null)
       setDependencyFeedback(`元に戻しました: ${lastUndoEntry.label}`)
+      // キーで変えたときの知らせが残っていれば、「元に戻しました」で置き換える
+      if (lastUndoEntry.toastKey && onShowToast) onShowToast(`元に戻しました（${lastUndoEntry.label}）`, 'success', { key: lastUndoEntry.toastKey })
     } catch (error) {
       setDependencyFeedback(error instanceof Error ? error.message : '元に戻せませんでした。')
     } finally {
       setUndoPending(false)
     }
-  }, [lastUndoEntry, undoPending])
+  }, [lastUndoEntry, onShowToast, undoPending])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
