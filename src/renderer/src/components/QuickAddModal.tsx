@@ -115,6 +115,7 @@ export function QuickAddModal({
   // ToDoリスト（中の項目を毎日・毎週などでチェックし直すタスク）として作る。期限は「なし」のままでも決めてもよい
   const [listMode, setListMode] = useState(defaultListMode)
   const [submitting, setSubmitting] = useState(false)
+  const submittingRef = useRef(false)
   // 「追加後も続けて入力する」は、続けて何件も入れる人のために端末に覚える
   const [keepOpen, setKeepOpen] = useState(() => {
     try { return window.localStorage.getItem('quick-add-keep-open') === '1' } catch { return false }
@@ -139,6 +140,7 @@ export function QuickAddModal({
   }, [description, memo, title])
 
   const requestClose = (): void => {
+    if (submittingRef.current) return
     if ((title.trim() || description.trim() || memo.trim()) && !window.confirm('入力中の内容があります。閉じてもよいですか？\n下書きは次回まで保存されます。')) return
     onClose()
   }
@@ -173,8 +175,9 @@ export function QuickAddModal({
   }
 
   const submit = async (): Promise<void> => {
-    if (!canSubmit) return
+    if (!canSubmit || submittingRef.current) return
 
+    submittingRef.current = true
     setSubmitting(true)
     const remainingTitles = [...titles]
     const created: Todo[] = []
@@ -210,6 +213,7 @@ export function QuickAddModal({
       const detail = error instanceof Error ? error.message : '追加できませんでした'
       onShowToast(created.length > 0 ? `${created.length}件は追加済みです。残りを再試行できます: ${detail}` : detail, 'error')
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
@@ -259,6 +263,7 @@ export function QuickAddModal({
         </h2>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <fieldset disabled={submitting} style={{ border: 0, minWidth: 0, margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {templates.length > 0 && (
             <div>
               <label htmlFor="quick-add-template" style={labelStyle}>テンプレート</label>
@@ -314,11 +319,17 @@ export function QuickAddModal({
 
           <div>
             <span style={labelStyle}>種類</span>
-            <div role="radiogroup" aria-label="種類" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button type="button" role="radio" aria-checked={!listMode} onClick={() => setListMode(false)} style={presetButtonStyle(!listMode)} title="開始日と期限を決めて進め、終わったら完了にします">
+            <div role="radiogroup" aria-label="種類" onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
+              event.preventDefault()
+              const next = event.key === 'Home' ? false : event.key === 'End' ? true : !listMode
+              setListMode(next)
+              event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[next ? 1 : 0]?.focus()
+            }} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button type="button" role="radio" tabIndex={listMode ? -1 : 0} aria-checked={!listMode} onClick={() => setListMode(false)} style={presetButtonStyle(!listMode)} title="開始日と期限を決めて進め、終わったら完了にします">
                 タスク
               </button>
-              <button type="button" role="radio" aria-checked={listMode} onClick={() => setListMode(true)} style={presetButtonStyle(listMode)} title="毎日・毎週のチェックや細かいやることをまとめるリストです">
+              <button type="button" role="radio" tabIndex={listMode ? 0 : -1} aria-checked={listMode} onClick={() => setListMode(true)} style={presetButtonStyle(listMode)} title="毎日・毎週のチェックや細かいやることをまとめるリストです">
                 ToDoリスト
               </button>
             </div>
@@ -520,6 +531,7 @@ export function QuickAddModal({
               {submitting ? '追加中...' : titles.length > 1 ? `${titles.length}件を追加` : '追加'}
             </button>
           </div>
+          </fieldset>
         </form>
       </div>
     </div>

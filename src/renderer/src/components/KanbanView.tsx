@@ -209,6 +209,10 @@ export function KanbanView({
   const [dragOverStatus, setDragOverStatus] = useState<TodoStatus | null>(null)
   const [addingStatus, setAddingStatus] = useState<TodoStatus | null>(null)
   const [addTitle, setAddTitle] = useState('')
+  const [addError, setAddError] = useState('')
+  const [adding, setAdding] = useState(false)
+  const addingRef = useRef(false)
+  const addButtonsRef = useRef(new Map<TodoStatus, HTMLButtonElement>())
 
   const privateCategoryIds = useMemo(
     () => new Set(categories.filter((c) => c.is_private).map((c) => c.id)),
@@ -243,11 +247,23 @@ export function KanbanView({
     void Promise.resolve(onChangeStatus(todo, next.status)).then(() => setFocusAfterMoveId(todo.id))
   }
 
-  const submitAdd = (status: TodoStatus): void => {
+  const submitAdd = async (status: TodoStatus): Promise<void> => {
     const title = addTitle.trim()
-    if (title) void onCreateInColumn(title, status)
-    setAddTitle('')
-    setAddingStatus(null)
+    if (!title || addingRef.current) return
+    addingRef.current = true
+    setAdding(true)
+    setAddError('')
+    try {
+      await onCreateInColumn(title, status)
+      setAddTitle('')
+      setAddingStatus(null)
+      window.requestAnimationFrame(() => addButtonsRef.current.get(status)?.focus())
+    } catch (error) {
+      setAddError(error instanceof Error ? error.message : '追加できませんでした。入力を残しています。もう一度お試しください。')
+    } finally {
+      addingRef.current = false
+      setAdding(false)
+    }
   }
 
   return (
@@ -277,7 +293,9 @@ export function KanbanView({
                 {items.length}
               </span>
               <button
-                onClick={() => { setAddingStatus(col.status); setAddTitle('') }}
+                ref={(element) => { if (element) addButtonsRef.current.set(col.status, element); else addButtonsRef.current.delete(col.status) }}
+                disabled={adding}
+                onClick={() => { setAddingStatus(col.status); setAddTitle(''); setAddError('') }}
                 title={`「${col.label}」の列にタスクを追加`}
                 aria-label={`${col.label}にタスクを追加`}
                 style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid var(--slate-700)', borderRadius: 6, color: 'var(--slate-400)', cursor: 'pointer', fontSize: '0.8rem', lineHeight: 1, padding: '3px 7px' }}
@@ -288,19 +306,29 @@ export function KanbanView({
 
             <div style={{ flex: 1, overflowY: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
               {addingStatus === col.status && (
+                <form aria-label={`${col.label}にタスクを追加`} onSubmit={(event) => { event.preventDefault(); void submitAdd(col.status) }} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <input
                   autoFocus
+                  aria-label="タスク名"
+                  aria-describedby={addError ? 'kanban-add-error' : undefined}
+                  aria-invalid={Boolean(addError)}
+                  disabled={adding}
                   value={addTitle}
                   onChange={(e) => setAddTitle(e.target.value)}
                   onKeyDown={(e) => {
                     // 日本語変換の確定の Enter では追加しない
-                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) submitAdd(col.status)
-                    if (e.key === 'Escape') { setAddingStatus(null); setAddTitle('') }
+                    if (e.nativeEvent.isComposing) { if (e.key === 'Enter') e.preventDefault(); return }
+                    if (e.key === 'Escape' && !addingRef.current) { e.preventDefault(); setAddingStatus(null); setAddTitle(''); addButtonsRef.current.get(col.status)?.focus() }
                   }}
-                  onBlur={() => submitAdd(col.status)}
                   placeholder="タスク名を入力して Enter"
                   style={{ width: '100%', padding: '7px 9px', background: 'var(--slate-900)', border: '1px solid var(--blue-500)', borderRadius: 8, color: 'var(--slate-200)', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}
                 />
+                {addError && <p id="kanban-add-error" role="alert" style={{ color: 'var(--red-400)', fontSize: '0.8rem', overflowWrap: 'anywhere' }}>{addError} 入力内容は残っています。</p>}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button type="submit" disabled={adding || !addTitle.trim()} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--blue-500)', background: 'var(--blue-900)', color: 'var(--blue-100)', cursor: adding ? 'wait' : 'pointer' }}>{adding ? '追加中…' : '追加'}</button>
+                  <button type="button" disabled={adding} onClick={() => { setAddingStatus(null); setAddTitle(''); addButtonsRef.current.get(col.status)?.focus() }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--slate-700)', background: 'transparent', color: 'var(--slate-300)', cursor: 'pointer' }}>キャンセル</button>
+                </div>
+                </form>
               )}
 
               {items.map((todo) => (

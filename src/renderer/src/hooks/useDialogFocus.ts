@@ -19,7 +19,7 @@ const openDialogs: HTMLElement[] = []
 
 function focusableIn(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE))
-    .filter((element) => element.getClientRects().length > 0)
+    .filter((element) => !element.matches(':disabled') && element.getClientRects().length > 0)
 }
 
 export function useDialogFocus(ref: RefObject<HTMLElement | null>): void {

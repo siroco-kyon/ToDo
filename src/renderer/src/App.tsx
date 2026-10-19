@@ -1379,14 +1379,16 @@ export function App(): React.JSX.Element {
   }, [loadTodos, showToast])
 
   const handleKanbanCreate = useCallback(async (title: string, status: Todo['status']) => {
-    await window.api.todoCreate({
+    const created = await window.api.todoCreate({
       title,
       status: status === 'archived' ? 'not_started' : status,
       category_id: selectedCategoryId,
-      assignee_id: currentUser?.id ?? null
+      assignee_id: selectedAssigneeId === null ? currentUser?.id ?? null : selectedAssigneeId || null,
+      start_date: getTodayKey()
     })
     await loadTodos()
-  }, [loadTodos, selectedCategoryId, currentUser])
+    showToast(`「${created.title}」を追加しました`)
+  }, [loadTodos, selectedCategoryId, selectedAssigneeId, currentUser, showToast])
 
   const handleCategoryAdd = useCallback(async (name: string, color: string, isPrivate: boolean) => {
     await window.api.categoryCreate(name, color, isPrivate)
