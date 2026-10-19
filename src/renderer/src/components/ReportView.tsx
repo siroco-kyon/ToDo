@@ -908,6 +908,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const [settingsState, setSettingsState] = useState(() => ({ userId: settingsUserId, settings: loadReportViewSettings(settingsUserId) }))
   const settings = settingsState.userId === settingsUserId ? settingsState.settings : loadReportViewSettings(settingsUserId)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [customDatesOpen, setCustomDatesOpen] = useState(false)
   // 定例モード（担当者を1人ずつ大きく表示する）。閉じても、この画面を開いている間は進み具合を残す
   const [meetingOpen, setMeetingOpen] = useState(false)
   // 定例の進み具合（メモ・決まったこと・持ち時間）は、ほかの画面を見に行っても消えないよう端末に覚える（見ている人ごと）
@@ -1515,17 +1516,10 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               {formatShortDate(range.from)}（{weekdayLabel(range.from)}）～ {formatShortDate(range.to)}（{weekdayLabel(range.to)}）
             </div>
             {listFilters}
-            {/* 説明は、狭い窓では ⓘ にしまう（最初のタスクが画面の下へ押し出されないように） */}
-            <div className="hakobi-hide-narrow" style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>
-              定例用に、タスクごとの進捗と報告（進捗ログ・メモ）を1ページにまとめて表示します。状態・日程・進捗・メモはその場で変えられます
-            </div>
-            <span
-              className="hakobi-show-narrow"
-              role="img"
-              aria-label="この画面について: 定例用に、タスクごとの進捗と報告（進捗ログ・メモ）を1ページにまとめて表示します。状態・日程・進捗・メモはその場で変えられます"
-              title="定例用に、タスクごとの進捗と報告（進捗ログ・メモ）を1ページにまとめて表示します。状態・日程・進捗・メモはその場で変えられます"
-              style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)', cursor: 'help' }}
-            >ⓘ</span>
+            <details style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>
+              <summary style={{ cursor: 'pointer' }}>使い方</summary>
+              <p style={{ marginTop: 8, lineHeight: 1.7 }}>定例用に、タスクごとの進捗と報告（進捗ログ・メモ）をまとめます。状態・日程・進捗・メモはその場で変更できます。報告の担当は、この画面の「報告の担当」で選びます。</p>
+            </details>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1536,6 +1530,8 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                 </button>
               ))}
             </div>
+            <button onClick={() => setCustomDatesOpen((open) => !open)} aria-expanded={customDatesOpen} aria-controls="report-custom-dates" style={secondaryButtonStyle}>日付を指定</button>
+            {customDatesOpen && <div id="report-custom-dates" role="group" aria-label="報告期間の日付指定" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <input
               type="date"
               aria-label="報告期間の開始日"
@@ -1562,6 +1558,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               style={inputStyle}
             />
 
+            </div>}
             {preset === 'thisWeek' && rangeDays(range) <= 2 && (
               <span role="note" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-control)', color: 'var(--amber-200)', border: '1px solid var(--yellow-700)', background: 'var(--yellow-950)', borderRadius: 999, padding: '3px 4px 3px 10px' }}>
                 今週はまだ{rangeDays(range)}日分です。報告の有無は直近7日で見るのがおすすめです
@@ -1570,11 +1567,11 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
             )}
             <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
               <button onClick={() => void load()} disabled={loading} style={secondaryButtonStyle}>{loading ? '更新中…' : '更新'}</button>
-              <button onClick={() => void handleCopyMarkdown()} title="表示中の内容をMarkdownでコピーします（議事録などに貼れます）" style={secondaryButtonStyle}>Markdownをコピー</button>
-              <button onClick={handleDownloadCsv} title="表示中の内容をCSVで保存します（Excelで開けます）" style={secondaryButtonStyle}>CSV</button>
+              <button onClick={() => void handleCopyMarkdown()} disabled={loading || !loaded || Boolean(loadError)} title="表示中の内容をMarkdownでコピーします（議事録などに貼れます）" style={secondaryButtonStyle}>Markdownをコピー</button>
+              <button onClick={handleDownloadCsv} disabled={loading || !loaded || Boolean(loadError)} title="表示中の内容をCSVで保存します（Excelで開けます）" style={secondaryButtonStyle}>CSV</button>
               <button
                 onClick={openMeeting}
-                disabled={!loaded || groups.length === 0}
+                disabled={loading || !loaded || Boolean(loadError) || groups.length === 0}
                 title="担当者を1人ずつ大きく表示し、持ち時間を計りながら進めます。決まったことはその場でタスクにでき、終わったら議事録をコピーできます"
                 style={{ ...secondaryButtonStyle, borderColor: 'var(--indigo-600)', color: 'var(--indigo-200)' }}
               >
@@ -1595,7 +1592,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
             )}
             {multiUser && currentUser && (
               <label style={checkboxLabelStyle}>
-                担当
+                報告の担当
                 <select value={assigneeFilter} onChange={(event) => changeAssigneeFilter(event.target.value as AssigneeFilter)} style={inputStyle}>
                   <option value="all">全員</option>
                   <option value="mine">自分の担当のみ</option>
@@ -1704,24 +1701,14 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
           )}
 
           {loaded && (groups.length > 1 || visibleSubGroupKeys.length > 1) && (
-            // 担当者のチップは1行に並べ、入りきらないときは横にスクロールする（2行・3行になって中身を押し出さないように）
-            <nav className="hakobi-chip-strip" aria-label={effectiveGroupMode === 'assignee' ? '担当者へ移動' : 'カテゴリへ移動'} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap', overflowX: 'auto', paddingTop: 2, paddingBottom: 4, scrollbarWidth: 'thin' }}>
-              {groups.length > 1 && <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>{effectiveGroupMode === 'assignee' ? '担当者へ移動:' : 'カテゴリへ移動:'}</span>}
-              {groups.length > 1 && groups.map((group) => {
-                const needs = group.rows.filter((row) => needsReport(row.freshness)).length
-                const overdue = group.rows.filter((row) => isOverdue(row.todo)).length
-                const behind = group.rows.filter((row) => row.behind != null).length
-                return (
-                  <button key={group.key} onClick={() => jumpToGroup(group.key)} title={`${group.label}の欄へ移動（${group.rows.length}件${needs > 0 ? `・報告なし${needs}件` : ''}${overdue > 0 ? `・期限超過${overdue}件` : ''}${behind > 0 ? `・進捗の遅れ${behind}件` : ''}）`} style={jumpChipStyle}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: group.color ?? 'var(--slate-600)', flexShrink: 0 }} />
-                    {group.label}
-                    <span style={{ color: 'var(--text-subtle)', fontWeight: 600 }}>{group.rows.length}</span>
-                    {needs > 0 && <span style={{ color: 'var(--amber-200)', fontWeight: 700 }}>報告なし{needs}</span>}
-                    {overdue > 0 && <span style={{ color: 'var(--red-300)', fontWeight: 700 }}>超過{overdue}</span>}
-                    {behind > 0 && <span style={{ color: 'var(--amber-300)', fontWeight: 700 }}>遅れ{behind}</span>}
-                  </button>
-                )
-              })}
+            <nav aria-label={effectiveGroupMode === 'assignee' ? '担当者へ移動' : 'カテゴリへ移動'} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {groups.length > 1 && <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>
+                {effectiveGroupMode === 'assignee' ? '担当者へ移動' : 'カテゴリへ移動'}
+                <select value="" onChange={(event) => { if (event.target.value.startsWith('group:')) jumpToGroup(event.target.value.slice(6)) }} style={{ ...inputStyle, maxWidth: 'min(360px, 100%)' }}>
+                  <option value="">選んで移動…</option>
+                  {groups.map((group) => <option key={group.key} value={`group:${group.key}`}>{group.label}（{group.rows.length}件・報告なし {group.rows.filter((row) => needsReport(row.freshness)).length}件）</option>)}
+                </select>
+              </label>}
               {groups.length > 1 && (
                 <button onClick={() => setCollapsedGroups(collapsedGroups.size > 0 ? new Set() : new Set(groups.map((group) => group.key)))} style={{ ...inlineActionStyle, marginLeft: 4 }}>
                   {collapsedGroups.size > 0 ? 'すべて開く' : 'すべて折りたたむ'}
