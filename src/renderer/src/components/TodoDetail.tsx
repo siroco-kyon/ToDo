@@ -1613,7 +1613,12 @@ export function TodoDetail({
   const twoColumns = !editing && detailBodyWidth >= TWO_COLUMN_MIN_WIDTH
 
   return (
-    <div style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div onKeyDown={(event) => {
+      if (editing && (event.ctrlKey || event.metaKey) && event.key === 'Enter' && !event.nativeEvent.isComposing) {
+        event.preventDefault()
+        void handleSave()
+      }
+    }} style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div
         style={{
           position: 'sticky',
@@ -1668,9 +1673,11 @@ export function TodoDetail({
               {isInTodayPlan ? '今日の計画に追加済み' : '今日の計画に追加'}
             </button>
           )}
+          {editing && <button onClick={() => void handleSave()} disabled={saving} title="変更を保存します（Ctrl+Enter）" aria-keyshortcuts="Control+Enter Meta+Enter" style={buttonStyle('var(--indigo-500)')}>{saving ? '保存中…' : '変更を保存'}</button>}
           <button ref={editButtonRef} onClick={editing ? cancelEditing : startEditing} disabled={saving} title={editing ? undefined : 'タスク名・説明・繰り返し・サブ担当などをまとめて編集します'} style={buttonStyle('var(--slate-700)')}>
             {editing ? '編集をやめる' : '編集'}
           </button>
+          {editing && <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>編集中・Ctrl+Enter で保存</span>}
           {!editing && currentUser && (
             <button
               disabled={subscriptionPending}

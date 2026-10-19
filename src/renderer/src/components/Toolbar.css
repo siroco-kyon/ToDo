@@ -32,9 +32,11 @@
 .hakobi-toolbar-narrow-only {
   display: none;
 }
+.hakobi-toolbar-search-label { display: none; }
 
 /* 「移動」の文字は、もう少し狭くなるまで残す（Ctrl+K で開けることに気付けるように） */
 @media (max-width: 1040px) {
+  .hakobi-toolbar-search-label { display: inline; }
   .hakobi-toolbar-roomy-only {
     display: none;
   }
