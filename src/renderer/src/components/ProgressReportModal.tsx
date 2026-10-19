@@ -5,6 +5,7 @@ import { copyTextToClipboard } from '../lib/clipboard'
 import { writeTaskReportSnapshot } from '../lib/taskReportSnapshot'
 import { recurrenceKindLabel } from '../lib/recurrence'
 import { changeFieldLabel } from '../lib/changeFields'
+import { formatShortDate } from '../lib/dueDate'
 import type {
   ProgressDigest,
   ProgressDigestNote,
@@ -29,6 +30,8 @@ interface Props {
   includePrivate?: boolean
   /** 現在のタスク一覧（フィルタ・ソート済み）。タスク別レポートをこの並び順で出す */
   visibleTodos: Todo[]
+  /** 一覧の絞り込みに関係ない、すべてのタスク。一覧で絞っていても、集計したメンバーのタスクは載せる */
+  allTodos?: Todo[]
 }
 
 const STATUS_LABEL: Record<TodoStatus, string> = {
@@ -373,7 +376,7 @@ function digestToMarkdown(digest: ProgressDigest, perTaskReport: TaskReportRow[]
   return lines.join('\n')
 }
 
-export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = false, currentUser = null, includePrivate = true, visibleTodos }: Props): React.JSX.Element {
+export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = false, currentUser = null, includePrivate = true, visibleTodos, allTodos }: Props): React.JSX.Element {
   const dialogRef = useRef<HTMLDivElement>(null)
   useDialogFocus(dialogRef)
   const today = new Date()
@@ -383,6 +386,8 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
     () => new Set(users.filter((u) => u.is_active === 1).map((u) => u.id))
   )
   const [digest, setDigest] = useState<ProgressDigest | null>(null)
+  // 最後に集計した時刻（「集計し直す」を押したことが分かるように）
+  const [digestAt, setDigestAt] = useState<Date | null>(null)
   const [taskNotes, setTaskNotes] = useState<ProgressNote[] | null>(null)
   const [taskSubTasks, setTaskSubTasks] = useState<SubTask[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -412,6 +417,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
       setDigest(result)
       setTaskNotes(notes)
       setTaskSubTasks(subTasks)
+      setDigestAt(new Date())
     } catch (err) {
       onShowToast(err instanceof Error ? err.message : '進捗レポートの取得に失敗しました', 'error')
     } finally {
@@ -426,7 +432,17 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
   )
   const authorFiltered = reportAuthorIds.size > 0
   const reportNotes = useMemo(() => filterNotesByAuthors(taskNotes ?? [], reportAuthorIds), [taskNotes, reportAuthorIds])
-  const perTaskReport = buildPerTaskReport(visibleTodos, reportNotes, taskSubTasks ?? [])
+  // タスク別レポートは一覧の表示順。一覧で担当を絞っていても、集計したメンバーの担当タスク・書き込みのあるタスクは後ろに足す
+  const reportTodos = useMemo(() => {
+    if (!allTodos || reportAuthorIds.size === 0) return visibleTodos
+    const visibleIds = new Set(visibleTodos.map((todo) => todo.id))
+    const notedTodoIds = new Set(reportNotes.map((note) => note.todo_id))
+    const relevant = (todo: Todo): boolean => (todo.assignee_id != null && reportAuthorIds.has(todo.assignee_id))
+      || (todo.co_assignees ?? []).some((item) => reportAuthorIds.has(item.user_id))
+      || notedTodoIds.has(todo.id)
+    return [...visibleTodos.filter(relevant), ...allTodos.filter((todo) => !visibleIds.has(todo.id) && relevant(todo))]
+  }, [allTodos, reportAuthorIds, reportNotes, visibleTodos])
+  const perTaskReport = buildPerTaskReport(reportTodos, reportNotes, taskSubTasks ?? [])
   const displayedTaskReport = showOnlyActiveTasks ? perTaskReport.filter((row) => row.notes.length > 0) : perTaskReport
 
   const handleCopyMarkdown = useCallback(async (): Promise<void> => {
@@ -571,8 +587,13 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => void fetchDigest()} disabled={loading} style={primaryBtn}>
-            {loading ? '集計中…' : '集計する'}
+            {loading ? '集計中…' : digest ? '集計し直す' : '集計する'}
           </button>
+          {digestAt && !loading && (
+            <span role="status" style={{ alignSelf: 'center', fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
+              {digestAt.getHours()}:{String(digestAt.getMinutes()).padStart(2, '0')} に集計しました
+            </span>
+          )}
           {digest && (
             <button onClick={() => void handleCopyMarkdown()} style={copyBtn}>
               📋 Markdownをコピー
@@ -584,7 +605,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
         {digest && (
           <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-              <h3 style={sectionHead}>タスク別レポート（一覧の表示順）</h3>
+              <h3 style={sectionHead}>タスク別レポート（集計したメンバーのタスク・一覧の表示順）</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.76rem', color: 'var(--slate-400)', cursor: 'pointer' }}>
                   <input
@@ -668,7 +689,7 @@ export function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Eleme
         )}
         <span style={{ ...statBadge, marginLeft: 'auto' }}>{todo.progress}%</span>
         <span style={{ ...statBadge, ...(dueColor ? { color: dueColor, borderColor: `color-mix(in srgb, ${dueColor} 37.6%, transparent)` } : {}) }}>
-          {todo.due_date ? `期限 ${todo.due_date.slice(0, 10)}` : '期限なし'}
+          {todo.due_date ? `期限 ${formatShortDate(todo.due_date)}` : '期限なし'}
         </span>
       </div>
       {assignees && (
@@ -685,7 +706,7 @@ export function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Eleme
               <span style={{ color: sub.done ? 'var(--slate-500)' : 'var(--slate-300)', textDecoration: sub.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                 {sub.title}
               </span>
-              <span style={rowMeta}>{sub.progress}%{sub.due_date ? `・${sub.due_date.slice(0, 10)}` : ''}</span>
+              <span style={rowMeta}>{sub.progress}%{sub.due_date ? `・期限 ${formatShortDate(sub.due_date)}` : ''}</span>
             </div>
           ))}
         </div>
@@ -746,12 +767,12 @@ function UserDigestCard({ user }: { user: ProgressDigestUser }): React.JSX.Eleme
         <span style={{ width: 12, height: 12, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
         <span style={{ fontSize: '0.95rem', color: 'var(--slate-200)', fontWeight: 700 }}>{user.display_name}</span>
         <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
-          <span style={statBadge}>タスク {user.added_todos.length}</span>
+          <span style={statBadge} title="この期間に追加したタスクの数">追加 {user.added_todos.length}</span>
           <span style={statBadge}>完了 {user.completed_todos.length}</span>
           <span style={statBadge}>サブタスク {user.added_subtasks.length}</span>
           <span style={statBadge}>変更 {taskChangeCount}</span>
           <span style={statBadge}>進捗ログ {user.notes.length}</span>
-          <span style={statBadge}>コメント {user.comments.length}</span>
+          <span style={statBadge}>返信 {user.comments.length}</span>
           <span style={statBadge}>作業 {formatMinutes(user.work_minutes)}</span>
         </div>
       </div>

@@ -92,6 +92,20 @@ export function isBehindSchedule(expectedProgress: number, progress: number, beh
   return behindDays >= thresholdDays || expectedProgress - progress >= BEHIND_PROGRESS_GAP
 }
 
+/**
+ * 遅れを判定するタスクか（ガント・報告タブ・チームタブで共通）。
+ * 完了・アーカイブ・保留中・ToDoリスト、開始日か期限のないタスクは判定しない
+ */
+export function isScheduleTracked(todo: { status: string; list_mode?: number | boolean | null; start_date: string | null; due_date: string | null }): boolean {
+  if (todo.status === 'done' || todo.status === 'archived' || todo.status === 'on_hold' || todo.list_mode) return false
+  return Boolean(todo.start_date && todo.due_date)
+}
+
+/** 遅れの日数の表記。1日に満たないときは「1日未満」と書き、丸めて大きく見せない */
+export function behindDaysLabel(behindDays: number): string {
+  return behindDays < 1 ? '1日未満の遅れ' : `約${Math.round(behindDays)}日遅れ`
+}
+
 /** ガントの表示設定から、遅れとみなす日数と土日祝を数えないかを読む */
 export function loadScheduleSettings(): { behindThresholdDays: number; workingDaysOnly: boolean } {
   try {

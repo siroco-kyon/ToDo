@@ -5,7 +5,7 @@ import { buildChecklistSummaries, checklistBadgeText } from '../lib/todoList'
 import { autoScrollNearEdge, dropPositionOf, moveIdBy, moveIdTo, type DropPosition } from '../lib/reorder'
 import { dataInk } from '../lib/theme'
 import { formatShortDate } from '../lib/dueDate'
-import { BEHIND_THRESHOLD_OPTIONS, DEFAULT_BEHIND_THRESHOLD_DAYS, GANTT_VIEW_SETTINGS_STORAGE_KEY, calculateSchedule, isBehindSchedule, type ScheduleOptions } from '../lib/scheduleHealth'
+import { BEHIND_THRESHOLD_OPTIONS, DEFAULT_BEHIND_THRESHOLD_DAYS, GANTT_VIEW_SETTINGS_STORAGE_KEY, behindDaysLabel, calculateSchedule, isBehindSchedule, isScheduleTracked, type ScheduleOptions } from '../lib/scheduleHealth'
 
 interface Props {
   todos: Todo[]
@@ -740,6 +740,8 @@ function getScheduleHealth(todo: Todo, todoBar: TodoBar | null, todayKey: string
   if (todo.status === 'done') {
     return { status: 'done', expectedProgress: 100, delta: 0, behindDays: 0, label: '完了', accent: 'var(--green-500)', background: 'var(--green-950)', text: 'var(--green-100)' }
   }
+  // 期限のないタスク（開始日だけ）は、予定の進捗も遅れも出さない（1日だけのバーとして遅れに数えていた）
+  if (!todo.due_date) return null
 
   if (daysOverdue > 0 && progress < 100) {
     return { status: 'overdue', expectedProgress, delta, behindDays, label: `期限を${daysOverdue}日超過`, accent: 'var(--red-500)', background: 'var(--red-950)', text: 'var(--red-200)' }
@@ -749,8 +751,9 @@ function getScheduleHealth(todo: Todo, todoBar: TodoBar | null, todayKey: string
     return { status: 'future', expectedProgress, delta, behindDays, label: '開始前', accent: 'var(--slate-500)', background: 'var(--slate-900)', text: 'var(--slate-300)' }
   }
 
-  if (isBehindSchedule(expectedProgress, progress, behindDays, options.behindThresholdDays)) {
-    return { status: 'behind', expectedProgress, delta, behindDays, label: `約${Math.max(1, Math.round(behindDays))}日遅れ`, accent: 'var(--amber-500)', background: 'var(--amber-950)', text: 'var(--amber-200)' }
+  // 遅れは、開始日と期限があり、保留中でないタスクだけ（報告タブ・チームタブと同じ。lib/scheduleHealth の isScheduleTracked）
+  if (isScheduleTracked(todo) && isBehindSchedule(expectedProgress, progress, behindDays, options.behindThresholdDays)) {
+    return { status: 'behind', expectedProgress, delta, behindDays, label: behindDaysLabel(behindDays), accent: 'var(--amber-500)', background: 'var(--amber-950)', text: 'var(--amber-200)' }
   }
 
   if (-behindDays >= options.behindThresholdDays) {
@@ -911,7 +914,7 @@ function buildTodoBarTooltip(options: {
       todo.title,
       `状態: ${STATUS_TONE[todo.status].label}`,
       `担当: ${assignees.length > 0 ? assignees.join('、') : '未割り当て'} ・ 進捗 ${progress}%${health ? ` ・ ${health.label}` : ''}`,
-      `期間: ${shortDateLabel(bar.startDate)} → ${shortDateLabel(bar.endDate)}${outside ? `（${outside === 'before' ? '表示期間より前' : '表示期間より後'}）` : ''}`
+      `${todo.due_date ? `期間: ${shortDateLabel(bar.startDate)} → ${shortDateLabel(bar.endDate)}` : `開始: ${shortDateLabel(bar.startDate)}・期限なし`}${outside ? `（${outside === 'before' ? '表示期間より前' : '表示期間より後'}）` : ''}`
     ]
   if (health && health.status !== 'done' && health.status !== 'future') {
     // 「順調」と判定した差（遅れとみなす日数未満）は「遅れ」と書かない
@@ -1826,11 +1829,12 @@ function GanttViewContent({
     }
     return counts
   }, [rangeHealthByTodoId])
+  // 右に詳細を開いているタスクは、絞り込みの条件から外れても残す（期限を延ばして「遅れ」でなくなった行が、黙って消えないように）
   const displayedRangeGroups = useMemo(() => (
     healthFilter && showScheduleSignals
-      ? rangeChartGroups.filter((group) => rangeHealthByTodoId.get(group.todo.id)?.status === healthFilter)
+      ? rangeChartGroups.filter((group) => rangeHealthByTodoId.get(group.todo.id)?.status === healthFilter || group.todo.id === focusTodoId)
       : rangeChartGroups
-  ), [healthFilter, rangeChartGroups, rangeHealthByTodoId, showScheduleSignals])
+  ), [focusTodoId, healthFilter, rangeChartGroups, rangeHealthByTodoId, showScheduleSignals])
 
   // 担当者別はサーバー版（メンバーがいる）だけ。カテゴリで絞り込み中でも担当者別には分けられる
   const sectionGrouping: 'category' | 'assignee' | 'none' = groupMode === 'assignee' && users.length > 0

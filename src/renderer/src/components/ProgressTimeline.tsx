@@ -592,6 +592,8 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
               }
             }}
             placeholder={placeholder}
+            // 「返信」を押して開いたら、そのまま打てるように入力欄へ移る
+            autoFocus
             rows={parentComment ? 2 : 1}
             style={{ ...inputStyle, width: '100%', minHeight: parentComment ? 54 : 40, resize: 'vertical', lineHeight: 1.5 }}
           />

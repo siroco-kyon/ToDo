@@ -35,6 +35,16 @@ assert.equal(lib.isBehindSchedule(75, 0, 1.5, 2), true, '2日間のタスクの�
 assert.equal(lib.isBehindSchedule(45, 30, 1.5, 2), false, '差が小さければ順調')
 assert.equal(lib.isBehindSchedule(45, 60, -1.5, 2), false, '先行は遅れではない')
 
+// 遅れを判定するタスク: 開始日と期限があり、完了・保留中・ToDoリストでないもの（ガント・報告・チームで共通）
+const task = { status: 'active', list_mode: 0, start_date: '2026-10-01', due_date: '2026-10-10' }
+assert.equal(lib.isScheduleTracked(task), true)
+assert.equal(lib.isScheduleTracked({ ...task, due_date: null }), false, '期限のないタスクは判定しない')
+assert.equal(lib.isScheduleTracked({ ...task, start_date: null }), false, '開始日のないタスクは判定しない')
+assert.equal(lib.isScheduleTracked({ ...task, status: 'on_hold' }), false, '保留中は判定しない')
+assert.equal(lib.isScheduleTracked({ ...task, list_mode: 1 }), false, 'ToDoリストは判定しない')
+assert.equal(lib.behindDaysLabel(0.5), '1日未満の遅れ', '0.5日を「約1日」に丸めない')
+assert.equal(lib.behindDaysLabel(2.6), '約3日遅れ')
+
 // 設定がなければ既定（2日・暦日）
 assert.deepEqual({ ...lib.loadScheduleSettings() }, { behindThresholdDays: 2, workingDaysOnly: false })
 

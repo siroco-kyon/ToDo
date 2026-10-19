@@ -2271,7 +2271,8 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
             onChange={(event) => {
               const status = event.target.value as Todo['status']
               const label = STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status
-              void save({ status }, `状態を「${label}」にしました`)
+              // 状態・優先度・カテゴリ・担当も、知らせから元に戻せる（押し間違えたときに元の値を覚えていなくてよい）
+              void save({ status }, `状態を「${label}」にしました`, { status: todo.status })
             }}
             style={{ ...compactSelectStyle, color: statusTone, fontWeight: 700 }}
           >
@@ -2287,7 +2288,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
           aria-label="優先度"
           onChange={(event) => {
             const priority = Number(event.target.value)
-            void save({ priority }, `優先度を「${PRIORITY_OPTIONS.find((option) => option.value === priority)?.label ?? priority}」にしました`)
+            void save({ priority }, `優先度を「${PRIORITY_OPTIONS.find((option) => option.value === priority)?.label ?? priority}」にしました`, { priority: todo.priority })
           }}
           style={compactSelectStyle}
         >
@@ -2302,7 +2303,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
           aria-label="カテゴリ"
           onChange={(event) => {
             const categoryId = event.target.value || null
-            void save({ category_id: categoryId }, `カテゴリを「${categories.find((category) => category.id === categoryId)?.name ?? 'なし'}」にしました`)
+            void save({ category_id: categoryId }, `カテゴリを「${categories.find((category) => category.id === categoryId)?.name ?? 'なし'}」にしました`, { category_id: todo.category_id ?? null })
           }}
           style={{ ...compactSelectStyle, color: dataInk(todo.category_color ?? 'var(--slate-200)') }}
         >
@@ -2322,7 +2323,10 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
                 assignee_id: assigneeId,
                 // 主担当にした人はサブ担当から外す（編集画面と同じ）
                 co_assignee_ids: (todo.co_assignees ?? []).map((item) => item.user_id).filter((id) => id !== assigneeId)
-              }, `担当を「${users.find((user) => user.id === assigneeId)?.display_name ?? '未割り当て'}」にしました`)
+              }, `担当を「${users.find((user) => user.id === assigneeId)?.display_name ?? '未割り当て'}」にしました`, {
+                assignee_id: todo.assignee_id ?? null,
+                co_assignee_ids: (todo.co_assignees ?? []).map((item) => item.user_id)
+              })
             }}
             selectStyle={compactSelectStyle}
           />

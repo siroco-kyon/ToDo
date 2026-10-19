@@ -55,8 +55,9 @@ export const REPORT_REMINDER_HOUR = 17
 export const REPORT_REMINDER_LOOKBACK_DAYS = 7
 
 /**
- * 報告がまだの担当タスク。直近7日に進捗ログもメモの更新もない、未着手・進行中のタスク
- * （保留中・完了・ToDoリスト・まだ始まらないタスクは除く）。報告のリマインドとチームタブの「報告なし」で使う
+ * 報告がまだの担当タスク。直近7日に、担当（主・副）の進捗ログもメモの更新もない、進行中・開始日を過ぎた未着手のタスク
+ * （保留中・完了・ToDoリスト・まだ始まらないタスク・今日から始めるタスクは除く）。報告のリマインドとチームタブの「報告なし」で使う。
+ * 報告タブの「報告なし」（ReportView.tsx の buildRow）と同じ条件にする（報告タブは期間を選べる点だけが違う）
  */
 export function listUnreportedTodos(userId: string, now = new Date(), includePrivate = true): Array<{ id: string; title: string }> {
   const since = new Date(now)
@@ -66,8 +67,11 @@ export function listUnreportedTodos(userId: string, now = new Date(), includePri
   return getDb().prepare(
     `SELECT t.id, t.title FROM Todos t LEFT JOIN Categories c ON t.category_id = c.id
      WHERE t.assignee_id = ? AND t.status IN ('not_started', 'active') AND COALESCE(t.list_mode, 0) = 0
-       AND (t.start_date IS NULL OR substr(t.start_date, 1, 10) <= ?)
-       AND NOT EXISTS (SELECT 1 FROM ProgressNotes n WHERE n.todo_id = t.id AND n.created_at >= ?)
+       AND (t.status = 'active' OR (t.start_date IS NOT NULL AND substr(t.start_date, 1, 10) < ?))
+       AND NOT EXISTS (
+         SELECT 1 FROM ProgressNotes n WHERE n.todo_id = t.id AND n.created_at >= ?
+           AND (n.user_id = t.assignee_id OR n.user_id IN (SELECT ca.user_id FROM TodoCoAssignees ca WHERE ca.todo_id = t.id))
+       )
        AND NOT EXISTS (SELECT 1 FROM TodoChangeLogs l WHERE l.todo_id = t.id AND l.field = 'memo' AND l.created_at >= ?)
        ${privateClause}
      ORDER BY t.due_date IS NULL, t.due_date, t.title`

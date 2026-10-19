@@ -205,7 +205,7 @@ function CategoryRow({ category }: { category: OverviewCategoryStat }): React.JS
           <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', marginTop: 2 }}>
             {category.doneTasks}/{category.totalTasks}件 完了
             {'  ・  '}
-            {category.activeTasks}件 進行中
+            未完了 {category.activeTasks}件
             {category.overdueTasks > 0 ? `  ・  ${category.overdueTasks}件 期限超過` : ''}
           </div>
         </div>
@@ -672,7 +672,7 @@ export function OverviewDashboard({
         </div>
         {data && (
           <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
-            進行中 {data.summary.activeTasks}件 / 完了 {data.summary.doneTasks}件
+            未完了 {data.summary.activeTasks}件 / 完了 {data.summary.doneTasks}件
           </div>
         )}
       </div>
@@ -706,9 +706,10 @@ export function OverviewDashboard({
               tone="var(--blue-400)"
             />
             <SummaryCard
-              label="進行中"
+              // 数えているのは完了していないタスク（未着手・進行中・保留中）。カンバンの「進行中」の列と混同しないように「未完了」と書く
+              label="未完了"
               value={`${data.summary.activeTasks}`}
-              detail="現在動いているタスク"
+              detail="完了していないタスク（未着手・進行中・保留中）"
               tone="var(--slate-50)"
             />
             <SummaryCard

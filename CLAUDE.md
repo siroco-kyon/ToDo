@@ -109,7 +109,9 @@ server/scripts/publish-desktop.ts npm run publish:desktop の本体（dist/ を�
 - ガントのバーは `overflow: hidden` にしない。塗りは内側の切り取り用 div に入れ、タスク名は `position: sticky` で表示範囲の左端に留めている（祖先に overflow があると sticky が効かなくなる）。サブタスクのバーも同じ構造
 - ガントの土日・祝日の塗りは、全行共通の SVG 1枚を行の背景に敷いている。祝日は `@holiday-jp/holiday_jp` を動的 import（別チャンク）
 - ガントの依存関係を引くつかみ（オレンジの丸）はバーの右端の外に置く。バーの中に置くと、期限を変える右端のつかみに重なってドラッグできなくなる
-- ガントの遅れ判定は「予定の進捗（経過日数の割合）」と実績の差を日数に換算して、表示設定の日数（既定2日）以上なら遅れ。土日・祝日を除いて数える設定もある
+- ガントの遅れ判定は「予定の進捗（経過日数の割合）」と実績の差を日数に換算して、表示設定の日数（既定2日）以上なら遅れ。土日・祝日を除いて数える設定もある。判定するタスク（`isScheduleTracked`：開始日と期限があり、完了・保留中・ToDoリストでない）と判定（`isBehindSchedule`：日数の差が基準以上か、予定を半分以上下回る）は `lib/scheduleHealth.ts` にまとめ、ガント・報告タブ・チームタブで同じものを使う
+- 「報告なし」は、担当（主・副）の進捗ログもメモの更新もない、進行中・開始日を過ぎた未着手のタスク。報告タブ（`ReportView.tsx` の `buildRow`、選んだ期間）とサーバー（`listUnreportedTodos`、直近7日。チームタブと報告のリマインド）で同じ条件にする
+- 一覧の担当の絞り込みは見ている人ごとに端末へ覚える（`hakobi-list-assignee:<userId>`）。覚えていなければ「自分」
 - **`Api` 契約 = `typeof api`（`src/preload/index.ts`）。** メソッドを 1 つ足すと、`web/lib/client.ts` も実装しないとコンパイルが通らない（左右対称が型で強制される）。`src/main/ipc.ts` のハンドラも対で要る
 - 型定義は二重管理: `src/main/db.ts`（Api 契約の元）と `src/renderer/src/types.ts`（renderer 用の独立コピー）。両者を同一構造に保つ
 - 現在ユーザーの取得は `window.api.authGetCurrentUser()` を使う（デスクトップ版は `null` を返す）。`web/auth` の `useCurrentUser()` は Web 専用なので共通の `App.tsx` からは使わない

@@ -6,7 +6,7 @@ import { diffDaysFromToday, dueStateSuffix, formatShortDate as formatShortDateKe
 import { MentionTextarea } from './MentionTextarea'
 import { ON_TRACK_NOTE, ProgressNoteHelpers, cleanProgressNote, withProgressNoteTemplate } from './ProgressNoteHelpers'
 import { countPostponements } from '../lib/dueChanges'
-import { behindDaysOf, isBehindSchedule, loadScheduleSettings } from '../lib/scheduleHealth'
+import { behindDaysLabel, behindDaysOf, isBehindSchedule, isScheduleTracked, loadScheduleSettings } from '../lib/scheduleHealth'
 import { ProgressNoteThread, discussionBadgeStyle } from './ProgressNoteThread'
 import { ProgressSlider } from './ProgressSlider'
 import { ReportSettingsPanel } from './ReportSettingsPanel'
@@ -574,7 +574,8 @@ function freshnessText(row: ReportRow): string {
     case 'fresh':
       return '期間内に報告あり'
     case 'quiet':
-      return '期間内の報告なし'
+      // 担当でない人（リーダーなど）の書き込みだけがあるときは、そう書く（「最終報告」の日付と食い違って見えないように）
+      return row.notes.length > 0 ? '担当者の報告なし（ほかの人の書き込みだけ）' : '期間内の報告なし'
     case 'stale':
       return row.lastReportAt ? `${formatDaysAgo(row.lastReportAt).replace('前', '')}報告なし` : '報告なし'
     case 'none':
@@ -910,8 +911,15 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   // 定例モード（担当者を1人ずつ大きく表示する）。閉じても、この画面を開いている間は進み具合を残す
   const [meetingOpen, setMeetingOpen] = useState(false)
   // 定例の進み具合（メモ・決まったこと・持ち時間）は、ほかの画面を見に行っても消えないよう端末に覚える（見ている人ごと）
+  // 読み込み直した直後はログイン中の人がまだ分からず、保存先が変わる。保存先が変わったら、その人の進み具合を読み直す
+  // （以前は空の状態のまま新しい保存先に書いてしまい、再読み込みで定例の途中経過が消えていた）
   const meetingStorageKey = `report.meeting:${settingsUserId ?? 'local'}`
-  const [meetingState, setMeetingState] = useState<MeetingState | null>(() => loadMeetingState(meetingStorageKey))
+  const [meetingStore, setMeetingStore] = useState<{ key: string; state: MeetingState | null }>(() => ({ key: meetingStorageKey, state: loadMeetingState(meetingStorageKey) }))
+  if (meetingStore.key !== meetingStorageKey) setMeetingStore({ key: meetingStorageKey, state: loadMeetingState(meetingStorageKey) })
+  const meetingState = meetingStore.key === meetingStorageKey ? meetingStore.state : null
+  const setMeetingState = useCallback((next: MeetingState | null | ((previous: MeetingState | null) => MeetingState | null)): void => {
+    setMeetingStore((previous) => ({ key: previous.key, state: typeof next === 'function' ? next(previous.state) : next }))
+  }, [])
   useEffect(() => {
     try {
       if (meetingState) window.localStorage.setItem(meetingStorageKey, JSON.stringify(meetingState))
@@ -1103,7 +1111,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const todayKey = toDateKey(new Date())
   const behindOf = useCallback((todo: Todo): ReportRow['behind'] => {
     // 期限を過ぎたものは「期限超過」で出すので、ここでは期限前のものだけ
-    if (todo.status === 'done' || todo.status === 'archived' || todo.list_mode || !todo.start_date || !todo.due_date) return null
+    if (!isScheduleTracked(todo) || !todo.start_date || !todo.due_date) return null
     const bar = { startDate: todo.start_date.slice(0, 10), endDate: todo.due_date.slice(0, 10) }
     if (bar.endDate < bar.startDate || todayKey > bar.endDate) return null
     const { behindDays, expectedProgress } = behindDaysOf(todo.progress, bar, todayKey, { ...scheduleSettings, holidayNames })
@@ -1211,7 +1219,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const myNeedsReportCount = multiUser && currentUserId ? countOf('myNeedsReport') : 0
   const quickFilterChips: Array<{ value: QuickFilter; label: string; count: number; color: string; title: string }> = [
     { value: 'all', label: 'すべて', count: baseRows.length, color: 'var(--slate-300)', title: '絞り込まずに表示' },
-    { value: 'needsReport', label: '報告なし', count: countOf('needsReport'), color: 'var(--amber-200)', title: '進行中なのに、この期間の進捗ログ・メモ更新がないタスク' },
+    { value: 'needsReport', label: '報告なし', count: countOf('needsReport'), color: 'var(--amber-200)', title: '進行中（または開始日を過ぎた未着手）なのに、この期間に担当（主・副）の進捗ログもメモの更新もないタスク。チームタブの「報告なし（直近7日）」は、期間を直近7日にした同じ数え方' },
     { value: 'discussion', label: '要相談', count: countOf('discussion'), color: 'var(--c-d6b38a)', title: '「要相談」が付いた進捗ログがあるタスク（期間に関係なく）' },
     { value: 'onHold', label: '保留中', count: countOf('onHold'), color: 'var(--purple-300)', title: '保留中のタスク（保留が長い順）' },
     { value: 'overdue', label: '期限超過', count: countOf('overdue'), color: 'var(--red-300)', title: '期限を過ぎて完了していないタスク' },
@@ -2499,7 +2507,7 @@ function ReportTaskCard({
               title={`今日時点の予定 ${row.behind.expectedProgress}% ／ 実績 ${todo.progress}%（ガントの「遅れ」と同じ判定）`}
               style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--amber-200)', background: 'var(--amber-950)', border: '1px solid var(--amber-500)', borderRadius: 999, padding: '2px 9px' }}
             >
-              進捗 約{Math.max(1, Math.round(row.behind.days))}日遅れ
+              進捗 {behindDaysLabel(row.behind.days)}
             </span>
           )}
           <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>

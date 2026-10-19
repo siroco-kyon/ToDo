@@ -701,11 +701,25 @@ export function App(): React.JSX.Element {
       : `画面の幅に合わせて、${hidden.join('と')}を隠しました。上の「表示」から開けます`)
   }, [activeView, autoHideCategoryPane, autoHideSidePanel, autoHideTaskPane, isFirstLaunch, isKanban, openedWhileNarrow, showCategoryPane, showPlanRail, showTaskPane, showToast])
 
+  // 一覧の担当の絞り込みは、見ている人ごとに端末へ覚える（読み込み直すたびに「自分」へ戻らないように）。
+  // 覚えていなければ「自分」から始める
+  const assigneeFilterStorageKey = currentUser ? `hakobi-list-assignee:${currentUser.id}` : null
   useEffect(() => {
     if (assigneeDefaultApplied || !currentUser || users.length === 0) return
-    setSelectedAssigneeId(currentUser.id)
+    let stored: string | null = null
+    try { stored = window.localStorage.getItem(`hakobi-list-assignee:${currentUser.id}`) } catch { /* 読めなければ「自分」 */ }
+    setSelectedAssigneeId(stored === '__all__' ? null
+      : stored === '__none__' ? ''
+        : stored && users.some((user) => user.id === stored) ? stored
+          : currentUser.id)
     setAssigneeDefaultApplied(true)
-  }, [assigneeDefaultApplied, currentUser, users.length])
+  }, [assigneeDefaultApplied, currentUser, users])
+  useEffect(() => {
+    if (!assigneeDefaultApplied || !assigneeFilterStorageKey) return
+    try {
+      window.localStorage.setItem(assigneeFilterStorageKey, selectedAssigneeId === null ? '__all__' : selectedAssigneeId === '' ? '__none__' : selectedAssigneeId)
+    } catch { /* 覚えられなくても絞り込みは使える */ }
+  }, [assigneeDefaultApplied, assigneeFilterStorageKey, selectedAssigneeId])
 
   // 「OS に合わせる」のときは、OS のライト・ダークの切り替えにもついていく
   const [systemPrefersLight, setSystemPrefersLight] = useState(() => window.matchMedia?.('(prefers-color-scheme: light)').matches ?? false)
@@ -2261,6 +2275,7 @@ export function App(): React.JSX.Element {
           users={users}
           includePrivate={scopeLens === 'personal'}
           visibleTodos={filteredTodos}
+          allTodos={lensTodos}
           onClose={() => setShowProgressReport(false)}
           onShowToast={showToast}
         />
@@ -2285,6 +2300,7 @@ export function App(): React.JSX.Element {
           currentUser={currentUser}
           includePrivate={scopeLens === 'personal'}
           visibleTodos={filteredTodos}
+          allTodos={lensTodos}
           onClose={() => setShowMySummary(false)}
           onShowToast={showToast}
         />

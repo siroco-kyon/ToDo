@@ -3,7 +3,7 @@ import type { TeamDashboard as TeamDashboardData, TeamDeadlineItem, TeamMemberWo
 import { AssigneeChip } from './AssigneePicker'
 import { dataInk } from '../lib/theme'
 import { formatShortDate } from '../lib/dueDate'
-import { behindDaysOf, isBehindSchedule, loadScheduleSettings } from '../lib/scheduleHealth'
+import { behindDaysOf, isBehindSchedule, isScheduleTracked, loadScheduleSettings } from '../lib/scheduleHealth'
 
 interface Props {
   onSelectTodo: (id: string) => void
@@ -106,7 +106,7 @@ export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = t
   const behindCountByUser = useMemo(() => {
     const counts = new Map<string, number>()
     for (const todo of todos) {
-      if (!todo.assignee_id || todo.status === 'done' || todo.status === 'archived' || todo.status === 'on_hold' || todo.list_mode || !todo.start_date || !todo.due_date) continue
+      if (!todo.assignee_id || !isScheduleTracked(todo) || !todo.start_date || !todo.due_date) continue
       const bar = { startDate: todo.start_date.slice(0, 10), endDate: todo.due_date.slice(0, 10) }
       // 期限を過ぎたものは「超過」で数える
       if (bar.endDate < bar.startDate || todayKey > bar.endDate) continue
@@ -133,6 +133,20 @@ export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = t
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
             {data.now.map((item) => (
               <NowCard key={`${item.user_id}-${item.todo_id}`} item={item} extraSeconds={secondsSinceLoad} onSelectTodo={onSelectTodo} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* メンバーごとの数（遅れ・報告なしなど）は朝いちばんに見るので、期限の一覧より先に出す */}
+      <section>
+        <SectionHeader title="メンバーの負荷" accent="var(--blue-400)" count={data.workloads.length} />
+        {data.workloads.length === 0 ? (
+          <EmptyNote text="メンバーがいません。" />
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+            {data.workloads.map((member) => (
+              <WorkloadCard key={member.user_id} member={member} behindCount={behindCountByUser.get(member.user_id) ?? 0} onSelect={onSelectMember ? () => onSelectMember(member.user_id) : undefined} />
             ))}
           </div>
         )}
@@ -166,18 +180,6 @@ export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = t
         </section>
       </div>
 
-      <section>
-        <SectionHeader title="メンバーの負荷" accent="var(--blue-400)" count={data.workloads.length} />
-        {data.workloads.length === 0 ? (
-          <EmptyNote text="メンバーがいません。" />
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
-            {data.workloads.map((member) => (
-              <WorkloadCard key={member.user_id} member={member} behindCount={behindCountByUser.get(member.user_id) ?? 0} onSelect={onSelectMember ? () => onSelectMember(member.user_id) : undefined} />
-            ))}
-          </div>
-        )}
-      </section>
     </div>
   )
 }
@@ -264,7 +266,7 @@ function WorkloadCard({ member, behindCount, onSelect }: { member: TeamMemberWor
         <Metric label="超過" title="期限を過ぎた未完了のタスク" value={`${member.overdue_tasks}`} color={member.overdue_tasks > 0 ? 'var(--red-400)' : 'var(--slate-500)'} />
         <Metric label="遅れ" title="期限前で、予定の進捗より遅れているタスク（ガントの「遅れ」と同じ判定）" value={`${behindCount}`} color={behindCount > 0 ? 'var(--amber-300)' : 'var(--slate-500)'} />
         {member.unreported_tasks !== undefined && (
-          <Metric label="報告なし（7日）" title="直近7日に進捗ログもメモの更新もない、始まっている担当タスク（報告のリマインドと同じ条件）" value={`${member.unreported_tasks}`} color={member.unreported_tasks > 0 ? 'var(--amber-200)' : 'var(--slate-500)'} />
+          <Metric label="報告なし（直近7日）" title="直近7日に、担当（主・副）の進捗ログもメモの更新もない、進行中（または開始日を過ぎた未着手）の主担当のタスク。報告タブの「報告なし」と同じ数え方で、期間を直近7日にしたもの（報告のリマインドも同じ条件）" value={`${member.unreported_tasks}`} color={member.unreported_tasks > 0 ? 'var(--amber-200)' : 'var(--slate-500)'} />
         )}
         <Metric label="今日" value={formatMinutes(member.today_minutes)} color="var(--green-400)" />
       </div>

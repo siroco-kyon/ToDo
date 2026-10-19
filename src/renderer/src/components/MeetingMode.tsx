@@ -354,7 +354,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
                 style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--c-0b1220)', color: 'var(--slate-200)', fontSize: '0.82rem', lineHeight: 1.6, resize: 'vertical' }}
               />
               <div style={{ fontSize: '0.75rem', color: 'var(--slate-400)', lineHeight: 1.6 }}>
-                このメモは報告画面を離れると消えます。残す場合は「定例の内容をコピー」でコピーしてください。
+                このメモはこの端末に12時間残ります（ほかの画面へ移っても、読み込み直しても消えません）。議事録として残す場合は「定例の内容をコピー」でコピーしてください。
               </div>
             </section>
             <section style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
