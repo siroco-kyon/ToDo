@@ -231,6 +231,8 @@ export function QuickAddModal({
     } catch (error) {
       const detail = error instanceof Error ? error.message : '追加できませんでした'
       onShowToast(created.length > 0 ? `${created.length}件は追加済みです。残りを再試行できます: ${detail}` : detail, 'error')
+      // 送信中は欄を無効にしていてフォーカスが外れるので、無効を解いたあとで名前の欄へ戻す（そのまま Enter で再試行できる）
+      window.setTimeout(() => inputRef.current?.focus(), 0)
     } finally {
       submittingRef.current = false
       setSubmitting(false)

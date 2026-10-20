@@ -72,7 +72,8 @@ async function runElectron() {
     await click('追加')
     await until('!document.querySelector("form input")','Column retry saves')
     assert.equal((await js('window.api.todoGetAll()')).filter(t=>t.title==='残す入力').length,1)
-    assert.equal(await js('document.activeElement.getAttribute("aria-label")'),'未着手にタスクを追加','Focus returns after addition')
+    // フォーカスは描き直しのあとで戻るので、少し待って確かめる（すぐに見ると、まれに戻る前を見て失敗していた）
+    await until('document.activeElement&&document.activeElement.getAttribute("aria-label")==="未着手にタスクを追加"','Focus returns after addition')
     await js('Array.from(document.querySelectorAll("button")).find(b=>b.getAttribute("aria-label")==="タスクを追加").click();void 0')
     await until('Boolean(document.querySelector("[role=radiogroup]"))','Quick add ready')
     await js('document.querySelector("[role=radio][aria-checked=true]").dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowRight",bubbles:true}));void 0')

@@ -31,7 +31,7 @@ interface Props {
   /** 文字の大きさの倍率（設定の文字の大きさ。1 = 100%）。大きいときは左の表の幅も広げる */
   textScale?: number
   /** 知らせを出す（キーで日程を変えたときに「元に戻す」付きで知らせる） */
-  onShowToast?: (message: string, type?: 'success' | 'error', action?: { label?: string; run?: () => void; key?: string }) => void
+  onShowToast?: (message: string, type?: 'success' | 'error' | 'info', action?: { label?: string; run?: () => void; key?: string }) => void
   /** 開いたときにかける「期限超過」「遅れ」の絞り込み（チームの数字から開いたとき） */
   initialHealthFilter?: 'overdue' | 'behind' | null
 }
@@ -2264,21 +2264,21 @@ function GanttViewContent({
   const shiftTodoByKeyboard = useCallback((todo: Todo, days: number, moveWhole: boolean): void => {
     const start = todo.start_date?.slice(0, 10) ?? null
     const due = todo.due_date?.slice(0, 10) ?? null
-    const notify = (message: string, type: 'success' | 'error' = 'success', action?: { label?: string; run?: () => void; key?: string }): void => {
+    const notify = (message: string, type: 'success' | 'error' | 'info' = 'success', action?: { label?: string; run?: () => void; key?: string }): void => {
       if (onShowToast) onShowToast(message, type, action)
       else setDependencyFeedback(message)
     }
     const update: UpdateTodoInput = {}
     if (moveWhole) {
       if (!start && !due) {
-        notify('日付のないタスクは、詳細で開始日か期限を入れてください', 'error')
+        notify('日付のないタスクは、詳細で開始日か期限を入れてください', 'info')
         return
       }
       if (start) update.start_date = addDays(start, days)
       if (due) update.due_date = addDays(due, days)
     } else {
       if (!due) {
-        notify('期限のないタスクは、詳細で期限を入れてください', 'error')
+        notify('期限のないタスクは、詳細で期限を入れてください', 'info')
         return
       }
       const nextDue = addDays(due, days)

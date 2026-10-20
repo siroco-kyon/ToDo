@@ -69,8 +69,11 @@ const inputStyle: React.CSSProperties = {
 }
 
 /** 画面には出さず、読み上げにだけ伝える文の置き場 */
+// fixed にする（absolute だと、位置の基準のない所では文書の下へ置かれてページ全体が伸び、上部のタブが押し上げられた）
 const visuallyHiddenStyle: React.CSSProperties = {
-  position: 'absolute',
+  position: 'fixed',
+  top: 0,
+  left: 0,
   width: 1,
   height: 1,
   overflow: 'hidden',
@@ -549,6 +552,8 @@ export function TodoDetail({
     // 一覧で完了にしたときと同じく、知らせから元に戻せるようにする。繰り返しの完了を戻したときは、作られた次回分も片付けられるようにする
     const undo = {
       label: '元に戻す',
+      // 完了と取り消しを続けたとき、前の知らせ（古い「元に戻す」）を置き換える
+      key: `status:${todoId}`,
       run: () => {
         void onUpdate(todoId, { status: previousStatus }).then(
           () => nextStatus === 'done' && recurrenceKindLabel(source.recurrence)

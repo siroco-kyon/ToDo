@@ -1742,7 +1742,7 @@ export function PlanView({
         </div>
         <div style={{ flex: '0.9 1 270px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <Section title="時刻が未定のタスク" subtitle="まだ時刻を決めていないタスクです。ドラッグかクリックで時間割に置けます。">
-            <div role="status" style={addedNotice ? { marginBottom: 10, padding: '6px 10px', borderRadius: 8, background: 'var(--green-950)', border: '1px solid var(--green-700)', color: 'var(--green-200)', fontSize: '0.78rem', lineHeight: 1.5 } : { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+            <div role="status" style={addedNotice ? { marginBottom: 10, padding: '6px 10px', borderRadius: 8, background: 'var(--green-950)', border: '1px solid var(--green-700)', color: 'var(--green-200)', fontSize: '0.78rem', lineHeight: 1.5 } : { position: 'fixed', top: 0, left: 0, width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
               {addedNotice}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

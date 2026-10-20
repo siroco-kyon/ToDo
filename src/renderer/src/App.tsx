@@ -1363,6 +1363,7 @@ export function App(): React.JSX.Element {
       }
       showToast(`「${todo.title}」を完了にしました${openSubTaskNote}${recurrenceMessage ? `。${recurrenceMessage}` : ''}`, 'success', {
         label: '元に戻す',
+        key: `status:${todo.id}`,
         run: () => {
           void window.api.todoUpdate(todo.id, { status: previousStatus }).then(
             () => { void loadTodos(); void notifyReopenedRecurrence(todo, changedAt, showToast, loadTodos) },
