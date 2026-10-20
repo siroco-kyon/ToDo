@@ -178,6 +178,14 @@ export function meetingMinutesMarkdown(groups: MeetingGroup[], state: MeetingSta
 export function MeetingMode({ groups, state, onStateChange, periodLabel, renderBody, onCreateTask, createTaskHint, onShowToast, onClose }: Props): React.JSX.Element {
   const dialogRef = useRef<HTMLDivElement>(null)
   useDialogFocus(dialogRef)
+  // 開いたら「次の人」へフォーカスを置く（先頭の「持ち時間」の選択欄だと、矢印キーで持ち時間が変わり、Esc も2回要った）。
+  // 最後の人などで押せないときは、小窓そのものに置く（次の Esc で閉じる）
+  const nextButtonRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const next = nextButtonRef.current
+    if (next && !next.disabled) next.focus()
+    else dialogRef.current?.focus()
+  }, [])
   const [now, setNow] = useState(() => Date.now())
   const [taskTitle, setTaskTitle] = useState('')
   // 決まったことの期限（その場で決めることが多いので、よく使う日を近道で選べるようにする）
@@ -290,7 +298,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
           </select>
         </label>
         <button onClick={() => goTo(index - 1)} disabled={index === 0} title="前の人（←）" style={navButtonStyle(index === 0)}>◀ 前の人</button>
-        <button autoFocus={index < groups.length - 1} onClick={() => goTo(index + 1)} disabled={index >= groups.length - 1} title="次の人（→）" style={navButtonStyle(index >= groups.length - 1, true)}>次の人 ▶</button>
+        <button ref={nextButtonRef} onClick={() => goTo(index + 1)} disabled={index >= groups.length - 1} title="次の人（→）" style={navButtonStyle(index >= groups.length - 1, true)}>次の人 ▶</button>
         <button onClick={() => void copyMinutes()} title="メモ・追加したタスク・時間をまとめてコピーします" style={navButtonStyle(false)}>議事録をコピー</button>
         <button onClick={close} title="定例モードを閉じます（Esc）。進み具合は残ります" style={navButtonStyle(false)}>閉じる</button>
       </div>
