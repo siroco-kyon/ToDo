@@ -84,6 +84,18 @@ const visuallyHiddenStyle: React.CSSProperties = {
   whiteSpace: 'nowrap'
 }
 
+/** サブタスクの行の小さい操作（✎・削除）。押せる範囲は 26px 以上 */
+const subTaskIconButtonStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: 'var(--slate-400)',
+  cursor: 'pointer',
+  minWidth: 26,
+  minHeight: 26,
+  padding: '2px 4px',
+  borderRadius: 6
+}
+
 const fieldErrorStyle: React.CSSProperties = {
   marginTop: 4,
   fontSize: 'var(--font-control)',
@@ -590,7 +602,13 @@ export function TodoDetail({
     if (!target || !todoId) return
     const originalIndex = subTasks.findIndex((item) => item.id === subTaskId)
     const remainingIds = subTasks.filter((item) => item.id !== subTaskId).map((item) => item.id)
-    await window.api.subtaskDelete(subTaskId)
+    try {
+      await window.api.subtaskDelete(subTaskId)
+    } catch (error) {
+      // 失敗したら、消えていない理由を知らせる（以前は何も出ず、消えないことだけが残った）
+      onShowToast(`サブタスク「${target.title}」を削除できませんでした: ${error instanceof Error ? error.message : '通信に失敗しました'}`, 'error')
+      return
+    }
     setSubTasks((previous) => previous.filter((item) => item.id !== subTaskId))
     setEditableSubTasks((previous) => previous.filter((item) => item.id !== subTaskId))
     onShowToast(`サブタスク「${target.title}」を削除しました`, 'success', {
@@ -613,7 +631,7 @@ export function TodoDetail({
           await window.api.subtaskReorder(todoId, orderedIds)
           await loadSubTasks(todoId)
           onShowToast('サブタスクを元の位置へ戻しました')
-        })
+        }).catch((error: unknown) => onShowToast(`サブタスクを元に戻せませんでした: ${error instanceof Error ? error.message : '通信に失敗しました'}`, 'error'))
       }
     })
   }
@@ -2262,12 +2280,15 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
 
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', borderRadius: 6, background: 'var(--slate-800)' }}>
+      {/* 見た目の四角は 16px のまま、押せる範囲を 26px に広げる */}
       <button
         onClick={onToggle}
         title={subTask.done ? '未完了に戻す' : '完了にする'}
         aria-label={subTask.done ? `${subTask.title}を未完了に戻す` : `${subTask.title}を完了にする`}
-        style={{ width: 16, height: 16, borderRadius: 3, marginTop: 2, flexShrink: 0, border: `2px solid ${subTask.done ? 'var(--green-400)' : 'var(--slate-600)'}`, background: subTask.done ? 'var(--green-400)' : 'transparent', cursor: 'pointer', padding: 0 }}
-      />
+        style={{ width: 26, height: 26, margin: '-3px -5px -5px', flexShrink: 0, border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <span aria-hidden="true" style={{ width: 16, height: 16, borderRadius: 3, boxSizing: 'border-box', border: `2px solid ${subTask.done ? 'var(--green-400)' : 'var(--slate-600)'}`, background: subTask.done ? 'var(--green-400)' : 'transparent' }} />
+      </button>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '0.85rem', color: subTask.done ? 'var(--slate-600)' : 'var(--slate-300)', textDecoration: subTask.done ? 'line-through' : 'none', wordBreak: 'break-word' }}>{subTask.title}</div>
         {(assigneeName || subTask.start_date || subTask.due_date) && (
@@ -2292,8 +2313,8 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
           />
         </div>
       </div>
-      <button onClick={startEditing} title="編集" aria-label={`${subTask.title}を編集`} style={{ background: 'none', border: 'none', color: 'var(--slate-400)', cursor: 'pointer' }}>✎</button>
-      <button onClick={onDelete} title="サブタスクを削除" aria-label={`${subTask.title}を削除`} style={{ background: 'none', border: 'none', color: 'var(--slate-400)', cursor: 'pointer' }}>削除</button>
+      <button onClick={startEditing} title="編集" aria-label={`${subTask.title}を編集`} style={subTaskIconButtonStyle}>✎</button>
+      <button onClick={onDelete} title="サブタスクを削除" aria-label={`${subTask.title}を削除`} style={subTaskIconButtonStyle}>削除</button>
     </div>
   )
 }

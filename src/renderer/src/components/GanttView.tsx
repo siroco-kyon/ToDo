@@ -5412,7 +5412,8 @@ function expandToggleButtonStyle(active: boolean, expanded: boolean): React.CSSP
     width: 'clamp(24px, 1.5rem, 32px)',
     height: 'clamp(24px, 1.5rem, 32px)',
     borderRadius: 4,
-    border: `1px solid ${active ? 'var(--slate-700)' : 'var(--gray-800)'}`,
+    // サブタスクがない行は枠を出さない（空の四角がチェックボックスに見えていた）
+    border: `1px solid ${active ? 'var(--slate-700)' : 'transparent'}`,
     background: active ? 'var(--gray-900)' : 'transparent',
     color: active ? (expanded ? 'var(--blue-200)' : 'var(--slate-400)') : 'var(--slate-700)',
     cursor: active ? 'pointer' : 'default',

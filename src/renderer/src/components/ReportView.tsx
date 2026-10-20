@@ -2955,7 +2955,10 @@ const inlineActionStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontSize: 'var(--font-caption)',
   fontWeight: 800,
-  padding: 0,
+  // 見た目は文字のリンクのまま、押せる範囲を 24px 以上にする
+  padding: '0.3rem 0.25rem',
+  margin: '-0.3rem -0.25rem',
+  minHeight: 24,
   textDecoration: 'underline',
   textUnderlineOffset: 2
 }

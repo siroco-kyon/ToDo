@@ -621,7 +621,7 @@ export function QuickCheckItem({ item, pending, todayKey, listTitle, showAssigne
         }}
         onClick={(event) => event.stopPropagation()}
         aria-label={`${item.title}を${done ? '未チェックに戻す' : 'チェックする'}`}
-        style={{ width: 15, height: 15, accentColor: 'var(--green-500)', cursor: pending ? 'progress' : 'pointer', flexShrink: 0, margin: 0, opacity: pending ? 0.6 : 1 }}
+        style={{ width: 18, height: 18, accentColor: 'var(--green-500)', cursor: pending ? 'progress' : 'pointer', flexShrink: 0, margin: 3, opacity: pending ? 0.6 : 1 }}
       />
       <button
         onClick={(event) => { event.stopPropagation(); onOpen() }}

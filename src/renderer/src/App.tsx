@@ -2241,7 +2241,23 @@ export function App(): React.JSX.Element {
               style={resizeHandleStyle}
             />
 
-            <aside id="hakobi-side-panel" data-focus-region data-toast-avoid={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? '' : undefined} tabIndex={-1} aria-label={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? 'タスクの詳細' : '今日の予定'} style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column', outline: 'none' }}>
+            <aside
+              onKeyDown={(event) => {
+                // ガントの右に開いた詳細は Esc で閉じ、そのタスクの行へフォーカスを戻す（入力欄の Esc・編集中の Esc はそちらが先に使う）
+                if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return
+                if (activeView !== 'gantt' || ganttSidePanelMode !== 'detail') return
+                const target = event.target as HTMLElement
+                if (target.closest('input, textarea, select, [role="menu"], [role="dialog"], [role="alertdialog"]')) return
+                event.preventDefault()
+                const todoId = selectedTodoId
+                void Promise.resolve(hideGanttSidePanel()).then(() => {
+                  window.requestAnimationFrame(() => {
+                    if (!todoId) return
+                    document.querySelector<HTMLElement>(`[data-gantt-todo-id="${CSS.escape(todoId)}"] [data-gantt-row-title]`)?.focus()
+                  })
+                })
+              }}
+              id="hakobi-side-panel" data-focus-region data-toast-avoid={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? '' : undefined} tabIndex={-1} aria-label={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? 'タスクの詳細' : '今日の予定'} style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column', outline: 'none' }}>
               {activeView === 'gantt' ? (
                 <>
                   <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>

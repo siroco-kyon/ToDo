@@ -410,11 +410,14 @@ function miniActionBtn(background: string, color: string): React.CSSProperties {
     color,
     border: '1px solid transparent',
     borderRadius: 6,
-    padding: '2px 6px',
+    padding: '3px 7px',
     cursor: 'pointer',
     fontSize: '0.66rem',
     lineHeight: 1.2,
-    whiteSpace: 'nowrap'
+    whiteSpace: 'nowrap',
+    // 押せる範囲は 24px 以上
+    minHeight: 24,
+    minWidth: 26
   }
 }
 
@@ -1402,7 +1405,8 @@ export function PlanView({
                         style={{
                           position: 'absolute',
                           top: '-0.7em',
-                          right: 'calc(100% + 4px)',
+                          // 時刻の列（幅72px＋間12px）の左端に置き、右寄せの「18:00」などの時刻と重ならないようにする
+                          left: -84,
                           fontSize: '0.68rem',
                           lineHeight: 1.2,
                           whiteSpace: 'nowrap',
