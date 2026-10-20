@@ -149,8 +149,11 @@ function ensureDueNotifications(userId: string): void {
   }
 
   const exists = db.prepare("SELECT 1 FROM Notifications WHERE user_id = ? AND type = 'task_due' AND todo_id = ? AND created_at >= ? LIMIT 1")
+  // 同じタスクの前の日の期限の通知は、今日の分を出すときに既読にする（毎日1件ずつ増えて、未読が同じタスクで埋まっていた）
+  const supersede = db.prepare("UPDATE Notifications SET read_at = ? WHERE user_id = ? AND type = 'task_due' AND todo_id = ? AND read_at IS NULL AND created_at < ?")
   for (const row of rows) {
     if (exists.get(userId, row.id, localDayStartIso())) continue
+    supersede.run(now, userId, row.id, localDayStartIso())
     createNotification({ userId, type: 'task_due', todoId: row.id, ...dueNotificationText(row.title, row.due_date, today) })
   }
 }

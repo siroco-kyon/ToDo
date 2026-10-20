@@ -738,7 +738,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
             }}
             style={inputStyle}
           />
-          <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)} title="並び替え" style={inputStyle}>
+          <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)} title="並び替え" aria-label="並び替え" style={inputStyle}>
             {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
           {users.length > 0 && (

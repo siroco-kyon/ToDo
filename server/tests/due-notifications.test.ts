@@ -41,6 +41,13 @@ test('期限の通知は今のタスクに合わせる（完了・延期で既�
     assert.notEqual(dueOf('提出')[0].read_at, null, '完了したら既読')
     assert.notEqual(dueOf('資料作成')[0].read_at, null, '期限を延ばしたら既読')
     assert.equal(notifications.countUnreadNotifications('u1'), 1)
+
+    // 前の日に出した期限の通知が未読のまま残っていても、今日の分を出すときに既読にして、同じタスクの通知を重ねない
+    const yesterday = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString()
+    db.prepare("UPDATE Notifications SET created_at = ? WHERE user_id = 'u1' AND type = 'task_due' AND read_at IS NULL").run(yesterday)
+    const unreadSoon = dueOf('見積もり').filter((item) => item.read_at == null)
+    assert.equal(unreadSoon.length, 1, '同じタスクの未読の期限の通知は1件だけ')
+    assert.notEqual(unreadSoon[0].created_at, yesterday, '今日の分が残る')
   } finally {
     connection.getDb().close()
     fs.rmSync(dir, { recursive: true, force: true })

@@ -1603,6 +1603,8 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
             )}
             {compactHeader && !headerExpanded && (
               <button
+                data-meeting-open=""
+                title="担当者を1人ずつ大きく表示し、持ち時間を計りながら進めます"
                 onClick={openMeeting}
                 disabled={loading || !loaded || Boolean(loadError) || groups.length === 0}
                 style={{ ...secondaryButtonStyle, borderColor: 'var(--indigo-600)', color: 'var(--indigo-200)' }}
@@ -1661,6 +1663,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               <button onClick={() => void handleCopyMarkdown()} disabled={loading || !loaded || Boolean(loadError)} title="表示中の内容をMarkdownでコピーします（議事録などに貼れます）" style={secondaryButtonStyle}>Markdownをコピー</button>
               <button onClick={handleDownloadCsv} disabled={loading || !loaded || Boolean(loadError)} title="表示中の内容をCSVで保存します（Excelで開けます）" style={secondaryButtonStyle}>CSV</button>
               <button
+                data-meeting-open=""
                 onClick={openMeeting}
                 disabled={loading || !loaded || Boolean(loadError) || groups.length === 0}
                 title="担当者を1人ずつ大きく表示し、持ち時間を計りながら進めます。決まったことはその場でタスクにでき、終わったら議事録をコピーできます"
@@ -1851,7 +1854,14 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
             onCreateTask={createMeetingTask}
             createTaskHint={meetingTaskHint}
             onShowToast={onShowToast}
-            onClose={() => setMeetingOpen(false)}
+            onClose={() => {
+              setMeetingOpen(false)
+              // 閉じたら「定例モード（に戻る）」のボタンへ戻す（見出しの畳み方で、開いたボタンと別のボタンになることがある）
+              window.requestAnimationFrame(() => {
+                const buttons = Array.from(document.querySelectorAll<HTMLElement>('[data-meeting-open]')).filter((element) => element.getClientRects().length > 0)
+                buttons[0]?.focus()
+              })
+            }}
           />
         )}
 
