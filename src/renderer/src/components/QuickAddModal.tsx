@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { Category, CreateTodoInput, PublicUser, Todo, TodoRecurrence } from '../types'
 import { AssigneePicker } from './AssigneePicker'
-import { formatShortDate, toDateKey } from '../lib/dueDate'
+import { formatShortDate, toDateKey } from '../lib/dueDate'
 import { TODO_RECURRENCE_OPTIONS, todoRecurrenceLabel } from '../lib/recurrence'
 
 interface Props {
@@ -141,8 +141,19 @@ export function QuickAddModal({
     window.localStorage.setItem('quick-add-draft', JSON.stringify({ title, description, memo }))
   }, [description, memo, title])
 
+  // 追加の応答が遅いとき（不安定な LAN）は、待たずに閉じられるようにする。閉じても書いた内容は下書きに残る
+  const [slowSubmit, setSlowSubmit] = useState(false)
+  useEffect(() => {
+    if (!submitting) { setSlowSubmit(false); return }
+    const timer = window.setTimeout(() => setSlowSubmit(true), 8000)
+    return () => window.clearTimeout(timer)
+  }, [submitting])
+
   const requestClose = (): void => {
-    if (submittingRef.current) return
+    if (submittingRef.current) {
+      if (slowSubmit && window.confirm('追加の応答を待たずに閉じます。追加されたかどうかは、一覧で確かめてください。\n書いた内容は下書きに残ります。')) onClose()
+      return
+    }
     if ((title.trim() || description.trim() || memo.trim()) && !window.confirm('入力中の内容があります。閉じてもよいですか？\n下書きは次回まで保存されます。')) return
     onClose()
   }
@@ -156,7 +167,7 @@ export function QuickAddModal({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [description, memo, onClose, title])
+  }, [description, memo, onClose, title, slowSubmit])
 
   const applyTemplate = (name: string): void => {
     const template = templates.find((item) => item.name === name)
@@ -546,6 +557,12 @@ export function QuickAddModal({
             </button>
           </div>
           </fieldset>
+          {slowSubmit && (
+            <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 'var(--font-control)', color: 'var(--amber-200)' }}>
+              応答がまだありません。待っても終わらないときは、閉じて一覧で追加されたかを確かめてください。
+              <button type="button" onClick={requestClose} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--slate-600)', background: 'transparent', color: 'var(--slate-200)', cursor: 'pointer' }}>待たずに閉じる</button>
+            </div>
+          )}
         </form>
       </div>
     </div>

@@ -333,7 +333,8 @@ export function App(): React.JSX.Element {
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success', action?: { label?: string; run?: () => void; key?: string }) => {
     const id = ++toastIdRef.current
     setToasts((prev) => [
-      ...(action?.key ? prev.filter((toast) => toast.key !== action.key) : prev),
+      // 成功したら、前に出ていた失敗の知らせは片付ける（再試行して成功したのに「✗」が残り、まだ失敗しているように見えていた）
+      ...(action?.key ? prev.filter((toast) => toast.key !== action.key) : prev).filter((toast) => type !== 'success' || toast.type !== 'error'),
       { id, message, type, actionLabel: action?.label && action.run ? action.label : undefined, onAction: action?.label ? action.run : undefined, key: action?.key }
     ])
   }, [])
@@ -2100,6 +2101,7 @@ export function App(): React.JSX.Element {
               onSelectTodo={openTodoDetail}
               onAddTodo={handleSelectedPlanAdd}
               onRemoveItem={handleSelectedPlanDelete}
+              onShowToast={showToast}
               onUpdateItem={handleSelectedPlanUpdate}
               onShiftItem={handleSelectedPlanShift}
               onShiftFollowing={handleSelectedPlanShiftFollowing}

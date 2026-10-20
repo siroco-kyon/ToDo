@@ -14,6 +14,8 @@ interface Props {
   onSelectTodo: (id: string) => void
   onAddTodo: (todoId: string, options?: AddDailyPlanItemOptions) => Promise<DailyPlanItem>
   onRemoveItem: (id: string) => Promise<void>
+  /** 知らせを出す（予定を外したときに「元に戻す」を付ける） */
+  onShowToast?: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
   onUpdateItem: (id: string, data: UpdateDailyPlanItemInput) => Promise<void>
   onShiftItem: (id: string, deltaMinutes: number) => Promise<void>
   onShiftFollowing?: (id: string, deltaMinutes: number) => Promise<void>
@@ -642,6 +644,7 @@ export function PlanView({
   onSelectTodo,
   onAddTodo,
   onRemoveItem,
+  onShowToast,
   onUpdateItem,
   onShiftItem,
   onShiftFollowing,
@@ -1086,15 +1089,38 @@ export function PlanView({
     const currentDraft = placementDraft
     if (!currentDraft) return
 
-    clearPlacement()
-
+    // 置けたあとで配置をやめる（失敗したときに、選んだ時刻の欄が消えてやり直しにならないように）
     if (currentDraft.source === 'planItem') {
       await schedulePlanItem(currentDraft.id, minutes, lane, currentDraft.durationMinutes)
+      clearPlacement()
       setFocusBlockId(currentDraft.id)
       return
     }
 
-    setFocusBlockId(await scheduleTodo(currentDraft.id, minutes, lane, currentDraft.durationMinutes))
+    const createdId = await scheduleTodo(currentDraft.id, minutes, lane, currentDraft.durationMinutes)
+    clearPlacement()
+    setFocusBlockId(createdId)
+  }
+
+  // 予定を外す。タスクは消えないが、時刻と長さは消えるので、知らせから同じ時刻・長さで戻せるようにする。
+  // 外したボタンは消えるので、フォーカスは時間割へ移す（区分けの先頭へ飛ばないように）
+  const removeItemWithUndo = async (item: DailyPlanItem): Promise<void> => {
+    await onRemoveItem(item.id)
+    timelineRef.current?.focus({ preventScroll: true })
+    onShowToast?.(`「${item.title}」を計画から外しました（タスクは消えません）`, 'success', {
+      label: '元に戻す',
+      run: () => {
+        void onAddTodo(item.todo_id, {
+          allowDuplicate: true,
+          scheduled_start: item.scheduled_start ?? undefined,
+          estimated_minutes: item.estimated_minutes ?? undefined,
+          lane: item.lane ?? undefined
+        }).then(
+          () => onShowToast?.(`「${item.title}」を計画に戻しました`),
+          (error: unknown) => onShowToast?.(error instanceof Error ? error.message : '計画に戻せませんでした', 'error')
+        )
+      }
+    })
   }
 
   const handleTimelineDrop = async (event: React.DragEvent<HTMLDivElement>): Promise<void> => {
@@ -1593,7 +1619,7 @@ export function PlanView({
                               </button>
                               <button
                                 onPointerDown={(event) => event.stopPropagation()}
-                                onClick={() => void runAction(() => onRemoveItem(item.id))}
+                                onClick={() => void runAction(() => removeItemWithUndo(item))}
                                 style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
                                 title="今日の計画から外す（タスクは消えません）"
                                 aria-label={`「${item.title}」を計画から外す（タスクは消えません）`}
@@ -1641,7 +1667,7 @@ export function PlanView({
                               </button>
                               <button
                                 onPointerDown={(event) => event.stopPropagation()}
-                                onClick={() => void runAction(() => onRemoveItem(item.id))}
+                                onClick={() => void runAction(() => removeItemWithUndo(item))}
                                 style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
                                 title="今日の計画から外す（タスクは消えません）"
                                 aria-label={`「${item.title}」を計画から外す（タスクは消えません）`}
@@ -1724,7 +1750,7 @@ export function PlanView({
                     item={item}
                     todayKey={date}
                     onSelect={onSelectTodo}
-                    onRemove={async (id) => { await runAction(() => onRemoveItem(id)) }}
+                    onRemove={async () => { await runAction(() => removeItemWithUndo(item)) }}
                     onSchedule={(draft) => {
                       setPlacementDraft(draft)
                       setPlacementTarget(null)

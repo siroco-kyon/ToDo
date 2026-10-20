@@ -64,24 +64,43 @@ function buildUrl(path: string, query?: Query): string {
   return url
 }
 
+// 応答が来ないまま待ち続けないための上限（社内 LAN の通常の応答は1秒もかからない）。
+// 待ち続けると、送信中の小窓が閉じられず、再読み込みするしかなくなっていた
+const DEFAULT_TIMEOUT_MS = 30000
+
+/** 通信そのものに失敗したとき（サーバーに届かない）の文。英語の「Failed to fetch」をそのまま見せない */
+export const NETWORK_ERROR_MESSAGE = 'サーバーに接続できませんでした。社内LANへの接続を確かめて、もう一度お試しください'
+
 async function request<T>(
   method: string,
   path: string,
   opts: { body?: unknown; query?: Query; timeoutMs?: number; signal?: AbortSignal } = {}
 ): Promise<T> {
   const hasBody = opts.body !== undefined
-  const controller = opts.timeoutMs ? new AbortController() : null
-  const timeout = controller ? setTimeout(() => controller.abort(), opts.timeoutMs) : null
+  const controller = opts.signal ? null : new AbortController()
+  const timeout = controller ? setTimeout(() => controller.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS) : null
   try {
-    const res = await fetch(buildUrl(path, opts.query), {
-      method,
-      credentials: 'same-origin',
-      headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
-      body: hasBody ? JSON.stringify(opts.body) : undefined,
-      signal: controller?.signal ?? opts.signal
-    })
+    let res: Response
+    try {
+      res = await fetch(buildUrl(path, opts.query), {
+        method,
+        credentials: 'same-origin',
+        headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
+        body: hasBody ? JSON.stringify(opts.body) : undefined,
+        signal: controller?.signal ?? opts.signal
+      })
+    } catch (error) {
+      if (controller?.signal.aborted || opts.signal?.aborted || (error as { name?: unknown } | null)?.name === 'AbortError') throw error
+      throw new Error(NETWORK_ERROR_MESSAGE)
+    }
     const text = await res.text()
-    const data = text ? JSON.parse(text) : undefined
+    let data: unknown
+    try {
+      data = text ? JSON.parse(text) : undefined
+    } catch {
+      // 途中の機器（プロキシなど）が HTML を返したとき。解析のエラーをそのまま見せない
+      throw new HttpError(res.status, `サーバーから想定外の応答がありました（${res.status}）。しばらくしてから、もう一度お試しください`)
+    }
     if (!res.ok) {
       const message =
         (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
@@ -91,7 +110,12 @@ async function request<T>(
     }
     return data as T
   } catch (error) {
-    if (controller?.signal.aborted) throw new Error('サーバーからの応答を確認できませんでした。再試行してください')
+    if (controller?.signal.aborted) {
+      // 追加・保存は、サーバーでは済んでいることがある。重ねて作らないよう、確かめてから再試行してもらう
+      throw new Error(method === 'GET'
+        ? 'サーバーからの応答を確認できませんでした。再試行してください'
+        : 'サーバーからの応答を確認できませんでした。保存されたかを画面で確かめてから、もう一度お試しください')
+    }
     throw error
   } finally {
     if (timeout !== null) clearTimeout(timeout)

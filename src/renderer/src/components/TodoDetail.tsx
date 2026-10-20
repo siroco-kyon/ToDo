@@ -997,6 +997,7 @@ export function TodoDetail({
     if (!trimmed) return false
     try {
       patchProgressNote(await window.api.progressNoteCommentCreate(noteId, trimmed, parentCommentId))
+      onShowToast('返信しました')
       return true
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : '返信できませんでした', 'error')
