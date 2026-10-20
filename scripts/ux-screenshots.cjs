@@ -71,6 +71,7 @@ const SHOTS = [
   { name: 'progress', view: 'progress', width: 1440, height: 900 },
   { name: 'plan', view: 'plan', width: 1440, height: 900 },
   { name: 'plan-1024', view: 'plan', width: 1024, height: 768 },
+  { name: 'plan-placing', view: 'plan', width: 1440, height: 900, steps: "__ux.click('時間に置く', 'button'); await __ux.sleep(500)" },
   { name: 'todo', view: 'todo', width: 1440, height: 900 },
   { name: 'team', view: 'team', width: 1440, height: 900 },
   { name: 'log', view: 'log', width: 1440, height: 900 },

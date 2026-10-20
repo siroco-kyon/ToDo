@@ -139,6 +139,20 @@ async function runElectron() {
     assert.equal(await js('(()=>{const b=document.querySelector("main button[aria-label*=計画から外す]");const r=b.getBoundingClientRect();return r.width>0&&r.height>0})()'),true,'Remove action reachable in menu')
     await js('document.body.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true}));void 0')
     await until('!document.querySelector("main details.hakobi-plan-block-menu").open','Outside press closes plan menu')
+    // キーボードだけで時刻を決めて置ける（時刻の欄 → Enter）。置いたらブロックへフォーカスが移る
+    await js('(async()=>{const me=await window.api.authGetCurrentUser();return window.api.todoCreate({title:"UXキー配置",start_date:"2026-10-19",due_date:"2026-10-30",assignee_id:me&&me.id})})()')
+    await main.loadURL(fixture.origin+'/?view=plan')
+    await until('Boolean(document.querySelector("main button[aria-label=\\"「UXキー配置」を時間割に置く\\"]"))','Keyboard place candidate')
+    await js('document.querySelector("main button[aria-label=\\"「UXキー配置」を時間割に置く\\"]").click();void 0')
+    await until('document.activeElement&&document.activeElement.type==="time"','Time field focused')
+    await js('(()=>{const i=document.activeElement;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(i,"15:30");i.dispatchEvent(new Event("input",{bubbles:true}));i.form.requestSubmit()})()')
+    await until('Boolean(document.activeElement&&document.activeElement.closest("[data-plan-block-id]"))','Focus moves to placed block')
+    assert.equal(await js('(async()=>{const d=new Date();const key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");return (await window.api.dailyPlanGetByDate(key)).find(i=>i.title==="UXキー配置").scheduled_start})()'),'15:30','Placed at the typed time')
+    // 一覧で Tab が止まる行は1つだけ（ほかの行へは ↑↓）
+    await main.loadURL(fixture.origin+'/?view=detail')
+    await until('document.querySelectorAll("[data-todo-row]").length>1','List rows')
+    assert.equal(await js('Array.from(document.querySelectorAll("[data-todo-row]")).filter(r=>r.tabIndex===0).length'),1,'Single tab stop in the list')
+    assert.equal(await js('Array.from(document.querySelectorAll("[data-todo-row] button")).filter(b=>b.tabIndex===0&&!b.closest("[data-todo-row]").matches("[tabindex=\\"0\\"]")).length'),0,'Other rows buttons are not tab stops')
     // 高さの低い窓では未配置タスクの一覧を畳み、押すと開いて覚える
     await js('window.api.todoCreate({title:"UX日付なし",assignee_id:null})')
     await js('localStorage.removeItem("hakobi-gantt-unscheduled-open");void 0')
@@ -160,7 +174,7 @@ async function runElectron() {
     assert.equal(await js('document.activeElement===document.querySelector("input[aria-label=タスク名]")'),true,'Focus returns to the title')
     assert.equal(await js('document.getElementById("detail-title-error").textContent'),'タスク名を入力してください')
     assert.equal((await js('window.api.todoGetAll()')).find(t=>t.id===task.id).title,'UX保存済み','Empty title is not saved')
-    console.log('HAKOBI UX checks passed: visible save, Ctrl+Enter, yearly preserved, record error/retry/order, column add failure/retention/single request/retry/focus, radio arrows, narrow plan menu, collapsible unscheduled, inline title error')
+    console.log('HAKOBI UX checks passed: visible save, Ctrl+Enter, yearly preserved, record error/retry/order, column add failure/retention/single request/retry/focus, radio arrows, narrow plan menu, collapsible unscheduled, inline title error, keyboard plan placement, list roving tab')
     main.destroy(); app.exit(0)
   } catch(error) {
     console.error(error.stack||error.message)

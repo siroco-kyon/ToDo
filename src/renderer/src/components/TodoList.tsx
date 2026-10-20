@@ -98,7 +98,7 @@ function TodoItem({
   listItems, expanded, pendingItemIds, onToggleExpanded, onToggleListItem,
   onSelect, onToggleDone, onArchive, onUnarchive, onDelete,
   onStartTimer, onStopTimer,
-  onDragStart, onDragOver, onDrop, isDragOver
+  onDragStart, onDragOver, onDrop, isDragOver, tabbable, onRowFocus
 }: {
   todo: Todo; isSelected: boolean; isRunning: boolean; timerStartTime: string | null
   isManualSort: boolean; searchQuery: string
@@ -114,11 +114,16 @@ function TodoItem({
   onStartTimer: () => void; onStopTimer: () => void
   onDragStart: () => void; onDragOver: () => void; onDrop: () => void
   isDragOver: boolean
+  /** 一覧の中で Tab が止まる行（1行だけ）。ほかの行へは ↑↓ で移る */
+  tabbable: boolean
+  onRowFocus: () => void
 }): React.JSX.Element {
   const [hovered, setHovered] = useState(false)
   // 行の中（行そのものやボタン）にフォーカスがあるとき。マウスを使わない人にも操作ボタンを出す
   const [focusWithin, setFocusWithin] = useState(false)
   const showActions = hovered || focusWithin || isSelected
+  // 一覧では Tab が止まるのは1行（とその行のボタン）だけ。ほかの行のボタンは ↑↓ でその行へ移ってから
+  const innerTabIndex = tabbable || focusWithin ? 0 : -1
   const dueColor = todo.status === 'done' ? '' : getDueDateColor(todo.due_date)
   const isArchived = todo.status === 'archived'
   const listMode = Boolean(todo.list_mode)
@@ -127,6 +132,18 @@ function TodoItem({
   const canExpand = listMode && !isArchived && onToggleListItem != null && (listItems?.length ?? 0) > 0
   const todayKey = toDateKey(new Date())
   const shownItems = canExpand && expanded ? expandedItemsOf(listItems ?? [], todayKey) : []
+  // 読み上げ用の行の名前。見た目の記号（🔁・担当の頭文字など）ではなく、言葉で伝える
+  const rowLabel = [
+    todo.title,
+    isArchived ? 'アーカイブ済み' : todo.status === 'done' ? '完了' : todo.status === 'on_hold' ? '保留中' : null,
+    listMode ? (checklist ? `ToDoリスト ${checklistBadgeText(checklist)}` : 'ToDoリスト') : null,
+    todo.recurrence && !isArchived ? `繰り返し ${todoRecurrenceLabel(todo) ?? ''}`.trim() : null,
+    todo.category_name ? `カテゴリ ${todo.category_name}` : null,
+    todo.due_date && !isArchived ? `期限 ${formatDueLabel(todo.due_date, todo.status === 'done')}` : null,
+    todo.assignee_name && !isArchived ? `担当 ${todo.assignee_name}` : null,
+    !isArchived && prog > 0 ? `進捗 ${prog}%` : null,
+    isRunning ? '計測中' : null
+  ].filter(Boolean).join('、')
 
   return (
     <div
@@ -140,7 +157,8 @@ function TodoItem({
       // Tab で行に入り、Enter（Space）で開く、↑↓で前後の行へ移る。中のボタンのキー操作はそのまま
       data-todo-row=""
       role="listitem"
-      tabIndex={0}
+      tabIndex={tabbable ? 0 : -1}
+      aria-label={rowLabel}
       aria-current={isSelected ? 'true' : undefined}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) return
@@ -149,14 +167,20 @@ function TodoItem({
           onSelect()
           return
         }
-        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return
         event.preventDefault()
         const rows = Array.from(event.currentTarget.parentElement?.querySelectorAll<HTMLElement>(':scope > [data-todo-row]') ?? [])
-        rows[rows.indexOf(event.currentTarget) + (event.key === 'ArrowDown' ? 1 : -1)]?.focus()
+        const next = event.key === 'Home' ? rows[0]
+          : event.key === 'End' ? rows[rows.length - 1]
+            : rows[rows.indexOf(event.currentTarget) + (event.key === 'ArrowDown' ? 1 : -1)]
+        next?.focus()
       }}
-      onFocus={() => setFocusWithin(true)}
+      onFocus={() => { setFocusWithin(true); onRowFocus() }}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false)
+        // フォーカスが移り終わってから操作ボタンを隠す。移る途中で消すと、Tab の行き先がなくなって一覧の先頭へ戻ってしまう
+        const row = event.currentTarget
+        if (row.contains(event.relatedTarget as Node | null)) return
+        window.requestAnimationFrame(() => { if (!row.contains(document.activeElement)) setFocusWithin(false) })
       }}
       style={{
         cursor: 'pointer', position: 'relative', outlineOffset: -3,
@@ -185,6 +209,7 @@ function TodoItem({
             </span>
           ) : !isArchived ? (
             <button
+              tabIndex={innerTabIndex}
               onClick={(e) => { e.stopPropagation(); onToggleDone() }}
               title={todo.status === 'done' ? '完了を取り消す' : '完了にする'}
               aria-label={todo.status === 'done' ? `「${todo.title}」の完了を取り消す` : `「${todo.title}」を完了にする`}
@@ -234,6 +259,7 @@ function TodoItem({
               )}
               {canExpand && (
                 <button
+                  tabIndex={innerTabIndex}
                   onClick={(event) => { event.stopPropagation(); onToggleExpanded() }}
                   aria-expanded={expanded}
                   aria-label={expanded ? `${todo.title}の項目を閉じる` : `${todo.title}の項目を開く`}
@@ -248,8 +274,9 @@ function TodoItem({
                 <div style={{ display: 'flex', gap: 2, flexShrink: 0, marginLeft: 'auto' }} onClick={(e) => e.stopPropagation()}>
                   {isArchived ? (
                     <>
-                      <button onClick={onUnarchive} title="アーカイブから戻す" aria-label="アーカイブから戻す" style={actionBtn('var(--emerald-500)')}>↩</button>
+                      <button tabIndex={innerTabIndex} onClick={onUnarchive} title="アーカイブから戻す" aria-label="アーカイブから戻す" style={actionBtn('var(--emerald-500)')}>↩</button>
                       <button
+                        tabIndex={innerTabIndex}
                         onClick={() => { if (window.confirm(`「${todo.title}」を完全に削除しますか？`)) onDelete() }}
                         title="完全に削除（元に戻せません）" aria-label="完全に削除" style={actionBtn('var(--red-500)')}
                       >🗑</button>
@@ -258,10 +285,10 @@ function TodoItem({
                     <>
                       {todo.status !== 'done' && (
                         isRunning
-                          ? <button onClick={onStopTimer} title="計測を止める" aria-label="計測を止める" style={actionBtn('var(--red-500)')}>■</button>
-                          : <button onClick={onStartTimer} title="作業時間の計測を開始" aria-label="計測を開始" style={actionBtn('var(--green-400)')}>▶</button>
+                          ? <button tabIndex={innerTabIndex} onClick={onStopTimer} title="計測を止める" aria-label="計測を止める" style={actionBtn('var(--red-500)')}>■</button>
+                          : <button tabIndex={innerTabIndex} onClick={onStartTimer} title="作業時間の計測を開始" aria-label="計測を開始" style={actionBtn('var(--green-400)')}>▶</button>
                       )}
-                      <button onClick={onArchive} title="アーカイブ（一覧から片付ける。あとで戻せます）" aria-label="アーカイブ" style={actionBtn('var(--slate-500)')}>📦</button>
+                      <button tabIndex={innerTabIndex} onClick={onArchive} title="アーカイブ（一覧から片付ける。あとで戻せます）" aria-label="アーカイブ" style={actionBtn('var(--slate-500)')}>📦</button>
                     </>
                   )}
                 </div>
@@ -369,10 +396,11 @@ interface RowHandlers {
   dragStart: (id: string) => void
   dragOver: (id: string) => void
   drop: (id: string) => void
+  focusRow: (id: string) => void
 }
 
 type TodoRowProps = Omit<React.ComponentProps<typeof TodoItem>,
-  'onToggleExpanded' | 'onSelect' | 'onToggleDone' | 'onArchive' | 'onUnarchive' | 'onDelete' | 'onStartTimer' | 'onStopTimer' | 'onDragStart' | 'onDragOver' | 'onDrop'
+  'onToggleExpanded' | 'onSelect' | 'onToggleDone' | 'onArchive' | 'onUnarchive' | 'onDelete' | 'onStartTimer' | 'onStopTimer' | 'onDragStart' | 'onDragOver' | 'onDrop' | 'onRowFocus'
 > & { handlers: RowHandlers }
 
 // 渡すものが変わった行だけ描き直す（タスクを選ぶたびに数百行を描き直さない）
@@ -389,6 +417,7 @@ const TodoRow = React.memo(function TodoRow({ handlers, ...props }: TodoRowProps
       onDelete={() => handlers.remove(todo.id)}
       onStartTimer={() => handlers.startTimer(todo.id)}
       onStopTimer={handlers.stopTimer}
+      onRowFocus={() => handlers.focusRow(todo.id)}
       onDragStart={() => handlers.dragStart(todo.id)}
       onDragOver={() => handlers.dragOver(todo.id)}
       onDrop={() => handlers.drop(todo.id)}
@@ -416,6 +445,11 @@ export function TodoList({
       return next
     })
   }
+  // Tab で一覧に入ったときに止まる行（最後にフォーカスした行。なければ選んでいる行、それもなければ先頭）
+  const [activeRowId, setActiveRowId] = useState<string | null>(null)
+  const tabbableId = (activeRowId && todos.some((todo) => todo.id === activeRowId) ? activeRowId : null)
+    ?? (selectedId && todos.some((todo) => todo.id === selectedId) ? selectedId : null)
+    ?? todos[0]?.id ?? null
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const dragging = useRef(false)
@@ -449,7 +483,8 @@ export function TodoList({
     toggleExpanded: (id) => latestRef.current.toggleExpanded(id),
     dragStart: (id) => { setDraggedId(id); dragging.current = true },
     dragOver: (id) => { if (dragging.current) setDragOverId(id) },
-    drop: (id) => { void latestRef.current.handleDrop(id) }
+    drop: (id) => { void latestRef.current.handleDrop(id) },
+    focusRow: (id) => setActiveRowId(id)
   }), [])
 
   // 読み込みが終わるまでは「まだタスクがありません」を出さない（あるのに一瞬「ない」と見える）
@@ -512,6 +547,7 @@ export function TodoList({
           pendingItemIds={todo.list_mode ? pendingItemIds : undefined}
           onToggleListItem={onToggleListItem}
           isDragOver={dragOverId === todo.id}
+          tabbable={tabbableId === todo.id}
           handlers={handlers}
         />
       ))}

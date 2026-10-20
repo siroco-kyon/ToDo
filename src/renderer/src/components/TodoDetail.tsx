@@ -65,6 +65,16 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box'
 }
 
+/** 画面には出さず、読み上げにだけ伝える文の置き場 */
+const visuallyHiddenStyle: React.CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  whiteSpace: 'nowrap'
+}
+
 const fieldErrorStyle: React.CSSProperties = {
   marginTop: 4,
   fontSize: 'var(--font-control)',
@@ -77,7 +87,10 @@ const AUTOSAVE_DELAY_MS = 1500
 /** 詳細の欄がこの幅以上あれば2列にする（左: 説明・メモ・サブタスク・進捗ログ、右: 状態などの欄・計測・進捗・依存関係・記録） */
 const TWO_COLUMN_MIN_WIDTH = 880
 
+// 欄の見出し（h3。読み上げで欄ごとに飛べるように見出しにし、見た目は小さい灰色の文字のまま）
 const sectionTitleStyle: React.CSSProperties = {
+  margin: 0,
+  fontWeight: 400,
   fontSize: 'var(--font-control)',
   color: 'var(--slate-400)',
   marginBottom: 8,
@@ -90,7 +103,7 @@ const sectionTitleStyle: React.CSSProperties = {
 function SectionHeading({ title, summary, detail }: { title: React.ReactNode; summary?: string; detail?: string }): React.JSX.Element {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-      <span style={{ ...sectionTitleStyle, marginBottom: 0 }}>{title}</span>
+      <h3 style={{ ...sectionTitleStyle, marginBottom: 0 }}>{title}</h3>
       {summary && <span style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>{summary}</span>}
       {detail && <InfoTip text={detail} />}
     </div>
@@ -167,6 +180,7 @@ export function TodoDetail({
   const [saveError, setSaveError] = useState('')
   // 保存できない入力は、知らせだけでなく欄の下にも出し、その欄へフォーカスを移す
   const [fieldError, setFieldError] = useState<{ field: 'title' | 'dates'; message: string } | null>(null)
+  const [subTaskAnnouncement, setSubTaskAnnouncement] = useState('')
   const editStartDateInputRef = useRef<HTMLInputElement>(null)
   useEffect(() => { if (!editing) setFieldError(null) }, [editing])
   const editBaseRef = useRef<UpdateTodoInput>({})
@@ -879,6 +893,8 @@ export function TodoDetail({
     }
     // 名前の欄は、保存中に打ち始めた次の名前を消さないようそのまま残す
     setNewSubTask((previous) => ({ title: previous.title, description: '', assignee_id: previous.assignee_id ?? null, start_date: toDateKey(new Date()), due_date: null, progress: 0 }))
+    // 入力欄にフォーカスを残したまま続けて足せるので、知らせは出さず読み上げだけで伝える（一覧には増えた行が見える）
+    setSubTaskAnnouncement(createdItems.length === 1 ? `サブタスク「${createdItems[0].title}」を追加しました` : `サブタスクを${createdItems.length}件追加しました`)
     const extendedTo = createdItems.map((item) => item.parent_due_date_extended_to).filter(Boolean).sort().at(-1)
     if (extendedTo) onShowToast(`サブタスクに合わせて親タスクの期限を${extendedTo}まで延長しました`)
   }
@@ -1463,7 +1479,8 @@ export function TodoDetail({
     <>
           {!listMode && (
           <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-            <div style={sectionTitleStyle}>サブタスク {subTasks.length > 0 && `(${doneCount}/${subTasks.length})`}</div>
+            <h3 style={sectionTitleStyle}>サブタスク {subTasks.length > 0 && `(${doneCount}/${subTasks.length})`}</h3>
+            <div role="status" style={visuallyHiddenStyle}>{subTaskAnnouncement}</div>
             <div
               ref={subTaskListRef}
               onDragOver={handleSubTaskListDragOver}
@@ -1610,7 +1627,7 @@ export function TodoDetail({
   const workLogSection = (
     <>
           <section>
-            <div style={sectionTitleStyle}>作業ログ</div>
+            <h3 style={sectionTitleStyle}>作業ログ</h3>
             {logs.length === 0 ? (
               <div style={{ color: 'var(--slate-400)', fontSize: '0.85rem' }}>ログはまだありません</div>
             ) : (
@@ -2071,7 +2088,7 @@ function EditableSubTaskItem({ subTask, users, onChange, onDelete }: { subTask: 
           />
         </label>
       </div>
-      <button onClick={onDelete} style={{ background: 'none', border: 'none', color: 'var(--slate-400)', cursor: 'pointer' }}>削除</button>
+      <button onClick={onDelete} aria-label={`${subTask.title || 'サブタスク'}を削除`} style={{ background: 'none', border: 'none', color: 'var(--slate-400)', cursor: 'pointer' }}>削除</button>
     </div>
   )
 }
@@ -2238,7 +2255,7 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
         </div>
       </div>
       <button onClick={startEditing} title="編集" aria-label={`${subTask.title}を編集`} style={{ background: 'none', border: 'none', color: 'var(--slate-400)', cursor: 'pointer' }}>✎</button>
-      <button onClick={onDelete} title="サブタスクを削除" style={{ background: 'none', border: 'none', color: 'var(--slate-400)', cursor: 'pointer' }}>削除</button>
+      <button onClick={onDelete} title="サブタスクを削除" aria-label={`${subTask.title}を削除`} style={{ background: 'none', border: 'none', color: 'var(--slate-400)', cursor: 'pointer' }}>削除</button>
     </div>
   )
 }

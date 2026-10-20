@@ -144,6 +144,15 @@ function offsetToClock(offsetMinutes: number): string {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
 }
 
+/** "HH:MM" を時間割の先頭からの分に。範囲外・読めないときは null */
+function clockToOffset(clock: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})/.exec(clock)
+  if (!match) return null
+  const offset = Number(match[1]) * 60 + Number(match[2]) - TIMELINE_START_HOUR * 60
+  if (offset < 0 || offset >= (TIMELINE_END_HOUR - TIMELINE_START_HOUR) * 60) return null
+  return offset
+}
+
 function nowOffsetMinutes(): number {
   const now = new Date()
   return now.getHours() * 60 + now.getMinutes() - TIMELINE_START_HOUR * 60
@@ -544,6 +553,7 @@ function UnscheduledCard({
   return (
     <div
       draggable
+      data-plan-unscheduled-id={item.id}
       onDragStart={(event) => {
         onPrepareDrag()
         event.dataTransfer.effectAllowed = 'move'
@@ -653,6 +663,42 @@ export function PlanView({
     finally { actionPendingRef.current = false; setActionPending(false) }
   }, [reportActionError])
   useEffect(() => setActionError(null), [date])
+  // 時刻未定で追加したら、そのことを知らせ、次にすること（時刻を決める）のボタンへフォーカスを移す。
+  // 押したボタンは候補から消えることがあり、そのままだとフォーカスが迷子になる
+  const [addedNotice, setAddedNotice] = useState<string | null>(null)
+  const [focusUnscheduledId, setFocusUnscheduledId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!addedNotice) return
+    const timer = window.setTimeout(() => setAddedNotice(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [addedNotice])
+  useEffect(() => {
+    if (!focusUnscheduledId) return
+    const button = document.querySelector<HTMLElement>(`[data-plan-unscheduled-id="${CSS.escape(focusUnscheduledId)}"] button[aria-label$="を時間割に置く"]`)
+    if (button) {
+      button.focus()
+      button.scrollIntoView({ block: 'nearest' })
+      setFocusUnscheduledId(null)
+    }
+  }, [focusUnscheduledId, planItems])
+  // 時刻を決めて置いたら、置いた予定（時間割のブロック）のタスク名へフォーカスを移す
+  const [focusBlockId, setFocusBlockId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!focusBlockId) return
+    const button = document.querySelector<HTMLElement>(`[data-plan-block-id="${CSS.escape(focusBlockId)}"] button[data-plan-block-title]`)
+    if (button) {
+      button.focus({ preventScroll: true })
+      button.scrollIntoView({ block: 'nearest' })
+      setFocusBlockId(null)
+    }
+  }, [focusBlockId, planItems])
+  const addUnscheduled = useCallback(async (todoId: string): Promise<void> => {
+    await runAction(async () => {
+      const created = await onAddTodo(todoId)
+      setAddedNotice(`「${created.title ?? ''}」を時刻未定に追加しました。「時間に置く」で時刻を決められます。`)
+      setFocusUnscheduledId(created.id)
+    })
+  }, [onAddTodo, runAction])
   const timelineRef = useRef<HTMLDivElement>(null)
   // ブロックが狭いと、操作ボタンが2段になってタスク名が隠れる。狭いブロックでは −15・+15 以外を「⋯」にまとめる
   const [timelineWidth, setTimelineWidth] = useState(0)
@@ -684,6 +730,32 @@ export function PlanView({
   const [dragOverLane, setDragOverLane] = useState<number | null>(null)
   const [dragPreview, setDragPreview] = useState<DragPreview | null>(null)
   const [placementDraft, setPlacementDraft] = useState<PlacementDraft | null>(null)
+  // 配置中に出す時刻の欄。始めたときに、今日なら次の15分区切り、ほかの日は 9:00 を入れてフォーカスする
+  const [placementTime, setPlacementTime] = useState('09:00')
+  const placementTimeInputRef = useRef<HTMLInputElement>(null)
+  const placementKey = placementDraft ? `${placementDraft.source}:${placementDraft.id}` : null
+  // 置き終わった・やめたときに戻すフォーカスの先（「時間に置く」のボタン。消えていれば時間割）
+  const placementReturnRef = useRef<HTMLElement | null>(null)
+  const previousPlacementKeyRef = useRef<string | null>(null)
+  useEffect(() => {
+    const wasPlacing = previousPlacementKeyRef.current != null
+    previousPlacementKeyRef.current = placementKey
+    if (placementKey || !wasPlacing) return
+    const active = document.activeElement
+    if (active && active !== document.body && !active.hasAttribute('data-focus-region')) return
+    const target = placementReturnRef.current?.isConnected ? placementReturnRef.current : timelineRef.current
+    placementReturnRef.current = null
+    target?.focus({ preventScroll: true })
+  }, [placementKey])
+  useEffect(() => {
+    if (!placementKey) return
+    if (document.activeElement instanceof HTMLElement && document.activeElement !== placementTimeInputRef.current) placementReturnRef.current = document.activeElement
+    const start = date === getTodayKey()
+      ? clamp(Math.ceil(nowOffsetMinutes() / SNAP_MINUTES) * SNAP_MINUTES, 0, (TIMELINE_END_HOUR - TIMELINE_START_HOUR) * 60 - SNAP_MINUTES)
+      : clamp((9 - TIMELINE_START_HOUR) * 60, 0, (TIMELINE_END_HOUR - TIMELINE_START_HOUR) * 60 - SNAP_MINUTES)
+    setPlacementTime(offsetToClock(start))
+    placementTimeInputRef.current?.focus()
+  }, [placementKey, date])
   const [placementTarget, setPlacementTarget] = useState<PlacementTarget | null>(null)
   const [interaction, setInteraction] = useState<InteractionState | null>(null)
 
@@ -959,7 +1031,7 @@ export function PlanView({
     await onReorder(reorderIdsByTime(nextItems))
   }
 
-  const scheduleTodo = async (todoId: string, startMinutes: number, lane: number, durationMinutes?: number): Promise<void> => {
+  const scheduleTodo = async (todoId: string, startMinutes: number, lane: number, durationMinutes?: number): Promise<string> => {
     const normalizedDuration = normalizeDuration(durationMinutes)
     // 作成と配置を1回で行う（未配置の重複行が途中で残らないようにする）
     const created = await onAddTodo(todoId, {
@@ -970,6 +1042,7 @@ export function PlanView({
     })
 
     await onReorder(reorderIdsByTime([...planItems, created]))
+    return created.id
   }
 
   const duplicateBlock = async (block: TimelineBlock): Promise<void> => {
@@ -1010,10 +1083,11 @@ export function PlanView({
 
     if (currentDraft.source === 'planItem') {
       await schedulePlanItem(currentDraft.id, minutes, lane, currentDraft.durationMinutes)
+      setFocusBlockId(currentDraft.id)
       return
     }
 
-    await scheduleTodo(currentDraft.id, minutes, lane, currentDraft.durationMinutes)
+    setFocusBlockId(await scheduleTodo(currentDraft.id, minutes, lane, currentDraft.durationMinutes))
   }
 
   const handleTimelineDrop = async (event: React.DragEvent<HTMLDivElement>): Promise<void> => {
@@ -1100,7 +1174,36 @@ export function PlanView({
                   lineHeight: 1.6
                 }}
               >
-                <strong>{placementDraft.title}</strong> を配置中です。時間割の空いている場所をクリックすると置けます。Esc でキャンセルできます。
+                <div><strong>{placementDraft.title}</strong> を配置中です。時間割の空いている場所をクリックするか、時刻を選んで「この時刻に置く」を押します。Esc でキャンセルできます。</div>
+                {/* キーボードでも置けるように、時刻の欄を出す（↑↓ で15分ずつ。Enter で置く） */}
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    const minutes = clockToOffset(placementTime)
+                    if (minutes == null) return
+                    void runAction(() => handlePlaceDraft(minutes, 0))
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}
+                >
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    時刻
+                    <input
+                      ref={placementTimeInputRef}
+                      type="time"
+                      step={SNAP_MINUTES * 60}
+                      required
+                      value={placementTime}
+                      onChange={(event) => setPlacementTime(event.target.value)}
+                      style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid var(--blue-600)', background: 'var(--slate-900)', color: 'var(--slate-100)', fontSize: '0.8rem' }}
+                    />
+                  </label>
+                  <button type="submit" style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid var(--blue-600)', background: 'var(--blue-700)', color: 'var(--on-fill-blue-50)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
+                    この時刻に置く
+                  </button>
+                  <button type="button" onClick={clearPlacement} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid var(--slate-600)', background: 'transparent', color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.78rem' }}>
+                    やめる
+                  </button>
+                </form>
               </div>
             )}
 
@@ -1151,6 +1254,7 @@ export function PlanView({
                 <div
                   ref={timelineRef}
                   role="group"
+                  tabIndex={-1}
                   aria-label="計画の時間割"
                   onMouseMove={(event) => {
                     if (!placementDraft || interaction) return
@@ -1363,6 +1467,7 @@ export function PlanView({
                       <div
                         key={item.id}
                         data-plan-block="true"
+                        data-plan-block-id={item.id}
                         style={{
                           position: 'absolute',
                           top: item.startMinutes * PIXELS_PER_MINUTE,
@@ -1442,6 +1547,7 @@ export function PlanView({
                                   onClick={() => void runAction(() => onShiftFollowing!(item.id, 15))}
                                   style={miniActionBtn('var(--blue-950)', 'var(--blue-200)')}
                                   title="この予定と、これ以降の予定を15分遅らせる"
+                                  aria-label={`「${item.title}」とこれ以降の予定を15分遅らせる`}
                                 >
                                   以降+15
                                 </button>
@@ -1451,6 +1557,7 @@ export function PlanView({
                                 onClick={() => void runAction(() => duplicateBlock(item))}
                                 style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
                                 title="同じタスクをこの直後にもう1つ置く"
+                                aria-label={`「${item.title}」を複製して直後に置く`}
                               >
                                 複製
                               </button>
@@ -1465,6 +1572,7 @@ export function PlanView({
                                 }}
                                 style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
                                 title="未定に戻す"
+                                aria-label={`「${item.title}」の時刻を未定に戻す`}
                               >
                                 未定
                               </button>
@@ -1487,6 +1595,7 @@ export function PlanView({
                                   onClick={() => void runAction(() => onShiftFollowing!(item.id, 15))}
                                   style={miniActionBtn('var(--blue-950)', 'var(--blue-200)')}
                                   title="この予定と、これ以降の予定を15分遅らせる"
+                                  aria-label={`「${item.title}」とこれ以降の予定を15分遅らせる`}
                                 >
                                   以降+15
                                 </button>
@@ -1496,6 +1605,7 @@ export function PlanView({
                                 onClick={() => void runAction(() => duplicateBlock(item))}
                                 style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
                                 title="同じタスクをこの直後にもう1つ置く"
+                                aria-label={`「${item.title}」を複製して直後に置く`}
                               >
                                 複製
                               </button>
@@ -1510,6 +1620,7 @@ export function PlanView({
                                 }}
                                 style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
                                 title="未定に戻す"
+                                aria-label={`「${item.title}」の時刻を未定に戻す`}
                               >
                                 未定
                               </button>
@@ -1529,6 +1640,7 @@ export function PlanView({
 
                           <button
                             onPointerDown={(event) => event.stopPropagation()}
+                            data-plan-block-title=""
                             onClick={() => onSelectTodo(item.todo_id)}
                             style={{
                               background: 'transparent',
@@ -1582,6 +1694,9 @@ export function PlanView({
         </div>
         <div style={{ flex: '0.9 1 270px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <Section title="時刻が未定のタスク" subtitle="まだ時刻を決めていないタスクです。ドラッグかクリックで時間割に置けます。">
+            <div role="status" style={addedNotice ? { marginBottom: 10, padding: '6px 10px', borderRadius: 8, background: 'var(--green-950)', border: '1px solid var(--green-700)', color: 'var(--green-200)', fontSize: '0.78rem', lineHeight: 1.5 } : { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+              {addedNotice}
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {unscheduledItems.length === 0 ? (
                 <EmptyState label="時刻が未定のタスクはありません。候補や「タスクを探す」から追加して時刻を決めてください。" />
@@ -1619,7 +1734,7 @@ export function PlanView({
                         todo={todo}
                         todayKey={date}
                         note={todo.list_mode && checklistSummaries?.get(todo.id) ? `ToDoリスト: ${checklistBadgeText(checklistSummaries.get(todo.id)!)}` : undefined}
-                        onAdd={async (todoId) => { await runAction(() => onAddTodo(todoId)) }}
+                        onAdd={addUnscheduled}
                         onSchedule={(draft) => {
                           setPlacementDraft(draft)
                           setPlacementTarget(null)
@@ -1651,7 +1766,7 @@ export function PlanView({
                     todo={todo}
                     todayKey={date}
                     plannedCount={plannedCountByTodoId.get(todo.id) ?? 0}
-                    onAdd={async (todoId) => { await runAction(() => onAddTodo(todoId)) }}
+                    onAdd={addUnscheduled}
                     onSchedule={(draft) => {
                       setPlacementDraft(draft)
                       setPlacementTarget(null)

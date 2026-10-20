@@ -1784,7 +1784,8 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                   ▾
                 </button>
                 <span style={{ width: 11, height: 11, borderRadius: '50%', background: group.color ?? 'var(--slate-600)', flexShrink: 0 }} />
-                <span style={{ fontSize: '0.98rem', color: 'var(--slate-100)', fontWeight: 800 }}>{group.label}</span>
+                {/* 読み上げで担当者ごとに飛べるように見出しにする（見た目は変えない） */}
+                <h2 style={{ margin: 0, fontSize: '0.98rem', color: 'var(--slate-100)', fontWeight: 800 }}>{group.label}</h2>
                 {group.isMe && <span style={{ fontSize: 'var(--font-caption)', color: 'var(--indigo-200)', background: 'var(--indigo-900)', borderRadius: 999, padding: '1px 7px' }}>自分</span>}
                 <span style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>{group.rows.length}件</span>
                 <span style={{ fontSize: 'var(--font-control)', color: 'var(--green-300)' }}>報告あり {groupReported}</span>
@@ -2372,9 +2373,11 @@ function ReportTaskCard({
       {/* ─── 左: タスク情報（状態・日程・進捗はその場で変更できる） ─── */}
       <div style={{ flex: '1 1 300px', maxWidth: 440, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-          <button onClick={() => onSelectTodo(todo.id)} title="タスク詳細を開く" style={taskTitleButtonStyle}>
-            {todo.title}
-          </button>
+          <h3 style={{ margin: 0, fontSize: 'inherit', fontWeight: 'inherit', minWidth: 0 }}>
+            <button onClick={() => onSelectTodo(todo.id)} title="タスク詳細を開く" style={taskTitleButtonStyle}>
+              {todo.title}
+            </button>
+          </h3>
           {todo.priority >= 4 && (
             <span style={{ fontSize: 'var(--font-caption)', color: todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)', fontWeight: 800, flexShrink: 0, marginTop: 2 }}>
               {'!'.repeat(todo.priority - 3)}
