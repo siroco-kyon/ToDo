@@ -16,6 +16,28 @@
 /* ネイティブの日付選択アイコンも、両方のテーマで読める色にする。 */
 input[type="date"], input[type="time"], input[type="datetime-local"] { color-scheme: var(--native-scheme); }
 
+.hakobi-column-resize:focus-visible {
+  outline: 2px solid var(--sky-400);
+  outline-offset: 2px;
+}
+
+/* 強制カラーでは背景色・影が消えるので、選択とフォーカスを別の形で残す。 */
+@media (forced-colors: active) {
+  button[aria-pressed="true"], [role="tab"][aria-selected="true"], [role="radio"][aria-checked="true"] {
+    border: 2px solid Highlight !important;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    font-weight: 800 !important;
+  }
+  button:focus-visible, [role="separator"]:focus-visible {
+    outline: 2px dashed Highlight !important;
+    outline-offset: -3px !important;
+  }
+  .hakobi-column-resize { background-color: ButtonText !important; }
+  .tarbo-gantt button[aria-hidden="true"]:disabled { visibility: hidden; }
+  button:disabled { color: GrayText !important; }
+}
+
 :root {
   --font-caption: 0.78rem;
   --font-control: 0.85rem;

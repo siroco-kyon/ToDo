@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Category, CreateSubTaskInput, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, TodoStatus, UpdateSubTaskInput, UpdateTodoInput } from '../types'
 import { discussionBadgeStyle } from './ProgressNoteThread'
 import { buildChecklistSummaries, checklistBadgeText } from '../lib/todoList'
@@ -1169,6 +1169,10 @@ function GanttViewContent({
   const compactRowTools = displayedLeftColumnWidths.title < 200
   const leftGridTemplate = useMemo(() => leftGridTemplateFor(displayedLeftColumnWidths, visibleLeftColumns), [displayedLeftColumnWidths, visibleLeftColumns])
   const leftTableWidth = useMemo(() => leftTableWidthFor(displayedLeftColumnWidths, visibleLeftColumns), [displayedLeftColumnWidths, visibleLeftColumns])
+  // 時間軸を残すための40%制限を、読み上げる最大値とキー操作にも反映する。
+  const maxTitleColumnWidth = chartAreaWidth > 0
+    ? Math.min(leftColumnDef('title').max, Math.max(150, Math.floor((Math.round(chartAreaWidth * 0.4) - leftTableWidth + displayedLeftColumnWidths.title) / leftColumnScale)))
+    : leftColumnDef('title').max
   const visibleLeftColumnDefs = useMemo(() => visibleLeftColumnDefsFor(visibleLeftColumns), [visibleLeftColumns])
   // 行の左の表は5つの欄を同じ順で並べている。出さない列は CSS で隠し、残りが表示中の列の幅に入る
   const leftGridAttributes = useMemo(() => ({
@@ -3804,12 +3808,31 @@ function GanttViewContent({
                       <div key={column.key} style={leftHeaderCellStyle}>
                         <span style={leftHeaderLabelStyle}>{column.label}</span>
                         <span
+                          className="hakobi-column-resize"
                           role="separator"
+                          tabIndex={0}
                           aria-orientation="vertical"
                           aria-label={`${column.label}列幅を変更`}
+                          aria-valuemin={column.min}
+                          aria-valuemax={column.key === 'title' ? maxTitleColumnWidth : column.max}
+                          aria-valuenow={Math.round(displayedLeftColumnWidths[column.key] / leftColumnScale)}
+                          aria-valuetext={`${Math.round(displayedLeftColumnWidths[column.key] / leftColumnScale)}。左右キーで調整、Shiftで大きく調整`}
+                          onKeyDown={(event) => {
+                            if (event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing) return
+                            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                            event.preventDefault()
+                            event.stopPropagation()
+                            const current = Math.round(displayedLeftColumnWidths[column.key] / leftColumnScale)
+                            const max = column.key === 'title' ? maxTitleColumnWidth : column.max
+                            const width = event.key === 'Home' ? column.min : event.key === 'End' ? max
+                              : Math.min(max, clampLeftColumnWidth(column.key, current + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 40 : 10)))
+                            setHasCustomColumnWidths(true)
+                            try { window.localStorage.setItem(GANTT_COLUMNS_CUSTOMIZED_STORAGE_KEY, '1') } catch { /* 保存できなくても幅は変える */ }
+                            setLeftColumnWidths((previous) => ({ ...previous, [column.key]: width }))
+                          }}
                           onPointerDown={(event) => beginLeftColumnResize(column.key, event)}
                           style={leftColumnResizeHandleStyle(resizingLeftColumn?.column === column.key)}
-                          title={`${column.label}列の幅を変更`}
+                          title={`${column.label}列の幅を変更（ドラッグ・← →。Shiftで大きく調整、Home/Endで最小/最大）`}
                         />
                       </div>
                     ))}
@@ -4115,6 +4138,7 @@ function GanttViewContent({
                             }}
                             disabled={!canToggleSubtasks}
                             aria-hidden={canToggleSubtasks ? undefined : true}
+                            aria-expanded={canToggleSubtasks ? isExpanded : undefined}
                             tabIndex={canToggleSubtasks && rowTabbable ? 0 : -1}
                             aria-label={isExpanded ? `「${group.todo.title}」のサブタスクを折りたたむ` : `「${group.todo.title}」のサブタスクを展開する`}
                             title={canToggleSubtasks ? (isExpanded ? 'サブタスクを折りたたむ' : 'サブタスクを開く') : undefined}
@@ -5000,8 +5024,11 @@ function leftColumnResizeHandleStyle(active: boolean): React.CSSProperties {
   return {
     position: 'absolute',
     top: 2,
-    right: -6,
-    width: 12,
+    right: -12,
+    width: 24,
+    padding: '0 8px',
+    boxSizing: 'border-box',
+    backgroundClip: 'content-box',
     height: 27,
     cursor: 'col-resize',
     borderRadius: 4,

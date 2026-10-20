@@ -32,6 +32,7 @@ export function ListFilterChips({ chips }: { chips: ListFilterChip[] }): React.J
 }
 
 const chipStyle: React.CSSProperties = {
+  minHeight: 26,
   maxWidth: 220,
   padding: '1px 7px',
   borderRadius: 999,
@@ -47,6 +48,7 @@ const chipStyle: React.CSSProperties = {
 }
 
 const clearAllStyle: React.CSSProperties = {
+  minHeight: 26,
   padding: '1px 7px',
   borderRadius: 999,
   border: '1px solid var(--slate-700)',
