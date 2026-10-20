@@ -2252,6 +2252,7 @@ export function App(): React.JSX.Element {
             />
           ) : (
             <TodoDetail
+              textScale={fontScaleFactor}
               key={`${currentUser?.id ?? 'local'}:${selectedTodo?.id ?? 'none'}`}
               todo={selectedTodo}
               allTodos={lensTodos}
@@ -2330,6 +2331,7 @@ export function App(): React.JSX.Element {
                   <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
                     {ganttSidePanelMode === 'detail' ? (
                       <TodoDetail
+                        textScale={fontScaleFactor}
                         key={`${currentUser?.id ?? 'local'}:${selectedTodo?.id ?? 'none'}`}
                         todo={selectedTodo}
                         allTodos={lensTodos}

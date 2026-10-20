@@ -30,6 +30,7 @@ interface Props {
   categories: Category[]
   users?: PublicUser[]
   currentUser?: PublicUser | null
+  textScale?: number
   todayPlanItems: DailyPlanItem[]
   runningTodoId: string | null
   /** 計測を始めた時刻（計測中でなければ null） */
@@ -177,6 +178,7 @@ export function TodoDetail({
   categories,
   users = [],
   currentUser = null,
+  textScale = 1,
   todayPlanItems,
   runningTodoId,
   timerStartTime,
@@ -1202,7 +1204,10 @@ export function TodoDetail({
                   }} style={buttonStyle('var(--red-500)')}>{timerStopping ? '停止中…' : '停止'}</button>
                 </>
               ) : (
-                <button onClick={() => void onStartTimer(todo.id)} title="このタスクの作業時間を計り始めます（終わったら「停止」）" style={buttonStyle('var(--green-400)', 'var(--black)')}>計測開始</button>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                  <button disabled={todo.status === 'on_hold' || todo.status === 'archived'} aria-describedby={todo.status === 'on_hold' ? `timer-blocked-${todo.id}` : undefined} onClick={() => void onStartTimer(todo.id)} title="このタスクの作業時間を計り始めます（終わったら「停止」）" style={buttonStyle('var(--green-400)', 'var(--black)')}>計測開始</button>
+                  {todo.status === 'on_hold' && <span id={`timer-blocked-${todo.id}`} style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)', maxWidth: '20rem' }}>保留中です。上の「進行中に戻す」から再開すると計測できます。</span>}
+                </div>
               )}
             </div>
           </div>
@@ -1696,7 +1701,7 @@ export function TodoDetail({
           {!editing && <TodoHistory todoId={todo.id} refreshKey={todo.updated_at} />}
     </>
   )
-  const twoColumns = !editing && detailBodyWidth >= TWO_COLUMN_MIN_WIDTH
+  const twoColumns = !editing && detailBodyWidth / Math.max(1, textScale) >= TWO_COLUMN_MIN_WIDTH
 
   return (
     <div onKeyDown={(event) => {
@@ -1829,7 +1834,7 @@ export function TodoDetail({
       )}
       {sectionLoadError && <div role="alert" style={{ padding: 10, borderRadius: 8, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', fontSize: 'var(--font-control)' }}>{sectionLoadError}<button onClick={() => { setSectionLoadError(null); void Promise.all([loadWorkLogs(todo.id), loadSubTasks(todo.id), loadDependencies(todo.id), loadProgressNotes(todo.id)]) }} style={{ marginLeft: 10, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-900)', color: 'var(--white)' }}>再試行</button></div>}
       {twoColumns ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 360px)', gap: 20, alignItems: 'start' }}>
+        <div data-detail-columns="2" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(18.75rem, 22.5rem)', gap: 20, alignItems: 'start' }}>
           <div style={detailColumnStyle}>
             {checklistSection}
             {descriptionSection}
@@ -1879,7 +1884,7 @@ function AutosaveStatus({ saving, dirty, failed, length, onRetry }: { saving: bo
           <button type="button" onClick={onRetry} style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', cursor: 'pointer', fontSize: 'var(--font-control)' }}>再試行</button>
         )}
       </div>
-      <div style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>{length}文字</div>
+      <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>入力後に自動保存 · {length}文字</div>
     </div>
   )
 }
@@ -2464,7 +2469,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
   const dueShortcutStyle: React.CSSProperties = { padding: '4px 10px', borderRadius: 999, border: '1px solid var(--slate-600)', background: 'transparent', color: 'var(--slate-300)', cursor: 'pointer', fontSize: 'var(--font-caption)', fontWeight: 600, minHeight: 26 }
 
   return (
-    <div style={{ background: 'var(--c-162033)', border: '1px solid var(--slate-800)', borderRadius: 10, padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))', gap: '10px 12px' }}>
+    <div style={{ background: 'var(--c-162033)', border: '1px solid var(--slate-800)', borderRadius: 10, padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 8rem), 1fr))', gap: '10px 12px' }}>
       <div>
         <div style={fieldLabelStyle}>状態</div>
         {isArchived ? (

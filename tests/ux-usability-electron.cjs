@@ -244,6 +244,18 @@ async function runElectron() {
     await js('document.activeElement.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));void 0')
     await until('!document.querySelector("[role=alertdialog]")','Confirm closes with Escape')
     assert.equal((await js('window.api.subtaskGetByTodo('+JSON.stringify(task.id)+')')).filter(s=>s.title==='UX確かめ').length,1,'Cancelled delete keeps the subtask')
+    // 文字の倍率を考慮して詳細の2列を畳む。保留中の計測は、押す前に理由が分かる。
+    main.setSize(1440, 900)
+    await js('window.api.settingsSet("fontScale","150%")')
+    await main.loadURL(fixture.origin+'/?view=detail&task='+task.id)
+    await until('getComputedStyle(document.documentElement).fontSize==="24px"&&Boolean(document.querySelector("textarea[aria-label=説明]"))','Large detail ready')
+    assert.equal(await js('Boolean(document.querySelector("[data-detail-columns]"))'),false,'Large text must not be squeezed into two detail columns')
+    await js('window.api.todoUpdate('+JSON.stringify(task.id)+',{status:"on_hold"})')
+    await main.loadURL(fixture.origin+'/?view=detail&task='+task.id)
+    await until('document.body.innerText.includes("保留中です。上の")','Hold reason visible')
+    assert.equal(await js('Array.from(document.querySelectorAll("button")).find(b=>b.textContent==="計測開始").disabled'),true,'Held task start is disabled')
+    assert.equal(await js('window.api.timerGetRunning()'),null,'Held task must not start a timer')
+    await js('window.api.settingsSet("fontScale","100%")')
     console.log('HAKOBI UX checks passed: visible save, Ctrl+Enter, yearly preserved, record error/retry/order, column add failure/retention/single request/retry/focus, radio arrows, narrow plan menu, collapsible unscheduled, inline title error, keyboard plan placement, list roving tab, large-font list width and tab hint, recurring undo cleanup, empty title reason, overlapping block titles, gantt fill/scale event/settings escape, gantt row arrows, app confirm dialog')
     main.destroy(); app.exit(0)
   } catch(error) {
