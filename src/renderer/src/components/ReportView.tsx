@@ -916,7 +916,8 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     const update = (): void => {
       const rootFont = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
       // 文字の大きさで割った幅（100% のときの幅に直す）で決める
-      setCompactHeader(element.clientWidth / (rootFont / 16) < 760)
+      // 1440px で一覧を出しているくらいの幅（1100px 未満）でも畳む。操作が多く、毎週の定例で中身まで遠かった
+      setCompactHeader(element.clientWidth / (rootFont / 16) < 1100)
     }
     update()
     const observer = new ResizeObserver(update)

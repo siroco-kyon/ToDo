@@ -21,7 +21,9 @@ input[type="date"], input[type="time"], input[type="datetime-local"] { color-sch
   --font-control: 0.85rem;
   /* color-scheme は決めない（決めると、色を書いていないボタンや入力欄の既定の色が変わる）。日付の入力など、暗い部品にしたいところだけ var(--native-scheme) を使う */
   --native-scheme: dark;
-  --data-ink-mix: 100%;
+  /* 利用者が選んだ色を文字に使うとき（dataInk()）: ダークでは白を少し混ぜて明るくする（#6366F1 などの濃い色が暗い地で 3.5:1 だった） */
+  --data-ink-mix: 72%;
+  --data-ink-base: #ffffff;
   --black: #000000;
   --white: #ffffff;
   --amber-50: #fffbeb;
@@ -206,6 +208,7 @@ input[type="date"], input[type="time"], input[type="datetime-local"] { color-sch
 :root[data-theme="light"] {
   --native-scheme: light;
   --data-ink-mix: 48%;
+  --data-ink-base: #000000;
   --black: #ffffff;
   --white: #020617;
   --amber-50: #451a03;

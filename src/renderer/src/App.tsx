@@ -703,6 +703,10 @@ export function App(): React.JSX.Element {
   const autoHideTaskPane = (isKanban && kanbanBoardWidth({ side: true, category: true }) < KANBAN_MIN_BOARD_WIDTH)
     || (activeView !== 'detail' && effectiveViewportWidth < 1000)
   const [openedWhileNarrow, setOpenedWhileNarrow] = useState({ category: false, side: false, task: false })
+  // 狭い窓で開いたパネルは、その画面のあいだだけ開く（ガントで一覧を開くと、カンバンや報告まで本文が狭くなっていた）
+  useEffect(() => {
+    setOpenedWhileNarrow((previous) => previous.category || previous.side || previous.task ? { category: false, side: false, task: false } : previous)
+  }, [activeView])
   useEffect(() => {
     setOpenedWhileNarrow((previous) => {
       const next = { category: previous.category && autoHideCategoryPane, side: previous.side && autoHideSidePanel, task: previous.task && autoHideTaskPane }
@@ -1369,7 +1373,8 @@ export function App(): React.JSX.Element {
     try {
       await window.api.todoUpdate(todo.id, { status: newStatus })
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '状態を変えられませんでした', 'error')
+      // 進捗ログと同じく、知らせからそのまま送り直せるようにする
+      showToast(error instanceof Error ? error.message : '状態を変えられませんでした', 'error', { label: '再試行', run: () => { void handleToggleDoneRef.current(todo) } })
       return
     }
 
@@ -1401,6 +1406,8 @@ export function App(): React.JSX.Element {
 
     await loadTodos()
   }, [loadTodos, showToast])
+  const handleToggleDoneRef = useRef(handleToggleDone)
+  handleToggleDoneRef.current = handleToggleDone
 
   // カンバンの列間ドラッグでステータスを変更。完了化したら handleToggleDone と同じく
   // 繰り返しタスクの次回分作成（DB層が自動生成）を通知する。

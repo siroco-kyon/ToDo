@@ -903,7 +903,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                   {!editingNote && (
                     <div style={postActionRowStyle}>
                       <ReactionBar reactions={note.reactions} onToggle={(emoji) => void handleToggleReaction(note.id, emoji)} />
-                      <span style={actionMetaStyle}>返信 {commentCount}件</span>
+                      {commentCount > 0 && <span style={actionMetaStyle}>返信 {commentCount}件</span>}
                       <button id={noteReplyButtonId(note.id)} onClick={() => setCommentingOnNoteId(note.id)} aria-label={`${authorName}さんの進捗ログに返信する`} style={inlineActionStyle}>返信</button>
                       {/* 報告タブと同じく、要相談・編集・削除は ⋯ にまとめる */}
                       <NoteMenu
