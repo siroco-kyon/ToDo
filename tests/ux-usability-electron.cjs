@@ -148,6 +148,11 @@ async function runElectron() {
     await js('(()=>{const i=document.activeElement;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(i,"15:30");i.dispatchEvent(new Event("input",{bubbles:true}));i.form.requestSubmit()})()')
     await until('Boolean(document.activeElement&&document.activeElement.closest("[data-plan-block-id]"))','Focus moves to placed block')
     assert.equal(await js('(async()=>{const d=new Date();const key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");return (await window.api.dailyPlanGetByDate(key)).find(i=>i.title==="UXキー配置").scheduled_start})()'),'15:30','Placed at the typed time')
+    // 時刻が重なって2列になった狭いブロックでも、タスク名が隠れない
+    await js('(async()=>{const me=await window.api.authGetCurrentUser();const t=await window.api.todoCreate({title:"UX重なり",start_date:"2026-10-19",due_date:"2026-10-30",assignee_id:me&&me.id});const d=new Date();const key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");await window.api.dailyPlanAdd(key,t.id,{allowDuplicate:true,scheduled_start:"15:30",estimated_minutes:60})})()')
+    await main.loadURL(fixture.origin+'/?view=plan')
+    await until('document.querySelectorAll("[data-plan-block-title]").length>=2','Overlapping blocks')
+    assert.deepEqual(await js('Array.from(document.querySelectorAll("[data-plan-block-title]")).filter(b=>["UXキー配置","UX重なり"].includes(b.textContent)).map(b=>b.getBoundingClientRect().height>10)'),[true,true],'Titles of overlapping narrow blocks stay visible')
     // 一覧で Tab が止まる行は1つだけ（ほかの行へは ↑↓）
     await main.loadURL(fixture.origin+'/?view=detail')
     await until('document.querySelectorAll("[data-todo-row]").length>1','List rows')
@@ -202,7 +207,7 @@ async function runElectron() {
     await js('document.querySelector("[role=dialog] button[type=submit]").click();void 0')
     await until('document.getElementById("quick-add-input").getAttribute("aria-invalid")==="true"&&Boolean(document.getElementById("quick-add-title-error"))','Empty title explained')
     await js('document.activeElement.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));void 0')
-    console.log('HAKOBI UX checks passed: visible save, Ctrl+Enter, yearly preserved, record error/retry/order, column add failure/retention/single request/retry/focus, radio arrows, narrow plan menu, collapsible unscheduled, inline title error, keyboard plan placement, list roving tab, large-font list width and tab hint, recurring undo cleanup, empty title reason')
+    console.log('HAKOBI UX checks passed: visible save, Ctrl+Enter, yearly preserved, record error/retry/order, column add failure/retention/single request/retry/focus, radio arrows, narrow plan menu, collapsible unscheduled, inline title error, keyboard plan placement, list roving tab, large-font list width and tab hint, recurring undo cleanup, empty title reason, overlapping block titles')
     main.destroy(); app.exit(0)
   } catch(error) {
     console.error(error.stack||error.message)

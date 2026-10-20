@@ -32,14 +32,14 @@ function parseDateOnly(dateKey: string): Date {
 }
 
 function getDueColor(dueDate: string | null): string {
-  if (!dueDate) return 'var(--slate-500)'
+  if (!dueDate) return 'var(--text-subtle)'
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const diffDays = (parseDateOnly(dueDate).getTime() - today.getTime()) / 86400000
-  if (diffDays < 0) return 'var(--red-500)'
+  if (diffDays < 0) return 'var(--red-400)'
   if (diffDays < 1) return 'var(--orange-500)'
   if (diffDays <= 3) return 'var(--amber-500)'
-  return 'var(--slate-500)'
+  return 'var(--text-subtle)'
 }
 
 function progressColor(p: number): string {
@@ -92,6 +92,17 @@ function KanbanCard({
   const prog = todo.list_mode || todo.status === 'done' ? 0 : todo.progress ?? 0
   const isDone = todo.status === 'done'
   const coAssignees = todo.co_assignees ?? []
+  // 読み上げ用のカードの名前。見た目の記号（!・🔁・担当の頭文字）ではなく言葉で伝える
+  const cardLabel = [
+    `${todo.title}（${columnLabel}）`,
+    todo.priority >= 4 ? `優先度 ${todo.priority === 5 ? '最高' : '高'}` : null,
+    todo.category_name ? `カテゴリ ${todo.category_name}` : null,
+    todo.recurrence ? `繰り返し ${todoRecurrenceLabel(todo) ?? ''}`.trim() : null,
+    todo.due_date ? `期限 ${formatShortDate(todo.due_date)}${dueStateSuffix(todo.due_date, isDone)}` : null,
+    prog > 0 ? `進捗 ${prog}%` : null,
+    todo.assignee_name ? `担当 ${todo.assignee_name}` : null,
+    isRunning ? '計測中' : null
+  ].filter(Boolean).join('、')
 
   return (
     <div
@@ -103,7 +114,7 @@ function KanbanCard({
       // キーボードでも開ける・列を移せるようにする（ドラッグはマウスだけなので）
       role="button"
       tabIndex={0}
-      aria-label={`${todo.title}（${columnLabel}）`}
+      aria-label={cardLabel}
       aria-keyshortcuts="Enter Alt+ArrowLeft Alt+ArrowRight"
       title="Enter で開く・Alt+← / Alt+→ で隣の列へ移す"
       onKeyDown={(event) => {
@@ -136,7 +147,7 @@ function KanbanCard({
           </span>
         )}
         {todo.priority >= 4 && (
-          <span style={{ fontSize: 'var(--font-caption)', color: todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)' }}>
+          <span title={`優先度 ${todo.priority === 5 ? '最高' : '高'}`} style={{ fontSize: 'var(--font-caption)', color: todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)' }}>
             {'!'.repeat(todo.priority - 3)}
           </span>
         )}
@@ -288,7 +299,7 @@ export function KanbanView({
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--slate-800)' }}>
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: col.accent, flexShrink: 0 }} />
-              <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--slate-200)' }}>{col.label}</span>
+              <h2 style={{ margin: 0, fontSize: '0.84rem', fontWeight: 700, color: 'var(--slate-200)' }}>{col.label}</h2>
               <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 99, padding: '1px 7px' }}>
                 {items.length}
               </span>

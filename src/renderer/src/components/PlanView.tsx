@@ -1515,8 +1515,9 @@ export function PlanView({
                             userSelect: 'none'
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: compactBlock ? 'nowrap' : 'wrap', rowGap: 4 }}>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--blue-100)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {/* 時刻とボタンの行は折り返さない（折り返すと、低いブロックでタスク名が押し出されて消える）。狭いときは時刻を省略する */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexShrink: 0 }}>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--blue-100)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
                               {offsetToClock(item.startMinutes)} - {offsetToClock(item.endMinutes)}
                             </span>
                             {!compactBlock && item.status === 'done' && (
@@ -1529,7 +1530,7 @@ export function PlanView({
                                 計測中
                               </span>
                             )}
-                            {!compactBlock && <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                            {!compactBlock && <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, flexShrink: 0 }}>
                               <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void runAction(() => onShiftItem(item.id, -15))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分早める" aria-label={`「${item.title}」を15分早める`}>−15</button>
                               <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void runAction(() => onShiftItem(item.id, 15))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分遅らせる" aria-label={`「${item.title}」を15分遅らせる`}>+15</button>
                               {narrowBlocks ? (
@@ -1656,7 +1657,9 @@ export function PlanView({
                             onPointerDown={(event) => event.stopPropagation()}
                             data-plan-block-title=""
                             onClick={() => onSelectTodo(item.todo_id)}
+                            title={item.title}
                             style={{
+                              flexShrink: 0,
                               background: 'transparent',
                               border: 'none',
                               padding: 0,
@@ -1674,7 +1677,7 @@ export function PlanView({
                           </button>
 
                           {showBlockMeta && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: 'var(--slate-300)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: 'var(--slate-300)', minHeight: 0, overflow: 'hidden' }}>
                               {item.category_name && <span>{item.category_name}</span>}
                               <span>{dueLabel}</span>
                               <span>{formatMinutes(item.durationMinutes)}</span>

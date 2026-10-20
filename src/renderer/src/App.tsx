@@ -26,7 +26,7 @@ import { recurrenceDoneMessage, recurrenceReopenMessage } from './lib/recurrence
 import { notifyReopenedRecurrence } from './lib/recurrenceUndo'
 import { elapsedSecondsSince } from './hooks/useElapsedSeconds'
 import { formatShortDate, shiftDateKey } from './lib/dueDate'
-import { FOCUS_PROGRESS_LOG_EVENT, FOCUS_TASK_DETAIL_EVENT } from './lib/appEvents'
+import { FOCUS_PROGRESS_LOG_EVENT, requestTaskDetailFocus } from './lib/appEvents'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 
 // 最初に開くガント・タスク一覧・詳細以外の画面と、設定などの小窓は、開いたときに読み込む（起動を軽くする）
@@ -1186,7 +1186,7 @@ export function App(): React.JSX.Element {
     const hidden = hiddenByLens || !matchesListFilters(first)
     const label = created.length === 1 ? `「${first.title}」を追加しました` : `${created.length}件のタスクを追加しました`
     if (!hidden) {
-      showToast(label, 'success', { label: '開く', run: () => openTodoDetailRef.current(first.id) })
+      showToast(label, 'success', { label: '開く', run: () => { openTodoDetailRef.current(first.id); window.setTimeout(requestTaskDetailFocus, 30) } })
       return
     }
     showToast(`${label}。今の絞り込みでは一覧に表示されません`, 'success', {
@@ -1198,6 +1198,7 @@ export function App(): React.JSX.Element {
         setSelectedAssigneeId(null)
         if (hiddenByLens) setScopeLens('personal')
         openTodoDetailRef.current(first.id)
+        window.setTimeout(requestTaskDetailFocus, 30)
       }
     })
   }
@@ -1750,7 +1751,7 @@ export function App(): React.JSX.Element {
         key: 'task-focus', group: '操作' as const, label: `「${selectedTodo.title}」の詳細へ移る`, keywords: '詳細 移動 フォーカス',
         run: () => {
           if (activeView !== 'detail' && !(activeView === 'gantt' && ganttSidePanelMode === 'detail')) setActiveView('detail')
-          window.setTimeout(() => window.dispatchEvent(new CustomEvent(FOCUS_TASK_DETAIL_EVENT)), 30)
+          window.setTimeout(requestTaskDetailFocus, 30)
         }
       },
       {
@@ -2304,7 +2305,7 @@ export function App(): React.JSX.Element {
           onOpenTodo={(id) => {
             openTodoDetail(id)
             // パレットを閉じてフォーカスが元の場所に戻ったあとで、詳細の題名へ移す
-            window.setTimeout(() => window.dispatchEvent(new CustomEvent(FOCUS_TASK_DETAIL_EVENT)), 30)
+            window.setTimeout(requestTaskDetailFocus, 30)
           }}
           onClose={() => setShowCommandPalette(false)}
         />

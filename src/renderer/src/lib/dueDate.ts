@@ -63,7 +63,8 @@ export function dueStateSuffix(dueDate: string | null, done = false): string {
 export function getDueDateColor(dueDate: string | null): string {
   if (!dueDate) return ''
   const diffDays = diffDaysFromToday(dueDate)
-  if (diffDays < 0) return 'var(--red-500)'
+  // 文字に使うので、薄い色の面の上でも 4.5:1 に届く段にする（--red-500 はライトで 4.1〜4.3 だった）
+  if (diffDays < 0) return 'var(--red-400)'
   if (diffDays < 1) return 'var(--orange-500)'
   if (diffDays <= 3) return 'var(--amber-500)'
   return ''

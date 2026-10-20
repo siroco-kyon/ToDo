@@ -18,7 +18,7 @@ import { copyTextToClipboard } from '../lib/clipboard'
 import { taskLinkFor } from '../lib/urlState'
 import { dataInk, textOnFill } from '../lib/theme'
 import { changeFieldLabel } from '../lib/changeFields'
-import { FOCUS_PROGRESS_LOG_EVENT, FOCUS_TASK_DETAIL_EVENT } from '../lib/appEvents'
+import { FOCUS_PROGRESS_LOG_EVENT, FOCUS_TASK_DETAIL_EVENT, consumeTaskDetailFocus } from '../lib/appEvents'
 import { taskOptionLabel } from '../lib/taskLabel'
 import { TODO_RECURRENCE_OPTIONS, nextRecurrenceDue, recurrenceDoneMessage, recurrenceKindLabel, recurrenceReopenMessage, todoRecurrenceLabel } from '../lib/recurrence'
 import { notifyReopenedRecurrence } from '../lib/recurrenceUndo'
@@ -286,10 +286,15 @@ export function TodoDetail({
   // Ctrl+K でタスクを開いたときは、題名へフォーカスを移す（続けて Tab で詳細の中を進める）
   const titleHeadingRef = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
-    const handle = (): void => titleHeadingRef.current?.focus()
+    const handle = (): void => { if (titleHeadingRef.current && consumeTaskDetailFocus()) titleHeadingRef.current.focus() }
     window.addEventListener(FOCUS_TASK_DETAIL_EVENT, handle)
     return () => window.removeEventListener(FOCUS_TASK_DETAIL_EVENT, handle)
   }, [])
+  // 合図を受けたときにまだ描かれていなかった（開いたばかりのタスク）ときは、題名が出たときに移す
+  const headingShown = Boolean(todo)
+  useEffect(() => {
+    if (headingShown && titleHeadingRef.current && consumeTaskDetailFocus()) titleHeadingRef.current.focus()
+  }, [headingShown])
   const liveTodoIdRef = useRef(todoId)
   liveTodoIdRef.current = todoId
   const mountedRef = useRef(true)
@@ -1036,7 +1041,8 @@ export function TodoDetail({
     (dependencyDraft.mode === 'predecessor' ? predecessorDependencies : successorDependencies)
       .map((dependency) => dependencyDraft.mode === 'predecessor' ? dependency.predecessor_todo_id : dependency.successor_todo_id)
   )
-  const dependencyCandidates = allTodos.filter((candidate) => candidate.id !== todo.id && !blockedCandidateIds.has(candidate.id))
+  // アーカイブしたタスクは選択肢に出さない（同じ名前の次回分などと見分けがつかないため）
+  const dependencyCandidates = allTodos.filter((candidate) => candidate.id !== todo.id && candidate.status !== 'archived' && !blockedCandidateIds.has(candidate.id))
 
   const startEditing = (): void => {
     if (childDraftIds.size > 0 && !window.confirm('未保存のサブタスクの変更があります。全体編集に切り替えますか？')) return
@@ -1608,11 +1614,11 @@ export function TodoDetail({
             <SectionHeading title="依存関係" summary="前後のタスク" detail="先行タスクが終わってから、このタスクを始めます。待機日数を増やすと、先行タスクの完了後に間を空けられます。" />
             <div style={{ background: 'var(--slate-800)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* 右の列（狭いとき）は2段に折り返す */}<div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                <select value={dependencyDraft.mode} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, mode: event.target.value as 'predecessor' | 'successor', relatedTodoId: '' }))} style={{ ...inputStyle, flex: '1 1 130px', width: 'auto', minWidth: 0 }}>
+                <select aria-label="依存の向き" value={dependencyDraft.mode} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, mode: event.target.value as 'predecessor' | 'successor', relatedTodoId: '' }))} style={{ ...inputStyle, flex: '1 1 130px', width: 'auto', minWidth: 0 }}>
                   <option value="predecessor">先行タスクを追加</option>
                   <option value="successor">後続タスクを追加</option>
                 </select>
-                <select value={dependencyDraft.relatedTodoId} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, relatedTodoId: event.target.value }))} style={{ ...inputStyle, flex: '2 1 170px', width: 'auto', minWidth: 0 }}>
+                <select aria-label="依存させるタスク" value={dependencyDraft.relatedTodoId} onChange={(event) => setDependencyDraft((previous) => ({ ...previous, relatedTodoId: event.target.value }))} style={{ ...inputStyle, flex: '2 1 170px', width: 'auto', minWidth: 0 }}>
                   <option value="">タスクを選択</option>
                   {dependencyCandidates.filter((candidate) => candidate.status !== 'done').map((candidate) => <option key={candidate.id} value={candidate.id}>{taskOptionLabel(candidate)}</option>)}
                   {dependencyCandidates.some((candidate) => candidate.status === 'done') && (
@@ -2552,7 +2558,7 @@ function QuickProperties({ todo, categories, users, onUpdate, onShowToast }: {
               <>
                 <span style={{ color: 'var(--text-subtle)' }}>→</span>
                 <span style={{ color: dueColor || 'var(--slate-300)', fontWeight: dueColor ? 700 : 400 }}>期限 {todo.due_date ? formatShortDate(todo.due_date) : '未設定'}</span>
-                {todo.due_date && todo.status !== 'done' && <span style={{ fontSize: 'var(--font-caption)', color: dueColor || 'var(--slate-500)' }}>（{dueRemainingLabel(todo.due_date)}）</span>}
+                {todo.due_date && todo.status !== 'done' && <span style={{ fontSize: 'var(--font-caption)', color: dueColor || 'var(--text-subtle)' }}>（{dueRemainingLabel(todo.due_date)}）</span>}
               </>
             )}
             {!isArchived && (
