@@ -44,6 +44,8 @@ interface Props {
   onArchive?: (id: string) => Promise<void>
   /** アーカイブしたタスクを完全に消す（「⋯」から。確かめてから） */
   onDelete?: (id: string) => Promise<void>
+  /** アーカイブから戻す（アーカイブしたタスクの詳細の上に出す） */
+  onUnarchive?: (id: string) => Promise<void>
   /** ほかの画面（チーム・報告など）から開いたとき、その画面へ戻るボタン */
   returnTo?: { label: string; onReturn: () => void } | null
 }
@@ -186,6 +188,7 @@ export function TodoDetail({
   onDirtyChange,
   onArchive,
   onDelete,
+  onUnarchive,
   returnTo = null
 }: Props): React.JSX.Element {
   const [logs, setLogs] = useState<WorkLog[]>([])
@@ -972,7 +975,8 @@ export function TodoDetail({
       // 報告タブ・進捗タブと同じく、投稿したことを知らせる
       onShowToast('進捗ログを投稿しました')
     } catch (error) {
-      onShowToast(error instanceof Error ? error.message : '進捗ログを追加できませんでした', 'error')
+      // 入力は残っているので、知らせからそのまま送り直せるようにする
+      onShowToast(error instanceof Error ? error.message : '進捗ログを追加できませんでした', 'error', { label: '再試行', run: () => void handleAddProgressNote(bodyOverride) })
     } finally {
       setNoteSaving(false)
     }
@@ -1816,6 +1820,13 @@ export function TodoDetail({
 
       <div ref={detailBodyRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {saveError && <div role="alert" style={{ padding: 10, color: 'var(--red-200)', border: '1px solid var(--red-500)', borderRadius: 8 }}>{saveError}</div>}
+      {todo.status === 'archived' && (
+        // アーカイブしたタスクは、何ができる状態かを先に書き、戻す操作をここに置く（知らせの「元に戻す」を逃しても戻せるように）
+        <div role="note" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--slate-600)', background: 'var(--slate-800)', color: 'var(--slate-200)', fontSize: 'var(--font-control)' }}>
+          <span style={{ flex: '1 1 240px' }}>📦 このタスクはアーカイブしています。一覧やガントには出ません。戻すと、元の状態で一覧に戻ります。</span>
+          {onUnarchive && <button onClick={() => void onUnarchive(todo.id)} style={buttonStyle('var(--blue-700)')}>アーカイブから戻す</button>}
+        </div>
+      )}
       {sectionLoadError && <div role="alert" style={{ padding: 10, borderRadius: 8, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', fontSize: 'var(--font-control)' }}>{sectionLoadError}<button onClick={() => { setSectionLoadError(null); void Promise.all([loadWorkLogs(todo.id), loadSubTasks(todo.id), loadDependencies(todo.id), loadProgressNotes(todo.id)]) }} style={{ marginLeft: 10, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--red-500)', background: 'var(--red-900)', color: 'var(--white)' }}>再試行</button></div>}
       {twoColumns ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 360px)', gap: 20, alignItems: 'start' }}>

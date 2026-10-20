@@ -26,7 +26,7 @@ interface Props {
   currentUser?: PublicUser | null
   focusTarget?: ProgressTimelineFocusTarget | null
   onSelectTodo: (id: string) => void
-  onShowToast: (message: string, type?: 'success' | 'error') => void
+  onShowToast: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
   /** 全体レンズ時に隠す（プライベートカテゴリの）タスクID。既定は空＝全部表示 */
   hiddenTodoIds?: Set<string>
 }
@@ -405,7 +405,8 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       }
       onShowToast('進捗ログを投稿しました')
     } catch (error) {
-      onShowToast(error instanceof Error ? error.message : '進捗ログを追加できませんでした', 'error')
+      // 入力は残っているので、知らせからそのまま送り直せるようにする
+      onShowToast(error instanceof Error ? error.message : '進捗ログを追加できませんでした', 'error', { label: '再試行', run: () => void handleCreateNote(bodyOverride) })
     } finally {
       savingNoteRef.current = false
       setSavingNote(false)

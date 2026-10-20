@@ -4173,6 +4173,7 @@ function GanttViewContent({
                                     // 保留・再開も知らせる（バーの「保留中・」の文字だけでは気付きにくい）
                                     onShowToast?.(nextStatus === 'on_hold' ? `「${todo.title}」を保留にしました` : `「${todo.title}」を進行中に戻しました`, 'success', {
                                       label: '元に戻す',
+                                      key: `status:${todo.id}`,
                                       run: () => void onUpdateTodo(todo.id, { status: previousStatus }).catch(() => onShowToast?.('元に戻せませんでした', 'error'))
                                     })
                                   }, () => {

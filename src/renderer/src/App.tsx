@@ -253,6 +253,8 @@ export function App(): React.JSX.Element {
   const [progressTimelineFocus, setProgressTimelineFocus] = useState<ProgressTimelineFocusTarget | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null)
+  const selectedAssigneeIdRef = useRef(selectedAssigneeId)
+  selectedAssigneeIdRef.current = selectedAssigneeId
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(initialUrlState.taskId)
   const [detailDirty, setDetailDirty] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
@@ -336,7 +338,10 @@ export function App(): React.JSX.Element {
     const id = ++toastIdRef.current
     setToasts((prev) => [
       // 成功したら、前に出ていた失敗の知らせは片付ける（再試行して成功したのに「✗」が残り、まだ失敗しているように見えていた）
-      ...(action?.key ? prev.filter((toast) => toast.key !== action.key) : prev).filter((toast) => type !== 'success' || toast.type !== 'error'),
+      // 同じ文の失敗が続いたときは1枚にまとめる（通信が切れているあいだに何度も操作すると、同じ知らせが重なっていた）
+      ...(action?.key ? prev.filter((toast) => toast.key !== action.key) : prev)
+        .filter((toast) => type !== 'success' || toast.type !== 'error')
+        .filter((toast) => type !== 'error' || toast.type !== 'error' || toast.message !== message),
       { id, message, type, actionLabel: action?.label && action.run ? action.label : undefined, onAction: action?.label ? action.run : undefined, key: action?.key }
     ])
   }, [])
@@ -1069,6 +1074,19 @@ export function App(): React.JSX.Element {
   // チームの数（超過・遅れ・報告なし）から開いたときに、開いた画面へ一度だけ渡す絞り込み（画面は開いたときにだけ読む）
   const [ganttInitialHealthFilter, setGanttInitialHealthFilter] = useState<'overdue' | 'behind' | null>(null)
   const [reportFocusAssigneeId, setReportFocusAssigneeId] = useState<string | null>(null)
+  // チームからほかの人のタスクをガントで見るときは、担当の絞り込みを一時的に借りる。
+  // ガントを離れたら元の絞り込みに戻す（以前は自分の計画の候補まで、その人のタスクに絞られたままだった）
+  const borrowedAssigneeRef = useRef<{ previous: string | null } | null>(null)
+  const borrowAssigneeFilter = useCallback((userId: string) => {
+    if (!borrowedAssigneeRef.current) borrowedAssigneeRef.current = { previous: selectedAssigneeIdRef.current }
+    setSelectedAssigneeId(userId)
+  }, [])
+  useEffect(() => {
+    if (activeView === 'gantt' || !borrowedAssigneeRef.current) return
+    const { previous } = borrowedAssigneeRef.current
+    borrowedAssigneeRef.current = null
+    setSelectedAssigneeId(previous)
+  }, [activeView])
   useEffect(() => {
     if (activeView !== 'gantt' && ganttInitialHealthFilter) setGanttInitialHealthFilter(null)
     if (activeView !== 'report' && reportFocusAssigneeId) setReportFocusAssigneeId(null)
@@ -1399,6 +1417,8 @@ export function App(): React.JSX.Element {
     const previousStatus = todo.status
     showToast(`「${todo.title}」を${KANBAN_STATUS_LABELS[status]}にしました${recurrenceMessage ? `。${recurrenceMessage}` : ''}`, 'success', {
       label: '元に戻す',
+      // 同じカードを続けて動かしたときは、前の「元に戻す」を置き換える（古い方を押すと逆の操作になる）
+      key: `status:${todo.id}`,
       run: () => {
         void window.api.todoUpdate(todo.id, { status: previousStatus }).then(
           () => { showToast(`「${todo.title}」を${KANBAN_STATUS_LABELS[previousStatus]}に戻しました`); void loadTodos() },
@@ -2190,9 +2210,9 @@ export function App(): React.JSX.Element {
               todos={lensTodos}
               onSelectTodo={openTodoDetail}
               onSelectMember={(userId) => {
-                setSelectedAssigneeId(userId)
+                borrowAssigneeFilter(userId)
                 toggleCenterView('gantt')
-                showToast(`${users.find((user) => user.id === userId)?.display_name ?? 'メンバー'}さんのタスクに絞り込みました。見出しの横のチップで解除できます`, 'info')
+                showToast(`${users.find((user) => user.id === userId)?.display_name ?? 'メンバー'}さんのタスクに絞り込みました。ガントを離れると元の絞り込みに戻ります`, 'info')
               }}
               onSelectMemberMetric={(userId, metric) => {
                 const name = users.find((user) => user.id === userId)?.display_name ?? 'メンバー'
@@ -2202,10 +2222,10 @@ export function App(): React.JSX.Element {
                   toggleCenterView('report')
                   return
                 }
-                setSelectedAssigneeId(userId)
+                borrowAssigneeFilter(userId)
                 setGanttInitialHealthFilter(metric)
                 toggleCenterView('gantt')
-                showToast(`${name}さんの${metric === 'overdue' ? '期限超過' : '遅れている'}タスクを表示しています。見出しのチップで解除できます`, 'info')
+                showToast(`${name}さんの${metric === 'overdue' ? '期限超過' : '遅れている'}タスクを表示しています。ガントを離れると元の絞り込みに戻ります`, 'info')
               }}
               includePrivate={scopeLens === 'personal'}
             />
@@ -2228,6 +2248,7 @@ export function App(): React.JSX.Element {
               onDirtyChange={setDetailDirty}
               onArchive={handleArchive}
               onDelete={handleDelete}
+              onUnarchive={handleUnarchive}
               returnTo={detailReturnView ? { label: CENTER_VIEW_LABELS[detailReturnView], onReturn: () => toggleCenterView(detailReturnView) } : null}
             />
           )}
@@ -2305,6 +2326,7 @@ export function App(): React.JSX.Element {
                         onDirtyChange={setDetailDirty}
                         onArchive={handleArchive}
                         onDelete={handleDelete}
+                        onUnarchive={handleUnarchive}
                       />
                     ) : (
                       <TodayFlowRail

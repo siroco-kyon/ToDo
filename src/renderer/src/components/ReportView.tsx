@@ -2017,7 +2017,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
             { done: event.target.checked },
             event.target.checked ? 'サブタスクを完了にしました' : 'サブタスクを未完了に戻しました'
           )}
-          style={{ accentColor: 'var(--green-500)', cursor: 'pointer', flexShrink: 0, margin: 0, transform: 'translateY(1px)' }}
+          style={{ width: 18, height: 18, accentColor: 'var(--green-500)', cursor: 'pointer', flexShrink: 0, margin: 3, transform: 'translateY(1px)' }}
         />
         <span style={{ flex: 1, minWidth: 0, color: done ? 'var(--text-subtle)' : 'var(--slate-300)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word' }}>
           {subTask.title}
