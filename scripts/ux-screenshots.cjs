@@ -85,6 +85,8 @@ const SHOTS = [
   { name: 'plan-large-font', view: 'plan', width: 1280, height: 800, fontScale: '150%', theme: 'light' },
   { name: 'kanban-large-font', view: 'kanban', width: 1280, height: 800, fontScale: '150%', theme: 'light' },
   { name: 'gantt-large-font', view: 'gantt', width: 1280, height: 800, fontScale: '150%', theme: 'light' },
+  { name: 'report-1024-large', view: 'report', width: 1024, height: 768, fontScale: '150%' },
+  { name: 'gantt-1024-large', view: 'gantt', width: 1024, height: 768, fontScale: '150%' },
   { name: 'kanban-light', view: 'kanban', width: 1440, height: 900, theme: 'light' },
   { name: 'palette', view: 'gantt', width: 1440, height: 900,
     steps: "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })); await __ux.sleep(600)" }

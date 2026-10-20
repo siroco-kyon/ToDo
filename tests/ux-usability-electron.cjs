@@ -12,7 +12,8 @@ async function runElectron() {
   app.commandLine.appendSwitch('disable-gpu')
   app.on('window-all-closed', () => {})
   let main
-  const js = expression => main.webContents.executeJavaScript(expression)
+  // 失敗したときに、どの式で失敗したかを出す
+  const js = expression => main.webContents.executeJavaScript(expression).catch(error => { throw new Error('JS failed: ' + String(expression).slice(0, 160) + ' / ' + (error && error.message)) })
   async function until(expression, label) {
     const deadline = Date.now() + 12000
     while (Date.now() < deadline) { if (await js(expression)) return; await delay(50) }
@@ -85,6 +86,11 @@ async function runElectron() {
     await main.loadURL(fixture.origin+'/?view=report')
     await until('Boolean(document.querySelector("nav[aria-label=担当者へ移動] select"))','Report navigation ready')
     assert.equal(await js('document.querySelectorAll("input[aria-label^=報告期間の]").length'),0,'Custom dates collapsed by default')
+    // 狭い本文（1024px で一覧を出しているとき）は期間などの切り替えが畳まれている。開いてから確かめる
+    if (await js('Boolean(Array.from(document.querySelectorAll("button[aria-expanded=false]")).find(b=>b.textContent.includes("変える")))')) {
+      await js('Array.from(document.querySelectorAll("button[aria-expanded=false]")).find(b=>b.textContent.includes("変える")).click();void 0')
+      await until('Array.from(document.querySelectorAll("button")).some(b=>b.textContent==="日付を指定")','Report header expanded')
+    }
     await click('日付を指定')
     assert.equal(await js('document.querySelectorAll("input[aria-label^=報告期間の]").length'),2)
     await click('日付を指定')
@@ -185,7 +191,8 @@ async function runElectron() {
     await main.loadURL(fixture.origin+'/?view=detail')
     await until('getComputedStyle(document.documentElement).fontSize==="24px"&&document.querySelectorAll("[data-todo-row]").length>0','Large font applied')
     assert.ok(await js('document.getElementById("hakobi-task-list").getBoundingClientRect().width')>=360,'List widens with the font scale')
-    await until('Boolean(document.querySelector(".hakobi-tabs-scroll-right"))','Overflowing tabs show a scroll hint')
+    // 入りきらないタブは2段目に移して全部見せる（それでも入りきらなければ「›」を出す）
+    await until('Boolean(document.querySelector(".hakobi-tabs-scroll-right"))||Array.from(document.querySelectorAll("[role=tab]")).every(t=>{const r=t.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth})','All tabs reachable at large font')
     await js('(async()=>{localStorage.setItem("app-font-scale","100%");await window.api.settingsSet("fontScale","100%")})()')
     // 繰り返しの完了を元に戻すと、作られた次回分をアーカイブできる知らせが出る
     const weekly = await js('(async()=>{const me=await window.api.authGetCurrentUser();return window.api.todoCreate({title:"UX週次の取り消し",recurrence:"weekly",assignee_id:me&&me.id})})()')
@@ -220,7 +227,24 @@ async function runElectron() {
     await until('Boolean(document.getElementById("gantt-view-settings"))&&document.activeElement&&document.activeElement.textContent==="閉じる"','Settings opened with focus inside')
     await js('document.activeElement.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));void 0')
     await until('!document.getElementById("gantt-view-settings")','Settings closed with Escape')
-    console.log('HAKOBI UX checks passed: visible save, Ctrl+Enter, yearly preserved, record error/retry/order, column add failure/retention/single request/retry/focus, radio arrows, narrow plan menu, collapsible unscheduled, inline title error, keyboard plan placement, list roving tab, large-font list width and tab hint, recurring undo cleanup, empty title reason, overlapping block titles, gantt fill/scale event/settings escape')
+    // ガントの行は Tab が1行だけに止まり、↓ で次の行のタスク名へ移る
+    await main.loadURL(fixture.origin+'/?view=gantt')
+    await until('document.querySelectorAll("[data-gantt-row-title]").length>1','Gantt rows')
+    assert.equal(await js('Array.from(document.querySelectorAll("[data-gantt-row-title]")).filter(b=>b.tabIndex===0).length'),1,'One tab stop among gantt rows')
+    await js('document.querySelector("[data-gantt-row-title][tabindex=\\"0\\"]").focus();document.activeElement.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true}));void 0')
+    assert.equal(await js('Array.from(document.querySelectorAll("[data-gantt-row-title]")).indexOf(document.activeElement)'),1,'ArrowDown moves to next row')
+    // 削除の確かめはアプリの小窓（Esc でやめると何も消えない）
+    await main.loadURL(fixture.origin+'/?view=detail&task='+task.id)
+    await until('Array.from(document.querySelectorAll("h2")).some(e=>e.textContent==="UX保存済み")','Detail for confirm')
+    await js('window.api.subtaskCreate('+JSON.stringify(task.id)+',{title:"UX確かめ"})')
+    await main.loadURL(fixture.origin+'/?view=detail&task='+task.id)
+    await until('Boolean(document.querySelector("button[aria-label=\\"UX確かめを削除\\"]"))','Subtask delete button')
+    await js('document.querySelector("button[aria-label=\\"UX確かめを削除\\"]").click();void 0')
+    await until('Boolean(document.querySelector("[role=alertdialog]"))&&document.activeElement.textContent==="キャンセル"','App confirm dialog with safe focus')
+    await js('document.activeElement.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));void 0')
+    await until('!document.querySelector("[role=alertdialog]")','Confirm closes with Escape')
+    assert.equal((await js('window.api.subtaskGetByTodo('+JSON.stringify(task.id)+')')).filter(s=>s.title==='UX確かめ').length,1,'Cancelled delete keeps the subtask')
+    console.log('HAKOBI UX checks passed: visible save, Ctrl+Enter, yearly preserved, record error/retry/order, column add failure/retention/single request/retry/focus, radio arrows, narrow plan menu, collapsible unscheduled, inline title error, keyboard plan placement, list roving tab, large-font list width and tab hint, recurring undo cleanup, empty title reason, overlapping block titles, gantt fill/scale event/settings escape, gantt row arrows, app confirm dialog')
     main.destroy(); app.exit(0)
   } catch(error) {
     console.error(error.stack||error.message)

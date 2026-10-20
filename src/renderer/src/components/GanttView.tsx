@@ -5,7 +5,7 @@ import { buildChecklistSummaries, checklistBadgeText } from '../lib/todoList'
 import { autoScrollNearEdge, dropPositionOf, moveIdBy, moveIdTo, type DropPosition } from '../lib/reorder'
 import { dataInk } from '../lib/theme'
 import { GANTT_VIEW_EVENT, type GanttViewRequest } from '../lib/appEvents'
-import { formatShortDate } from '../lib/dueDate'
+import { formatShortDate } from '../lib/dueDate'
 import { BEHIND_THRESHOLD_OPTIONS, DEFAULT_BEHIND_THRESHOLD_DAYS, GANTT_VIEW_SETTINGS_STORAGE_KEY, behindDaysLabel, calculateSchedule, isBehindSchedule, isScheduleTracked, type ScheduleOptions } from '../lib/scheduleHealth'
 
 interface Props {
@@ -179,6 +179,10 @@ const ASSIGNEE_SECTION_PREFIX = 'assignee:'
 const PROGRESS_NOTE_LOOKBACK_DAYS = 60
 const COLLAPSED_TODO_STORAGE_KEY = 'gantt-collapsed-todo-ids'
 const GANTT_UNSCHEDULED_OPEN_STORAGE_KEY = 'hakobi-gantt-unscheduled-open'
+/** この幅以上のガントでは、列幅を変えていない人のタスク名の列を WIDE_TITLE_COLUMN_WIDTH まで広げる */
+const WIDE_CHART_WIDTH = 1000
+const GANTT_COLUMNS_CUSTOMIZED_STORAGE_KEY = 'hakobi-gantt-columns-customized'
+const WIDE_TITLE_COLUMN_WIDTH = 320
 const GANTT_BASELINE_STORAGE_KEY = 'gantt-baseline-snapshot'
 const GANTT_SCROLL_STATE_STORAGE_KEY = 'gantt-scroll-state'
 const GANTT_LEFT_COLUMN_WIDTHS_STORAGE_KEY = 'gantt-left-column-widths'
@@ -1070,6 +1074,10 @@ function GanttViewContent({
   const [dependencyLayoutVersion, setDependencyLayoutVersion] = useState(0)
   const [scrollStateReady, setScrollStateReady] = useState(false)
   const [leftColumnWidths, setLeftColumnWidths] = useState<GanttLeftColumnWidths>(() => loadGanttLeftColumnWidths())
+  // 列幅を自分で変えたことがあるか。変えていなければ、広い画面ではタスク名の列を広げる（1920px でも名前の多くが「…」で切れていた）
+  const [hasCustomColumnWidths, setHasCustomColumnWidths] = useState(() => {
+    try { return window.localStorage.getItem(GANTT_COLUMNS_CUSTOMIZED_STORAGE_KEY) === '1' } catch { return false }
+  })
   const [visibleLeftColumns, setVisibleLeftColumns] = useState<GanttOptionalColumnKey[]>(() => loadVisibleLeftColumns())
   const [resizingLeftColumn, setResizingLeftColumn] = useState<LeftColumnResizeState | null>(null)
   const [panDrag, setPanDrag] = useState<PanDragState | null>(null)
@@ -1082,6 +1090,9 @@ function GanttViewContent({
   const [newSubTaskDraft, setNewSubTaskDraft] = useState<NewSubTaskDraft>({ title: '', startDate: '', dueDate: '' })
   const [creatingSubTask, setCreatingSubTask] = useState(false)
   const [groupMode, setGroupMode] = useState<GroupMode>(initialSettings.groupMode)
+  // 行の Tab の止まる所は1行だけ（最後に触った行。なければ先頭）。ほかの行へは ↑↓/Home/End で移る。
+  // 以前は1行ごとに名前・保留・＋で Tab が3回止まり、本文だけで100か所を超えていた
+  const [activeGanttRowId, setActiveGanttRowId] = useState<string | null>(null)
   // Ctrl+K からの表示の切り替え
   useEffect(() => {
     const handle = (event: Event): void => {
@@ -1137,10 +1148,13 @@ function GanttViewContent({
       ? leftColumnWidths
       : Object.fromEntries(Object.entries(leftColumnWidths).map(([key, width]) => [key, Math.round(width * leftColumnScale)])) as unknown as GanttLeftColumnWidths
     if (chartAreaWidth <= 0) return scaled
+    if (!hasCustomColumnWidths && chartAreaWidth >= WIDE_CHART_WIDTH) {
+      return { ...scaled, title: Math.max(scaled.title, Math.round(WIDE_TITLE_COLUMN_WIDTH * leftColumnScale)) }
+    }
     const overflow = leftTableWidthFor(scaled, visibleLeftColumns) - Math.round(chartAreaWidth * 0.4)
     if (overflow <= 0) return scaled
     return { ...scaled, title: Math.max(Math.round(150 * leftColumnScale), scaled.title - overflow) }
-  }, [chartAreaWidth, leftColumnScale, leftColumnWidths, visibleLeftColumns])
+  }, [chartAreaWidth, hasCustomColumnWidths, leftColumnScale, leftColumnWidths, visibleLeftColumns])
   // タスク名の列が狭いときは、行の「保留」「＋」をマウスを乗せたとき・キーボードで選んだときだけ出す（名前の場所を空ける）
   const compactRowTools = displayedLeftColumnWidths.title < 200
   const leftGridTemplate = useMemo(() => leftGridTemplateFor(displayedLeftColumnWidths, visibleLeftColumns), [displayedLeftColumnWidths, visibleLeftColumns])
@@ -1422,13 +1436,19 @@ function GanttViewContent({
     event.stopPropagation()
     setEditingTodoCell(null)
     setEditingSubTaskCell(null)
+    // 広い画面で広げて見せている幅から動かし始める（覚えている幅から始めると、つまみを押した瞬間に縮んで見える）
+    const shownWidth = Math.round(displayedLeftColumnWidths[column] / leftColumnScale)
+    if (!hasCustomColumnWidths) {
+      setHasCustomColumnWidths(true)
+      try { window.localStorage.setItem(GANTT_COLUMNS_CUSTOMIZED_STORAGE_KEY, '1') } catch { /* 覚えられなくてもよい */ }
+    }
     setResizingLeftColumn({
       column,
       originClientX: event.clientX,
-      originalWidth: leftColumnWidths[column],
+      originalWidth: shownWidth,
       scale: leftColumnScale
     })
-  }, [leftColumnScale, leftColumnWidths])
+  }, [displayedLeftColumnWidths, hasCustomColumnWidths, leftColumnScale])
 
   const beginPan = useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
     if (event.target !== event.currentTarget) return
@@ -1961,6 +1981,11 @@ function GanttViewContent({
 
     return orderedSections
   }, [categoryOptions, collapsedCategoryKeys, displayedRangeGroups, sectionGrouping, users])
+  // Tab の止まる行（最後にフォーカスした行がまだ見えていればその行、なければ先頭の行）
+  const tabbableGanttRowId = useMemo(() => {
+    const visibleIds = chartSections.flatMap((section) => section.collapsed ? [] : section.groups.map((group) => group.todo.id))
+    return activeGanttRowId && visibleIds.includes(activeGanttRowId) ? activeGanttRowId : visibleIds[0] ?? null
+  }, [activeGanttRowId, chartSections])
 
   const showCategoryGrouping = sectionGrouping !== 'none' && chartSections.length > 0
   const chartGroups = useMemo<ChartGroup[]>(() => (
@@ -3955,6 +3980,7 @@ function GanttViewContent({
                 const scheduleHealth = scheduleHealthByTodoId.get(group.todo.id) ?? null
                 const canToggleSubtasks = showSubtasks && (group.datedSubTasks.length > 0 || addingSubTaskTodoId === group.todo.id)
                 const isExpanded = !collapsedTodoIds.includes(group.todo.id)
+                const rowTabbable = group.todo.id === tabbableGanttRowId
                 const activeState = interaction?.targetType === 'todo' && interaction.targetId === group.todo.id ? interaction : null
                 const dependencyGeometry = dependencyGeometryByTodoId.get(group.todo.id) ?? null
                 const isDependencySource = dependencyDrag?.predecessorTodoId === group.todo.id
@@ -4077,7 +4103,7 @@ function GanttViewContent({
                             }}
                             disabled={!canToggleSubtasks}
                             aria-hidden={canToggleSubtasks ? undefined : true}
-                            tabIndex={canToggleSubtasks ? undefined : -1}
+                            tabIndex={canToggleSubtasks && rowTabbable ? 0 : -1}
                             aria-label={isExpanded ? `「${group.todo.title}」のサブタスクを折りたたむ` : `「${group.todo.title}」のサブタスクを展開する`}
                             title={canToggleSubtasks ? (isExpanded ? 'サブタスクを折りたたむ' : 'サブタスクを開く') : undefined}
                             style={expandToggleButtonStyle(canToggleSubtasks, isExpanded)}
@@ -4097,21 +4123,38 @@ function GanttViewContent({
                             }}
                           />
                             <button
+                              data-gantt-row-title=""
+                              tabIndex={rowTabbable ? 0 : -1}
+                              onFocus={() => setActiveGanttRowId(group.todo.id)}
                               onClick={() => handleChartItemSelect(group.todo.id)}
                               onKeyDown={(event) => {
+                                // ↑↓/Home/End で前後の行のタスク名へ移る
+                                if (!event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End')) {
+                                  const titles = Array.from(document.querySelectorAll<HTMLElement>('[data-gantt-row-title]'))
+                                  const index = titles.indexOf(event.currentTarget)
+                                  const next = event.key === 'Home' ? titles[0]
+                                    : event.key === 'End' ? titles[titles.length - 1]
+                                      : titles[index + (event.key === 'ArrowDown' ? 1 : -1)]
+                                  event.preventDefault()
+                                  if (next) {
+                                    next.focus()
+                                    next.scrollIntoView({ block: 'nearest' })
+                                  }
+                                  return
+                                }
                                 if (!event.altKey || event.ctrlKey || event.metaKey || (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft')) return
                                 event.preventDefault()
                                 if (group.todo.status === 'archived' || isReorderMode) return
                                 shiftTodoByKeyboard(group.todo, event.key === 'ArrowRight' ? 1 : -1, event.shiftKey)
                               }}
-                              aria-keyshortcuts="Alt+ArrowRight Alt+ArrowLeft Alt+Shift+ArrowRight Alt+Shift+ArrowLeft"
+                              aria-keyshortcuts="ArrowUp ArrowDown Alt+ArrowRight Alt+ArrowLeft Alt+Shift+ArrowRight Alt+Shift+ArrowLeft"
                               title={[
                                 group.todo.title,
                                 group.todo.category_name ? `カテゴリ: ${group.todo.category_name}` : null,
                                 canToggleSubtasks ? `サブタスク: ${group.datedSubTasks.length}件` : null,
                                 group.undatedSubTaskCount > 0 ? `日付未設定サブタスク: ${group.undatedSubTaskCount}件` : null,
                                 clipped ? '表示範囲外あり' : null,
-                                'Alt+→ / Alt+← で期限を1日ずらす（Shift も押すと日程ごと）'
+                                '↑↓ で前後の行へ。Alt+→ / Alt+← で期限を1日ずらす（Shift も押すと日程ごと）'
                               ].filter(Boolean).join('\n')}
                               style={tableTitleButtonStyle}
                             >
@@ -4139,6 +4182,7 @@ function GanttViewContent({
                                 }}
                                 title={group.todo.status === 'on_hold' ? '保留中です。押すと進行中に戻します' : 'タスクを保留する'}
                                 aria-label={group.todo.status === 'on_hold' ? `「${group.todo.title}」を進行中に戻す` : `「${group.todo.title}」を保留する`}
+                                tabIndex={rowTabbable ? 0 : -1}
                                 style={{ ...subTaskAddButtonStyle(false), color: group.todo.status === 'on_hold' ? 'var(--purple-300)' : 'var(--slate-400)' }}
                               >{group.todo.status === 'on_hold' ? '▶' : <span aria-hidden="true" style={{ fontSize: '0.62em', letterSpacing: '-0.1em' }}>❚❚</span>}</button>
                             )}
@@ -4150,6 +4194,7 @@ function GanttViewContent({
                               disabled={creatingSubTask || isReorderMode}
                               title="サブタスクを追加"
                               aria-label={`「${group.todo.title}」にサブタスクを追加`}
+                              tabIndex={rowTabbable ? 0 : -1}
                               className={compactRowTools ? 'tarbo-gantt-compact-tool' : undefined}
                               style={subTaskAddButtonStyle(creatingSubTask || isReorderMode)}
                             >
@@ -4360,7 +4405,7 @@ function GanttViewContent({
                             style={{ position: 'absolute', left: parentLabelLeft, top: 0, height: PARENT_ROW_HEIGHT, display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-caption)', fontWeight: 700, color: GANTT_TEXT, whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 1 }}
                           >
                             {parentTitleText}
-                            <span style={{ fontSize: 'var(--font-caption)', fontWeight: 600, color: 'var(--text-subtle)' }}>
+                            <span style={{ fontSize: 'var(--font-caption)', fontWeight: 600, color: GANTT_MUTED }}>
                               {[group.todo.assignee_name, listMode ? checklistText : `${progress}%`, scheduleStatusText].filter(Boolean).join('・')}
                             </span>
                           </span>
@@ -4835,7 +4880,8 @@ function GanttViewContent({
               未配置タスク（日付なし） {unscheduledGroups.length}件
               <span style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)', fontWeight: 600 }}>{unscheduledOpen ? '畳む' : '開く'}</span>
             </button>
-            <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>開始日も期限もないタスクです。「今日に配置」を押すか、詳細で日程を入れるとチャートに出ます。</div>
+            {/* 畳んでいるときは説明を出さない（狭い窓で2行になり、チャートの高さを取っていた） */}
+            {unscheduledOpen && <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>開始日も期限もないタスクです。「今日に配置」を押すか、詳細で日程を入れるとチャートに出ます。</div>}
           </div>
 
           {!unscheduledOpen ? null : (
@@ -5366,7 +5412,8 @@ function expandToggleButtonStyle(active: boolean, expanded: boolean): React.CSSP
     width: 'clamp(24px, 1.5rem, 32px)',
     height: 'clamp(24px, 1.5rem, 32px)',
     borderRadius: 4,
-    border: `1px solid ${active ? 'var(--slate-700)' : 'var(--gray-800)'}`,
+    // サブタスクがない行は枠を出さない（空の四角がチェックボックスに見えていた）
+    border: `1px solid ${active ? 'var(--slate-700)' : 'transparent'}`,
     background: active ? 'var(--gray-900)' : 'transparent',
     color: active ? (expanded ? 'var(--blue-200)' : 'var(--slate-400)') : 'var(--slate-700)',
     cursor: active ? 'pointer' : 'default',

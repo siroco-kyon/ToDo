@@ -234,7 +234,7 @@ function categoryChipStyle(shown: boolean): React.CSSProperties {
     borderRadius: 999,
     border: `1px solid ${shown ? 'var(--slate-700)' : 'var(--gray-800)'}`,
     background: shown ? 'var(--gray-900)' : 'transparent',
-    color: shown ? 'var(--slate-200)' : 'var(--slate-500)',
+    color: shown ? 'var(--slate-200)' : 'var(--text-subtle)',
     fontSize: '0.76rem',
     fontWeight: 700,
     textDecoration: shown ? 'none' : 'line-through'

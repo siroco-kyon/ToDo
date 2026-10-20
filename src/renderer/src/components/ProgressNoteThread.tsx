@@ -121,16 +121,19 @@ function CommentItem({
           <span style={{ color: dataInk(authorColor), fontWeight: 700 }}>{getAuthorName(comment.author_name)}</span>
           <span style={{ color: 'var(--text-subtle)' }}>{formatDateTime(comment.created_at)}</span>
           {comment.updated_at !== comment.created_at && <span style={{ color: 'var(--text-subtle)' }}>編集済み</span>}
+        </div>
+        <div style={{ marginTop: 2, fontSize: '0.8rem', color: 'var(--slate-300)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
+          <LinkedText text={comment.body} />
+        </div>
+        {/* リアクションと「返信」は本文のあと（読み上げで、本文より先に操作が読まれないように） */}
+        <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.72rem' }}>
           <ReactionBar
             reactions={comment.reactions}
             onToggle={onToggleReaction ? (emoji) => onToggleReaction(comment.id, emoji) : undefined}
           />
           {onStartReply && replyingToId !== comment.id && (
-            <button onClick={() => onStartReply(comment.id)} style={inlineActionStyle}>返信</button>
+            <button onClick={() => onStartReply(comment.id)} aria-label={`${getAuthorName(comment.author_name)}さんの返信に返信する`} style={inlineActionStyle}>返信</button>
           )}
-        </div>
-        <div style={{ marginTop: 2, fontSize: '0.8rem', color: 'var(--slate-300)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
-          <LinkedText text={comment.body} />
         </div>
         {replyingToId === comment.id && renderReplyComposer(comment)}
       </div>
@@ -269,7 +272,7 @@ export function ProgressNoteThread({
         <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <ReactionBar reactions={note.reactions} onToggle={onToggleReaction ? (emoji) => onToggleReaction(note.id, emoji) : undefined} />
           {onReply && replyingTo !== 'note' && (
-            <button ref={noteReplyButtonRef} onClick={() => setReplyingTo('note')} style={inlineActionStyle}>返信</button>
+            <button ref={noteReplyButtonRef} onClick={() => setReplyingTo('note')} aria-label={`${getAuthorName(note.author_name)}さんの進捗ログに返信する`} style={inlineActionStyle}>返信</button>
           )}
           <NoteMenu
             items={[
@@ -443,7 +446,10 @@ function moreButtonStyle(active: boolean): React.CSSProperties {
     fontSize: '0.8rem',
     fontWeight: 800,
     lineHeight: 1,
-    padding: '1px 5px'
+    padding: '1px 5px',
+    // 押せる範囲は 24px 以上にする（見た目の文字は小さいまま）
+    minWidth: 26,
+    minHeight: 26
   }
 }
 

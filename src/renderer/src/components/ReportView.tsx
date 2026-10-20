@@ -53,6 +53,7 @@ import type {
   UpdateTodoInput
 } from '../types'
 import { dataInk } from '../lib/theme'
+import { confirmAction } from '../lib/confirm'
 
 // 定例ミーティング向けの「報告」タブ。
 // 担当者ごとに、タスク・サブタスク・期限・進捗と、期間内の進捗ログ（返信込み）を全文で並べ、
@@ -906,6 +907,22 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const lastScrollTopRef = useRef(0)
   const scrollRestoreRef = useRef<number | null>(loadSessionScrollTop())
+  // 本文の幅が狭いとき（1024px・大きい文字）は、見出しの操作を畳む
+  const [compactHeader, setCompactHeader] = useState(false)
+  const [headerExpanded, setHeaderExpanded] = useState(false)
+  useEffect(() => {
+    const element = scrollContainerRef.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    const update = (): void => {
+      const rootFont = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+      // 文字の大きさで割った幅（100% のときの幅に直す）で決める
+      setCompactHeader(element.clientWidth / (rootFont / 16) < 760)
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
   // タスクを開くときは、戻ってきたら今の位置へ戻せるよう印を付ける
   const openTodoFromReport = useCallback((id: string): void => {
     try { window.sessionStorage.setItem(SESSION_KEYS.returnPending, '1') } catch { /* 位置は戻せなくてもよい */ }
@@ -1311,7 +1328,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   }, [onShowToast, patchNote])
 
   const deleteNote = useCallback(async (noteId: string): Promise<void> => {
-    if (!window.confirm('この進捗ログを削除しますか？\n付いている返信も一緒に削除されます。')) return
+    if (!(await confirmAction('この進捗ログを削除しますか？\n付いている返信も一緒に削除されます。元に戻せません。', { confirmLabel: '削除する', danger: true }))) return
     try {
       await window.api.progressNoteDelete(noteId)
       // 最終報告日時が変わることがあるので取り直す
@@ -1496,8 +1513,17 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const createMeetingTask = onCreateTodo
     ? async (groupKey: string, title: string, dueDate: string | null): Promise<boolean> => {
         try {
-          await onCreateTodo({ ...meetingTaskInput(groupKey, title), due_date: dueDate })
-          onShowToast(`タスク「${title}」を作りました${dueDate ? `（期限 ${formatShortDate(dueDate)}）` : ''}`)
+          const created = await onCreateTodo({ ...meetingTaskInput(groupKey, title), due_date: dueDate })
+          // 間違えて作ったときのために、ほかの操作と同じく「元に戻す」を付ける（消さずにアーカイブする）
+          onShowToast(`タスク「${title}」を作りました${dueDate ? `（期限 ${formatShortDate(dueDate)}）` : ''}`, 'success', {
+            label: '元に戻す',
+            run: () => {
+              void window.api.todoArchive(created.id).then(
+                () => onShowToast(`タスク「${title}」を取り消しました（アーカイブしました）`),
+                (error: unknown) => onShowToast(error instanceof Error ? error.message : '取り消せませんでした', 'error')
+              )
+            }
+          })
           return true
         } catch (error) {
           onShowToast(error instanceof Error ? error.message : 'タスクを作れませんでした', 'error')
@@ -1535,8 +1561,29 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               <summary style={{ cursor: 'pointer' }}>使い方</summary>
               <p style={{ marginTop: 8, lineHeight: 1.7 }}>定例用に、タスクごとの進捗と報告（進捗ログ・メモ）をまとめます。状態・日程・進捗・メモはその場で変更できます。報告の担当は、この画面の「報告の担当」で選びます。</p>
             </details>
+            {compactHeader && (
+              // 狭い画面では、期間・まとめ方・報告の担当の切り替えを畳み、本文を上へ寄せる（今の設定は1行で見せる）
+              <button
+                type="button"
+                onClick={() => setHeaderExpanded((open) => !open)}
+                aria-expanded={headerExpanded}
+                style={{ ...secondaryButtonStyle, marginLeft: 'auto' }}
+              >
+                {headerExpanded ? '期間・表示を閉じる ▴' : `${PRESETS.find((item) => item.value === preset)?.label ?? '期間指定'}・${effectiveGroupMode === 'assignee' ? '担当者別' : 'カテゴリ別'}　変える ▾`}
+              </button>
+            )}
+            {compactHeader && !headerExpanded && (
+              <button
+                onClick={openMeeting}
+                disabled={loading || !loaded || Boolean(loadError) || groups.length === 0}
+                style={{ ...secondaryButtonStyle, borderColor: 'var(--indigo-600)', color: 'var(--indigo-200)' }}
+              >
+                {meetingState ? '定例モードに戻る' : '定例モード'}
+              </button>
+            )}
           </div>
 
+          {(!compactHeader || headerExpanded) && (<>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <div style={groupStyle} role="group" aria-label="報告期間">
               {PRESETS.map((item) => (
@@ -1593,7 +1640,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                 {meetingState ? '定例モードに戻る' : '定例モード'}
               </button>
               {meetingState && !meetingOpen && (
-                <button onClick={() => { if (window.confirm('定例のメモ・決まったこと・持ち時間を消して、最初からにしますか？')) setMeetingState(null) }} title="定例モードの進み具合（時間・メモ）を消して、最初からにします" style={secondaryButtonStyle}>定例をリセット</button>
+                <button onClick={() => { void confirmAction('定例のメモ・決まったこと・持ち時間を消して、最初からにしますか？', { confirmLabel: '最初からにする', danger: true }).then((ok) => { if (ok) setMeetingState(null) }) }} title="定例モードの進み具合（時間・メモ）を消して、最初からにします" style={secondaryButtonStyle}>定例をリセット</button>
               )}
             </div>
           </div>
@@ -1658,6 +1705,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               </span>
             )}
           </div>
+          </>)}
 
           {settingsOpen && (
             <ReportSettingsPanel
@@ -2907,7 +2955,10 @@ const inlineActionStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontSize: 'var(--font-caption)',
   fontWeight: 800,
-  padding: 0,
+  // 見た目は文字のリンクのまま、押せる範囲を 24px 以上にする
+  padding: '0.3rem 0.25rem',
+  margin: '-0.3rem -0.25rem',
+  minHeight: 24,
   textDecoration: 'underline',
   textUnderlineOffset: 2
 }

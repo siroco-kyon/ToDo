@@ -197,6 +197,9 @@ function chipStyle(active: boolean, clickable: boolean, quiet: boolean): React.C
     fontWeight: 800,
     padding: quiet ? 0 : '0 6px',
     lineHeight: 1.6,
+    minHeight: 24,
+    minWidth: 28,
+    justifyContent: 'center',
     fontVariantNumeric: 'tabular-nums'
   }
 }
@@ -211,7 +214,9 @@ function pickerButtonStyle(open: boolean): React.CSSProperties {
     fontSize: '0.7rem',
     fontWeight: 700,
     padding: '0 5px',
-    lineHeight: 1.6
+    lineHeight: 1.6,
+    minHeight: 24,
+    minWidth: 28
   }
 }
 

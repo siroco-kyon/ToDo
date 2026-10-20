@@ -6,6 +6,7 @@ import { diffDaysFromToday, formatShortDate, getDueDateColor, toDateKey } from '
 import { checklistBadgeText, checklistBadgeTitle, type ChecklistSummary } from '../lib/todoList'
 import { dataInk } from '../lib/theme'
 import { todoRecurrenceLabel } from '../lib/recurrence'
+import { confirmAction } from '../lib/confirm'
 
 const EXPANDED_LISTS_KEY = 'todoList.expandedLists'
 
@@ -277,7 +278,7 @@ function TodoItem({
                       <button tabIndex={innerTabIndex} onClick={onUnarchive} title="アーカイブから戻す" aria-label="アーカイブから戻す" style={actionBtn('var(--emerald-500)')}>↩</button>
                       <button
                         tabIndex={innerTabIndex}
-                        onClick={() => { if (window.confirm(`「${todo.title}」を完全に削除しますか？`)) onDelete() }}
+                        onClick={() => { void confirmAction(`「${todo.title}」を完全に削除しますか？\n元に戻せません。`, { confirmLabel: '完全に削除する', danger: true }).then((ok) => { if (ok) onDelete() }) }}
                         title="完全に削除（元に戻せません）" aria-label="完全に削除" style={actionBtn('var(--red-500)')}
                       >🗑</button>
                     </>

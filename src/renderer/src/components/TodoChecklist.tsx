@@ -19,6 +19,7 @@ import {
   type ItemRepeatChoice
 } from '../lib/todoList'
 import { dataInk, textOnFill } from '../lib/theme'
+import { confirmAction } from '../lib/confirm'
 
 // ToDoリスト（中の項目をチェックして使うタスク。期限はなしでもよい）の中身。項目＝サブタスク。
 // 繰り返しの項目は周期が変わると未チェックに戻り、繰り返さない項目はチェックすると「済み」に移る。
@@ -211,7 +212,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
 
   const clearOldDone = async (): Promise<void> => {
     if (oldDone.length === 0 || clearing) return
-    if (!window.confirm(`${RECENT_DONE_DAYS}日より前に済んだやること ${oldDone.length}件を削除しますか？\n報告タブの「期間中に済んだやること」にも出なくなります。元には戻せません。`)) return
+    if (!(await confirmAction(`${RECENT_DONE_DAYS}日より前に済んだやること ${oldDone.length}件を削除しますか？\n報告タブの「期間中に済んだやること」にも出なくなります。元には戻せません。`, { confirmLabel: '削除する', danger: true }))) return
     setClearing(true)
     const removed: string[] = []
     try {
@@ -562,7 +563,7 @@ function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, fontSize: 'var(--font-caption)' }}>
         {item.assignee_name && <span style={{ color: dataInk(item.assignee_color ?? 'var(--slate-400)') }}>{item.assignee_name}</span>}
         {period && (
-          <span style={{ color: dueColor || (notStarted ? 'var(--slate-600)' : 'var(--slate-500)'), fontWeight: dueColor ? 700 : 400 }} title={notStarted ? '開始日が来たら「今日やること」に出ます' : undefined}>
+          <span style={{ color: dueColor || (notStarted ? 'var(--text-subtle)' : 'var(--text-subtle)'), fontWeight: dueColor ? 700 : 400 }} title={notStarted ? '開始日が来たら「今日やること」に出ます' : undefined}>
             {overdue ? `${period}（過ぎています）` : period}
           </span>
         )}
@@ -605,11 +606,22 @@ export function QuickCheckItem({ item, pending, todayKey, listTitle, showAssigne
       <input
         type="checkbox"
         checked={done}
-        disabled={pending}
-        onChange={onToggle}
+        // 保存中も無効にはしない（無効にするとフォーカスが外れ、キーボードで続けてチェックできなかった）。保存中の操作は受け付けない
+        aria-disabled={pending || undefined}
+        aria-busy={pending || undefined}
+        data-quick-check-id={item.id}
+        onChange={() => {
+          if (pending) return
+          onToggle()
+          // 並びが変わって行が作り直されても、同じ項目のチェックボックスへフォーカスを戻す
+          window.requestAnimationFrame(() => {
+            if (document.activeElement && document.activeElement !== document.body && !document.activeElement.hasAttribute('data-focus-region')) return
+            document.querySelector<HTMLElement>(`[data-quick-check-id="${CSS.escape(item.id)}"]`)?.focus({ preventScroll: true })
+          })
+        }}
         onClick={(event) => event.stopPropagation()}
         aria-label={`${item.title}を${done ? '未チェックに戻す' : 'チェックする'}`}
-        style={{ width: 15, height: 15, accentColor: 'var(--green-500)', cursor: pending ? 'default' : 'pointer', flexShrink: 0, margin: 0 }}
+        style={{ width: 18, height: 18, accentColor: 'var(--green-500)', cursor: pending ? 'progress' : 'pointer', flexShrink: 0, margin: 3, opacity: pending ? 0.6 : 1 }}
       />
       <button
         onClick={(event) => { event.stopPropagation(); onOpen() }}
@@ -621,7 +633,7 @@ export function QuickCheckItem({ item, pending, todayKey, listTitle, showAssigne
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: 'var(--font-caption)' }}>
         {showAssignee && item.assignee_name && <span style={{ color: dataInk(item.assignee_color ?? 'var(--slate-400)') }}>{item.assignee_name}</span>}
         {period && (
-          <span style={{ color: dueColor || 'var(--slate-500)', fontWeight: overdue ? 700 : 400 }}>{overdue ? '期限切れ' : period}</span>
+          <span style={{ color: dueColor || 'var(--text-subtle)', fontWeight: overdue ? 700 : 400 }}>{overdue ? '期限切れ' : period}</span>
         )}
         {repeat && <span title={repeatTitle(item)} style={{ ...repeatChipStyle, padding: '0 5px' }}>{repeat}</span>}
       </span>

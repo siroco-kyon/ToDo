@@ -22,6 +22,7 @@ import { FOCUS_PROGRESS_LOG_EVENT, FOCUS_TASK_DETAIL_EVENT, consumeTaskDetailFoc
 import { taskOptionLabel } from '../lib/taskLabel'
 import { TODO_RECURRENCE_OPTIONS, nextRecurrenceDue, recurrenceDoneMessage, recurrenceKindLabel, recurrenceReopenMessage, todoRecurrenceLabel } from '../lib/recurrence'
 import { notifyReopenedRecurrence } from '../lib/recurrenceUndo'
+import { confirmAction } from '../lib/confirm'
 
 interface Props {
   todo: Todo | null
@@ -41,6 +42,8 @@ interface Props {
   onDirtyChange?: (dirty: boolean) => void
   /** 「⋯」から片付ける（一覧から外す。あとで戻せる。完全な削除はアーカイブの中から） */
   onArchive?: (id: string) => Promise<void>
+  /** アーカイブしたタスクを完全に消す（「⋯」から。確かめてから） */
+  onDelete?: (id: string) => Promise<void>
   /** ほかの画面（チーム・報告など）から開いたとき、その画面へ戻るボタン */
   returnTo?: { label: string; onReturn: () => void } | null
 }
@@ -79,6 +82,18 @@ const visuallyHiddenStyle: React.CSSProperties = {
   overflow: 'hidden',
   clip: 'rect(0 0 0 0)',
   whiteSpace: 'nowrap'
+}
+
+/** サブタスクの行の小さい操作（✎・削除）。押せる範囲は 26px 以上 */
+const subTaskIconButtonStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: 'var(--slate-400)',
+  cursor: 'pointer',
+  minWidth: 26,
+  minHeight: 26,
+  padding: '2px 4px',
+  borderRadius: 6
 }
 
 const fieldErrorStyle: React.CSSProperties = {
@@ -170,6 +185,7 @@ export function TodoDetail({
   onShowToast,
   onDirtyChange,
   onArchive,
+  onDelete,
   returnTo = null
 }: Props): React.JSX.Element {
   const [logs, setLogs] = useState<WorkLog[]>([])
@@ -582,11 +598,17 @@ export function TodoDetail({
 
   const handleDeleteSubTask = async (subTaskId: string): Promise<void> => {
     const target = subTasks.find((item) => item.id === subTaskId)
-    if (!window.confirm(`サブタスク「${target?.title ?? ''}」を削除しますか？`)) return
+    if (!(await confirmAction(`サブタスク「${target?.title ?? ''}」を削除しますか？`, { confirmLabel: '削除する', danger: true }))) return
     if (!target || !todoId) return
     const originalIndex = subTasks.findIndex((item) => item.id === subTaskId)
     const remainingIds = subTasks.filter((item) => item.id !== subTaskId).map((item) => item.id)
-    await window.api.subtaskDelete(subTaskId)
+    try {
+      await window.api.subtaskDelete(subTaskId)
+    } catch (error) {
+      // 失敗したら、消えていない理由を知らせる（以前は何も出ず、消えないことだけが残った）
+      onShowToast(`サブタスク「${target.title}」を削除できませんでした: ${error instanceof Error ? error.message : '通信に失敗しました'}`, 'error')
+      return
+    }
     setSubTasks((previous) => previous.filter((item) => item.id !== subTaskId))
     setEditableSubTasks((previous) => previous.filter((item) => item.id !== subTaskId))
     onShowToast(`サブタスク「${target.title}」を削除しました`, 'success', {
@@ -609,7 +631,7 @@ export function TodoDetail({
           await window.api.subtaskReorder(todoId, orderedIds)
           await loadSubTasks(todoId)
           onShowToast('サブタスクを元の位置へ戻しました')
-        })
+        }).catch((error: unknown) => onShowToast(`サブタスクを元に戻せませんでした: ${error instanceof Error ? error.message : '通信に失敗しました'}`, 'error'))
       }
     })
   }
@@ -974,7 +996,7 @@ export function TodoDetail({
   }
 
   const handleDeleteProgressNote = async (id: string): Promise<void> => {
-    if (!window.confirm('この進捗ログを削除しますか？\n付いている返信も一緒に削除されます。')) return
+    if (!(await confirmAction('この進捗ログを削除しますか？\n付いている返信も一緒に削除されます。元に戻せません。', { confirmLabel: '削除する', danger: true }))) return
     try {
       await window.api.progressNoteDelete(id)
       setProgressNotes((previous) => previous.filter((note) => note.id !== id))
@@ -1050,8 +1072,8 @@ export function TodoDetail({
   // アーカイブしたタスクは選択肢に出さない（同じ名前の次回分などと見分けがつかないため）
   const dependencyCandidates = allTodos.filter((candidate) => candidate.id !== todo.id && candidate.status !== 'archived' && !blockedCandidateIds.has(candidate.id))
 
-  const startEditing = (): void => {
-    if (childDraftIds.size > 0 && !window.confirm('未保存のサブタスクの変更があります。全体編集に切り替えますか？')) return
+  const startEditing = async (): Promise<void> => {
+    if (childDraftIds.size > 0 && !(await confirmAction('未保存のサブタスクの変更があります。全体編集に切り替えますか？\nサブタスクで書きかけの変更は消えます。', { confirmLabel: '切り替える' }))) return
     const base = createEditData(todo)
     const childBases = createEditableSubTasks(subTasks)
     editBaseRef.current = descriptionDraft !== descriptionBase ? { ...base, description: descriptionBase } : base
@@ -1062,14 +1084,14 @@ export function TodoDetail({
     setEditing(true)
   }
 
-  const cancelEditing = (): void => {
+  const cancelEditing = async (): Promise<void> => {
     if (savingRef.current) return
     const changed = Object.keys(buildEditPatch(editBaseRef.current, editData)).length > 0
       || editableSubTasks.some((draft) => {
         const base = subTaskBasesRef.current.get(draft.id)
         return base ? Object.keys(buildEditPatch(base, draft)).length > 0 : false
       })
-    if (changed && !window.confirm('未保存の変更があります。編集を閉じてもよいですか？')) return
+    if (changed && !(await confirmAction('未保存の変更があります。編集をやめますか？\n入力した変更は消えます。', { confirmLabel: '変更を捨てる', cancelLabel: '編集を続ける', danger: true }))) return
     setEditData(createEditData(todo))
     setEditableSubTasks(createEditableSubTasks(subTasks))
     setEditing(false)
@@ -1285,7 +1307,7 @@ export function TodoDetail({
                             padding: '4px 10px', borderRadius: 99, cursor: 'pointer',
                             border: `1px solid ${selected ? user.color : 'var(--slate-700)'}`,
                             background: selected ? `color-mix(in srgb, ${user.color} 14.9%, transparent)` : 'var(--slate-900)',
-                            color: selected ? 'var(--slate-200)' : 'var(--slate-500)', fontSize: 'var(--font-control)'
+                            color: selected ? 'var(--slate-200)' : 'var(--text-subtle)', fontSize: 'var(--font-control)'
                           }}
                         >
                           <span style={{ width: 8, height: 8, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
@@ -1678,6 +1700,11 @@ export function TodoDetail({
         event.preventDefault()
         void handleSave()
       }
+      // 編集中の Esc は編集をやめる（変更があれば確かめる）。開いている小窓やメニューの Esc は、そちらが先に受け取る
+      if (editing && event.key === 'Escape' && !event.nativeEvent.isComposing && !event.defaultPrevented) {
+        event.preventDefault()
+        void cancelEditing()
+      }
     }} style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div
         style={{
@@ -1750,7 +1777,7 @@ export function TodoDetail({
             </button>
           )}
           {editing && <button onClick={() => void handleSave()} disabled={saving} title="変更を保存します（Ctrl+Enter）" aria-keyshortcuts="Control+Enter Meta+Enter" style={buttonStyle('var(--indigo-500)')}>{saving ? '保存中…' : '変更を保存'}</button>}
-          <button ref={editButtonRef} onClick={editing ? cancelEditing : startEditing} disabled={saving} title={editing ? undefined : 'タスク名・説明・繰り返し・サブ担当などをまとめて編集します'} style={buttonStyle('var(--slate-700)')}>
+          <button ref={editButtonRef} onClick={() => void (editing ? cancelEditing() : startEditing())} disabled={saving} title={editing ? undefined : 'タスク名・説明・繰り返し・サブ担当などをまとめて編集します'} style={buttonStyle('var(--slate-700)')}>
             {editing ? '編集をやめる' : '編集'}
           </button>
           {editing && <span style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>編集中・Ctrl+Enter で保存</span>}
@@ -1772,7 +1799,15 @@ export function TodoDetail({
                 ...(users.length > 0 ? [{ label: 'リンクをコピー', onSelect: () => void copyTaskLink() }] : []),
                 { label: '複製する（サブタスクも一緒に）', onSelect: () => void duplicateTodo() },
                 { label: 'テンプレートとして保存', onSelect: saveAsTemplate },
-                ...(onArchive ? [{ label: 'アーカイブする（一覧から片付ける。あとで戻せます）', onSelect: () => void onArchive(todo.id) }] : [])
+                ...(onArchive && todo.status !== 'archived' ? [{ label: 'アーカイブする（一覧から片付ける。あとで戻せます。完全に消すのはアーカイブのあと）', onSelect: () => void onArchive(todo.id) }] : []),
+                ...(onDelete && todo.status === 'archived' ? [{
+                  label: '完全に削除する…',
+                  onSelect: () => {
+                    void confirmAction(`「${todo.title}」を完全に削除しますか？
+サブタスク・進捗ログ・作業ログも消え、元に戻せません。`, { confirmLabel: '完全に削除する', danger: true })
+                      .then((ok) => { if (ok) void onDelete(todo.id) })
+                  }
+                }] : [])
               ]}
             />
           )}
@@ -2035,7 +2070,7 @@ function SubTaskDragHandle({ title, disabled, onDragStart, onDragEnd, onMove }: 
         justifyContent: 'center',
         borderRadius: 6,
         background: hovered && !disabled ? 'var(--slate-800)' : 'transparent',
-        color: disabled ? 'var(--slate-700)' : hovered ? 'var(--slate-300)' : 'var(--slate-500)',
+        color: disabled ? 'var(--slate-700)' : hovered ? 'var(--slate-300)' : 'var(--text-subtle)',
         cursor: disabled ? 'default' : 'grab',
         fontSize: '0.95rem',
         userSelect: 'none'
@@ -2245,12 +2280,15 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
 
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px', borderRadius: 6, background: 'var(--slate-800)' }}>
+      {/* 見た目の四角は 16px のまま、押せる範囲を 26px に広げる */}
       <button
         onClick={onToggle}
         title={subTask.done ? '未完了に戻す' : '完了にする'}
         aria-label={subTask.done ? `${subTask.title}を未完了に戻す` : `${subTask.title}を完了にする`}
-        style={{ width: 16, height: 16, borderRadius: 3, marginTop: 2, flexShrink: 0, border: `2px solid ${subTask.done ? 'var(--green-400)' : 'var(--slate-600)'}`, background: subTask.done ? 'var(--green-400)' : 'transparent', cursor: 'pointer', padding: 0 }}
-      />
+        style={{ width: 26, height: 26, margin: '-3px -5px -5px', flexShrink: 0, border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <span aria-hidden="true" style={{ width: 16, height: 16, borderRadius: 3, boxSizing: 'border-box', border: `2px solid ${subTask.done ? 'var(--green-400)' : 'var(--slate-600)'}`, background: subTask.done ? 'var(--green-400)' : 'transparent' }} />
+      </button>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '0.85rem', color: subTask.done ? 'var(--slate-600)' : 'var(--slate-300)', textDecoration: subTask.done ? 'line-through' : 'none', wordBreak: 'break-word' }}>{subTask.title}</div>
         {(assigneeName || subTask.start_date || subTask.due_date) && (
@@ -2263,7 +2301,7 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
             )}
           </div>
         )}
-        {subTask.description && <div style={{ marginTop: 2, fontSize: 'var(--font-control)', color: subTask.done ? 'var(--slate-700)' : 'var(--slate-500)', whiteSpace: 'pre-wrap' }}><LinkedText text={subTask.description} /></div>}
+        {subTask.description && <div style={{ marginTop: 2, fontSize: 'var(--font-control)', color: subTask.done ? 'var(--slate-700)' : 'var(--text-subtle)', whiteSpace: 'pre-wrap' }}><LinkedText text={subTask.description} /></div>}
         <div style={{ marginTop: 2 }}>
           <ProgressSlider
             value={progress}
@@ -2275,8 +2313,8 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
           />
         </div>
       </div>
-      <button onClick={startEditing} title="編集" aria-label={`${subTask.title}を編集`} style={{ background: 'none', border: 'none', color: 'var(--slate-400)', cursor: 'pointer' }}>✎</button>
-      <button onClick={onDelete} title="サブタスクを削除" aria-label={`${subTask.title}を削除`} style={{ background: 'none', border: 'none', color: 'var(--slate-400)', cursor: 'pointer' }}>削除</button>
+      <button onClick={startEditing} title="編集" aria-label={`${subTask.title}を編集`} style={subTaskIconButtonStyle}>✎</button>
+      <button onClick={onDelete} title="サブタスクを削除" aria-label={`${subTask.title}を削除`} style={subTaskIconButtonStyle}>削除</button>
     </div>
   )
 }

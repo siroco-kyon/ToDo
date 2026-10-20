@@ -11,6 +11,7 @@ import { subscribeProgressDraftChanges } from '../lib/legacyProgressDrafts'
 import { dataInk } from '../lib/theme'
 import { taskOptionLabel } from '../lib/taskLabel'
 
+import { confirmAction } from '../lib/confirm'
 export interface ProgressTimelineFocusTarget {
   date?: string | null
   todoId?: string | null
@@ -424,7 +425,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   }
 
   const handleDeleteNote = async (noteId: string): Promise<void> => {
-    if (!window.confirm('この進捗ログを削除しますか?')) return
+    if (!(await confirmAction('この進捗ログを削除しますか？\n付いている返信も一緒に削除されます。元に戻せません。', { confirmLabel: '削除する', danger: true }))) return
     try {
       await window.api.progressNoteDelete(noteId)
       setNotes((previous) => previous.filter((note) => note.id !== noteId))
@@ -514,7 +515,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   }
 
   const handleDeleteComment = async (commentId: string): Promise<void> => {
-    if (!window.confirm('この返信と、その返信への返信を削除しますか？')) return
+    if (!(await confirmAction('この返信と、その返信への返信を削除しますか？\n元に戻せません。', { confirmLabel: '削除する', danger: true }))) return
     try {
       const updated = await window.api.progressNoteCommentDelete(commentId)
       setNotes((previous) => patchNote(previous, updated))
@@ -677,8 +678,8 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
           {!editingThisComment && (
             <div style={commentActionRowStyle}>
               <ReactionBar reactions={comment.reactions} onToggle={(emoji) => void handleToggleCommentReaction(comment.id, emoji)} />
-              <button onClick={() => setReplyingToCommentId(comment.id)} style={inlineActionStyle}>返信</button>
-              {replies.length > 0 && <span style={actionMetaStyle}>返信 {countComments(replies)}</span>}
+              <button onClick={() => setReplyingToCommentId(comment.id)} aria-label={`${authorName}さんの返信に返信する`} style={inlineActionStyle}>返信</button>
+              {replies.length > 0 && <span style={actionMetaStyle}>返信 {countComments(replies)}件</span>}
               {canModifyComment(comment) && (
                 <>
                   <button onClick={() => { setEditingCommentId(comment.id); setEditingCommentDraft(comment.body) }} style={inlineActionStyle}>編集</button>
@@ -901,8 +902,8 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                   {!editingNote && (
                     <div style={postActionRowStyle}>
                       <ReactionBar reactions={note.reactions} onToggle={(emoji) => void handleToggleReaction(note.id, emoji)} />
-                      <span style={actionMetaStyle}>返信 {commentCount}</span>
-                      <button id={noteReplyButtonId(note.id)} onClick={() => setCommentingOnNoteId(note.id)} style={inlineActionStyle}>返信</button>
+                      <span style={actionMetaStyle}>返信 {commentCount}件</span>
+                      <button id={noteReplyButtonId(note.id)} onClick={() => setCommentingOnNoteId(note.id)} aria-label={`${authorName}さんの進捗ログに返信する`} style={inlineActionStyle}>返信</button>
                       {/* 報告タブと同じく、要相談・編集・削除は ⋯ にまとめる */}
                       <NoteMenu
                         items={[
@@ -1101,7 +1102,7 @@ function pillButtonStyle(active: boolean): React.CSSProperties {
     borderRadius: 999,
     border: `1px solid ${active ? 'var(--blue-600)' : 'var(--slate-700)'}`,
     background: active ? 'var(--blue-950)' : 'var(--slate-800)',
-    color: active ? 'var(--blue-100)' : 'var(--slate-500)',
+    color: active ? 'var(--blue-100)' : 'var(--text-subtle)',
     cursor: active ? 'pointer' : 'not-allowed',
     fontSize: 'var(--font-control)',
     fontWeight: 900

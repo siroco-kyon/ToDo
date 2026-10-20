@@ -149,12 +149,12 @@ export function QuickAddModal({
     return () => window.clearTimeout(timer)
   }, [submitting])
 
-  const requestClose = (): void => {
+  const requestClose = async (): Promise<void> => {
     if (submittingRef.current) {
-      if (slowSubmit && window.confirm('追加の応答を待たずに閉じます。追加されたかどうかは、一覧で確かめてください。\n書いた内容は下書きに残ります。')) onClose()
+      if (slowSubmit && await confirmAction('追加の応答を待たずに閉じますか？\n追加されたかどうかは、一覧で確かめてください。書いた内容は下書きに残ります。', { confirmLabel: '待たずに閉じる', cancelLabel: '待つ' })) onClose()
       return
     }
-    if ((title.trim() || description.trim() || memo.trim()) && !window.confirm('入力中の内容があります。閉じてもよいですか？\n下書きは次回まで保存されます。')) return
+    if ((title.trim() || description.trim() || memo.trim()) && !(await confirmAction('入力中の内容があります。閉じますか？\n下書きは次回まで保存されます。', { confirmLabel: '閉じる', cancelLabel: '入力を続ける' }))) return
     onClose()
   }
 
@@ -162,7 +162,7 @@ export function QuickAddModal({
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape' || event.isComposing) return
       event.preventDefault()
-      requestClose()
+      void requestClose()
     }
 
     window.addEventListener('keydown', handleKeyDown)
@@ -258,7 +258,7 @@ export function QuickAddModal({
         boxSizing: 'border-box'
       }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) requestClose()
+        if (event.target === event.currentTarget) void requestClose()
       }}
     >
       <div
@@ -529,7 +529,7 @@ export function QuickAddModal({
             </label>
             <button
               type="button"
-              onClick={requestClose}
+              onClick={() => void requestClose()}
               style={{
                 padding: '8px 16px',
                 background: 'var(--slate-700)',
@@ -562,7 +562,7 @@ export function QuickAddModal({
           {slowSubmit && (
             <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 'var(--font-control)', color: 'var(--amber-200)' }}>
               応答がまだありません。待っても終わらないときは、閉じて一覧で追加されたかを確かめてください。
-              <button type="button" onClick={requestClose} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--slate-600)', background: 'transparent', color: 'var(--slate-200)', cursor: 'pointer' }}>待たずに閉じる</button>
+              <button type="button" onClick={() => void requestClose()} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--slate-600)', background: 'transparent', color: 'var(--slate-200)', cursor: 'pointer' }}>待たずに閉じる</button>
             </div>
           )}
         </form>
@@ -584,3 +584,5 @@ function presetButtonStyle(active: boolean): React.CSSProperties {
     whiteSpace: 'nowrap'
   }
 }
+
+import { confirmAction } from '../lib/confirm'

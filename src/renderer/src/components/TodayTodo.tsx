@@ -31,7 +31,7 @@ export function TodayTodoItems({ groups, pendingIds, onToggle, onOpenList, showA
           <div key={section} style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
             <div title={TODAY_SECTION_LABEL[section].title} style={{ display: 'flex', alignItems: 'baseline', gap: 6, paddingBottom: 2 }}>
               <span style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)', fontWeight: 700 }}>{TODAY_SECTION_LABEL[section].label}</span>
-              <span style={{ fontSize: 'var(--font-caption)', color: done === entries.length ? 'var(--green-400)' : 'var(--slate-500)' }}>{done}/{entries.length}</span>
+              <span style={{ fontSize: 'var(--font-caption)', color: done === entries.length ? 'var(--green-400)' : 'var(--text-subtle)' }}>{done}/{entries.length}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
               {groupEntriesByList(entries).map(({ todo, items }) => (

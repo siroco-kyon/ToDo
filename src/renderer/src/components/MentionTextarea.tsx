@@ -1,6 +1,6 @@
-import React, { useMemo, useRef, useState } from 'react'
+import React, { useId, useMemo, useRef, useState } from 'react'
 import type { PublicUser } from '../types'
-import { MENTION_BEFORE } from '../lib/progressActivity'
+import { MENTION_BEFORE, mentionsUser } from '../lib/progressActivity'
 
 // 「@」を打つとメンバーの候補を出す入力欄（進捗ログ・返信の入力で共通）。
 // 選ぶと「@表示名 」を差し込む。サーバーは本文中の「@表示名」「@ユーザー名」でメンション通知を送る。
@@ -31,8 +31,28 @@ function findMentionQuery(value: string, caret: number): MentionQuery | null {
   return { start: caret - match[1].length - 1, query: match[1] }
 }
 
+/**
+ * 本文の「@〜」のうち、誰にも当てはまらないもの（途中までの名前など）。通知が届かないことを知らせるのに使う
+ */
+export function unresolvedMentions(body: string, users: PublicUser[]): string[] {
+  const active = users.filter((user) => user.is_active === 1)
+  const found: string[] = []
+  const pattern = new RegExp(`${MENTION_BEFORE}@([^\\s@、。,，]+)`, 'gu')
+  for (const match of body.matchAll(pattern)) {
+    const word = match[1]
+    // その「@」から始まる部分だけを見て、誰かへのメンションになっているかを確かめる
+    const from = (match.index ?? 0) + match[0].indexOf('@')
+    const rest = body.slice(from)
+    if (!active.some((user) => mentionsUser(rest.slice(0, user.display_name.length + user.username.length + 16), user) && (rest.startsWith(`@${user.display_name}`) || rest.toLowerCase().startsWith(`@${user.username.toLowerCase()}`)))) {
+      if (!found.includes(word)) found.push(word)
+    }
+  }
+  return found
+}
+
 export function MentionTextarea({ value, onValueChange, users = [], onKeyDown, onBlur, style, ...rest }: Props): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const listId = useId()
   const [mention, setMention] = useState<MentionQuery | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
 
@@ -57,6 +77,8 @@ export function MentionTextarea({ value, onValueChange, users = [], onKeyDown, o
   }, [mention, users])
 
   const open = mention !== null && candidates.length > 0
+  // 誰にも当てはまらない「@〜」（入力中の「@」の直後は除く）
+  const unresolved = useMemo(() => (users.length > 0 ? unresolvedMentions(value, users) : []), [users, value])
 
   const refreshMention = (element: HTMLTextAreaElement): void => {
     if (users.length === 0) return
@@ -69,7 +91,9 @@ export function MentionTextarea({ value, onValueChange, users = [], onKeyDown, o
     const element = textareaRef.current
     if (!element || !mention) return
     const caret = element.selectionStart ?? value.length
-    const inserted = `@${user.display_name} `
+    // 後ろがすでに空白なら空白を足さない（「@佐藤 美咲  確認」と2つ並んでいた）
+    const after = value.slice(caret)
+    const inserted = /^\s/.test(after) ? `@${user.display_name}` : `@${user.display_name} `
     const next = value.slice(0, mention.start) + inserted + value.slice(caret)
     onValueChange(next)
     setMention(null)
@@ -125,16 +149,19 @@ export function MentionTextarea({ value, onValueChange, users = [], onKeyDown, o
         }}
         aria-autocomplete={users.length > 0 ? 'list' : undefined}
         aria-expanded={users.length > 0 ? open : undefined}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open ? `${listId}-option-${Math.min(activeIndex, candidates.length - 1)}` : undefined}
         style={{ ...style, width: '100%', flex: undefined }}
       />
       {open && (
-        <span role="listbox" aria-label="メンションする人" style={listStyle}>
+        <span id={listId} role="listbox" aria-label="メンションする人" style={listStyle}>
           <span style={{ display: 'block', padding: '3px 8px 4px', fontSize: '0.64rem', color: 'var(--text-subtle)' }}>
             メンションすると相手に通知が届きます（↑↓で選んで Enter）
           </span>
           {candidates.map((user, index) => (
             <span
               key={user.id}
+              id={`${listId}-option-${index}`}
               role="option"
               aria-selected={index === activeIndex}
               // 入力欄のフォーカスを外さずに選べるよう、押した時点で確定する
@@ -147,6 +174,11 @@ export function MentionTextarea({ value, onValueChange, users = [], onKeyDown, o
               <span style={{ color: 'var(--text-subtle)', fontSize: '0.7rem' }}>@{user.username}</span>
             </span>
           ))}
+        </span>
+      )}
+      {!open && unresolved.length > 0 && (
+        <span role="status" style={{ display: 'block', marginTop: 4, fontSize: 'var(--font-caption)', color: 'var(--amber-200)' }}>
+          {unresolved.map((word) => `「@${word}」`).join('・')}は、だれにも当てはまらないので通知が届きません。「@」を打って候補から選んでください
         </span>
       )}
     </span>

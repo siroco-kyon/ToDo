@@ -137,7 +137,7 @@ export function TeamDashboard({ onSelectTodo, onSelectMember, onSelectMemberMetr
       </div>
       {loadError && <div role="alert" style={{ padding: 16, border: '1px solid var(--red-500)', borderRadius: 10, color: 'var(--slate-200)' }}>
         <p>チーム状況を読み込めませんでした。{loadError}</p>
-        <p style={{ marginTop: 6, fontSize: 'var(--font-control)' }}>{hasLoaded ? '前回取得した内容を表示しています。' : '件数はまだ取得できていません。'} 社内LANへの接続を確認して、もう一度お試しください。</p>
+        <p style={{ marginTop: 6, fontSize: 'var(--font-control)' }}>{hasLoaded ? '前回取得した内容を表示しています。' : '件数はまだ取得できていません。'}{loadError.includes('社内LAN') ? '' : ' 社内LANへの接続を確認して、もう一度お試しください。'}</p>
         <button disabled={loading} onClick={() => void load()} style={{ ...refreshButtonStyle, marginTop: 10 }}>再試行</button>
       </div>}
       {!hasLoaded && loading && <p role="status">チーム状況を読み込み中…</p>}

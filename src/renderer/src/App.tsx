@@ -28,6 +28,8 @@ import { elapsedSecondsSince } from './hooks/useElapsedSeconds'
 import { formatShortDate, shiftDateKey } from './lib/dueDate'
 import { FOCUS_PROGRESS_LOG_EVENT, GANTT_VIEW_EVENT, requestTaskDetailFocus, type GanttViewRequest } from './lib/appEvents'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
+import { confirmAction } from './lib/confirm'
+import { ConfirmHost } from './components/ConfirmDialog'
 
 // 最初に開くガント・タスク一覧・詳細以外の画面と、設定などの小窓は、開いたときに読み込む（起動を軽くする）
 const SettingsModal = lazy(() => import('./components/SettingsModal').then((module) => ({ default: module.SettingsModal })))
@@ -1073,16 +1075,16 @@ export function App(): React.JSX.Element {
   }, [activeView, ganttInitialHealthFilter, reportFocusAssigneeId])
 
   // 上部のタブで画面を切り替える。表示中のタブをもう一度押しても、ほかの画面には移らない
-  const toggleCenterView = useCallback((view: CenterView) => {
+  const toggleCenterView = useCallback(async (view: CenterView) => {
     if (view === activeView) return
-    if (detailDirty && !window.confirm('未保存の変更があります。別の画面へ移動しますか？')) return
+    if (detailDirty && !(await confirmAction('未保存の変更があります。別の画面へ移動しますか？\n移動すると、詳細で入力中の変更は消えます。', { confirmLabel: '移動する', cancelLabel: '詳細に戻る', danger: true }))) return
     setDetailReturnView(null)
     setActiveView(view)
     if (view === 'gantt') setGanttSidePanelMode('today')
   }, [activeView, detailDirty])
 
-  const openTodoDetail = useCallback((id: string) => {
-    if (id !== selectedTodoId && detailDirty && !window.confirm('未保存の変更があります。別のタスクへ移動しますか？')) return
+  const openTodoDetail = useCallback(async (id: string) => {
+    if (id !== selectedTodoId && detailDirty && !(await confirmAction('未保存の変更があります。別のタスクへ移動しますか？\n移動すると、詳細で入力中の変更は消えます。', { confirmLabel: '移動する', cancelLabel: '詳細に戻る', danger: true }))) return
     setSelectedTodoId(id)
     if (activeView === 'gantt') {
       setGanttSidePanelMode('detail')
@@ -1107,7 +1109,7 @@ export function App(): React.JSX.Element {
       }
       await loadNotifications()
       if ((notification.type === 'progress_reply' || notification.type === 'progress_reaction' || notification.type === 'mention') && notification.progress_note_id) {
-        if (navigationStateRef.current.detailDirty && !window.confirm('未保存の変更があります。進捗画面へ移動しますか？')) return
+        if (navigationStateRef.current.detailDirty && !(await confirmAction('未保存の変更があります。進捗画面へ移動しますか？\n移動すると、詳細で入力中の変更は消えます。', { confirmLabel: '移動する', cancelLabel: '詳細に戻る', danger: true }))) return
         setProgressTimelineFocus({
           date: getDateKeyFromIso(notification.created_at),
           todoId: notification.todo_id,
@@ -1118,7 +1120,7 @@ export function App(): React.JSX.Element {
         setActiveView('progress')
       } else if (notification.type === 'report_reminder') {
         // 報告のリマインドは報告タブで、自分の未報告を確かめてもらう
-        if (navigationStateRef.current.detailDirty && !window.confirm('未保存の変更があります。報告タブへ移動しますか？')) return
+        if (navigationStateRef.current.detailDirty && !(await confirmAction('未保存の変更があります。報告タブへ移動しますか？\n移動すると、詳細で入力中の変更は消えます。', { confirmLabel: '移動する', cancelLabel: '詳細に戻る', danger: true }))) return
         setActiveView('report')
       } else if (notification.todo_id) {
         openTodoDetail(notification.todo_id)
@@ -1163,8 +1165,8 @@ export function App(): React.JSX.Element {
     document.body.style.userSelect = 'none'
   }, [])
 
-  const hideGanttSidePanel = useCallback(() => {
-    if (detailDirty && !window.confirm('未保存の変更があります。詳細を閉じますか？')) return
+  const hideGanttSidePanel = useCallback(async () => {
+    if (detailDirty && !(await confirmAction('未保存の変更があります。詳細を閉じますか？\n閉じると、入力中の変更は消えます。', { confirmLabel: '閉じる', cancelLabel: '詳細に戻る', danger: true }))) return
     setGanttSidePanelMode('today')
     setGanttPanes((previous) => ({ ...previous, side: false }))
   }, [detailDirty])
@@ -1319,9 +1321,13 @@ export function App(): React.JSX.Element {
     const previousStatus = archived?.status
     await window.api.todoArchive(id)
     await loadTodos()
-    if (selectedTodoId === id) setSelectedTodoId(null)
+    if (selectedTodoId === id) {
+      setSelectedTodoId(null)
+      // ほかの画面（報告・チームなど）から開いた詳細でアーカイブしたら、その画面へ戻る（「タスクを選択してください」だけの画面で行き止まりにしない）
+      if (activeView === 'detail' && detailReturnView) void toggleCenterView(detailReturnView)
+    }
     showToast(archived ? `「${archived.title}」をアーカイブしました` : 'アーカイブしました', 'success', { label: '元に戻す', run: () => { void window.api.todoUnarchive(id, previousStatus === 'archived' ? 'active' : previousStatus).then(loadTodos).then(() => showToast('元の状態に戻しました')) } })
-  }, [loadTodos, selectedTodoId, showToast, todos])
+  }, [activeView, detailReturnView, loadTodos, selectedTodoId, showToast, todos, toggleCenterView])
 
   const handleUnarchive = useCallback(async (id: string) => {
     await window.api.todoUnarchive(id)
@@ -1672,6 +1678,7 @@ export function App(): React.JSX.Element {
           />
         </div>
         <Toast toasts={toasts} onRemove={removeToast} />
+        <ConfirmHost />
       </div>
     )
   }
@@ -1686,9 +1693,17 @@ export function App(): React.JSX.Element {
   const isGanttView = activeView === 'gantt'
   const categoryPaneVisible = isGanttView ? ganttPanes.category : showCategoryPane && (!autoHideCategoryPane || openedWhileNarrow.category)
   const taskPaneVisible = isGanttView ? ganttPanes.task : showTaskPane && (!autoHideTaskPane || openedWhileNarrow.task)
-  const planRailVisible = isGanttView ? ganttPanes.side : showPlanRail && (!autoHideSidePanel || openedWhileNarrow.side)
+  // ガントでも、狭い窓では右の「今日の予定」を自動で畳む（ほかの画面と同じ。覚えている設定は変えない）。
+  // 1024px で開いたままだと、時間軸が5日分ほどしか見えなかった。タスクの詳細を開いたときは出す
+  const ganttSideAutoHidden = isGanttView && effectiveViewportWidth < NARROW_SIDE_PANEL_WIDTH && !openedWhileNarrow.side
+  const planRailVisible = isGanttView ? ganttPanes.side && !ganttSideAutoHidden : showPlanRail && (!autoHideSidePanel || openedWhileNarrow.side)
   const togglePane = (key: keyof PaneVisibility): void => {
     if (isGanttView) {
+      // 狭くて自動で畳んでいる「今日の予定」は、設定を変えずにその幅のあいだだけ開け閉めする
+      if (key === 'side' && effectiveViewportWidth < NARROW_SIDE_PANEL_WIDTH && ganttPanes.side) {
+        setOpenedWhileNarrow((previous) => ({ ...previous, side: !previous.side }))
+        return
+      }
       const next = { ...ganttPanes, [key]: !ganttPanes[key] }
       setGanttPanes(next)
       // 開いた結果、ガントが狭くなりすぎたら知らせる（狭い窓では日付が数日分しか見えなくなり、気づきにくい）
@@ -1829,7 +1844,7 @@ export function App(): React.JSX.Element {
       onOpenTab={() => toggleCenterView('todo')}
     />
   ) : null
-  const showGanttSidePanel = activeView === 'gantt' && (ganttSidePanelMode === 'detail' || ganttPanes.side)
+  const showGanttSidePanel = activeView === 'gantt' && (ganttSidePanelMode === 'detail' || (ganttPanes.side && !ganttSideAutoHidden))
   const showAuxiliaryPanel = activeView === 'gantt' ? showGanttSidePanel : showRightPlanRail
   const SORT_FIELDS: { key: SortField; label: string }[] = [
     { key: 'sort_order', label: '手動' },
@@ -2212,6 +2227,7 @@ export function App(): React.JSX.Element {
               onShowToast={showToast}
               onDirtyChange={setDetailDirty}
               onArchive={handleArchive}
+              onDelete={handleDelete}
               returnTo={detailReturnView ? { label: CENTER_VIEW_LABELS[detailReturnView], onReturn: () => toggleCenterView(detailReturnView) } : null}
             />
           )}
@@ -2225,7 +2241,23 @@ export function App(): React.JSX.Element {
               style={resizeHandleStyle}
             />
 
-            <aside id="hakobi-side-panel" data-focus-region data-toast-avoid={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? '' : undefined} tabIndex={-1} aria-label={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? 'タスクの詳細' : '今日の予定'} style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column', outline: 'none' }}>
+            <aside
+              onKeyDown={(event) => {
+                // ガントの右に開いた詳細は Esc で閉じ、そのタスクの行へフォーカスを戻す（入力欄の Esc・編集中の Esc はそちらが先に使う）
+                if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return
+                if (activeView !== 'gantt' || ganttSidePanelMode !== 'detail') return
+                const target = event.target as HTMLElement
+                if (target.closest('input, textarea, select, [role="menu"], [role="dialog"], [role="alertdialog"]')) return
+                event.preventDefault()
+                const todoId = selectedTodoId
+                void Promise.resolve(hideGanttSidePanel()).then(() => {
+                  window.requestAnimationFrame(() => {
+                    if (!todoId) return
+                    document.querySelector<HTMLElement>(`[data-gantt-todo-id="${CSS.escape(todoId)}"] [data-gantt-row-title]`)?.focus()
+                  })
+                })
+              }}
+              id="hakobi-side-panel" data-focus-region data-toast-avoid={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? '' : undefined} tabIndex={-1} aria-label={activeView === 'gantt' && ganttSidePanelMode === 'detail' ? 'タスクの詳細' : '今日の予定'} style={{ width: paneWidths.side, flexShrink: 0, borderLeft: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', overflow: 'hidden', display: 'flex', flexDirection: 'column', outline: 'none' }}>
               {activeView === 'gantt' ? (
                 <>
                   <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--slate-800)', background: 'var(--c-0b1220)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -2237,8 +2269,8 @@ export function App(): React.JSX.Element {
                         詳細
                       </button>
                       <button
-                        onClick={() => {
-                          if (detailDirty && !window.confirm('未保存の変更があります。今日の予定へ移動しますか？')) return
+                        onClick={async () => {
+                          if (detailDirty && !(await confirmAction('未保存の変更があります。今日の予定へ移動しますか？\n移動すると、詳細で入力中の変更は消えます。', { confirmLabel: '移動する', cancelLabel: '詳細に戻る', danger: true }))) return
                           setGanttSidePanelMode('today')
                           if (!ganttPanes.side) setGanttPanes((previous) => ({ ...previous, side: true }))
                         }}
@@ -2272,6 +2304,7 @@ export function App(): React.JSX.Element {
                         onShowToast={showToast}
                         onDirtyChange={setDetailDirty}
                         onArchive={handleArchive}
+                        onDelete={handleDelete}
                       />
                     ) : (
                       <TodayFlowRail
@@ -2315,6 +2348,7 @@ export function App(): React.JSX.Element {
       )}
 
       <Toast toasts={toasts} onRemove={removeToast} />
+      <ConfirmHost />
 
       {showCommandPalette && (
         <CommandPalette
