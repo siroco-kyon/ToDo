@@ -75,6 +75,8 @@ interface Props {
   listFilters?: React.ReactNode
   /** 定例モードで、決まったことをタスクにする */
   onCreateTodo?: (data: CreateTodoInput) => Promise<Todo>
+  /** 開いたときに、この人の「報告なし」だけを出す（チームの数字から開いたとき。報告タブの担当の設定は書き換えない） */
+  initialUnreportedAssigneeId?: string | null
 }
 
 type ShowToast = (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
@@ -202,7 +204,7 @@ function loadPreset(): Exclude<PeriodPreset, 'custom'> {
 }
 
 // タブを開いているあいだだけ覚えるもの（ほかの画面へ行って戻ったときに続きから見られるように）
-const SESSION_KEYS = { quickFilter: 'report.quickFilter', scrollTop: 'report.scrollTop' }
+const SESSION_KEYS = { quickFilter: 'report.quickFilter', scrollTop: 'report.scrollTop', returnPending: 'report.returnPending' }
 const QUICK_FILTERS: readonly QuickFilter[] = ['all', 'needsReport', 'discussion', 'onHold', 'overdue', 'behind', 'postponed', 'myNeedsReport']
 
 function loadSessionQuickFilter(): QuickFilter {
@@ -214,8 +216,13 @@ function loadSessionQuickFilter(): QuickFilter {
   }
 }
 
+// 位置を戻すのは、報告タブからタスクを開いて戻ってきたときだけ（タブで開き直したときは先頭から。
+// 以前は前回の位置で開き、題名や期間の選択が画面の外に隠れていた）
 function loadSessionScrollTop(): number | null {
   try {
+    const returning = window.sessionStorage.getItem(SESSION_KEYS.returnPending) === '1'
+    window.sessionStorage.removeItem(SESSION_KEYS.returnPending)
+    if (!returning) return null
     const stored = Number(window.sessionStorage.getItem(SESSION_KEYS.scrollTop))
     return Number.isFinite(stored) && stored > 0 ? stored : null
   } catch {
@@ -617,7 +624,7 @@ function progressDeltaText(summary: ChangeSummary, current: number): string | nu
 }
 
 function progressDeltaColor(summary: ChangeSummary, current: number): string {
-  if (summary.progressStart === null) return 'var(--slate-500)'
+  if (summary.progressStart === null) return 'var(--text-subtle)'
   const delta = current - summary.progressStart
   if (delta > 0) return 'var(--green-300)'
   if (delta < 0) return 'var(--red-300)'
@@ -881,15 +888,15 @@ function reportToCsv(groups: ReportGroup[], subTaskMode: ReportSubTaskMode, peri
 
 // ─── 画面 ─────────────────────────────────────────────────────
 
-export function ReportView({ todos, subTasks, categories, users, currentUser, onSelectTodo, onUpdateTodo, onUpdateSubTask, onCreateSubTask, onShowToast, listFilters, onCreateTodo }: Props): React.JSX.Element {
+export function ReportView({ todos, subTasks, categories, users, currentUser, onSelectTodo, onUpdateTodo, onUpdateSubTask, onCreateSubTask, onShowToast, listFilters, onCreateTodo, initialUnreportedAssigneeId = null }: Props): React.JSX.Element {
   const multiUser = users.length > 0
   const settingsUserId = currentUser?.id ?? null
   const [preset, setPreset] = useState<PeriodPreset>(loadPreset)
   const [range, setRange] = useState<DateRange>(() => presetRange(loadPreset()))
   const [groupMode, setGroupMode] = useState<GroupMode>(() => readStorage(STORAGE_KEYS.groupMode) === 'category' ? 'category' : 'assignee')
-  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>(loadAssigneeFilter)
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>(() => initialUnreportedAssigneeId ? `user:${initialUnreportedAssigneeId}` : loadAssigneeFilter())
   const [excludeCoAssigned, setExcludeCoAssigned] = useState(() => readStorage(STORAGE_KEYS.excludeCoAssigned) === '1')
-  const [quickFilter, setQuickFilter] = useState<QuickFilter>(loadSessionQuickFilter)
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>(() => initialUnreportedAssigneeId ? 'needsReport' : loadSessionQuickFilter())
   // この画面を開いてから進捗ログを書いたタスク（「報告なし」で絞っていても、書いた直後は残す）
   const [reportedNowIds, setReportedNowIds] = useState<Set<string>>(() => new Set())
   useEffect(() => {
@@ -899,6 +906,11 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const lastScrollTopRef = useRef(0)
   const scrollRestoreRef = useRef<number | null>(loadSessionScrollTop())
+  // タスクを開くときは、戻ってきたら今の位置へ戻せるよう印を付ける
+  const openTodoFromReport = useCallback((id: string): void => {
+    try { window.sessionStorage.setItem(SESSION_KEYS.returnPending, '1') } catch { /* 位置は戻せなくてもよい */ }
+    onSelectTodo(id)
+  }, [onSelectTodo])
   // 画面を離れるとき（DOM が消える前）に位置を覚える
   useLayoutEffect(() => () => {
     const top = scrollContainerRef.current?.scrollTop ?? lastScrollTopRef.current
@@ -1408,13 +1420,13 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     onUpdateTask: updateTask,
     onUpdateSubTask: updateSubTask,
     onCreateSubTask: createSubTask,
-    onSelectTodo,
+    onSelectTodo: openTodoFromReport,
     onHideTodo: (todo) => setTodoHidden(todo, true),
     onShowToast,
     users,
     // 「@」の候補（自分を呼んでも通知は届かないので外す）
     mentionUsers: users.filter((user) => user.id !== currentUser?.id)
-  }), [canModifyNote, createNote, createSubTask, currentUser, deleteNote, onSelectTodo, onShowToast, replyNote, setTodoHidden, toggleDiscussion, toggleReaction, updateNote, updateSubTask, updateTask, users])
+  }), [canModifyNote, createNote, createSubTask, currentUser, deleteNote, openTodoFromReport, onShowToast, replyNote, setTodoHidden, toggleDiscussion, toggleReaction, updateNote, updateSubTask, updateTask, users])
 
   const handleCopyMarkdown = async (): Promise<void> => {
     try {
@@ -1446,7 +1458,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       multiUser={multiUser}
       isMine={currentUser != null && isMyTask(row.todo, row.subTasks, currentUser.id)}
       showOnTrackHelper={!inMeeting}
-      onSelectTodo={onSelectTodo}
+      onSelectTodo={openTodoFromReport}
       actions={actions}
     />
   )
@@ -1784,11 +1796,12 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                   ▾
                 </button>
                 <span style={{ width: 11, height: 11, borderRadius: '50%', background: group.color ?? 'var(--slate-600)', flexShrink: 0 }} />
-                <span style={{ fontSize: '0.98rem', color: 'var(--slate-100)', fontWeight: 800 }}>{group.label}</span>
+                {/* 読み上げで担当者ごとに飛べるように見出しにする（見た目は変えない） */}
+                <h2 style={{ margin: 0, fontSize: '0.98rem', color: 'var(--slate-100)', fontWeight: 800 }}>{group.label}</h2>
                 {group.isMe && <span style={{ fontSize: 'var(--font-caption)', color: 'var(--indigo-200)', background: 'var(--indigo-900)', borderRadius: 999, padding: '1px 7px' }}>自分</span>}
                 <span style={{ fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>{group.rows.length}件</span>
                 <span style={{ fontSize: 'var(--font-control)', color: 'var(--green-300)' }}>報告あり {groupReported}</span>
-                <span style={{ fontSize: 'var(--font-control)', color: groupNeeds > 0 ? 'var(--amber-200)' : 'var(--slate-500)', fontWeight: groupNeeds > 0 ? 700 : 400 }}>
+                <span style={{ fontSize: 'var(--font-control)', color: groupNeeds > 0 ? 'var(--amber-200)' : 'var(--text-subtle)', fontWeight: groupNeeds > 0 ? 700 : 400 }}>
                   報告なし {groupNeeds}
                 </span>
                 {groupDiscussions.length > 0 && (
@@ -1958,7 +1971,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
           )}
           style={{ accentColor: 'var(--green-500)', cursor: 'pointer', flexShrink: 0, margin: 0, transform: 'translateY(1px)' }}
         />
-        <span style={{ flex: 1, minWidth: 0, color: done ? 'var(--slate-500)' : 'var(--slate-300)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word' }}>
+        <span style={{ flex: 1, minWidth: 0, color: done ? 'var(--text-subtle)' : 'var(--slate-300)', textDecoration: done ? 'line-through' : 'none', wordBreak: 'break-word' }}>
           {subTask.title}
           {subTask.assignee_name && (
             <span style={{ marginLeft: 6, fontSize: 'var(--font-caption)', color: dataInk(subTask.assignee_color ?? 'var(--slate-400)'), display: 'inline-block' }}>
@@ -2018,7 +2031,7 @@ function SubTaskRow({ subTask, summary, actions }: { subTask: SubTask; summary: 
             onClick={openDueEditor}
             disabled={saving}
             title="期限を変更"
-            style={{ ...inlineActionStyle, textDecoration: 'none', color: dueColor || 'var(--slate-500)', fontWeight: dueColor ? 800 : 600, flexShrink: 0 }}
+            style={{ ...inlineActionStyle, textDecoration: 'none', color: dueColor || 'var(--text-subtle)', fontWeight: dueColor ? 800 : 600, flexShrink: 0 }}
           >
             {subTask.due_date ? `期限 ${formatShortDate(subTask.due_date)}${dueStateSuffix(subTask.due_date, done)}` : '期限なし'}
           </button>
@@ -2140,7 +2153,7 @@ function dayTone(done: number, total: number): string {
 
 /** 終わった回の実施の色。全部済みは緑、8割以上は黄、それより下は赤 */
 function rateTone(checked: number, periods: number): string {
-  if (periods === 0) return 'var(--slate-500)'
+  if (periods === 0) return 'var(--text-subtle)'
   if (checked >= periods) return 'var(--green-300)'
   return checked / periods >= 0.8 ? 'var(--amber-200)' : 'var(--red-300)'
 }
@@ -2237,7 +2250,7 @@ function ListItemsSummary({ row, period }: { row: ReportRow; period: DateRange }
             {items.open.map((item) => (
               <div key={item.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 'var(--font-control)' }}>
                 <span style={{ flex: 1, minWidth: 0, color: 'var(--slate-300)', overflowWrap: 'anywhere' }}>☐ {item.title}</span>
-                {itemPeriodText(item) && <span style={{ fontSize: 'var(--font-caption)', color: getDueDateColor(item.due_date) || 'var(--slate-500)', flexShrink: 0 }}>{itemPeriodText(item)}</span>}
+                {itemPeriodText(item) && <span style={{ fontSize: 'var(--font-caption)', color: getDueDateColor(item.due_date) || 'var(--text-subtle)', flexShrink: 0 }}>{itemPeriodText(item)}</span>}
               </div>
             ))}
             {items.doneInPeriod.map((item) => (
@@ -2286,6 +2299,19 @@ function ReportTaskCard({
   const [editingSchedule, setEditingSchedule] = useState(false)
   const [startDraft, setStartDraft] = useState('')
   const [dueDraft, setDueDraft] = useState('')
+  // 保存できない日付は欄の下に出し、開始日の欄へフォーカスを移す。閉じたら「変更」へフォーカスを戻す
+  const [scheduleError, setScheduleError] = useState('')
+  const scheduleStartInputRef = useRef<HTMLInputElement>(null)
+  const scheduleButtonRef = useRef<HTMLButtonElement>(null)
+  const wasEditingScheduleRef = useRef(false)
+  useEffect(() => {
+    if (wasEditingScheduleRef.current && !editingSchedule) {
+      const active = document.activeElement
+      if (!active || active === document.body || active.hasAttribute('data-focus-region')) scheduleButtonRef.current?.focus({ preventScroll: true })
+    }
+    wasEditingScheduleRef.current = editingSchedule
+    if (!editingSchedule) setScheduleError('')
+  }, [editingSchedule])
   const [editingMemo, setEditingMemo] = useState(false)
   const [memoDraft, setMemoDraft] = useState('')
   const [saving, setSaving] = useState(false)
@@ -2327,7 +2353,8 @@ function ReportTaskCard({
 
   const saveSchedule = async (): Promise<void> => {
     if (startDraft && dueDraft && startDraft > dueDraft) {
-      actions.onShowToast('開始日は期限以前にしてください', 'error')
+      setScheduleError('開始日は期限以前にしてください')
+      scheduleStartInputRef.current?.focus()
       return
     }
     const data: UpdateTodoInput = {}
@@ -2372,9 +2399,11 @@ function ReportTaskCard({
       {/* ─── 左: タスク情報（状態・日程・進捗はその場で変更できる） ─── */}
       <div style={{ flex: '1 1 300px', maxWidth: 440, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-          <button onClick={() => onSelectTodo(todo.id)} title="タスク詳細を開く" style={taskTitleButtonStyle}>
-            {todo.title}
-          </button>
+          <h3 style={{ margin: 0, fontSize: 'inherit', fontWeight: 'inherit', minWidth: 0 }}>
+            <button onClick={() => onSelectTodo(todo.id)} title="タスク詳細を開く" style={taskTitleButtonStyle}>
+              {todo.title}
+            </button>
+          </h3>
           {todo.priority >= 4 && (
             <span style={{ fontSize: 'var(--font-caption)', color: todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)', fontWeight: 800, flexShrink: 0, marginTop: 2 }}>
               {'!'.repeat(todo.priority - 3)}
@@ -2430,14 +2459,15 @@ function ReportTaskCard({
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 'var(--font-control)', color: 'var(--slate-400)' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 開始
-                <input type="date" value={startDraft} onChange={(event) => setStartDraft(event.target.value)} aria-label="開始日" style={inputStyle} />
+                <input ref={scheduleStartInputRef} type="date" value={startDraft} onChange={(event) => { setStartDraft(event.target.value); setScheduleError('') }} aria-label="開始日" aria-invalid={scheduleError ? true : undefined} aria-describedby={scheduleError ? `schedule-error-${todo.id}` : undefined} style={inputStyle} />
               </label>
               <span style={{ color: 'var(--text-subtle)' }}>→</span>
               <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 期限
-                <input type="date" value={dueDraft} onChange={(event) => setDueDraft(event.target.value)} aria-label="期限" style={inputStyle} />
+                <input type="date" value={dueDraft} onChange={(event) => { setDueDraft(event.target.value); setScheduleError('') }} aria-label="期限" aria-invalid={scheduleError ? true : undefined} aria-describedby={scheduleError ? `schedule-error-${todo.id}` : undefined} style={inputStyle} />
               </label>
             </div>
+            {scheduleError && <div id={`schedule-error-${todo.id}`} role="alert" style={{ fontSize: 'var(--font-control)', color: 'var(--red-300)', fontWeight: 600 }}>{scheduleError}</div>}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', flex: 1 }}>依存関係のある後続タスクも再計算されます</span>
               <button onClick={() => setEditingSchedule(false)} style={secondaryButtonStyle}>キャンセル</button>
@@ -2448,15 +2478,15 @@ function ReportTaskCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 'var(--font-control)' }}>
             <span style={{ color: 'var(--slate-400)' }}>開始 {formatShortDate(todo.start_date)}</span>
             <span style={{ color: 'var(--indigo-300)' }} title="期限のない ToDoリストです。使い終えたら「リストを終える」を押します">→ 期限なし</span>
-            <button onClick={openScheduleEditor} title="開始日・期限を変更" style={inlineActionStyle}>変更</button>
+            <button ref={scheduleButtonRef} onClick={openScheduleEditor} title="開始日・期限を変更" aria-label={`「${todo.title}」の開始日・期限を変更`} style={inlineActionStyle}>変更</button>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 'var(--font-control)' }}>
             <span style={{ color: 'var(--slate-400)' }}>開始 {formatShortDate(todo.start_date)}</span>
             <span style={{ color: 'var(--text-subtle)' }}>→</span>
             <span style={{ color: dueColor || 'var(--slate-300)', fontWeight: dueColor ? 700 : 400 }}>期限 {formatShortDate(todo.due_date)}</span>
-            {dueLabel && <span style={{ color: dueColor || 'var(--slate-500)', fontSize: 'var(--font-caption)' }}>（{dueLabel}）</span>}
-            <button onClick={openScheduleEditor} title="開始日・期限を変更" style={inlineActionStyle}>変更</button>
+            {dueLabel && <span style={{ color: dueColor || 'var(--text-subtle)', fontSize: 'var(--font-caption)' }}>（{dueLabel}）</span>}
+            <button ref={scheduleButtonRef} onClick={openScheduleEditor} title="開始日・期限を変更" aria-label={`「${todo.title}」の開始日・期限を変更`} style={inlineActionStyle}>変更</button>
           </div>
         )}
         {!editingSchedule && dueChange && (
@@ -2522,7 +2552,8 @@ function ReportTaskCard({
             </span>
           )}
           <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>
-            {lastReportAt ? `最終報告 ${formatDateTime(lastReportAt)}（${formatDaysAgo(lastReportAt)}）` : '最終報告 なし'}
+            {/* 担当以外の人の書き込みだけのときは「最終報告」と書かない（「報告なし」と食い違って見えるため） */}
+            {lastReportAt ? `${freshness === 'quiet' && notes.length > 0 ? '最後の書き込み（担当以外）' : '最終報告'} ${formatDateTime(lastReportAt)}（${formatDaysAgo(lastReportAt)}）` : '最終報告 なし'}
           </span>
           {row.discussions.length > 0 && (
             <span style={discussionBadgeStyle}>要相談 {row.discussions.length}</span>
@@ -2601,7 +2632,7 @@ function ReportTaskCard({
               style={{ ...inputStyle, width: '100%', resize: 'vertical', lineHeight: 1.55 }}
             />
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 'var(--font-caption)', color: memoChanged ? 'var(--blue-300)' : 'var(--slate-500)', flex: 1 }}>
+              <span style={{ fontSize: 'var(--font-caption)', color: memoChanged ? 'var(--blue-300)' : 'var(--text-subtle)', flex: 1 }}>
                 {memoChanged ? '未保存の変更があります（Ctrl+Enterで保存）' : '変更なし'}
               </span>
               <button onClick={() => setEditingMemo(false)} style={secondaryButtonStyle}>キャンセル</button>

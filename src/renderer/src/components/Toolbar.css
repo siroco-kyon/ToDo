@@ -35,6 +35,16 @@
 .hakobi-toolbar-search-label { display: none; }
 .hakobi-view-tabs > button { flex-shrink: 0; }
 .hakobi-view-tabs > button:focus-visible { outline-offset: -3px; }
+/* タブが入りきらないときの「‹」「›」。端をぼかして、続きがあることを見せる */
+.hakobi-tabs-scroll {
+  position: absolute; top: 1px; bottom: 1px; z-index: 1; width: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; cursor: pointer; padding: 0;
+  color: var(--slate-200); font-size: 1.1rem; font-weight: 700;
+}
+.hakobi-tabs-scroll-left { left: 1px; border-radius: 10px 0 0 10px; background: linear-gradient(to right, var(--gray-900) 55%, transparent); }
+.hakobi-tabs-scroll-right { right: 1px; border-radius: 0 10px 10px 0; background: linear-gradient(to left, var(--gray-900) 55%, transparent); }
+.hakobi-tabs-scroll:hover { color: var(--blue-300); }
 
 /* 「移動」の文字は、もう少し狭くなるまで残す（Ctrl+K で開けることに気付けるように） */
 @media (max-width: 1040px) {

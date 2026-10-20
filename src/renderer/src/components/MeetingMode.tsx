@@ -214,7 +214,8 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
     const handleKeyDown = (event: KeyboardEvent): void => {
       const target = event.target as HTMLElement | null
       const typing = target != null && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
-      if (event.key === 'Escape' && typing && !event.isComposing) { event.preventDefault(); target.blur(); return }
+      // 入力欄から抜けるときは、フォーカスを小窓そのものへ移す（blur だけだとページの先頭へ落ち、次の Esc が効かなかった）
+      if (event.key === 'Escape' && typing && !event.isComposing) { event.preventDefault(); dialogRef.current?.focus({ preventScroll: true }); return }
       if (event.key === 'Escape' && !typing) { event.preventDefault(); close(); return }
       if (typing || event.altKey || event.ctrlKey || event.metaKey) return
       if (event.key === 'ArrowRight') { event.preventDefault(); goTo(index + 1) }
@@ -259,7 +260,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
   const nearTime = !overTime && personSeconds > state.targetMinutes * 60 - 30
 
   return (
-    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="定例モード" style={{ position: 'fixed', inset: 0, zIndex: 950, background: 'var(--c-0b1220)', display: 'flex', flexDirection: 'column' }}>
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="定例モード" tabIndex={-1} style={{ outline: 'none', position: 'fixed', inset: 0, zIndex: 950, background: 'var(--c-0b1220)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 20px', borderBottom: '1px solid var(--slate-800)', background: 'var(--slate-900)' }}>
         <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--indigo-300)' }}>定例モード</span>
         {group && (
@@ -289,7 +290,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
           </select>
         </label>
         <button onClick={() => goTo(index - 1)} disabled={index === 0} title="前の人（←）" style={navButtonStyle(index === 0)}>◀ 前の人</button>
-        <button onClick={() => goTo(index + 1)} disabled={index >= groups.length - 1} title="次の人（→）" style={navButtonStyle(index >= groups.length - 1, true)}>次の人 ▶</button>
+        <button autoFocus={index < groups.length - 1} onClick={() => goTo(index + 1)} disabled={index >= groups.length - 1} title="次の人（→）" style={navButtonStyle(index >= groups.length - 1, true)}>次の人 ▶</button>
         <button onClick={() => void copyMinutes()} title="メモ・追加したタスク・時間をまとめてコピーします" aria-label="定例の内容をコピー" style={navButtonStyle(false)}>定例の<span className="hakobi-hide-narrow">内容を</span>コピー</button>
         <button onClick={close} title="定例モードを閉じます（Esc）。進み具合は残ります" style={navButtonStyle(false)}>閉じる</button>
       </div>

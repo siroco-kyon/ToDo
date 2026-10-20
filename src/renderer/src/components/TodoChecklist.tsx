@@ -181,6 +181,9 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
       return
     }
     setAdding(true)
+    // 追加している間も欄は使えるままにし（無効にするとフォーカスが外れ、続けて打った文字が消える）、送った分だけを消す
+    const submitted = title
+    const restAfterSubmitted = (current: string): string => current.startsWith(submitted) ? current.slice(submitted.length).replace(/^\r?\n/, '') : current
     const created: SubTask[] = []
     try {
       for (const itemTitle of titles) {
@@ -194,11 +197,11 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
           ...repeatFields(repeat, repeatDay)
         }))
       }
-      setTitle('')
+      setTitle(restAfterSubmitted)
       setStartDate('')
       setDueDate('')
     } catch (error) {
-      setTitle(titles.slice(created.length).join('\n'))
+      setTitle((current) => [titles.slice(created.length).join('\n'), current.startsWith(submitted) ? restAfterSubmitted(current) : ''].filter(Boolean).join('\n'))
       onShowToast(error instanceof Error ? error.message : '項目を追加できませんでした', 'error')
     } finally {
       if (created.length > 0) onItemsChange((previous) => [...previous, ...created])
@@ -359,7 +362,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
           <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
             <textarea
               value={title}
-              disabled={disabled || adding}
+              disabled={disabled}
               onChange={(event) => setTitle(event.target.value)}
               onKeyDown={(event) => {
                 // Enter で追加、Shift+Enter で改行（複数行は1行ずつ追加）。日本語変換の確定の Enter では追加しない

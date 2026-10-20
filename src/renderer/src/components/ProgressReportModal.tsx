@@ -528,7 +528,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
         {/* 見出しはスクロールしても上に残す（長いレポートを読み進めても、閉じる・コピーを押せるように） */}
         <div style={{ position: 'sticky', top: -28, zIndex: 2, margin: '-28px -28px 0', padding: '18px 28px 12px', background: 'var(--slate-800)', borderBottom: '1px solid var(--slate-700)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)', margin: 0 }}>
-            {selfOnly ? '📊 自分の進捗サマリー' : '📊 進捗レポート'}
+            {selfOnly ? '📊 自分の進捗レポート' : '📊 進捗レポート'}
           </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {digest && <button onClick={() => void handleCopyMarkdown()} style={copyBtn}>📋 Markdownをコピー</button>}

@@ -4,6 +4,7 @@ import { discussionBadgeStyle } from './ProgressNoteThread'
 import { buildChecklistSummaries, checklistBadgeText } from '../lib/todoList'
 import { autoScrollNearEdge, dropPositionOf, moveIdBy, moveIdTo, type DropPosition } from '../lib/reorder'
 import { dataInk } from '../lib/theme'
+import { GANTT_VIEW_EVENT, type GanttViewRequest } from '../lib/appEvents'
 import { formatShortDate } from '../lib/dueDate'
 import { BEHIND_THRESHOLD_OPTIONS, DEFAULT_BEHIND_THRESHOLD_DAYS, GANTT_VIEW_SETTINGS_STORAGE_KEY, behindDaysLabel, calculateSchedule, isBehindSchedule, isScheduleTracked, type ScheduleOptions } from '../lib/scheduleHealth'
 
@@ -30,7 +31,9 @@ interface Props {
   /** 文字の大きさの倍率（設定の文字の大きさ。1 = 100%）。大きいときは左の表の幅も広げる */
   textScale?: number
   /** 知らせを出す（キーで日程を変えたときに「元に戻す」付きで知らせる） */
-  onShowToast?: (message: string, type?: 'success' | 'error', action?: { label?: string; run?: () => void; key?: string }) => void
+  onShowToast?: (message: string, type?: 'success' | 'error' | 'info', action?: { label?: string; run?: () => void; key?: string }) => void
+  /** 開いたときにかける「期限超過」「遅れ」の絞り込み（チームの数字から開いたとき） */
+  initialHealthFilter?: 'overdue' | 'behind' | null
 }
 
 /** チャートの最小の高さ（これより低い窓では、ガントの画面ごとスクロールする） */
@@ -175,6 +178,7 @@ const ASSIGNEE_SECTION_PREFIX = 'assignee:'
 /** 最新の進捗ログをツールチップに出すために読む期間（日） */
 const PROGRESS_NOTE_LOOKBACK_DAYS = 60
 const COLLAPSED_TODO_STORAGE_KEY = 'gantt-collapsed-todo-ids'
+const GANTT_UNSCHEDULED_OPEN_STORAGE_KEY = 'hakobi-gantt-unscheduled-open'
 const GANTT_BASELINE_STORAGE_KEY = 'gantt-baseline-snapshot'
 const GANTT_SCROLL_STATE_STORAGE_KEY = 'gantt-scroll-state'
 const GANTT_LEFT_COLUMN_WIDTHS_STORAGE_KEY = 'gantt-left-column-widths'
@@ -999,7 +1003,8 @@ function GanttViewContent({
   focusTodoId = null,
   dataLoading = false,
   textScale = 1,
-  onShowToast
+  onShowToast,
+  initialHealthFilter = null
 }: Props): React.JSX.Element {
   const unscheduledSectionRef = useRef<HTMLDivElement>(null)
   const initialSettings = useMemo(() => loadGanttViewSettings(), [])
@@ -1016,6 +1021,18 @@ function GanttViewContent({
   const [showSubtasks, setShowSubtasks] = useState(initialSettings.showSubtasks)
   const [showOutOfRange, setShowOutOfRange] = useState(initialSettings.showOutOfRange)
   const [showUnscheduled, setShowUnscheduled] = useState(initialSettings.showUnscheduled)
+  // 未配置タスクの一覧は畳める。覚えていなければ、高さの低い窓（900px 未満）では畳んでチャートの行を多く見せる
+  const [unscheduledOpen, setUnscheduledOpen] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem(GANTT_UNSCHEDULED_OPEN_STORAGE_KEY)
+      if (saved === '1' || saved === '0') return saved === '1'
+    } catch { /* 読めなければ既定 */ }
+    return window.innerHeight >= 900
+  })
+  const toggleUnscheduledOpen = useCallback((open: boolean) => {
+    setUnscheduledOpen(open)
+    try { window.localStorage.setItem(GANTT_UNSCHEDULED_OPEN_STORAGE_KEY, open ? '1' : '0') } catch { /* 覚えられなくても開閉はする */ }
+  }, [])
   const [showScheduleSignals, setShowScheduleSignals] = useState(initialSettings.showScheduleSignals)
   const [showBaseline, setShowBaseline] = useState(initialSettings.showBaseline)
   const [rangeMode, setRangeMode] = useState<'auto' | 'manual'>(initialSettings.rangeMode)
@@ -1023,8 +1040,17 @@ function GanttViewContent({
   const [manualEnd, setManualEnd] = useState(initialSettings.manualEnd)
   const [manualPreset, setManualPreset] = useState<RangePreset>(initialSettings.manualPreset)
   const [controlsCollapsed, setControlsCollapsed] = useState(initialSettings.controlsCollapsed)
+  const settingsToggleRef = useRef<HTMLButtonElement>(null)
+  const settingsCloseRef = useRef<HTMLButtonElement>(null)
+  // 「表示設定」を押して開いたときは、中の「閉じる」へフォーカスを移す（キーボードで続けて中を操作できるように）
+  const settingsOpenedByUserRef = useRef(false)
+  useEffect(() => {
+    if (controlsCollapsed || !settingsOpenedByUserRef.current) return
+    settingsOpenedByUserRef.current = false
+    settingsCloseRef.current?.focus()
+  }, [controlsCollapsed])
   // 見出しの「期限超過」「遅れ」を押したときの絞り込み（覚えない）
-  const [healthFilter, setHealthFilter] = useState<'overdue' | 'behind' | null>(null)
+  const [healthFilter, setHealthFilter] = useState<'overdue' | 'behind' | null>(initialHealthFilter)
   const [selectedCategoryKeys, setSelectedCategoryKeys] = useState<CategoryFilterKey[]>(initialSettings.selectedCategoryKeys)
   const [taskQuery, setTaskQuery] = useState('')
   const [selectedTodoIds, setSelectedTodoIds] = useState<string[]>([])
@@ -1056,6 +1082,16 @@ function GanttViewContent({
   const [newSubTaskDraft, setNewSubTaskDraft] = useState<NewSubTaskDraft>({ title: '', startDate: '', dueDate: '' })
   const [creatingSubTask, setCreatingSubTask] = useState(false)
   const [groupMode, setGroupMode] = useState<GroupMode>(initialSettings.groupMode)
+  // Ctrl+K からの表示の切り替え
+  useEffect(() => {
+    const handle = (event: Event): void => {
+      const request = (event as CustomEvent<GanttViewRequest>).detail
+      if (request?.timeScale) setTimeScale(request.timeScale)
+      if (request?.groupMode) setGroupMode(request.groupMode)
+    }
+    window.addEventListener(GANTT_VIEW_EVENT, handle)
+    return () => window.removeEventListener(GANTT_VIEW_EVENT, handle)
+  }, [])
   const [behindThresholdDays, setBehindThresholdDays] = useState(initialSettings.behindThresholdDays)
   const [workingDaysOnly, setWorkingDaysOnly] = useState(initialSettings.workingDaysOnly)
   // 祝日（YYYY-MM-DD → 名前）。ライブラリが大きいので表示後に読み込む
@@ -2228,21 +2264,21 @@ function GanttViewContent({
   const shiftTodoByKeyboard = useCallback((todo: Todo, days: number, moveWhole: boolean): void => {
     const start = todo.start_date?.slice(0, 10) ?? null
     const due = todo.due_date?.slice(0, 10) ?? null
-    const notify = (message: string, type: 'success' | 'error' = 'success', action?: { label?: string; run?: () => void; key?: string }): void => {
+    const notify = (message: string, type: 'success' | 'error' | 'info' = 'success', action?: { label?: string; run?: () => void; key?: string }): void => {
       if (onShowToast) onShowToast(message, type, action)
       else setDependencyFeedback(message)
     }
     const update: UpdateTodoInput = {}
     if (moveWhole) {
       if (!start && !due) {
-        notify('日付のないタスクは、詳細で開始日か期限を入れてください', 'error')
+        notify('日付のないタスクは、詳細で開始日か期限を入れてください', 'info')
         return
       }
       if (start) update.start_date = addDays(start, days)
       if (due) update.due_date = addDays(due, days)
     } else {
       if (!due) {
-        notify('期限のないタスクは、詳細で期限を入れてください', 'error')
+        notify('期限のないタスクは、詳細で期限を入れてください', 'info')
         return
       }
       const nextDue = addDays(due, days)
@@ -2322,7 +2358,12 @@ function GanttViewContent({
   }, [lastUndoEntry, performUndo, undoPending])
 
   const timelineStart = startOfUnit(normalizedRange.start, timeScale)
-  const timelineEnd = startOfUnit(normalizedRange.end, timeScale)
+  // 自動の範囲で時間軸がガントの幅より短いとき（月・年表示で予定が少ないとき）は、右を空の単位で埋める。
+  // 以前は右側が何もない灰色のまま残り、表示が途中で切れたように見えていた
+  const dataTimelineEnd = startOfUnit(normalizedRange.end, timeScale)
+  const dataUnits = diffUnits(dataTimelineEnd, timelineStart, timeScale) + 1
+  const fillUnits = rangeMode === 'auto' && chartAreaWidth > 0 ? Math.ceil(Math.max(chartAreaWidth - leftTableWidth, 0) / unitWidth) : 0
+  const timelineEnd = dataUnits < fillUnits ? addUnits(timelineStart, timeScale, fillUnits - 1) : dataTimelineEnd
   const totalUnits = diffUnits(timelineEnd, timelineStart, timeScale) + 1
   const timelineUnits = useMemo(() => (
     Array.from({ length: totalUnits }, (_, index) => {
@@ -3275,6 +3316,7 @@ function GanttViewContent({
           <button
             onClick={() => {
               setShowUnscheduled(true)
+              toggleUnscheduledOpen(true)
               window.requestAnimationFrame(() => unscheduledSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
             }}
             title="開始日・期限のないタスク。押すとチャートの下の一覧へ移動します"
@@ -3314,7 +3356,7 @@ function GanttViewContent({
           >
             {reorderPending ? '並べ替えを保存中...' : isReorderMode ? '並べ替え完了' : '並べ替え'}
           </button>
-          <button onClick={() => setControlsCollapsed((previous) => !previous)} aria-expanded={!controlsCollapsed} style={headerActionButtonStyle}>
+          <button ref={settingsToggleRef} onClick={() => { settingsOpenedByUserRef.current = controlsCollapsed; setControlsCollapsed((previous) => !previous) }} aria-expanded={!controlsCollapsed} aria-controls="gantt-view-settings" style={headerActionButtonStyle}>
             表示設定
           </button>
           {!standalone && onOpenSeparateWindow && (
@@ -3328,10 +3370,23 @@ function GanttViewContent({
       {reorderFeedback && <div role="alert" style={{ fontSize: 'var(--font-caption)', color: 'var(--red-300)' }}>{reorderFeedback}</div>}
 
       {!controlsCollapsed && (
-        <div style={settingsPanelStyle}>
+        // 開いたら中へフォーカスを移し、Esc で閉じて「表示設定」のボタンへ戻す（ほかの小窓と同じ動き）
+        <div
+          id="gantt-view-settings"
+          role="region"
+          aria-label="ガントの表示設定"
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
+            event.preventDefault()
+            event.stopPropagation()
+            setControlsCollapsed(true)
+            window.requestAnimationFrame(() => settingsToggleRef.current?.focus())
+          }}
+          style={settingsPanelStyle}
+        >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <div style={{ fontSize: '0.86rem', color: 'var(--slate-50)', fontWeight: 700 }}>表示設定</div>
-            <button onClick={() => setControlsCollapsed(true)} style={floatingCloseButtonStyle}>閉じる</button>
+            <h2 style={{ margin: 0, fontSize: '0.86rem', color: 'var(--slate-50)', fontWeight: 700 }}>表示設定</h2>
+            <button ref={settingsCloseRef} onClick={() => { setControlsCollapsed(true); window.requestAnimationFrame(() => settingsToggleRef.current?.focus()) }} style={floatingCloseButtonStyle}>閉じる</button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
@@ -4761,22 +4816,30 @@ function GanttViewContent({
       </div>
 
       {/* 日付のないタスクが0件のときは1行だけにして、チャートの高さを取らない */}
-      {showUnscheduled && unscheduledGroups.length === 0 && (
+      {showUnscheduled && unscheduledGroups.length === 0 && !loading && !dataLoading && (
         <div ref={unscheduledSectionRef} style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)', padding: '2px 4px' }}>
           未配置タスク（日付なし）はありません。開始日も期限もないタスクは、ここに並びます。
         </div>
       )}
       {showUnscheduled && unscheduledGroups.length > 0 && (
-        <div ref={unscheduledSectionRef} style={{ background: 'var(--gray-900)', border: '1px solid var(--gray-800)', borderRadius: 16, padding: 16, scrollMarginTop: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: '0.92rem', color: 'var(--slate-50)', fontWeight: 700 }}>未配置タスク（日付なし）{unscheduledGroups.length > 0 ? ` ${unscheduledGroups.length}件` : ''}</div>
+        <div ref={unscheduledSectionRef} style={{ background: 'var(--gray-900)', border: '1px solid var(--gray-800)', borderRadius: 16, padding: unscheduledOpen ? 16 : '8px 16px', scrollMarginTop: 8, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              aria-expanded={unscheduledOpen}
+              aria-controls="gantt-unscheduled-list"
+              onClick={() => toggleUnscheduledOpen(!unscheduledOpen)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', padding: '4px 2px', cursor: 'pointer', fontSize: '0.92rem', color: 'var(--slate-50)', fontWeight: 700 }}
+            >
+              <span aria-hidden="true" style={{ display: 'inline-block', width: 12, color: 'var(--slate-400)', transform: unscheduledOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>▶</span>
+              未配置タスク（日付なし） {unscheduledGroups.length}件
+              <span style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)', fontWeight: 600 }}>{unscheduledOpen ? '畳む' : '開く'}</span>
+            </button>
             <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>開始日も期限もないタスクです。「今日に配置」を押すか、詳細で日程を入れるとチャートに出ます。</div>
           </div>
 
-          {unscheduledGroups.length === 0 ? (
-            <div style={{ marginTop: 12, fontSize: '0.82rem', color: 'var(--text-subtle)' }}>未配置タスクはありません。</div>
-          ) : (
-            <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+          {!unscheduledOpen ? null : (
+            <div id="gantt-unscheduled-list" style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
               {unscheduledGroups.map((group) => (
                 <div key={group.todo.id} style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 13px' }}>
                   <button onClick={() => onSelectTodo(group.todo.id)} style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700, textAlign: 'left' }}>{group.todo.title}</button>

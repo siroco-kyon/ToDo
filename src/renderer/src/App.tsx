@@ -23,9 +23,10 @@ import { TodayTodoCard } from './components/TodayTodo'
 import { mergeSubsetOrder } from './lib/reorder'
 import { buildUrlSearch, parseUrlState } from './lib/urlState'
 import { recurrenceDoneMessage, recurrenceReopenMessage } from './lib/recurrence'
+import { notifyReopenedRecurrence } from './lib/recurrenceUndo'
 import { elapsedSecondsSince } from './hooks/useElapsedSeconds'
 import { formatShortDate, shiftDateKey } from './lib/dueDate'
-import { FOCUS_PROGRESS_LOG_EVENT, FOCUS_TASK_DETAIL_EVENT } from './lib/appEvents'
+import { FOCUS_PROGRESS_LOG_EVENT, GANTT_VIEW_EVENT, requestTaskDetailFocus, type GanttViewRequest } from './lib/appEvents'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 
 // 最初に開くガント・タスク一覧・詳細以外の画面と、設定などの小窓は、開いたときに読み込む（起動を軽くする）
@@ -325,14 +326,15 @@ export function App(): React.JSX.Element {
       selectedPlanRequestRef.current++
     }
   }, [])
-  const resizeRef = useRef<{ key: PaneKey; startX: number; startWidth: number } | null>(null)
+  const resizeRef = useRef<{ key: PaneKey; startX: number; startWidth: number; scale: number } | null>(null)
 
   // action.key が同じ知らせは、新しいもので置き換える（進捗を続けて変えたときに知らせが積み重ならないように）
   // ボタンのない知らせにも key を付けられる（「元に戻しました」で、前の知らせを置き換えるときなど）
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success', action?: { label?: string; run?: () => void; key?: string }) => {
     const id = ++toastIdRef.current
     setToasts((prev) => [
-      ...(action?.key ? prev.filter((toast) => toast.key !== action.key) : prev),
+      // 成功したら、前に出ていた失敗の知らせは片付ける（再試行して成功したのに「✗」が残り、まだ失敗しているように見えていた）
+      ...(action?.key ? prev.filter((toast) => toast.key !== action.key) : prev).filter((toast) => type !== 'success' || toast.type !== 'error'),
       { id, message, type, actionLabel: action?.label && action.run ? action.label : undefined, onAction: action?.label ? action.run : undefined, key: action?.key }
     ])
   }, [])
@@ -677,9 +679,11 @@ export function App(): React.JSX.Element {
   // 文字を大きくしているときは、同じ幅でも入る量が減るので、文字の倍率で割った幅で決める
   const fontScaleFactor = Math.max(1, (Number.parseFloat(fontScale) || 100) / 100)
   const effectiveViewportWidth = viewportWidth / fontScaleFactor
+  // タスク一覧の幅は文字の倍率だけ広げる（150% で 264px のままだとタスク名が1〜2文字しか見えない）。窓の36%を超えては広げない
+  const listPaneWidth = Math.round(Math.min(paneWidths.list * fontScaleFactor, Math.max(paneWidths.list, viewportWidth * 0.36)))
   // カンバンは、表示する設定のパネルの幅を足して、4列が収まらなければ右から順に隠す
   const kanbanBoardWidth = (hide: { side: boolean; category: boolean }): number => viewportWidth
-    - (showTaskPane ? paneWidths.list : 0)
+    - (showTaskPane ? listPaneWidth : 0)
     - (showCategoryPane && !hide.category ? paneWidths.category : 0)
     - (showPlanRail && !hide.side ? paneWidths.side : 0)
   const isKanban = activeView === 'kanban'
@@ -781,7 +785,8 @@ export function App(): React.JSX.Element {
         }
 
         if (current.key === 'list') {
-          return { ...previous, list: clamp(current.startWidth + delta, 220, 460) }
+          // 覚えるのは文字の大きさ 100% のときの幅（表示は文字の倍率だけ広げる）
+          return { ...previous, list: clamp(current.startWidth + delta / current.scale, 220, 460) }
         }
 
         return { ...previous, side: clamp(current.startWidth - delta, SIDE_PANE_MIN_WIDTH, 720) }
@@ -1059,6 +1064,13 @@ export function App(): React.JSX.Element {
 
   // ほかの画面（チーム・報告など）からタスクを開いたときは、詳細にその画面へ戻るボタンを出す。タブで画面を変えたら消す
   const [detailReturnView, setDetailReturnView] = useState<CenterView | null>(null)
+  // チームの数（超過・遅れ・報告なし）から開いたときに、開いた画面へ一度だけ渡す絞り込み（画面は開いたときにだけ読む）
+  const [ganttInitialHealthFilter, setGanttInitialHealthFilter] = useState<'overdue' | 'behind' | null>(null)
+  const [reportFocusAssigneeId, setReportFocusAssigneeId] = useState<string | null>(null)
+  useEffect(() => {
+    if (activeView !== 'gantt' && ganttInitialHealthFilter) setGanttInitialHealthFilter(null)
+    if (activeView !== 'report' && reportFocusAssigneeId) setReportFocusAssigneeId(null)
+  }, [activeView, ganttInitialHealthFilter, reportFocusAssigneeId])
 
   // 上部のタブで画面を切り替える。表示中のタブをもう一度押しても、ほかの画面には移らない
   const toggleCenterView = useCallback((view: CenterView) => {
@@ -1144,9 +1156,9 @@ export function App(): React.JSX.Element {
     })
   }, [currentUser])
 
-  const beginResize = useCallback((key: PaneKey, startWidth: number, event: React.PointerEvent<HTMLDivElement>) => {
+  const beginResize = useCallback((key: PaneKey, startWidth: number, event: React.PointerEvent<HTMLDivElement>, scale = 1) => {
     event.preventDefault()
-    resizeRef.current = { key, startX: event.clientX, startWidth }
+    resizeRef.current = { key, startX: event.clientX, startWidth, scale }
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
   }, [])
@@ -1175,7 +1187,7 @@ export function App(): React.JSX.Element {
     const hidden = hiddenByLens || !matchesListFilters(first)
     const label = created.length === 1 ? `「${first.title}」を追加しました` : `${created.length}件のタスクを追加しました`
     if (!hidden) {
-      showToast(label, 'success', { label: '開く', run: () => openTodoDetailRef.current(first.id) })
+      showToast(label, 'success', { label: '開く', run: () => { openTodoDetailRef.current(first.id); window.setTimeout(requestTaskDetailFocus, 30) } })
       return
     }
     showToast(`${label}。今の絞り込みでは一覧に表示されません`, 'success', {
@@ -1187,6 +1199,7 @@ export function App(): React.JSX.Element {
         setSelectedAssigneeId(null)
         if (hiddenByLens) setScopeLens('personal')
         openTodoDetailRef.current(first.id)
+        window.setTimeout(requestTaskDetailFocus, 30)
       }
     })
   }
@@ -1302,11 +1315,12 @@ export function App(): React.JSX.Element {
   }, [])
 
   const handleArchive = useCallback(async (id: string) => {
-    const previousStatus = todos.find((todo) => todo.id === id)?.status
+    const archived = todos.find((todo) => todo.id === id)
+    const previousStatus = archived?.status
     await window.api.todoArchive(id)
     await loadTodos()
     if (selectedTodoId === id) setSelectedTodoId(null)
-    showToast('アーカイブしました', 'success', { label: '元に戻す', run: () => { void window.api.todoUnarchive(id, previousStatus === 'archived' ? 'active' : previousStatus).then(loadTodos).then(() => showToast('元の状態に戻しました')) } })
+    showToast(archived ? `「${archived.title}」をアーカイブしました` : 'アーカイブしました', 'success', { label: '元に戻す', run: () => { void window.api.todoUnarchive(id, previousStatus === 'archived' ? 'active' : previousStatus).then(loadTodos).then(() => showToast('元の状態に戻しました')) } })
   }, [loadTodos, selectedTodoId, showToast, todos])
 
   const handleUnarchive = useCallback(async (id: string) => {
@@ -1327,6 +1341,7 @@ export function App(): React.JSX.Element {
       ? (todo.progress > 0 ? 'active' : 'not_started')
       : 'done'
     // 繰り返しタスクの次回分はDB層が完了時に自動生成する
+    const changedAt = new Date().toISOString()
     try {
       await window.api.todoUpdate(todo.id, { status: newStatus })
     } catch (error) {
@@ -1338,11 +1353,20 @@ export function App(): React.JSX.Element {
     const recurrenceMessage = newStatus === 'done' ? recurrenceDoneMessage(todo) : recurrenceReopenMessage(todo)
     if (newStatus === 'done') {
       const previousStatus = todo.status
-      showToast(`「${todo.title}」を完了にしました${recurrenceMessage ? `。${recurrenceMessage}` : ''}`, 'success', {
+      // サブタスクが残ったまま完了にしたときは、知らせに件数を書き添える（止めはしない。元に戻すで戻せる）
+      let openSubTaskNote = ''
+      if (!todo.list_mode) {
+        try {
+          const openCount = (await window.api.subtaskGetByTodo(todo.id)).filter((subTask) => subTask.progress < 100).length
+          if (openCount > 0) openSubTaskNote = `（未完了のサブタスクが${openCount}件あります）`
+        } catch { /* 数えられなくても完了の知らせは出す */ }
+      }
+      showToast(`「${todo.title}」を完了にしました${openSubTaskNote}${recurrenceMessage ? `。${recurrenceMessage}` : ''}`, 'success', {
         label: '元に戻す',
+        key: `status:${todo.id}`,
         run: () => {
           void window.api.todoUpdate(todo.id, { status: previousStatus }).then(
-            () => { showToast(`「${todo.title}」の完了を取り消しました`); void loadTodos() },
+            () => { void loadTodos(); void notifyReopenedRecurrence(todo, changedAt, showToast, loadTodos) },
             (error: unknown) => showToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
           )
         }
@@ -1670,7 +1694,7 @@ export function App(): React.JSX.Element {
       // 開いた結果、ガントが狭くなりすぎたら知らせる（狭い窓では日付が数日分しか見えなくなり、気づきにくい）
       const chartWidth = viewportWidth
         - (next.category ? paneWidths.category : 0)
-        - (next.task ? paneWidths.list : 0)
+        - (next.task ? listPaneWidth : 0)
         - (next.side ? paneWidths.side : 0)
       if (next[key] && chartWidth < GANTT_COMFORT_WIDTH) {
         showToast('ガントの幅が狭くなり、日付が数日分しか見えません', 'info', {
@@ -1723,13 +1747,28 @@ export function App(): React.JSX.Element {
       }
     })),
     { key: 'add', group: '操作', label: 'タスクを追加', keywords: 'new add 新規', run: () => openQuickAdd() },
+    // ガントの表示の切り替え（ガントを開いてから切り替える）
+    ...([
+      { key: 'day', label: 'ガントを日表示にする', keywords: 'day 日 にち ひょうじ', request: { timeScale: 'day' } },
+      { key: 'week', label: 'ガントを週表示にする', keywords: 'week 週 しゅう ひょうじ', request: { timeScale: 'week' } },
+      { key: 'month', label: 'ガントを月表示にする', keywords: 'month 月 つき ひょうじ', request: { timeScale: 'month' } },
+      { key: 'year', label: 'ガントを年表示にする', keywords: 'year 年 ねん ひょうじ', request: { timeScale: 'year' } },
+      { key: 'category', label: 'ガントをカテゴリ別にする', keywords: 'category カテゴリ べつ', request: { groupMode: 'category' } },
+      { key: 'assignee', label: 'ガントを担当者別にする', keywords: 'assignee 担当 たんとう べつ', request: { groupMode: 'assignee' } }
+    ] satisfies Array<{ key: string; label: string; keywords: string; request: GanttViewRequest }>).map((item) => ({
+      key: `gantt:${item.key}`, group: '操作' as const, label: item.label, keywords: `ガント がんと gantt ${item.keywords}`,
+      run: () => {
+        if (activeView !== 'gantt') toggleCenterView('gantt')
+        window.setTimeout(() => window.dispatchEvent(new CustomEvent<GanttViewRequest>(GANTT_VIEW_EVENT, { detail: item.request })), 30)
+      }
+    })),
     // 開いているタスクへの操作（キーボードだけで「開く→進捗ログ→完了」まで進められるように）
     ...(selectedTodo && selectedTodo.status !== 'archived' ? [
       {
         key: 'task-focus', group: '操作' as const, label: `「${selectedTodo.title}」の詳細へ移る`, keywords: '詳細 移動 フォーカス',
         run: () => {
           if (activeView !== 'detail' && !(activeView === 'gantt' && ganttSidePanelMode === 'detail')) setActiveView('detail')
-          window.setTimeout(() => window.dispatchEvent(new CustomEvent(FOCUS_TASK_DETAIL_EVENT)), 30)
+          window.setTimeout(requestTaskDetailFocus, 30)
         }
       },
       {
@@ -1876,7 +1915,7 @@ export function App(): React.JSX.Element {
           style={{ ...resizeHandleStyle, display: categoryPaneVisible ? 'block' : 'none' }}
         />
 
-        <section id="hakobi-task-list" data-focus-region tabIndex={-1} aria-label="タスク一覧" style={{ width: paneWidths.list, flexShrink: 0, background: 'var(--c-0d1525)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: taskPaneVisible ? 'flex' : 'none', flexDirection: 'column', outline: 'none' }}>
+        <section id="hakobi-task-list" data-focus-region tabIndex={-1} aria-label="タスク一覧" style={{ width: listPaneWidth, flexShrink: 0, background: 'var(--c-0d1525)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: taskPaneVisible ? 'flex' : 'none', flexDirection: 'column', outline: 'none' }}>
           <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--slate-800)' }}>
             <input
               value={searchQuery}
@@ -2007,7 +2046,7 @@ export function App(): React.JSX.Element {
         </section>
 
         <div
-          onPointerDown={(event) => beginResize('list', paneWidths.list, event)}
+          onPointerDown={(event) => beginResize('list', paneWidths.list, event, listPaneWidth / paneWidths.list)}
           style={{ ...resizeHandleStyle, display: taskPaneVisible ? 'block' : 'none' }}
         />
 
@@ -2048,6 +2087,7 @@ export function App(): React.JSX.Element {
               groupByCategory={selectedCategoryId === null}
               textScale={(Number.parseFloat(fontScale) || 100) / 100}
               onShowToast={showToast}
+              initialHealthFilter={ganttInitialHealthFilter}
             />
           ) : activeView === 'kanban' ? (
             <KanbanView
@@ -2077,6 +2117,7 @@ export function App(): React.JSX.Element {
               onSelectTodo={openTodoDetail}
               onAddTodo={handleSelectedPlanAdd}
               onRemoveItem={handleSelectedPlanDelete}
+              onShowToast={showToast}
               onUpdateItem={handleSelectedPlanUpdate}
               onShiftItem={handleSelectedPlanShift}
               onShiftFollowing={handleSelectedPlanShiftFollowing}
@@ -2113,6 +2154,7 @@ export function App(): React.JSX.Element {
               onCreateSubTask={handleCreateSubTask}
               onShowToast={showToast}
               onCreateTodo={handleAdd}
+              initialUnreportedAssigneeId={reportFocusAssigneeId}
             />
           ) : activeView === 'todo' ? (
             <TodoListsView
@@ -2135,7 +2177,20 @@ export function App(): React.JSX.Element {
               onSelectMember={(userId) => {
                 setSelectedAssigneeId(userId)
                 toggleCenterView('gantt')
-                showToast(`${users.find((user) => user.id === userId)?.display_name ?? 'メンバー'}さんのタスクに絞り込みました。見出しの横のチップで解除できます`)
+                showToast(`${users.find((user) => user.id === userId)?.display_name ?? 'メンバー'}さんのタスクに絞り込みました。見出しの横のチップで解除できます`, 'info')
+              }}
+              onSelectMemberMetric={(userId, metric) => {
+                const name = users.find((user) => user.id === userId)?.display_name ?? 'メンバー'
+                if (metric === 'unreported') {
+                  // 報告タブはタスク一覧の担当の絞り込みを使わないので、報告タブの中でその人の「報告なし」だけを出す
+                  setReportFocusAssigneeId(userId)
+                  toggleCenterView('report')
+                  return
+                }
+                setSelectedAssigneeId(userId)
+                setGanttInitialHealthFilter(metric)
+                toggleCenterView('gantt')
+                showToast(`${name}さんの${metric === 'overdue' ? '期限超過' : '遅れている'}タスクを表示しています。見出しのチップで解除できます`, 'info')
               }}
               includePrivate={scopeLens === 'personal'}
             />
@@ -2156,6 +2211,7 @@ export function App(): React.JSX.Element {
               onAddToTodayPlan={handleAddToTodayPlan}
               onShowToast={showToast}
               onDirtyChange={setDetailDirty}
+              onArchive={handleArchive}
               returnTo={detailReturnView ? { label: CENTER_VIEW_LABELS[detailReturnView], onReturn: () => toggleCenterView(detailReturnView) } : null}
             />
           )}
@@ -2215,6 +2271,7 @@ export function App(): React.JSX.Element {
                         onAddToTodayPlan={handleAddToTodayPlan}
                         onShowToast={showToast}
                         onDirtyChange={setDetailDirty}
+                        onArchive={handleArchive}
                       />
                     ) : (
                       <TodayFlowRail
@@ -2266,7 +2323,7 @@ export function App(): React.JSX.Element {
           onOpenTodo={(id) => {
             openTodoDetail(id)
             // パレットを閉じてフォーカスが元の場所に戻ったあとで、詳細の題名へ移す
-            window.setTimeout(() => window.dispatchEvent(new CustomEvent(FOCUS_TASK_DETAIL_EVENT)), 30)
+            window.setTimeout(requestTaskDetailFocus, 30)
           }}
           onClose={() => setShowCommandPalette(false)}
         />

@@ -76,6 +76,19 @@ async function main() {
   const pending = cancelled.fetchDesktopTaskSnapshot(abort.signal)
   abort.abort()
   await assert.rejects(pending, /aborted/)
-  console.log('Web client regressions passed: clipboard fallback, abortable desktop refresh and bounded draft recovery account checks')
+  // 通信の失敗は日本語で、原因と対処を伝える（英語の「Failed to fetch」をそのまま出さない）
+  const offline = createClient()
+  offline.events.respond = () => { throw new TypeError('Failed to fetch') }
+  await assert.rejects(offline.api.todoGetAll(), /サーバーに接続できませんでした/)
+  // 応答のない書き込みは上限で打ち切り、保存されたかを確かめるよう伝える
+  const hung = createClient(true, true)
+  hung.events.respond = (_url, { signal }) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('aborted'))))
+  const write = hung.api.todoCreate({ title: 'x' })
+  const writeRejection = assert.rejects(write, /保存されたかを画面で確かめて/)
+  const writeDeadline = [...hung.events.timers.values()].find((timer) => timer.ms === 30000)
+  assert.ok(writeDeadline, 'writes have a default deadline')
+  writeDeadline.callback()
+  await writeRejection
+  console.log('Web client regressions passed: clipboard fallback, abortable desktop refresh and bounded draft recovery account checks, Japanese network errors and default write deadline')
 }
 main().catch((error) => { console.error(error); process.exitCode = 1 })

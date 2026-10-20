@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { Category, CreateTodoInput, PublicUser, Todo, TodoRecurrence } from '../types'
 import { AssigneePicker } from './AssigneePicker'
-import { formatShortDate, toDateKey } from '../lib/dueDate'
+import { formatShortDate, toDateKey } from '../lib/dueDate'
 import { TODO_RECURRENCE_OPTIONS, todoRecurrenceLabel } from '../lib/recurrence'
 
 interface Props {
@@ -130,6 +130,8 @@ export function QuickAddModal({
 
   const titles = title.split(/\r?\n/).map((value) => value.trim()).filter(Boolean)
   const canSubmit = titles.length > 0 && !isDateRangeInvalid && !submitting
+  const [titleRequiredShown, setTitleRequiredShown] = useState(false)
+  const titleMissing = titleRequiredShown && titles.length === 0
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -139,8 +141,19 @@ export function QuickAddModal({
     window.localStorage.setItem('quick-add-draft', JSON.stringify({ title, description, memo }))
   }, [description, memo, title])
 
+  // 追加の応答が遅いとき（不安定な LAN）は、待たずに閉じられるようにする。閉じても書いた内容は下書きに残る
+  const [slowSubmit, setSlowSubmit] = useState(false)
+  useEffect(() => {
+    if (!submitting) { setSlowSubmit(false); return }
+    const timer = window.setTimeout(() => setSlowSubmit(true), 8000)
+    return () => window.clearTimeout(timer)
+  }, [submitting])
+
   const requestClose = (): void => {
-    if (submittingRef.current) return
+    if (submittingRef.current) {
+      if (slowSubmit && window.confirm('追加の応答を待たずに閉じます。追加されたかどうかは、一覧で確かめてください。\n書いた内容は下書きに残ります。')) onClose()
+      return
+    }
     if ((title.trim() || description.trim() || memo.trim()) && !window.confirm('入力中の内容があります。閉じてもよいですか？\n下書きは次回まで保存されます。')) return
     onClose()
   }
@@ -154,7 +167,7 @@ export function QuickAddModal({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [description, memo, onClose, title])
+  }, [description, memo, onClose, title, slowSubmit])
 
   const applyTemplate = (name: string): void => {
     const template = templates.find((item) => item.name === name)
@@ -175,6 +188,12 @@ export function QuickAddModal({
   }
 
   const submit = async (): Promise<void> => {
+    // 名前が空のまま追加しようとしたら、黙って何もしないのではなく、欄の下に理由を出してフォーカスを戻す
+    if (titles.length === 0 && !submittingRef.current) {
+      setTitleRequiredShown(true)
+      inputRef.current?.focus()
+      return
+    }
     if (!canSubmit || submittingRef.current) return
 
     submittingRef.current = true
@@ -212,6 +231,8 @@ export function QuickAddModal({
     } catch (error) {
       const detail = error instanceof Error ? error.message : '追加できませんでした'
       onShowToast(created.length > 0 ? `${created.length}件は追加済みです。残りを再試行できます: ${detail}` : detail, 'error')
+      // 送信中は欄を無効にしていてフォーカスが外れるので、無効を解いたあとで名前の欄へ戻す（そのまま Enter で再試行できる）
+      window.setTimeout(() => inputRef.current?.focus(), 0)
     } finally {
       submittingRef.current = false
       setSubmitting(false)
@@ -275,7 +296,7 @@ export function QuickAddModal({
           )}
 
           <div>
-            <label htmlFor="quick-add-input" style={labelStyle}>タスク名</label>
+            <label htmlFor="quick-add-input" style={labelStyle}>タスク名 <span style={{ color: 'var(--text-subtle)', fontWeight: 400 }}>（必須。ほかの欄は空でも追加できます）</span></label>
             <textarea
               id="quick-add-input"
               ref={inputRef}
@@ -289,9 +310,13 @@ export function QuickAddModal({
                 }
               }}
               placeholder="例: 見積書を作る"
+              aria-required="true"
+              aria-invalid={titleMissing || undefined}
+              aria-describedby={titleMissing ? 'quick-add-title-error' : undefined}
               rows={titles.length > 1 ? Math.min(6, titles.length + 1) : 2}
               style={{ ...selectStyle, fontSize: '1rem', resize: 'vertical', lineHeight: 1.5 }}
             />
+            {titleMissing && <div id="quick-add-title-error" role="alert" style={{ marginTop: 4, fontSize: 'var(--font-control)', color: 'var(--red-300)', fontWeight: 600 }}>タスク名を入力してください</div>}
             {restoredDraft && (
               <div role="status" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem', color: 'var(--amber-300)' }}>
                 前回の書きかけを戻しました
@@ -518,7 +543,8 @@ export function QuickAddModal({
             </button>
             <button
               type="submit"
-              disabled={!canSubmit}
+              disabled={submitting || isDateRangeInvalid}
+              aria-disabled={!canSubmit || undefined}
               style={{
                 padding: '8px 16px',
                 background: canSubmit ? 'var(--blue-600)' : 'var(--slate-700)',
@@ -533,6 +559,12 @@ export function QuickAddModal({
             </button>
           </div>
           </fieldset>
+          {slowSubmit && (
+            <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 'var(--font-control)', color: 'var(--amber-200)' }}>
+              応答がまだありません。待っても終わらないときは、閉じて一覧で追加されたかを確かめてください。
+              <button type="button" onClick={requestClose} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--slate-600)', background: 'transparent', color: 'var(--slate-200)', cursor: 'pointer' }}>待たずに閉じる</button>
+            </div>
+          )}
         </form>
       </div>
     </div>
