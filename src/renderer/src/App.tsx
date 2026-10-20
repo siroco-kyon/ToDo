@@ -1991,6 +1991,8 @@ export function App(): React.JSX.Element {
             />
             {multiUser && (
               <select
+                aria-label="一覧の担当"
+                title="一覧・ガント・カンバン・計画を絞り込みます。報告の担当と進捗の投稿者は各画面で選びます"
                 value={selectedAssigneeId === null ? '__all__' : selectedAssigneeId === '' ? '__none__' : selectedAssigneeId}
                 onChange={(e) => {
                   const v = e.target.value
@@ -2009,12 +2011,12 @@ export function App(): React.JSX.Element {
                   boxSizing: 'border-box'
                 }}
               >
-                <option value="__all__">担当: 全員</option>
-                {currentUser && <option value={currentUser.id}>担当: 自分（{currentUser.display_name}）</option>}
-                <option value="__none__">担当: 未割り当て</option>
+                <option value="__all__">一覧の担当: 全員</option>
+                {currentUser && <option value={currentUser.id}>一覧の担当: 自分（{currentUser.display_name}）</option>}
+                <option value="__none__">一覧の担当: 未割り当て</option>
                 {users.filter((user) => user.id !== currentUser?.id).map((user) => (
                   <option key={user.id} value={user.id}>
-                    担当: {user.display_name}{user.is_active ? '' : '（無効）'}
+                    一覧の担当: {user.display_name}{user.is_active ? '' : '（無効）'}
                   </option>
                 ))}
               </select>

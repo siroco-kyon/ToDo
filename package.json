@@ -6,6 +6,7 @@
   "author": "",
   "private": true,
   "scripts": {
+    "test:ux": "node tests/ux-usability-electron.cjs",
     "test:installer": "node tests/hakobi-installer.cjs",
     "test:gantt-scroll": "node tests/gantt-scroll-regressions.cjs",
     "test:quality": "node tests/local-data-regressions.cjs && node tests/task-data-regressions.cjs && node tests/timer-sync-regressions.cjs && npm --prefix server run test:auth-import && node tests/server-deployment.cjs && node tests/hakobi-detail-electron.cjs",

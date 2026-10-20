@@ -1576,6 +1576,9 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
               {formatShortDate(range.from)}（{weekdayLabel(range.from)}）～ {formatShortDate(range.to)}（{weekdayLabel(range.to)}）
             </div>
             {listFilters}
+            {multiUser && <span title="左の一覧の担当とは別に、この画面の「報告の担当」で対象を選びます" style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>
+              報告の担当: {selectedUserId == null ? '全員' : users.find((user) => user.id === selectedUserId)?.display_name ?? '自分'}（一覧とは別）
+            </span>}
             <details style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>
               <summary style={{ cursor: 'pointer' }}>使い方</summary>
               <p style={{ marginTop: 8, lineHeight: 1.7 }}>定例用に、タスクごとの進捗と報告（進捗ログ・メモ）をまとめます。状態・日程・進捗・メモはその場で変更できます。報告の担当は、この画面の「報告の担当」で選びます。</p>

@@ -706,6 +706,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       <div style={headerStyle}>
         <div>
           <div style={{ fontSize: '1rem', color: 'var(--slate-50)', fontWeight: 800 }}>進捗タイムライン</div>
+          <div style={{ marginTop: 3, color: 'var(--text-subtle)', fontSize: 'var(--font-control)' }}>進捗ログと返信を時系列で確認します。{users.length > 0 && '投稿者はこの画面で選べます（一覧の担当とは別）。'}</div>
           <div style={{ marginTop: 3, color: 'var(--text-subtle)', fontSize: 'var(--font-control)' }}>
             {range.from === range.to ? range.from : `${range.from} ～ ${range.to}`} ・ 投稿 {visibleNotes.length}件 / 返信 {totalComments}件
             {unseenCount > 0 && <span style={{ color: 'var(--blue-300)', fontWeight: 700 }}> ・ 新着 {unseenCount}件</span>}
