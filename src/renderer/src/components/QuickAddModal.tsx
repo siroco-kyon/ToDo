@@ -75,7 +75,8 @@ export function QuickAddModal({
   defaultListMode = false,
   onAdd,
   onAdded,
-  onClose
+  onClose,
+  onShowToast
 }: Props): React.JSX.Element {
   const dialogRef = useRef<HTMLDivElement>(null)
   useDialogFocus(dialogRef)
@@ -115,6 +116,11 @@ export function QuickAddModal({
   const [listMode, setListMode] = useState(defaultListMode)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
   const submittingRef = useRef(false)
   // 「追加後も続けて入力する」は、続けて何件も入れる人のために端末に覚える
   const [keepOpen, setKeepOpen] = useState(() => {
@@ -231,11 +237,13 @@ export function QuickAddModal({
       else onClose()
     } catch (error) {
       const detail = error instanceof Error ? error.message : '追加できませんでした'
-      setSubmitError(created.length > 0
+      const message = created.length > 0
         ? remainingTitles.length > 0
           ? `${created.length}件は追加済みです。未追加の名前だけ残しています。${detail}`
           : `タスクは追加済みですが、テンプレートの項目をすべて追加できませんでした。詳細画面で項目を確認してください。${detail}`
-        : detail)
+        : detail
+      if (mountedRef.current) setSubmitError(message)
+      else onShowToast(`タスクの追加を完了できませんでした: ${message}`, 'error')
       // 送信中は欄を無効にしていてフォーカスが外れるので、無効を解いたあとで名前の欄へ戻す（そのまま Enter で再試行できる）
       window.setTimeout(() => inputRef.current?.focus(), 0)
     } finally {

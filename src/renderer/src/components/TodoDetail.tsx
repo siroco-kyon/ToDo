@@ -1205,7 +1205,7 @@ export function TodoDetail({
                 </>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                  <button disabled={todo.status === 'on_hold' || todo.status === 'archived'} aria-describedby={todo.status === 'on_hold' ? `timer-blocked-${todo.id}` : undefined} onClick={() => void onStartTimer(todo.id)} title="このタスクの作業時間を計り始めます（終わったら「停止」）" style={buttonStyle(todo.status === 'on_hold' || todo.status === 'archived' ? 'var(--slate-700)' : 'var(--green-400)', todo.status === 'on_hold' || todo.status === 'archived' ? 'var(--text-subtle)' : 'var(--black)')}>計測開始</button>
+                  <button disabled={todo.status === 'on_hold'} aria-describedby={todo.status === 'on_hold' ? `timer-blocked-${todo.id}` : undefined} onClick={() => void onStartTimer(todo.id)} title="このタスクの作業時間を計り始めます（終わったら「停止」）" style={buttonStyle(todo.status === 'on_hold' ? 'var(--slate-700)' : 'var(--green-400)', todo.status === 'on_hold' ? 'var(--text-subtle)' : 'var(--black)')}>計測開始</button>
                   {todo.status === 'on_hold' && <span id={`timer-blocked-${todo.id}`} style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)', maxWidth: '20rem' }}>保留中です。上の「進行中に戻す」から再開すると計測できます。</span>}
                 </div>
               )}

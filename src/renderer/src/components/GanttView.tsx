@@ -1154,12 +1154,12 @@ function GanttViewContent({
     return () => observer.disconnect()
   })
   const displayedLeftColumnWidths = useMemo<GanttLeftColumnWidths>(() => {
-    const scaled = leftColumnScale === 1
+    let scaled = leftColumnScale === 1
       ? leftColumnWidths
       : Object.fromEntries(Object.entries(leftColumnWidths).map(([key, width]) => [key, Math.round(width * leftColumnScale)])) as unknown as GanttLeftColumnWidths
     if (chartAreaWidth <= 0) return scaled
     if (!hasCustomColumnWidths && chartAreaWidth >= WIDE_CHART_WIDTH) {
-      return { ...scaled, title: Math.max(scaled.title, Math.round(WIDE_TITLE_COLUMN_WIDTH * leftColumnScale)) }
+      scaled = { ...scaled, title: Math.max(scaled.title, Math.round(WIDE_TITLE_COLUMN_WIDTH * leftColumnScale)) }
     }
     const overflow = leftTableWidthFor(scaled, visibleLeftColumns) - Math.round(chartAreaWidth * 0.4)
     if (overflow <= 0) return scaled
@@ -1171,8 +1171,10 @@ function GanttViewContent({
   const leftTableWidth = useMemo(() => leftTableWidthFor(displayedLeftColumnWidths, visibleLeftColumns), [displayedLeftColumnWidths, visibleLeftColumns])
   // 時間軸を残すための40%制限を、読み上げる最大値とキー操作にも反映する。
   const maxTitleColumnWidth = chartAreaWidth > 0
-    ? Math.min(leftColumnDef('title').max, Math.max(150, Math.floor((Math.round(chartAreaWidth * 0.4) - leftTableWidth + displayedLeftColumnWidths.title) / leftColumnScale)))
+    ? Math.min(leftColumnDef('title').max, Math.max(150, Math.round((Math.round(chartAreaWidth * 0.4) - leftTableWidth + displayedLeftColumnWidths.title) / leftColumnScale)))
     : leftColumnDef('title').max
+  const minTitleColumnWidth = chartAreaWidth > 0 && leftTableWidthFor({ ...displayedLeftColumnWidths, title: Math.round(leftColumnDef('title').min * leftColumnScale) }, visibleLeftColumns) > Math.round(chartAreaWidth * 0.4)
+    ? 150 : leftColumnDef('title').min
   const visibleLeftColumnDefs = useMemo(() => visibleLeftColumnDefsFor(visibleLeftColumns), [visibleLeftColumns])
   // 行の左の表は5つの欄を同じ順で並べている。出さない列は CSS で隠し、残りが表示中の列の幅に入る
   const leftGridAttributes = useMemo(() => ({
@@ -3813,7 +3815,7 @@ function GanttViewContent({
                           tabIndex={0}
                           aria-orientation="vertical"
                           aria-label={`${column.label}列幅を変更`}
-                          aria-valuemin={column.min}
+                          aria-valuemin={column.key === 'title' ? minTitleColumnWidth : column.min}
                           aria-valuemax={column.key === 'title' ? maxTitleColumnWidth : column.max}
                           aria-valuenow={Math.round(displayedLeftColumnWidths[column.key] / leftColumnScale)}
                           aria-valuetext={`${Math.round(displayedLeftColumnWidths[column.key] / leftColumnScale)}。左右キーで調整、Shiftで大きく調整`}
@@ -3824,8 +3826,9 @@ function GanttViewContent({
                             event.stopPropagation()
                             const current = Math.round(displayedLeftColumnWidths[column.key] / leftColumnScale)
                             const max = column.key === 'title' ? maxTitleColumnWidth : column.max
-                            const width = event.key === 'Home' ? column.min : event.key === 'End' ? max
-                              : Math.min(max, clampLeftColumnWidth(column.key, current + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 40 : 10)))
+                            const min = column.key === 'title' ? minTitleColumnWidth : column.min
+                            const width = event.key === 'Home' ? min : event.key === 'End' ? max
+                              : Math.max(min, Math.min(max, clampLeftColumnWidth(column.key, current + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 40 : 10))))
                             setHasCustomColumnWidths(true)
                             try { window.localStorage.setItem(GANTT_COLUMNS_CUSTOMIZED_STORAGE_KEY, '1') } catch { /* 保存できなくても幅は変える */ }
                             setLeftColumnWidths((previous) => ({ ...previous, [column.key]: width }))
