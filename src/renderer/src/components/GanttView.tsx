@@ -4,6 +4,7 @@ import { discussionBadgeStyle } from './ProgressNoteThread'
 import { buildChecklistSummaries, checklistBadgeText } from '../lib/todoList'
 import { autoScrollNearEdge, dropPositionOf, moveIdBy, moveIdTo, type DropPosition } from '../lib/reorder'
 import { dataInk } from '../lib/theme'
+import { GANTT_VIEW_EVENT, type GanttViewRequest } from '../lib/appEvents'
 import { formatShortDate } from '../lib/dueDate'
 import { BEHIND_THRESHOLD_OPTIONS, DEFAULT_BEHIND_THRESHOLD_DAYS, GANTT_VIEW_SETTINGS_STORAGE_KEY, behindDaysLabel, calculateSchedule, isBehindSchedule, isScheduleTracked, type ScheduleOptions } from '../lib/scheduleHealth'
 
@@ -1039,6 +1040,15 @@ function GanttViewContent({
   const [manualEnd, setManualEnd] = useState(initialSettings.manualEnd)
   const [manualPreset, setManualPreset] = useState<RangePreset>(initialSettings.manualPreset)
   const [controlsCollapsed, setControlsCollapsed] = useState(initialSettings.controlsCollapsed)
+  const settingsToggleRef = useRef<HTMLButtonElement>(null)
+  const settingsCloseRef = useRef<HTMLButtonElement>(null)
+  // 「表示設定」を押して開いたときは、中の「閉じる」へフォーカスを移す（キーボードで続けて中を操作できるように）
+  const settingsOpenedByUserRef = useRef(false)
+  useEffect(() => {
+    if (controlsCollapsed || !settingsOpenedByUserRef.current) return
+    settingsOpenedByUserRef.current = false
+    settingsCloseRef.current?.focus()
+  }, [controlsCollapsed])
   // 見出しの「期限超過」「遅れ」を押したときの絞り込み（覚えない）
   const [healthFilter, setHealthFilter] = useState<'overdue' | 'behind' | null>(initialHealthFilter)
   const [selectedCategoryKeys, setSelectedCategoryKeys] = useState<CategoryFilterKey[]>(initialSettings.selectedCategoryKeys)
@@ -1072,6 +1082,16 @@ function GanttViewContent({
   const [newSubTaskDraft, setNewSubTaskDraft] = useState<NewSubTaskDraft>({ title: '', startDate: '', dueDate: '' })
   const [creatingSubTask, setCreatingSubTask] = useState(false)
   const [groupMode, setGroupMode] = useState<GroupMode>(initialSettings.groupMode)
+  // Ctrl+K からの表示の切り替え
+  useEffect(() => {
+    const handle = (event: Event): void => {
+      const request = (event as CustomEvent<GanttViewRequest>).detail
+      if (request?.timeScale) setTimeScale(request.timeScale)
+      if (request?.groupMode) setGroupMode(request.groupMode)
+    }
+    window.addEventListener(GANTT_VIEW_EVENT, handle)
+    return () => window.removeEventListener(GANTT_VIEW_EVENT, handle)
+  }, [])
   const [behindThresholdDays, setBehindThresholdDays] = useState(initialSettings.behindThresholdDays)
   const [workingDaysOnly, setWorkingDaysOnly] = useState(initialSettings.workingDaysOnly)
   // 祝日（YYYY-MM-DD → 名前）。ライブラリが大きいので表示後に読み込む
@@ -2338,7 +2358,12 @@ function GanttViewContent({
   }, [lastUndoEntry, performUndo, undoPending])
 
   const timelineStart = startOfUnit(normalizedRange.start, timeScale)
-  const timelineEnd = startOfUnit(normalizedRange.end, timeScale)
+  // 自動の範囲で時間軸がガントの幅より短いとき（月・年表示で予定が少ないとき）は、右を空の単位で埋める。
+  // 以前は右側が何もない灰色のまま残り、表示が途中で切れたように見えていた
+  const dataTimelineEnd = startOfUnit(normalizedRange.end, timeScale)
+  const dataUnits = diffUnits(dataTimelineEnd, timelineStart, timeScale) + 1
+  const fillUnits = rangeMode === 'auto' && chartAreaWidth > 0 ? Math.ceil(Math.max(chartAreaWidth - leftTableWidth, 0) / unitWidth) : 0
+  const timelineEnd = dataUnits < fillUnits ? addUnits(timelineStart, timeScale, fillUnits - 1) : dataTimelineEnd
   const totalUnits = diffUnits(timelineEnd, timelineStart, timeScale) + 1
   const timelineUnits = useMemo(() => (
     Array.from({ length: totalUnits }, (_, index) => {
@@ -3331,7 +3356,7 @@ function GanttViewContent({
           >
             {reorderPending ? '並べ替えを保存中...' : isReorderMode ? '並べ替え完了' : '並べ替え'}
           </button>
-          <button onClick={() => setControlsCollapsed((previous) => !previous)} aria-expanded={!controlsCollapsed} style={headerActionButtonStyle}>
+          <button ref={settingsToggleRef} onClick={() => { settingsOpenedByUserRef.current = controlsCollapsed; setControlsCollapsed((previous) => !previous) }} aria-expanded={!controlsCollapsed} aria-controls="gantt-view-settings" style={headerActionButtonStyle}>
             表示設定
           </button>
           {!standalone && onOpenSeparateWindow && (
@@ -3345,10 +3370,23 @@ function GanttViewContent({
       {reorderFeedback && <div role="alert" style={{ fontSize: 'var(--font-caption)', color: 'var(--red-300)' }}>{reorderFeedback}</div>}
 
       {!controlsCollapsed && (
-        <div style={settingsPanelStyle}>
+        // 開いたら中へフォーカスを移し、Esc で閉じて「表示設定」のボタンへ戻す（ほかの小窓と同じ動き）
+        <div
+          id="gantt-view-settings"
+          role="region"
+          aria-label="ガントの表示設定"
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
+            event.preventDefault()
+            event.stopPropagation()
+            setControlsCollapsed(true)
+            window.requestAnimationFrame(() => settingsToggleRef.current?.focus())
+          }}
+          style={settingsPanelStyle}
+        >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <div style={{ fontSize: '0.86rem', color: 'var(--slate-50)', fontWeight: 700 }}>表示設定</div>
-            <button onClick={() => setControlsCollapsed(true)} style={floatingCloseButtonStyle}>閉じる</button>
+            <h2 style={{ margin: 0, fontSize: '0.86rem', color: 'var(--slate-50)', fontWeight: 700 }}>表示設定</h2>
+            <button ref={settingsCloseRef} onClick={() => { setControlsCollapsed(true); window.requestAnimationFrame(() => settingsToggleRef.current?.focus()) }} style={floatingCloseButtonStyle}>閉じる</button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>

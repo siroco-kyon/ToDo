@@ -22,3 +22,10 @@ export function consumeTaskDetailFocus(): boolean {
   pendingTaskDetailFocusAt = 0
   return pending
 }
+
+/** Ctrl+K からガントの表示（日・週・月・年、カテゴリ別・担当者別）を切り替える合図。detail に変えたい値を入れる */
+export const GANTT_VIEW_EVENT = 'hakobi:gantt-view'
+export interface GanttViewRequest {
+  timeScale?: 'day' | 'week' | 'month' | 'year'
+  groupMode?: 'category' | 'assignee'
+}

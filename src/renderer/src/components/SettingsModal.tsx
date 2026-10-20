@@ -819,11 +819,13 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
             ] as { key: keyof MdTemplates; label: string; hint: string }[]
           ).map(({ key, label, hint }) => (
             <div key={key} style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: '0.78rem', color: 'var(--slate-400)', display: 'block', marginBottom: 2 }}>
+              <label htmlFor={`settings-${key}`} style={{ fontSize: '0.78rem', color: 'var(--slate-400)', display: 'block', marginBottom: 2 }}>
                 {label} <span style={{ color: 'var(--text-subtle)', fontWeight: 'normal' }}>— {hint}</span>
               </label>
               <div style={{ display: 'flex', gap: 8 }}>
                 <textarea
+                  id={`settings-${key}`}
+                  aria-label={`Markdownテンプレートの${label}`}
                   value={mdTemplates[key]}
                   onChange={(e) => setMdTemplates((prev) => ({ ...prev, [key]: e.target.value }))}
                   rows={2}
@@ -832,8 +834,9 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
                 <button
                   onClick={async () => {
                     await window.api.settingsSet(key, mdTemplates[key])
-                    onShowToast('保存しました')
+                    onShowToast(`Markdownテンプレートの${label}を保存しました`)
                   }}
+                  aria-label={`${label}を保存`}
                   style={{ ...secondaryBtn, alignSelf: 'flex-start' }}
                 >保存</button>
               </div>
@@ -949,7 +952,7 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
 // ─── スタイル定数 ─────────────────────────────────────────────
 
 const sectionHead: React.CSSProperties = {
-  fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase',
+  fontSize: '0.72rem', color: 'var(--text-subtle)',
   letterSpacing: '0.08em', fontWeight: 'bold'
 }
 

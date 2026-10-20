@@ -58,6 +58,7 @@ const SHOTS = [
   { name: 'gantt-1920', view: 'gantt', width: 1920, height: 1080 },
   { name: 'gantt-1024', view: 'gantt', width: 1024, height: 768 },
   { name: 'gantt-800', view: 'gantt', width: 800, height: 700 },
+  { name: 'gantt-month', view: 'gantt', width: 1440, height: 900, steps: "__ux.click('月', 'button[aria-pressed]'); await __ux.sleep(600)" },
   { name: 'kanban', view: 'kanban', width: 1440, height: 900 },
   { name: 'kanban-1024', view: 'kanban', width: 1024, height: 768 },
   { name: 'detail', view: 'detail', taskTitle: '試作機の設計レビュー', width: 1440, height: 900 },

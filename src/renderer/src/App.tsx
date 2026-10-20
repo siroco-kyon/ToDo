@@ -26,7 +26,7 @@ import { recurrenceDoneMessage, recurrenceReopenMessage } from './lib/recurrence
 import { notifyReopenedRecurrence } from './lib/recurrenceUndo'
 import { elapsedSecondsSince } from './hooks/useElapsedSeconds'
 import { formatShortDate, shiftDateKey } from './lib/dueDate'
-import { FOCUS_PROGRESS_LOG_EVENT, requestTaskDetailFocus } from './lib/appEvents'
+import { FOCUS_PROGRESS_LOG_EVENT, GANTT_VIEW_EVENT, requestTaskDetailFocus, type GanttViewRequest } from './lib/appEvents'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 
 // 最初に開くガント・タスク一覧・詳細以外の画面と、設定などの小窓は、開いたときに読み込む（起動を軽くする）
@@ -1746,6 +1746,21 @@ export function App(): React.JSX.Element {
       }
     })),
     { key: 'add', group: '操作', label: 'タスクを追加', keywords: 'new add 新規', run: () => openQuickAdd() },
+    // ガントの表示の切り替え（ガントを開いてから切り替える）
+    ...([
+      { key: 'day', label: 'ガントを日表示にする', keywords: 'day 日 にち ひょうじ', request: { timeScale: 'day' } },
+      { key: 'week', label: 'ガントを週表示にする', keywords: 'week 週 しゅう ひょうじ', request: { timeScale: 'week' } },
+      { key: 'month', label: 'ガントを月表示にする', keywords: 'month 月 つき ひょうじ', request: { timeScale: 'month' } },
+      { key: 'year', label: 'ガントを年表示にする', keywords: 'year 年 ねん ひょうじ', request: { timeScale: 'year' } },
+      { key: 'category', label: 'ガントをカテゴリ別にする', keywords: 'category カテゴリ べつ', request: { groupMode: 'category' } },
+      { key: 'assignee', label: 'ガントを担当者別にする', keywords: 'assignee 担当 たんとう べつ', request: { groupMode: 'assignee' } }
+    ] satisfies Array<{ key: string; label: string; keywords: string; request: GanttViewRequest }>).map((item) => ({
+      key: `gantt:${item.key}`, group: '操作' as const, label: item.label, keywords: `ガント がんと gantt ${item.keywords}`,
+      run: () => {
+        if (activeView !== 'gantt') toggleCenterView('gantt')
+        window.setTimeout(() => window.dispatchEvent(new CustomEvent<GanttViewRequest>(GANTT_VIEW_EVENT, { detail: item.request })), 30)
+      }
+    })),
     // 開いているタスクへの操作（キーボードだけで「開く→進捗ログ→完了」まで進められるように）
     ...(selectedTodo && selectedTodo.status !== 'archived' ? [
       {
