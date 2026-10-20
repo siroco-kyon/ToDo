@@ -118,12 +118,12 @@ function KanbanCard({
       }}
       style={{
         background: 'var(--slate-900)',
-        border: `1px solid ${isRunning ? 'var(--green-900)' : 'var(--slate-800)'}`,
+        // 集計外のカードは薄くせず（文字が読みにくくなる）、枠を点線にして区別する
+        border: `1px ${isPrivate ? 'dashed' : 'solid'} ${isRunning ? 'var(--green-900)' : isPrivate ? 'var(--slate-600)' : 'var(--slate-800)'}`,
         borderLeft: `3px solid ${isRunning ? 'var(--green-400)' : 'transparent'}`,
         borderRadius: 8,
         padding: '8px 10px',
-        cursor: 'grab',
-        opacity: isPrivate ? 0.78 : 1
+        cursor: 'grab'
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, flexWrap: 'wrap' }}>

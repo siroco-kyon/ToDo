@@ -81,6 +81,9 @@ const SHOTS = [
   { name: 'quickadd-1024', view: 'gantt', width: 1024, height: 768,
     steps: "__ux.click('タスクを追加', 'button'); await __ux.sleep(800)" },
   { name: 'detail-large-font', view: 'detail', taskTitle: '試作機の設計レビュー', width: 1280, height: 800, fontScale: '150%' },
+  { name: 'plan-large-font', view: 'plan', width: 1280, height: 800, fontScale: '150%', theme: 'light' },
+  { name: 'kanban-large-font', view: 'kanban', width: 1280, height: 800, fontScale: '150%', theme: 'light' },
+  { name: 'gantt-large-font', view: 'gantt', width: 1280, height: 800, fontScale: '150%', theme: 'light' },
   { name: 'kanban-light', view: 'kanban', width: 1440, height: 900, theme: 'light' },
   { name: 'palette', view: 'gantt', width: 1440, height: 900,
     steps: "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })); await __ux.sleep(600)" }

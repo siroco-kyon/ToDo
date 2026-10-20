@@ -325,7 +325,7 @@ export function App(): React.JSX.Element {
       selectedPlanRequestRef.current++
     }
   }, [])
-  const resizeRef = useRef<{ key: PaneKey; startX: number; startWidth: number } | null>(null)
+  const resizeRef = useRef<{ key: PaneKey; startX: number; startWidth: number; scale: number } | null>(null)
 
   // action.key が同じ知らせは、新しいもので置き換える（進捗を続けて変えたときに知らせが積み重ならないように）
   // ボタンのない知らせにも key を付けられる（「元に戻しました」で、前の知らせを置き換えるときなど）
@@ -677,9 +677,11 @@ export function App(): React.JSX.Element {
   // 文字を大きくしているときは、同じ幅でも入る量が減るので、文字の倍率で割った幅で決める
   const fontScaleFactor = Math.max(1, (Number.parseFloat(fontScale) || 100) / 100)
   const effectiveViewportWidth = viewportWidth / fontScaleFactor
+  // タスク一覧の幅は文字の倍率だけ広げる（150% で 264px のままだとタスク名が1〜2文字しか見えない）。窓の36%を超えては広げない
+  const listPaneWidth = Math.round(Math.min(paneWidths.list * fontScaleFactor, Math.max(paneWidths.list, viewportWidth * 0.36)))
   // カンバンは、表示する設定のパネルの幅を足して、4列が収まらなければ右から順に隠す
   const kanbanBoardWidth = (hide: { side: boolean; category: boolean }): number => viewportWidth
-    - (showTaskPane ? paneWidths.list : 0)
+    - (showTaskPane ? listPaneWidth : 0)
     - (showCategoryPane && !hide.category ? paneWidths.category : 0)
     - (showPlanRail && !hide.side ? paneWidths.side : 0)
   const isKanban = activeView === 'kanban'
@@ -781,7 +783,8 @@ export function App(): React.JSX.Element {
         }
 
         if (current.key === 'list') {
-          return { ...previous, list: clamp(current.startWidth + delta, 220, 460) }
+          // 覚えるのは文字の大きさ 100% のときの幅（表示は文字の倍率だけ広げる）
+          return { ...previous, list: clamp(current.startWidth + delta / current.scale, 220, 460) }
         }
 
         return { ...previous, side: clamp(current.startWidth - delta, SIDE_PANE_MIN_WIDTH, 720) }
@@ -1144,9 +1147,9 @@ export function App(): React.JSX.Element {
     })
   }, [currentUser])
 
-  const beginResize = useCallback((key: PaneKey, startWidth: number, event: React.PointerEvent<HTMLDivElement>) => {
+  const beginResize = useCallback((key: PaneKey, startWidth: number, event: React.PointerEvent<HTMLDivElement>, scale = 1) => {
     event.preventDefault()
-    resizeRef.current = { key, startX: event.clientX, startWidth }
+    resizeRef.current = { key, startX: event.clientX, startWidth, scale }
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
   }, [])
@@ -1678,7 +1681,7 @@ export function App(): React.JSX.Element {
       // 開いた結果、ガントが狭くなりすぎたら知らせる（狭い窓では日付が数日分しか見えなくなり、気づきにくい）
       const chartWidth = viewportWidth
         - (next.category ? paneWidths.category : 0)
-        - (next.task ? paneWidths.list : 0)
+        - (next.task ? listPaneWidth : 0)
         - (next.side ? paneWidths.side : 0)
       if (next[key] && chartWidth < GANTT_COMFORT_WIDTH) {
         showToast('ガントの幅が狭くなり、日付が数日分しか見えません', 'info', {
@@ -1884,7 +1887,7 @@ export function App(): React.JSX.Element {
           style={{ ...resizeHandleStyle, display: categoryPaneVisible ? 'block' : 'none' }}
         />
 
-        <section id="hakobi-task-list" data-focus-region tabIndex={-1} aria-label="タスク一覧" style={{ width: paneWidths.list, flexShrink: 0, background: 'var(--c-0d1525)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: taskPaneVisible ? 'flex' : 'none', flexDirection: 'column', outline: 'none' }}>
+        <section id="hakobi-task-list" data-focus-region tabIndex={-1} aria-label="タスク一覧" style={{ width: listPaneWidth, flexShrink: 0, background: 'var(--c-0d1525)', borderRight: '1px solid var(--slate-800)', overflow: 'hidden', display: taskPaneVisible ? 'flex' : 'none', flexDirection: 'column', outline: 'none' }}>
           <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--slate-800)' }}>
             <input
               value={searchQuery}
@@ -2015,7 +2018,7 @@ export function App(): React.JSX.Element {
         </section>
 
         <div
-          onPointerDown={(event) => beginResize('list', paneWidths.list, event)}
+          onPointerDown={(event) => beginResize('list', paneWidths.list, event, listPaneWidth / paneWidths.list)}
           style={{ ...resizeHandleStyle, display: taskPaneVisible ? 'block' : 'none' }}
         />
 

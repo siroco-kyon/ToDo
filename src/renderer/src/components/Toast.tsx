@@ -116,6 +116,9 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: nu
       }}
       style={{
       padding: '10px 16px',
+      // 文が折り返しても、「元に戻す」「×」は右に並べたままにする（× だけ次の行に落ちない）
+      display: 'flex',
+      alignItems: 'center',
       // 長い文は折り返す（横に長く伸びて、画面の中ほどのメニューやボタンを覆わないように）
       maxWidth: 'min(28rem, calc(100vw - 40px))',
       boxSizing: 'border-box',
@@ -126,9 +129,9 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: nu
       boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
       pointerEvents: 'auto', userSelect: 'none'
     }}>
-      <span>{toast.type === 'success' ? '✓ ' : toast.type === 'info' ? 'ⓘ ' : '✗ '}{toast.message}</span>
-      {toast.actionLabel && toast.onAction && <button onClick={() => { toast.onAction?.(); removeAndReturn() }} style={{ marginLeft: 12, border: '1px solid currentColor', borderRadius: 6, background: 'transparent', color: 'inherit', cursor: 'pointer', padding: '3px 7px' }}>{toast.actionLabel}</button>}
-      <button onClick={removeAndReturn} aria-label="この知らせを閉じる" style={{ marginLeft: 8, minWidth: '1.75rem', minHeight: '1.75rem', border: 0, borderRadius: 6, background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: '1rem' }}>×</button>
+      <span style={{ flex: '1 1 auto', minWidth: 0 }}>{toast.type === 'success' ? '✓ ' : toast.type === 'info' ? 'ⓘ ' : '✗ '}{toast.message}</span>
+      {toast.actionLabel && toast.onAction && <button onClick={() => { toast.onAction?.(); removeAndReturn() }} style={{ marginLeft: 12, flexShrink: 0, whiteSpace: 'nowrap', border: '1px solid currentColor', borderRadius: 6, background: 'transparent', color: 'inherit', cursor: 'pointer', padding: '3px 7px' }}>{toast.actionLabel}</button>}
+      <button onClick={removeAndReturn} aria-label="この知らせを閉じる" style={{ marginLeft: 8, flexShrink: 0, minWidth: '1.75rem', minHeight: '1.75rem', border: 0, borderRadius: 6, background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: '1rem' }}>×</button>
     </div>
   )
 }

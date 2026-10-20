@@ -174,7 +174,14 @@ async function runElectron() {
     assert.equal(await js('document.activeElement===document.querySelector("input[aria-label=タスク名]")'),true,'Focus returns to the title')
     assert.equal(await js('document.getElementById("detail-title-error").textContent'),'タスク名を入力してください')
     assert.equal((await js('window.api.todoGetAll()')).find(t=>t.id===task.id).title,'UX保存済み','Empty title is not saved')
-    console.log('HAKOBI UX checks passed: visible save, Ctrl+Enter, yearly preserved, record error/retry/order, column add failure/retention/single request/retry/focus, radio arrows, narrow plan menu, collapsible unscheduled, inline title error, keyboard plan placement, list roving tab')
+    // 文字を大きくすると、タスク一覧の幅も広がり（窓の36%まで）、入りきらないタブには「›」が出る
+    await js('(async()=>{localStorage.setItem("app-font-scale","150%");await window.api.settingsSet("fontScale","150%")})()')
+    await main.loadURL(fixture.origin+'/?view=detail')
+    await until('getComputedStyle(document.documentElement).fontSize==="24px"&&document.querySelectorAll("[data-todo-row]").length>0','Large font applied')
+    assert.ok(await js('document.getElementById("hakobi-task-list").getBoundingClientRect().width')>=360,'List widens with the font scale')
+    await until('Boolean(document.querySelector(".hakobi-tabs-scroll-right"))','Overflowing tabs show a scroll hint')
+    await js('(async()=>{localStorage.setItem("app-font-scale","100%");await window.api.settingsSet("fontScale","100%")})()')
+    console.log('HAKOBI UX checks passed: visible save, Ctrl+Enter, yearly preserved, record error/retry/order, column add failure/retention/single request/retry/focus, radio arrows, narrow plan menu, collapsible unscheduled, inline title error, keyboard plan placement, list roving tab, large-font list width and tab hint')
     main.destroy(); app.exit(0)
   } catch(error) {
     console.error(error.stack||error.message)

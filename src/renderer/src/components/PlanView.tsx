@@ -82,6 +82,8 @@ const MAX_LANES = 2
 const COMPACT_BLOCK_THRESHOLD = 64
 /** これより狭いブロックは、操作ボタンを「⋯」にまとめる（1行に収まらずタスク名を隠すため） */
 const NARROW_BLOCK_WIDTH = 400
+/** 補足の行まで出せるブロックの高さ（文字の大きさ 100% のとき） */
+const META_BLOCK_THRESHOLD = 84
 const EDGE_SCROLL_THRESHOLD = 72
 const EDGE_SCROLL_PIXELS = 24
 const AUTO_SCROLL_LEAD_MINUTES = 60
@@ -702,6 +704,8 @@ export function PlanView({
   const timelineRef = useRef<HTMLDivElement>(null)
   // ブロックが狭いと、操作ボタンが2段になってタスク名が隠れる。狭いブロックでは −15・+15 以外を「⋯」にまとめる
   const [timelineWidth, setTimelineWidth] = useState(0)
+  // 文字の大きさの設定（ルートの文字の px / 16）。ブロックの中身を詰める基準に使う
+  const [textScale, setTextScale] = useState(1)
   const [openMenuItemId, setOpenMenuItemId] = useState<string | null>(null)
   // メニューの外を押したら閉じる（details は外を押しても閉じないため）
   useEffect(() => {
@@ -718,7 +722,10 @@ export function PlanView({
   useEffect(() => {
     const element = timelineRef.current
     if (!element || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(([entry]) => setTimelineWidth(entry.contentRect.width))
+    const observer = new ResizeObserver(([entry]) => {
+      setTimelineWidth(entry.contentRect.width)
+      setTextScale(Math.max(1, (Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) / 16))
+    })
     observer.observe(element)
     return () => observer.disconnect()
   }, [])
@@ -1348,19 +1355,23 @@ export function PlanView({
                         zIndex: 3
                       }}
                     >
+                      {/* 印は時刻の列（左の余白）に出す。時間割の中に出すと、予定のタスク名や時刻を隠してしまう */}
                       <span
+                        title="現在時刻"
                         style={{
                           position: 'absolute',
-                          top: -10,
-                          left: 10,
+                          top: '-0.7em',
+                          right: 'calc(100% + 4px)',
                           fontSize: '0.68rem',
+                          lineHeight: 1.2,
+                          whiteSpace: 'nowrap',
                           color: 'var(--orange-200)',
                           background: 'var(--orange-900)',
                           borderRadius: 999,
-                          padding: '2px 8px'
+                          padding: '1px 6px'
                         }}
                       >
-                        現在時刻
+                        今
                       </span>
                     </div>
                   )}
@@ -1459,9 +1470,12 @@ export function PlanView({
                     const categoryColor = item.category_color ?? 'var(--indigo-500)'
                     const dueLabel = formatDueLabel(item.due_date, date)
                     const blockHeight = item.durationMinutes * PIXELS_PER_MINUTE
-                    const compactBlock = blockHeight < COMPACT_BLOCK_THRESHOLD
+                    // 時間割の高さは文字の大きさによらず同じなので、文字を大きくしているときは早めに詰める
+                    const compactBlock = blockHeight < COMPACT_BLOCK_THRESHOLD * textScale
                     const blockWidth = (timelineWidth - BLOCK_GAP * (placement.cols - 1)) / Math.max(1, placement.cols)
-                    const narrowBlocks = timelineWidth > 0 && blockWidth < NARROW_BLOCK_WIDTH
+                    const narrowBlocks = timelineWidth > 0 && blockWidth < NARROW_BLOCK_WIDTH * textScale
+                    // 補足の行（カテゴリ・期限・長さ）は、時刻の行とタスク名の下に収まるときだけ出す
+                    const showBlockMeta = !compactBlock && blockHeight >= META_BLOCK_THRESHOLD * textScale
 
                     return (
                       <div
@@ -1659,7 +1673,7 @@ export function PlanView({
                             {item.status === 'on_hold' && <span style={{ color: 'var(--purple-300)' }}>保留中 · </span>}{item.title}
                           </button>
 
-                          {!compactBlock && (
+                          {showBlockMeta && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: 'var(--slate-300)' }}>
                               {item.category_name && <span>{item.category_name}</span>}
                               <span>{dueLabel}</span>

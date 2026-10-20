@@ -117,6 +117,32 @@ export function Toolbar({
   useEffect(() => {
     tabsRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [activeView])
+  // タブが入りきらないときは、端に「‹」「›」を出して続きがあることを見せる（細いスクロールバーだけでは気付きにくい）
+  const [tabsOverflow, setTabsOverflow] = useState({ left: false, right: false })
+  useEffect(() => {
+    const element = tabsRef.current
+    if (!element) return
+    const update = (): void => {
+      const left = element.scrollLeft > 2
+      const right = element.scrollLeft + element.clientWidth < element.scrollWidth - 2
+      setTabsOverflow((previous) => previous.left === left && previous.right === right ? previous : { left, right })
+    }
+    update()
+    element.addEventListener('scroll', update, { passive: true })
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update)
+    observer?.observe(element)
+    window.addEventListener('resize', update)
+    return () => {
+      element.removeEventListener('scroll', update)
+      observer?.disconnect()
+      window.removeEventListener('resize', update)
+    }
+  }, [])
+  const scrollTabs = (direction: -1 | 1): void => {
+    const element = tabsRef.current
+    if (!element) return
+    element.scrollBy({ left: direction * Math.max(120, element.clientWidth * 0.6), behavior: 'smooth' })
+  }
   const viewButtons: ViewButton[] = [
     ...(activeView === 'overview' ? [{ key: 'overview' as const, label: '概要', description: '期限が近いタスクや最近の動きをまとめて表示します', active: true, onClick: onToggleOverviewView }] : []),
     { key: 'gantt', label: 'ガント', description: '開始日から期限までを横棒で表示します。バーをドラッグすると日程を変えられます', active: activeView === 'gantt', onClick: onToggleGanttView },
@@ -188,6 +214,13 @@ export function Toolbar({
       </button>
 
       {/* タブは Tab では1回だけ止まり、← → で移って Enter で開く */}
+      <div style={{ position: 'relative', minWidth: 0 }}>
+      {tabsOverflow.left && (
+        <button type="button" tabIndex={-1} aria-hidden="true" title="前のタブを見る" onClick={() => scrollTabs(-1)} className="hakobi-tabs-scroll hakobi-tabs-scroll-left">‹</button>
+      )}
+      {tabsOverflow.right && (
+        <button type="button" tabIndex={-1} aria-hidden="true" title="続きのタブを見る" onClick={() => scrollTabs(1)} className="hakobi-tabs-scroll hakobi-tabs-scroll-right">›</button>
+      )}
       <div ref={tabsRef} className="hakobi-view-tabs" style={{ ...groupStyle, minWidth: 0, flexWrap: 'nowrap', overflowX: 'auto', scrollbarWidth: 'thin' }} role="tablist" aria-label="画面の切り替え（横スクロール・← → で移って Enter で開く）" onKeyDown={(event) => handleTablistKeyDown(event)}>
         {viewButtons.map((button, index) => (
           <button
@@ -214,6 +247,7 @@ export function Toolbar({
             )}
           </button>
         ))}
+      </div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexWrap: 'wrap', maxWidth: '55vw' }}>
