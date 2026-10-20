@@ -20,8 +20,8 @@ export function ListFilterChips({ chips }: { chips: ListFilterChip[] }): React.J
     >
       <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', whiteSpace: 'nowrap' }}>絞り込み中</span>
       {chips.map((chip) => (
-        <button key={chip.key} onClick={chip.clear} title={`${chip.label} の絞り込みを解除`} style={chipStyle}>
-          {chip.label} ×
+        <button key={chip.key} onClick={chip.clear} title={`${chip.label} の絞り込みを解除`} aria-label={`${chip.label} の絞り込みを解除`} style={chipStyle}>
+          {chip.label} <span aria-hidden="true">×</span>
         </button>
       ))}
       {chips.length > 1 && (

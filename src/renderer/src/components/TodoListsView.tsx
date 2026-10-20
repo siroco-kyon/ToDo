@@ -7,7 +7,9 @@ import {
   countRemaining,
   isActiveList,
   isMyList,
-  summarizeChecklist
+  sectionOf,
+  summarizeChecklist,
+  TODAY_SECTION_LABEL
 } from '../lib/todoList'
 import { TodoChecklist } from './TodoChecklist'
 import { TodayTodoItems } from './TodayTodo'
@@ -63,6 +65,14 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
     [effectiveScope, itemsByTodo, lists, userId]
   )
   const remaining = countRemaining(todayGroups)
+  // 「残り」には今週・今月の分も入る。「今日やる」が全部済んでいても残りが出て食い違って見えるので、内訳を添える
+  const remainingBySection = (['today', 'week', 'month'] as const).map((section) => ({
+    section,
+    count: todayGroups.reduce((sum, group) => sum + group.items.filter((item) => !item.done && sectionOf(item) === section).length, 0)
+  })).filter((entry) => entry.count > 0)
+  const remainingDetail = remainingBySection.length > 1 || remainingBySection.some((entry) => entry.section !== 'today')
+    ? `（${remainingBySection.map((entry) => `${TODAY_SECTION_LABEL[entry.section].label} ${entry.count}`).join('・')}）`
+    : ''
   const todayKey = toDateKey(new Date())
   // 表示中の範囲に ToDoリストがない（まだ使っていない・全部終えた）ときは、使い方の案内を出す
   const showIntro = lists.length === 0
@@ -153,7 +163,7 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
         <section aria-label="今日やること" style={cardStyle}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--indigo-100)' }}>今日やること</span>
-            <span style={{ fontSize: '0.76rem', color: remaining > 0 ? 'var(--indigo-200)' : 'var(--green-400)' }}>{todayGroups.length === 0 ? '' : remaining > 0 ? `残り ${remaining}` : 'すべて済み'}</span>
+            <span style={{ fontSize: '0.76rem', color: remaining > 0 ? 'var(--indigo-200)' : 'var(--green-400)' }}>{todayGroups.length === 0 ? '' : remaining > 0 ? `残り ${remaining}${remainingDetail}` : 'すべて済み'}</span>
             <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>各リストから、今日やる項目をまとめて表示</span>
           </div>
           <TodayTodoItems
