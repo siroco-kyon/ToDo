@@ -80,7 +80,7 @@ interface Props {
   initialUnreportedAssigneeId?: string | null
 }
 
-type ShowToast = (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
+type ShowToast = (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void; key?: string }) => void
 
 interface DateRange {
   from: string
@@ -900,7 +900,13 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const [quickFilter, setQuickFilter] = useState<QuickFilter>(() => initialUnreportedAssigneeId ? 'needsReport' : loadSessionQuickFilter())
   // この画面を開いてから進捗ログを書いたタスク（「報告なし」で絞っていても、書いた直後は残す）
   const [reportedNowIds, setReportedNowIds] = useState<Set<string>>(() => new Set())
+  const quickFilterFromTeamRef = useRef(initialUnreportedAssigneeId != null)
   useEffect(() => {
+    // チームの数字から開いたときの「報告なし」はその場だけ。自分で選び直すまでは覚えない
+    if (quickFilterFromTeamRef.current) {
+      if (quickFilter === 'needsReport') return
+      quickFilterFromTeamRef.current = false
+    }
     try { window.sessionStorage.setItem(SESSION_KEYS.quickFilter, quickFilter) } catch { /* 覚えられなくても絞り込みはできる */ }
   }, [quickFilter])
   // 読み込み直したときに、前に見ていた位置へ戻す（タスクを開いて報告タブへ戻ったとき）
@@ -1414,11 +1420,23 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   }, [load, onCreateSubTask, onShowToast])
 
   const updateTask = useCallback(async (todo: Todo, data: UpdateTodoInput, successMessage: string): Promise<boolean> => {
+    // 変える前の値（「元に戻す」で戻す）。詳細・ガントの変更と同じく、報告タブの変更も戻せるようにする
+    const previous = Object.fromEntries(Object.keys(data).map((key) => [key, (todo as unknown as Record<string, unknown>)[key] ?? null])) as UpdateTodoInput
     try {
       await onUpdateTodo(todo.id, data)
       // メモは最終報告日時に、進捗・期限は期間中の変化の表示に影響するので取り直す
       await load()
-      onShowToast(successMessage)
+      onShowToast(successMessage, 'success', {
+        label: '元に戻す',
+        // 同じタスクの同じ項目を続けて変えたときは、知らせを1枚にまとめる
+        key: `report:${todo.id}:${Object.keys(data).sort().join(',')}`,
+        run: () => {
+          void onUpdateTodo(todo.id, previous).then(
+            async () => { await load(); onShowToast('元に戻しました') },
+            (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
+          )
+        }
+      })
       return true
     } catch (error) {
       onShowToast(error instanceof Error ? error.message : 'タスクを更新できませんでした', 'error')
@@ -1570,7 +1588,14 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                 aria-expanded={headerExpanded}
                 style={{ ...secondaryButtonStyle, marginLeft: 'auto' }}
               >
-                {headerExpanded ? '期間・表示を閉じる ▴' : `${PRESETS.find((item) => item.value === preset)?.label ?? '期間指定'}・${effectiveGroupMode === 'assignee' ? '担当者別' : 'カテゴリ別'}　変える ▾`}
+                {headerExpanded ? '期間・表示を閉じる ▴' : `${[
+                  PRESETS.find((item) => item.value === preset)?.label ?? '期間指定',
+                  effectiveGroupMode === 'assignee' ? '担当者別' : 'カテゴリ別',
+                  // 担当を絞っているときは、畳んでいても誰の分かを見せる（全員分を見ているつもりにならないように）
+                  effectiveAssigneeFilter === 'all' ? null
+                    : effectiveAssigneeFilter === 'mine' || effectiveAssigneeFilter === 'mineWithSubTasks' ? '自分の担当'
+                      : `${users.find((user) => user.id === selectedUserId)?.display_name ?? '選んだ人'}の担当`
+                ].filter(Boolean).join('・')}　変える ▾`}
               </button>
             )}
             {compactHeader && !headerExpanded && (
@@ -1656,7 +1681,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
             {multiUser && currentUser && (
               <label style={checkboxLabelStyle}>
                 報告の担当
-                <select value={assigneeFilter} onChange={(event) => changeAssigneeFilter(event.target.value as AssigneeFilter)} style={inputStyle}>
+                <select aria-label="報告の担当" value={assigneeFilter} onChange={(event) => changeAssigneeFilter(event.target.value as AssigneeFilter)} style={inputStyle}>
                   <option value="all">全員</option>
                   <option value="mine">自分の担当のみ</option>
                   <option value="mineWithSubTasks">自分の担当＋サブタスク担当</option>
@@ -1737,9 +1762,11 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
                 </button>
               )
             })}
-            <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', marginLeft: 4 }}>
-              {loaded ? `期間内に報告あり ${reportedCount}件 ・ 進捗ログ ${noteCount}件` : loadError ? 'この期間の件数は未取得です' : 'この期間の報告を取得しています'}
-            </span>
+            {(!compactHeader || headerExpanded) && (
+              <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', marginLeft: 4 }}>
+                {loaded ? `期間内に報告あり ${reportedCount}件 ・ 進捗ログ ${noteCount}件` : loadError ? 'この期間の件数は未取得です' : 'この期間の報告を取得しています'}
+              </span>
+            )}
           </div>
 
           {loaded && myNeedsReportCount > 0 && effectiveQuickFilter !== 'myNeedsReport' && (

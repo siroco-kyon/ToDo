@@ -1347,6 +1347,12 @@ export function App(): React.JSX.Element {
       setSelectedTodoId(null)
       // ほかの画面（報告・チームなど）から開いた詳細でアーカイブしたら、その画面へ戻る（「タスクを選択してください」だけの画面で行き止まりにしない）
       if (activeView === 'detail' && detailReturnView) void toggleCenterView(detailReturnView)
+      // 詳細が消えるので、フォーカスを一覧の行（なければ本文）へ移す（「⋯」から操作するとページの先頭へ落ちていた）
+      window.requestAnimationFrame(() => {
+        const active = document.activeElement
+        if (active && active !== document.body && active.isConnected && !active.hasAttribute('data-focus-region')) return
+        ;(document.querySelector<HTMLElement>('[data-todo-row][tabindex="0"]') ?? document.getElementById('hakobi-main'))?.focus()
+      })
     }
     showToast(archived ? `「${archived.title}」をアーカイブしました` : 'アーカイブしました', 'success', { label: '元に戻す', run: () => { void window.api.todoUnarchive(id, previousStatus === 'archived' ? 'active' : previousStatus).then(loadTodos).then(() => showToast('元の状態に戻しました')) } })
   }, [activeView, detailReturnView, loadTodos, selectedTodoId, showToast, todos, toggleCenterView])

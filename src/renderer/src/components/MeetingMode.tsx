@@ -235,7 +235,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
   const copyMinutes = async (): Promise<void> => {
     try {
       await copyTextToClipboard(meetingMinutesMarkdown(groups, state, periodLabel))
-      onShowToast('定例の内容をコピーしました')
+      onShowToast('議事録をコピーしました')
     } catch {
       onShowToast('クリップボードへのコピーに失敗しました', 'error')
     }
@@ -291,7 +291,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
         </label>
         <button onClick={() => goTo(index - 1)} disabled={index === 0} title="前の人（←）" style={navButtonStyle(index === 0)}>◀ 前の人</button>
         <button autoFocus={index < groups.length - 1} onClick={() => goTo(index + 1)} disabled={index >= groups.length - 1} title="次の人（→）" style={navButtonStyle(index >= groups.length - 1, true)}>次の人 ▶</button>
-        <button onClick={() => void copyMinutes()} title="メモ・追加したタスク・時間をまとめてコピーします" aria-label="定例の内容をコピー" style={navButtonStyle(false)}>定例の<span className="hakobi-hide-narrow">内容を</span>コピー</button>
+        <button onClick={() => void copyMinutes()} title="メモ・追加したタスク・時間をまとめてコピーします" style={navButtonStyle(false)}>議事録をコピー</button>
         <button onClick={close} title="定例モードを閉じます（Esc）。進み具合は残ります" style={navButtonStyle(false)}>閉じる</button>
       </div>
 
@@ -355,7 +355,7 @@ export function MeetingMode({ groups, state, onStateChange, periodLabel, renderB
                 style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--c-0b1220)', color: 'var(--slate-200)', fontSize: '0.82rem', lineHeight: 1.6, resize: 'vertical' }}
               />
               <div style={{ fontSize: '0.75rem', color: 'var(--slate-400)', lineHeight: 1.6 }}>
-                このメモはこの端末に12時間残ります（ほかの画面へ移っても、読み込み直しても消えません）。議事録として残す場合は「定例の内容をコピー」でコピーしてください。
+                このメモはこの端末に12時間残ります（ほかの画面へ移っても、読み込み直しても消えません）。議事録として残す場合は、上の「議事録をコピー」でコピーしてください。
               </div>
             </section>
             <section style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
