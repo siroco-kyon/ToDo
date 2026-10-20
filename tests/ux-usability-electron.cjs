@@ -191,7 +191,8 @@ async function runElectron() {
     await main.loadURL(fixture.origin+'/?view=detail')
     await until('getComputedStyle(document.documentElement).fontSize==="24px"&&document.querySelectorAll("[data-todo-row]").length>0','Large font applied')
     assert.ok(await js('document.getElementById("hakobi-task-list").getBoundingClientRect().width')>=360,'List widens with the font scale')
-    await until('Boolean(document.querySelector(".hakobi-tabs-scroll-right"))','Overflowing tabs show a scroll hint')
+    // 入りきらないタブは2段目に移して全部見せる（それでも入りきらなければ「›」を出す）
+    await until('Boolean(document.querySelector(".hakobi-tabs-scroll-right"))||Array.from(document.querySelectorAll("[role=tab]")).every(t=>{const r=t.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth})','All tabs reachable at large font')
     await js('(async()=>{localStorage.setItem("app-font-scale","100%");await window.api.settingsSet("fontScale","100%")})()')
     // 繰り返しの完了を元に戻すと、作られた次回分をアーカイブできる知らせが出る
     const weekly = await js('(async()=>{const me=await window.api.authGetCurrentUser();return window.api.todoCreate({title:"UX週次の取り消し",recurrence:"weekly",assignee_id:me&&me.id})})()')

@@ -1090,16 +1090,26 @@ export function PlanView({
     if (!currentDraft) return
 
     // 置けたあとで配置をやめる（失敗したときに、選んだ時刻の欄が消えてやり直しにならないように）
+    const placedLabel = `「${currentDraft.title}」を ${offsetToClock(minutes)} に置きました`
     if (currentDraft.source === 'planItem') {
       await schedulePlanItem(currentDraft.id, minutes, lane, currentDraft.durationMinutes)
       clearPlacement()
       setFocusBlockId(currentDraft.id)
+      // 置いたことと、時刻未定へ戻す「元に戻す」を知らせる
+      onShowToast?.(placedLabel, 'success', {
+        label: '元に戻す',
+        run: () => { void onUpdateItem(currentDraft.id, { scheduled_start: null }).catch((error: unknown) => onShowToast?.(error instanceof Error ? error.message : '元に戻せませんでした', 'error')) }
+      })
       return
     }
 
     const createdId = await scheduleTodo(currentDraft.id, minutes, lane, currentDraft.durationMinutes)
     clearPlacement()
     setFocusBlockId(createdId)
+    onShowToast?.(placedLabel, 'success', {
+      label: '元に戻す',
+      run: () => { void onRemoveItem(createdId).catch((error: unknown) => onShowToast?.(error instanceof Error ? error.message : '元に戻せませんでした', 'error')) }
+    })
   }
 
   // 予定を外す。タスクは消えないが、時刻と長さは消えるので、知らせから同じ時刻・長さで戻せるようにする。

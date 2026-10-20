@@ -126,7 +126,7 @@ function CommentItem({
             onToggle={onToggleReaction ? (emoji) => onToggleReaction(comment.id, emoji) : undefined}
           />
           {onStartReply && replyingToId !== comment.id && (
-            <button onClick={() => onStartReply(comment.id)} style={inlineActionStyle}>返信</button>
+            <button onClick={() => onStartReply(comment.id)} aria-label={`${getAuthorName(comment.author_name)}さんの返信に返信する`} style={inlineActionStyle}>返信</button>
           )}
         </div>
         <div style={{ marginTop: 2, fontSize: '0.8rem', color: 'var(--slate-300)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 }}>
@@ -269,7 +269,7 @@ export function ProgressNoteThread({
         <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <ReactionBar reactions={note.reactions} onToggle={onToggleReaction ? (emoji) => onToggleReaction(note.id, emoji) : undefined} />
           {onReply && replyingTo !== 'note' && (
-            <button ref={noteReplyButtonRef} onClick={() => setReplyingTo('note')} style={inlineActionStyle}>返信</button>
+            <button ref={noteReplyButtonRef} onClick={() => setReplyingTo('note')} aria-label={`${getAuthorName(note.author_name)}さんの進捗ログに返信する`} style={inlineActionStyle}>返信</button>
           )}
           <NoteMenu
             items={[

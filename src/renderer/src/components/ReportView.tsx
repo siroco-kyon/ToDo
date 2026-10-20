@@ -1513,8 +1513,17 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const createMeetingTask = onCreateTodo
     ? async (groupKey: string, title: string, dueDate: string | null): Promise<boolean> => {
         try {
-          await onCreateTodo({ ...meetingTaskInput(groupKey, title), due_date: dueDate })
-          onShowToast(`タスク「${title}」を作りました${dueDate ? `（期限 ${formatShortDate(dueDate)}）` : ''}`)
+          const created = await onCreateTodo({ ...meetingTaskInput(groupKey, title), due_date: dueDate })
+          // 間違えて作ったときのために、ほかの操作と同じく「元に戻す」を付ける（消さずにアーカイブする）
+          onShowToast(`タスク「${title}」を作りました${dueDate ? `（期限 ${formatShortDate(dueDate)}）` : ''}`, 'success', {
+            label: '元に戻す',
+            run: () => {
+              void window.api.todoArchive(created.id).then(
+                () => onShowToast(`タスク「${title}」を取り消しました（アーカイブしました）`),
+                (error: unknown) => onShowToast(error instanceof Error ? error.message : '取り消せませんでした', 'error')
+              )
+            }
+          })
           return true
         } catch (error) {
           onShowToast(error instanceof Error ? error.message : 'タスクを作れませんでした', 'error')

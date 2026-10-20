@@ -169,7 +169,7 @@ function KanbanCard({
 
       <div style={{
         fontSize: '0.84rem',
-        color: isDone ? 'var(--slate-500)' : 'var(--slate-200)',
+        color: isDone ? 'var(--text-subtle)' : 'var(--slate-200)',
         textDecoration: isDone ? 'line-through' : 'none',
         lineHeight: 1.4, wordBreak: 'break-word'
       }}>
@@ -184,7 +184,7 @@ function KanbanCard({
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
         {todo.due_date && (
-          <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: 'var(--font-caption)', color: isDone ? 'var(--slate-500)' : getDueColor(todo.due_date) }}>
+          <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: 'var(--font-caption)', color: isDone ? 'var(--text-subtle)' : getDueColor(todo.due_date) }}>
             期限 {formatShortDate(todo.due_date)}{dueStateSuffix(todo.due_date, isDone)}
           </span>
         )}

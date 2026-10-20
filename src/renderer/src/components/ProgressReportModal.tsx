@@ -576,7 +576,7 @@ export function ProgressReportModal({ users, onClose, onShowToast, selfOnly = fa
                       padding: '5px 12px', borderRadius: 99, cursor: 'pointer',
                       border: `1px solid ${selected ? user.color : 'var(--slate-700)'}`,
                       background: selected ? `color-mix(in srgb, ${user.color} 14.9%, transparent)` : 'var(--slate-900)',
-                      color: selected ? 'var(--slate-200)' : 'var(--slate-500)',
+                      color: selected ? 'var(--slate-200)' : 'var(--text-subtle)',
                       fontSize: '0.82rem', opacity: inactive ? 0.6 : 1
                     }}
                   >
@@ -707,7 +707,7 @@ export function TaskReportCard({ row }: { row: TaskReportRow }): React.JSX.Eleme
           {subTasks.map((sub) => (
             <div key={sub.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.78rem' }}>
               <span style={{ color: sub.done ? 'var(--green-500)' : 'var(--slate-600)', flexShrink: 0 }}>{sub.done ? '✓' : '○'}</span>
-              <span style={{ color: sub.done ? 'var(--slate-500)' : 'var(--slate-300)', textDecoration: sub.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+              <span style={{ color: sub.done ? 'var(--text-subtle)' : 'var(--slate-300)', textDecoration: sub.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                 {sub.title}
               </span>
               <span style={rowMeta}>{sub.progress}%{sub.due_date ? `・期限 ${formatShortDate(sub.due_date)}` : ''}</span>

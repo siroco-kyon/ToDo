@@ -4405,7 +4405,7 @@ function GanttViewContent({
                             style={{ position: 'absolute', left: parentLabelLeft, top: 0, height: PARENT_ROW_HEIGHT, display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-caption)', fontWeight: 700, color: GANTT_TEXT, whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 1 }}
                           >
                             {parentTitleText}
-                            <span style={{ fontSize: 'var(--font-caption)', fontWeight: 600, color: 'var(--text-subtle)' }}>
+                            <span style={{ fontSize: 'var(--font-caption)', fontWeight: 600, color: GANTT_MUTED }}>
                               {[group.todo.assignee_name, listMode ? checklistText : `${progress}%`, scheduleStatusText].filter(Boolean).join('・')}
                             </span>
                           </span>

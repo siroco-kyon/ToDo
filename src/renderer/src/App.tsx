@@ -1321,9 +1321,13 @@ export function App(): React.JSX.Element {
     const previousStatus = archived?.status
     await window.api.todoArchive(id)
     await loadTodos()
-    if (selectedTodoId === id) setSelectedTodoId(null)
+    if (selectedTodoId === id) {
+      setSelectedTodoId(null)
+      // ほかの画面（報告・チームなど）から開いた詳細でアーカイブしたら、その画面へ戻る（「タスクを選択してください」だけの画面で行き止まりにしない）
+      if (activeView === 'detail' && detailReturnView) void toggleCenterView(detailReturnView)
+    }
     showToast(archived ? `「${archived.title}」をアーカイブしました` : 'アーカイブしました', 'success', { label: '元に戻す', run: () => { void window.api.todoUnarchive(id, previousStatus === 'archived' ? 'active' : previousStatus).then(loadTodos).then(() => showToast('元の状態に戻しました')) } })
-  }, [loadTodos, selectedTodoId, showToast, todos])
+  }, [activeView, detailReturnView, loadTodos, selectedTodoId, showToast, todos, toggleCenterView])
 
   const handleUnarchive = useCallback(async (id: string) => {
     await window.api.todoUnarchive(id)
@@ -1689,9 +1693,17 @@ export function App(): React.JSX.Element {
   const isGanttView = activeView === 'gantt'
   const categoryPaneVisible = isGanttView ? ganttPanes.category : showCategoryPane && (!autoHideCategoryPane || openedWhileNarrow.category)
   const taskPaneVisible = isGanttView ? ganttPanes.task : showTaskPane && (!autoHideTaskPane || openedWhileNarrow.task)
-  const planRailVisible = isGanttView ? ganttPanes.side : showPlanRail && (!autoHideSidePanel || openedWhileNarrow.side)
+  // ガントでも、狭い窓では右の「今日の予定」を自動で畳む（ほかの画面と同じ。覚えている設定は変えない）。
+  // 1024px で開いたままだと、時間軸が5日分ほどしか見えなかった。タスクの詳細を開いたときは出す
+  const ganttSideAutoHidden = isGanttView && effectiveViewportWidth < NARROW_SIDE_PANEL_WIDTH && !openedWhileNarrow.side
+  const planRailVisible = isGanttView ? ganttPanes.side && !ganttSideAutoHidden : showPlanRail && (!autoHideSidePanel || openedWhileNarrow.side)
   const togglePane = (key: keyof PaneVisibility): void => {
     if (isGanttView) {
+      // 狭くて自動で畳んでいる「今日の予定」は、設定を変えずにその幅のあいだだけ開け閉めする
+      if (key === 'side' && effectiveViewportWidth < NARROW_SIDE_PANEL_WIDTH && ganttPanes.side) {
+        setOpenedWhileNarrow((previous) => ({ ...previous, side: !previous.side }))
+        return
+      }
       const next = { ...ganttPanes, [key]: !ganttPanes[key] }
       setGanttPanes(next)
       // 開いた結果、ガントが狭くなりすぎたら知らせる（狭い窓では日付が数日分しか見えなくなり、気づきにくい）
@@ -1832,7 +1844,7 @@ export function App(): React.JSX.Element {
       onOpenTab={() => toggleCenterView('todo')}
     />
   ) : null
-  const showGanttSidePanel = activeView === 'gantt' && (ganttSidePanelMode === 'detail' || ganttPanes.side)
+  const showGanttSidePanel = activeView === 'gantt' && (ganttSidePanelMode === 'detail' || (ganttPanes.side && !ganttSideAutoHidden))
   const showAuxiliaryPanel = activeView === 'gantt' ? showGanttSidePanel : showRightPlanRail
   const SORT_FIELDS: { key: SortField; label: string }[] = [
     { key: 'sort_order', label: '手動' },
@@ -2215,6 +2227,7 @@ export function App(): React.JSX.Element {
               onShowToast={showToast}
               onDirtyChange={setDetailDirty}
               onArchive={handleArchive}
+              onDelete={handleDelete}
               returnTo={detailReturnView ? { label: CENTER_VIEW_LABELS[detailReturnView], onReturn: () => toggleCenterView(detailReturnView) } : null}
             />
           )}
@@ -2275,6 +2288,7 @@ export function App(): React.JSX.Element {
                         onShowToast={showToast}
                         onDirtyChange={setDetailDirty}
                         onArchive={handleArchive}
+                        onDelete={handleDelete}
                       />
                     ) : (
                       <TodayFlowRail

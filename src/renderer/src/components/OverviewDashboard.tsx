@@ -331,7 +331,7 @@ function MemberActivityCard({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
         <strong style={{ color: 'var(--slate-200)', fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.display_name}</strong>
-        <span style={{ marginLeft: 'auto', color: activityCount > 0 ? 'var(--green-300)' : 'var(--slate-500)', fontSize: '0.7rem' }}>
+        <span style={{ marginLeft: 'auto', color: activityCount > 0 ? 'var(--green-300)' : 'var(--text-subtle)', fontSize: '0.7rem' }}>
           {activityCount > 0 ? '活動あり' : '活動なし'}
         </span>
       </div>

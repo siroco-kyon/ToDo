@@ -119,6 +119,31 @@ export function Toolbar({
   }, [activeView])
   // タブが入りきらないときは、端に「‹」「›」を出して続きがあることを見せる（細いスクロールバーだけでは気付きにくい）
   const [tabsOverflow, setTabsOverflow] = useState({ left: false, right: false })
+  // それでも入りきらない（1024px で文字を大きくしたときなど）は、タブを2段目に置いて全部見せる。
+  // 2段目に移すと幅に余裕ができて「入りきる」と判定され、行き来しないよう、少し余裕を持って戻す
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  const addButtonRef = useRef<HTMLButtonElement>(null)
+  const rightGroupRef = useRef<HTMLDivElement>(null)
+  const [tabsOwnRow, setTabsOwnRow] = useState(false)
+  useEffect(() => {
+    const toolbar = toolbarRef.current
+    const tabs = tabsRef.current
+    if (!toolbar || !tabs || typeof ResizeObserver === 'undefined') return
+    const update = (): void => {
+      const style = getComputedStyle(toolbar)
+      const inner = toolbar.clientWidth - (Number.parseFloat(style.paddingLeft) || 0) - (Number.parseFloat(style.paddingRight) || 0)
+      const available = inner - (addButtonRef.current?.offsetWidth ?? 0) - (rightGroupRef.current?.offsetWidth ?? 0) - 24
+      // タブの中身の幅（2段目では横いっぱいに広がるので、scrollWidth ではなくボタンの幅の合計で見る）
+      const buttons = Array.from(tabs.children) as HTMLElement[]
+      const needed = buttons.reduce((sum, element) => sum + element.offsetWidth, 0) + Math.max(0, buttons.length - 1) * 2 + 8
+      setTabsOwnRow((previous) => previous ? needed > available - 24 : needed > available)
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(toolbar)
+    if (rightGroupRef.current) observer.observe(rightGroupRef.current)
+    return () => observer.disconnect()
+  }, [])
   useEffect(() => {
     const element = tabsRef.current
     if (!element) return
@@ -196,6 +221,7 @@ export function Toolbar({
 
   return (
     <div
+      ref={toolbarRef}
       style={{
         position: 'relative',
         zIndex: 30,
@@ -209,12 +235,12 @@ export function Toolbar({
         flexWrap: 'wrap'
       }}
     >
-      <button onClick={onOpenQuickAdd} aria-label="タスクを追加" title="タスクを追加" style={primaryButtonStyle}>
+      <button ref={addButtonRef} onClick={onOpenQuickAdd} aria-label="タスクを追加" title="タスクを追加" style={primaryButtonStyle}>
         ＋ <span className="hakobi-toolbar-wide-only">タスクを</span>追加
       </button>
 
       {/* タブは Tab では1回だけ止まり、← → で移って Enter で開く */}
-      <div style={{ position: 'relative', minWidth: 0 }}>
+      <div style={tabsOwnRow ? { position: 'relative', minWidth: 0, gridColumn: '1 / -1', gridRow: 2 } : { position: 'relative', minWidth: 0 }}>
       {tabsOverflow.left && (
         <button type="button" tabIndex={-1} aria-hidden="true" title="前のタブを見る" onClick={() => scrollTabs(-1)} className="hakobi-tabs-scroll hakobi-tabs-scroll-left">‹</button>
       )}
@@ -250,7 +276,7 @@ export function Toolbar({
       </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexWrap: 'wrap', maxWidth: '55vw' }}>
+      <div ref={rightGroupRef} style={tabsOwnRow ? { display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexWrap: 'wrap', maxWidth: '75vw', gridColumn: '2 / -1', justifySelf: 'end' } : { display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexWrap: 'wrap', maxWidth: '55vw' }}>
         {isTimerRunning && (
           <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: '0.74rem', color: 'var(--green-400)', background: 'var(--green-950)', border: '1px solid var(--green-900)', borderRadius: 999, whiteSpace: 'nowrap', overflow: 'hidden' }}>
             {runningTask && onOpenRunningTask ? (

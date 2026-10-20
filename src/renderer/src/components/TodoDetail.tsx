@@ -42,6 +42,8 @@ interface Props {
   onDirtyChange?: (dirty: boolean) => void
   /** 「⋯」から片付ける（一覧から外す。あとで戻せる。完全な削除はアーカイブの中から） */
   onArchive?: (id: string) => Promise<void>
+  /** アーカイブしたタスクを完全に消す（「⋯」から。確かめてから） */
+  onDelete?: (id: string) => Promise<void>
   /** ほかの画面（チーム・報告など）から開いたとき、その画面へ戻るボタン */
   returnTo?: { label: string; onReturn: () => void } | null
 }
@@ -171,6 +173,7 @@ export function TodoDetail({
   onShowToast,
   onDirtyChange,
   onArchive,
+  onDelete,
   returnTo = null
 }: Props): React.JSX.Element {
   const [logs, setLogs] = useState<WorkLog[]>([])
@@ -1286,7 +1289,7 @@ export function TodoDetail({
                             padding: '4px 10px', borderRadius: 99, cursor: 'pointer',
                             border: `1px solid ${selected ? user.color : 'var(--slate-700)'}`,
                             background: selected ? `color-mix(in srgb, ${user.color} 14.9%, transparent)` : 'var(--slate-900)',
-                            color: selected ? 'var(--slate-200)' : 'var(--slate-500)', fontSize: 'var(--font-control)'
+                            color: selected ? 'var(--slate-200)' : 'var(--text-subtle)', fontSize: 'var(--font-control)'
                           }}
                         >
                           <span style={{ width: 8, height: 8, borderRadius: '50%', background: user.color, flexShrink: 0 }} />
@@ -1778,7 +1781,15 @@ export function TodoDetail({
                 ...(users.length > 0 ? [{ label: 'リンクをコピー', onSelect: () => void copyTaskLink() }] : []),
                 { label: '複製する（サブタスクも一緒に）', onSelect: () => void duplicateTodo() },
                 { label: 'テンプレートとして保存', onSelect: saveAsTemplate },
-                ...(onArchive ? [{ label: 'アーカイブする（一覧から片付ける。あとで戻せます）', onSelect: () => void onArchive(todo.id) }] : [])
+                ...(onArchive && todo.status !== 'archived' ? [{ label: 'アーカイブする（一覧から片付ける。あとで戻せます。完全に消すのはアーカイブのあと）', onSelect: () => void onArchive(todo.id) }] : []),
+                ...(onDelete && todo.status === 'archived' ? [{
+                  label: '完全に削除する…',
+                  onSelect: () => {
+                    void confirmAction(`「${todo.title}」を完全に削除しますか？
+サブタスク・進捗ログ・作業ログも消え、元に戻せません。`, { confirmLabel: '完全に削除する', danger: true })
+                      .then((ok) => { if (ok) void onDelete(todo.id) })
+                  }
+                }] : [])
               ]}
             />
           )}
@@ -2041,7 +2052,7 @@ function SubTaskDragHandle({ title, disabled, onDragStart, onDragEnd, onMove }: 
         justifyContent: 'center',
         borderRadius: 6,
         background: hovered && !disabled ? 'var(--slate-800)' : 'transparent',
-        color: disabled ? 'var(--slate-700)' : hovered ? 'var(--slate-300)' : 'var(--slate-500)',
+        color: disabled ? 'var(--slate-700)' : hovered ? 'var(--slate-300)' : 'var(--text-subtle)',
         cursor: disabled ? 'default' : 'grab',
         fontSize: '0.95rem',
         userSelect: 'none'
@@ -2269,7 +2280,7 @@ function ReadonlySubTaskItem({ subTask, users, onToggle, onSave, onDelete, onSho
             )}
           </div>
         )}
-        {subTask.description && <div style={{ marginTop: 2, fontSize: 'var(--font-control)', color: subTask.done ? 'var(--slate-700)' : 'var(--slate-500)', whiteSpace: 'pre-wrap' }}><LinkedText text={subTask.description} /></div>}
+        {subTask.description && <div style={{ marginTop: 2, fontSize: 'var(--font-control)', color: subTask.done ? 'var(--slate-700)' : 'var(--text-subtle)', whiteSpace: 'pre-wrap' }}><LinkedText text={subTask.description} /></div>}
         <div style={{ marginTop: 2 }}>
           <ProgressSlider
             value={progress}
