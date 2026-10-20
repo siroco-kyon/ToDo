@@ -317,11 +317,15 @@ export function QuickAddModal({
               placeholder="例: 見積書を作る"
               aria-required="true"
               aria-invalid={titleMissing || undefined}
-              aria-describedby={titleMissing ? 'quick-add-title-error' : undefined}
+              aria-describedby={[titleMissing ? 'quick-add-title-error' : '', submitError ? 'quick-add-submit-error' : ''].filter(Boolean).join(' ') || undefined}
               rows={titles.length > 1 ? Math.min(6, titles.length + 1) : 2}
               style={{ ...selectStyle, fontSize: '1rem', resize: 'vertical', lineHeight: 1.5 }}
             />
             {titleMissing && <div id="quick-add-title-error" role="alert" style={{ marginTop: 4, fontSize: 'var(--font-control)', color: 'var(--red-300)', fontWeight: 600 }}>タスク名を入力してください</div>}
+            {submitError && <div id="quick-add-submit-error" role="alert" style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', fontSize: 'var(--font-control)', lineHeight: 1.6 }}>
+              <strong>追加を完了できませんでした。</strong> {submitError}
+              {title.trim() && <div>入力は残っています。接続・保存状況を確認してから「追加」で再試行できます。</div>}
+            </div>}
             {restoredDraft && (
               <div role="status" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem', color: 'var(--amber-300)' }}>
                 前回の書きかけを戻しました
@@ -564,10 +568,6 @@ export function QuickAddModal({
             </button>
           </div>
           </fieldset>
-          {submitError && <div id="quick-add-submit-error" role="alert" style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', fontSize: 'var(--font-control)', lineHeight: 1.6 }}>
-            <strong>追加を完了できませんでした。</strong> {submitError}
-            {title.trim() && <div>入力は残っています。接続・保存状況を確認してから「追加」で再試行できます。</div>}
-          </div>}
           {slowSubmit && (
             <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 'var(--font-control)', color: 'var(--amber-200)' }}>
               応答がまだありません。待っても終わらないときは、閉じて一覧で追加されたかを確かめてください。

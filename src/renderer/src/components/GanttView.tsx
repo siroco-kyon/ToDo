@@ -4072,10 +4072,10 @@ function GanttViewContent({
                 const discussionMarkerLeft = Math.min(overdueTail ? overdueTail.left + overdueTail.width + 6 : barEnd + 18, Math.max(timelineWidth - 60, 0))
                 // バーが短くて名前が入らないときは、バーの右の外（依存関係のつかみ・期限超過の斜線・要相談の印の後ろ）に名前を出す
                 const parentTitleText = `${listMode ? '☑ ' : group.todo.status === 'on_hold' ? '保留中 · ' : ''}${group.todo.title}`
-                const parentTitleWidth = Array.from(parentTitleText).reduce((sum, char) => sum + (char.charCodeAt(0) < 0x2000 ? 7 : 11.5), 0) + 24
+                const parentTitleWidth = (Array.from(parentTitleText).reduce((sum, char) => sum + (char.charCodeAt(0) < 0x2000 ? 7 : 11.5), 0) + 24) * Math.max(1, textScale)
                 // 期間の左に切れていて、見えている部分が名前より短いときも外に出す（「者・70%…」のように名前が欠けていた）
                 const clippedAtLeft = barLeft < settledScrollLeft && barEnd > settledScrollLeft && barEnd - settledScrollLeft < parentTitleWidth + 90
-                const parentLabelOutside = Boolean(displayedTodoBar && todoVisible && !todoOutsideRange && unitWidth >= UNIT_WIDTH[timeScale].normal && (barWidth < parentTitleWidth || clippedAtLeft))
+                const parentLabelOutside = Boolean(displayedTodoBar && todoVisible && !todoOutsideRange && (barWidth < parentTitleWidth || clippedAtLeft))
                 const parentLabelLeft = discussionCount > 0
                   ? discussionMarkerLeft + 64
                   : overdueTail ? overdueTail.left + overdueTail.width + 8 : barEnd + 22

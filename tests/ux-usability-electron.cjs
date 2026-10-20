@@ -264,6 +264,7 @@ async function runElectron() {
     await delay(50)
     await js('document.querySelector("[role=dialog] form").dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}));void 0')
     await until('Boolean(document.getElementById("quick-add-submit-error"))','Persistent inline add error')
+    assert.equal(await js('(()=>{const r=document.getElementById("quick-add-submit-error").getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight})()'),true,'Add error remains visible near the input')
     assert.equal(await js('document.getElementById("quick-add-input").value'),'再送するタスク','Failed add keeps input')
     assert.ok(await js('document.getElementById("quick-add-submit-error").textContent.includes("再試行")'),'Inline error explains retry')
     await js('window.api.todoCreate=window.originalCreate;document.querySelector("[role=dialog] form").dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}));void 0')
