@@ -1093,6 +1093,16 @@ function GanttViewContent({
   // 行の Tab の止まる所は1行だけ（最後に触った行。なければ先頭）。ほかの行へは ↑↓/Home/End で移る。
   // 以前は1行ごとに名前・保留・＋で Tab が3回止まり、本文だけで100か所を超えていた
   const [activeGanttRowId, setActiveGanttRowId] = useState<string | null>(null)
+  // 横にスクロールして止まった位置（時間軸の左端）。止まったときだけ更新する（スクロール中に毎回全行を描き直さない）。
+  // 期間の左に切れたバーで名前が見えなくなるとき、名前をバーの右の外に出すのに使う
+  const [settledScrollLeft, setSettledScrollLeft] = useState(0)
+  const scrollSettleTimerRef = useRef<number | null>(null)
+  const handleChartScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const left = event.currentTarget.scrollLeft
+    if (scrollSettleTimerRef.current != null) window.clearTimeout(scrollSettleTimerRef.current)
+    scrollSettleTimerRef.current = window.setTimeout(() => setSettledScrollLeft(left), 150)
+  }, [])
+  useEffect(() => () => { if (scrollSettleTimerRef.current != null) window.clearTimeout(scrollSettleTimerRef.current) }, [])
   // Ctrl+K からの表示の切り替え
   useEffect(() => {
     const handle = (event: Event): void => {
@@ -3785,7 +3795,7 @@ function GanttViewContent({
             </div>
           </div>
         ) : (
-          <div ref={scrollRef} style={{ height: '100%', minHeight: 0, overflow: 'auto' }}>
+          <div ref={scrollRef} onScroll={handleChartScroll} style={{ height: '100%', minHeight: 0, overflow: 'auto' }}>
             <div style={{ minWidth: leftTableWidth + timelineWidth }}>
               <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 6 }}>
                 <div style={{ position: 'sticky', left: 0, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: 'var(--slate-900)', borderRight: '1px solid var(--slate-800)', borderBottom: '1px solid var(--slate-800)', padding: '6px 8px' }}>
@@ -4040,7 +4050,9 @@ function GanttViewContent({
                 // バーが短くて名前が入らないときは、バーの右の外（依存関係のつかみ・期限超過の斜線・要相談の印の後ろ）に名前を出す
                 const parentTitleText = `${listMode ? '☑ ' : group.todo.status === 'on_hold' ? '保留中 · ' : ''}${group.todo.title}`
                 const parentTitleWidth = Array.from(parentTitleText).reduce((sum, char) => sum + (char.charCodeAt(0) < 0x2000 ? 7 : 11.5), 0) + 24
-                const parentLabelOutside = Boolean(displayedTodoBar && todoVisible && !todoOutsideRange && unitWidth >= UNIT_WIDTH[timeScale].normal && barWidth < parentTitleWidth)
+                // 期間の左に切れていて、見えている部分が名前より短いときも外に出す（「者・70%…」のように名前が欠けていた）
+                const clippedAtLeft = barLeft < settledScrollLeft && barEnd > settledScrollLeft && barEnd - settledScrollLeft < parentTitleWidth + 90
+                const parentLabelOutside = Boolean(displayedTodoBar && todoVisible && !todoOutsideRange && unitWidth >= UNIT_WIDTH[timeScale].normal && (barWidth < parentTitleWidth || clippedAtLeft))
                 const parentLabelLeft = discussionCount > 0
                   ? discussionMarkerLeft + 64
                   : overdueTail ? overdueTail.left + overdueTail.width + 8 : barEnd + 22

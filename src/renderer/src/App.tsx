@@ -1711,8 +1711,12 @@ export function App(): React.JSX.Element {
   const isManualSort = sortField === 'sort_order'
   // ガントの画面だけ、パネルの開閉をほかの画面とは別に持つ
   const isGanttView = activeView === 'gantt'
-  const categoryPaneVisible = isGanttView ? ganttPanes.category : showCategoryPane && (!autoHideCategoryPane || openedWhileNarrow.category)
-  const taskPaneVisible = isGanttView ? ganttPanes.task : showTaskPane && (!autoHideTaskPane || openedWhileNarrow.task)
+  // ガントでも、狭い窓ではほかの画面と同じ幅でカテゴリ一覧・タスク一覧を自動で畳む（広い画面で開いたと覚えていても、
+  // 1024px でガントが 330px ほどになっていた）。「表示」から開くと、その幅のあいだだけ開く
+  const ganttCategoryAutoHidden = isGanttView && autoHideCategoryPane && !openedWhileNarrow.category
+  const ganttTaskAutoHidden = isGanttView && autoHideTaskPane && !openedWhileNarrow.task
+  const categoryPaneVisible = isGanttView ? ganttPanes.category && !ganttCategoryAutoHidden : showCategoryPane && (!autoHideCategoryPane || openedWhileNarrow.category)
+  const taskPaneVisible = isGanttView ? ganttPanes.task && !ganttTaskAutoHidden : showTaskPane && (!autoHideTaskPane || openedWhileNarrow.task)
   // ガントでも、狭い窓では右の「今日の予定」を自動で畳む（ほかの画面と同じ。覚えている設定は変えない）。
   // 1024px で開いたままだと、時間軸が5日分ほどしか見えなかった。タスクの詳細を開いたときは出す
   const ganttSideAutoHidden = isGanttView && effectiveViewportWidth < NARROW_SIDE_PANEL_WIDTH && !openedWhileNarrow.side
@@ -1722,6 +1726,10 @@ export function App(): React.JSX.Element {
       // 狭くて自動で畳んでいる「今日の予定」は、設定を変えずにその幅のあいだだけ開け閉めする
       if (key === 'side' && effectiveViewportWidth < NARROW_SIDE_PANEL_WIDTH && ganttPanes.side) {
         setOpenedWhileNarrow((previous) => ({ ...previous, side: !previous.side }))
+        return
+      }
+      if ((key === 'category' && autoHideCategoryPane && ganttPanes.category) || (key === 'task' && autoHideTaskPane && ganttPanes.task)) {
+        setOpenedWhileNarrow((previous) => ({ ...previous, [key]: !previous[key] }))
         return
       }
       const next = { ...ganttPanes, [key]: !ganttPanes[key] }
