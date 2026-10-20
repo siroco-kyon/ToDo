@@ -19,6 +19,7 @@ import {
   type ItemRepeatChoice
 } from '../lib/todoList'
 import { dataInk, textOnFill } from '../lib/theme'
+import { confirmAction } from '../lib/confirm'
 
 // ToDoリスト（中の項目をチェックして使うタスク。期限はなしでもよい）の中身。項目＝サブタスク。
 // 繰り返しの項目は周期が変わると未チェックに戻り、繰り返さない項目はチェックすると「済み」に移る。
@@ -211,7 +212,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
 
   const clearOldDone = async (): Promise<void> => {
     if (oldDone.length === 0 || clearing) return
-    if (!window.confirm(`${RECENT_DONE_DAYS}日より前に済んだやること ${oldDone.length}件を削除しますか？\n報告タブの「期間中に済んだやること」にも出なくなります。元には戻せません。`)) return
+    if (!(await confirmAction(`${RECENT_DONE_DAYS}日より前に済んだやること ${oldDone.length}件を削除しますか？\n報告タブの「期間中に済んだやること」にも出なくなります。元には戻せません。`, { confirmLabel: '削除する', danger: true }))) return
     setClearing(true)
     const removed: string[] = []
     try {

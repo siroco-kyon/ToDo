@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
 import type { Category } from '../types'
 import { textOnFill } from '../lib/theme'
+import { confirmAction } from '../lib/confirm'
 
 interface Props {
   categories: Category[]
@@ -77,7 +78,7 @@ export function CategoryList({ categories, selectedId, onSelect, onAdd, onUpdate
   // ─── カテゴリ削除 ──────────────────────────────────────────
   const handleDelete = async (cat: Category, e: React.MouseEvent): Promise<void> => {
     e.stopPropagation()
-    if (!window.confirm(`「${cat.name}」を削除しますか？\n関連タスクのカテゴリは「未分類」になります。`)) return
+    if (!(await confirmAction(`「${cat.name}」を削除しますか？\n関連タスクのカテゴリは「未分類」になります。`, { confirmLabel: '削除する', danger: true }))) return
     await onDelete(cat.id)
   }
 

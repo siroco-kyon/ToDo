@@ -14,6 +14,7 @@ import {
 import { TodoChecklist } from './TodoChecklist'
 import { TodayTodoItems } from './TodayTodo'
 import { dataInk } from '../lib/theme'
+import { confirmAction } from '../lib/confirm'
 
 // ToDo タブ。ToDoリスト（中の項目をチェックして使うタスク）を使う人のための画面。
 // 上に「今日やること」、下に ToDoリストごとのチェックリスト（追加・編集・並べ替えもここでできる）。
@@ -91,7 +92,7 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
   const deleteItem = async (todo: Todo, id: string): Promise<void> => {
     const items = itemsByTodo.get(todo.id) ?? []
     const target = items.find((item) => item.id === id)
-    if (!target || !window.confirm(`「${target.title}」を削除しますか？`)) return
+    if (!target || !(await confirmAction(`「${target.title}」を削除しますか？`, { confirmLabel: '削除する', danger: true }))) return
     const originalIndex = items.findIndex((item) => item.id === id)
     const remainingIds = items.filter((item) => item.id !== id).map((item) => item.id)
     try {

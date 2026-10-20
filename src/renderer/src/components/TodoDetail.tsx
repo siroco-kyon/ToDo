@@ -22,6 +22,7 @@ import { FOCUS_PROGRESS_LOG_EVENT, FOCUS_TASK_DETAIL_EVENT, consumeTaskDetailFoc
 import { taskOptionLabel } from '../lib/taskLabel'
 import { TODO_RECURRENCE_OPTIONS, nextRecurrenceDue, recurrenceDoneMessage, recurrenceKindLabel, recurrenceReopenMessage, todoRecurrenceLabel } from '../lib/recurrence'
 import { notifyReopenedRecurrence } from '../lib/recurrenceUndo'
+import { confirmAction } from '../lib/confirm'
 
 interface Props {
   todo: Todo | null
@@ -582,7 +583,7 @@ export function TodoDetail({
 
   const handleDeleteSubTask = async (subTaskId: string): Promise<void> => {
     const target = subTasks.find((item) => item.id === subTaskId)
-    if (!window.confirm(`サブタスク「${target?.title ?? ''}」を削除しますか？`)) return
+    if (!(await confirmAction(`サブタスク「${target?.title ?? ''}」を削除しますか？`, { confirmLabel: '削除する', danger: true }))) return
     if (!target || !todoId) return
     const originalIndex = subTasks.findIndex((item) => item.id === subTaskId)
     const remainingIds = subTasks.filter((item) => item.id !== subTaskId).map((item) => item.id)
@@ -974,7 +975,7 @@ export function TodoDetail({
   }
 
   const handleDeleteProgressNote = async (id: string): Promise<void> => {
-    if (!window.confirm('この進捗ログを削除しますか？\n付いている返信も一緒に削除されます。')) return
+    if (!(await confirmAction('この進捗ログを削除しますか？\n付いている返信も一緒に削除されます。元に戻せません。', { confirmLabel: '削除する', danger: true }))) return
     try {
       await window.api.progressNoteDelete(id)
       setProgressNotes((previous) => previous.filter((note) => note.id !== id))
@@ -1050,8 +1051,8 @@ export function TodoDetail({
   // アーカイブしたタスクは選択肢に出さない（同じ名前の次回分などと見分けがつかないため）
   const dependencyCandidates = allTodos.filter((candidate) => candidate.id !== todo.id && candidate.status !== 'archived' && !blockedCandidateIds.has(candidate.id))
 
-  const startEditing = (): void => {
-    if (childDraftIds.size > 0 && !window.confirm('未保存のサブタスクの変更があります。全体編集に切り替えますか？')) return
+  const startEditing = async (): Promise<void> => {
+    if (childDraftIds.size > 0 && !(await confirmAction('未保存のサブタスクの変更があります。全体編集に切り替えますか？\nサブタスクで書きかけの変更は消えます。', { confirmLabel: '切り替える' }))) return
     const base = createEditData(todo)
     const childBases = createEditableSubTasks(subTasks)
     editBaseRef.current = descriptionDraft !== descriptionBase ? { ...base, description: descriptionBase } : base
@@ -1062,14 +1063,14 @@ export function TodoDetail({
     setEditing(true)
   }
 
-  const cancelEditing = (): void => {
+  const cancelEditing = async (): Promise<void> => {
     if (savingRef.current) return
     const changed = Object.keys(buildEditPatch(editBaseRef.current, editData)).length > 0
       || editableSubTasks.some((draft) => {
         const base = subTaskBasesRef.current.get(draft.id)
         return base ? Object.keys(buildEditPatch(base, draft)).length > 0 : false
       })
-    if (changed && !window.confirm('未保存の変更があります。編集を閉じてもよいですか？')) return
+    if (changed && !(await confirmAction('未保存の変更があります。編集をやめますか？\n入力した変更は消えます。', { confirmLabel: '変更を捨てる', cancelLabel: '編集を続ける', danger: true }))) return
     setEditData(createEditData(todo))
     setEditableSubTasks(createEditableSubTasks(subTasks))
     setEditing(false)
@@ -1678,6 +1679,11 @@ export function TodoDetail({
         event.preventDefault()
         void handleSave()
       }
+      // 編集中の Esc は編集をやめる（変更があれば確かめる）。開いている小窓やメニューの Esc は、そちらが先に受け取る
+      if (editing && event.key === 'Escape' && !event.nativeEvent.isComposing && !event.defaultPrevented) {
+        event.preventDefault()
+        void cancelEditing()
+      }
     }} style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div
         style={{
@@ -1750,7 +1756,7 @@ export function TodoDetail({
             </button>
           )}
           {editing && <button onClick={() => void handleSave()} disabled={saving} title="変更を保存します（Ctrl+Enter）" aria-keyshortcuts="Control+Enter Meta+Enter" style={buttonStyle('var(--indigo-500)')}>{saving ? '保存中…' : '変更を保存'}</button>}
-          <button ref={editButtonRef} onClick={editing ? cancelEditing : startEditing} disabled={saving} title={editing ? undefined : 'タスク名・説明・繰り返し・サブ担当などをまとめて編集します'} style={buttonStyle('var(--slate-700)')}>
+          <button ref={editButtonRef} onClick={() => void (editing ? cancelEditing() : startEditing())} disabled={saving} title={editing ? undefined : 'タスク名・説明・繰り返し・サブ担当などをまとめて編集します'} style={buttonStyle('var(--slate-700)')}>
             {editing ? '編集をやめる' : '編集'}
           </button>
           {editing && <span style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>編集中・Ctrl+Enter で保存</span>}

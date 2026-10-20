@@ -105,7 +105,7 @@ async function runElectron() {
       const colors = await js('(function(){document.getAnimations().forEach(a=>a.finish());const luminance=value=>{const scale=value.startsWith("color(")?255:1;const [r,g,b]=value.match(/[0-9.]+/g).map(Number).map(v=>v*scale/255);const f=v=>v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);return 0.2126*f(r)+0.7152*f(g)+0.0722*f(b)};const menu=document.querySelector("[role=menu]");return {menuInRoot:Boolean(menu.closest("#root")),menu:luminance(getComputedStyle(menu).backgroundColor),item:luminance(getComputedStyle(menu.querySelector("[role=menuitem]")).color)};})()')
       assert.ok(colors.menu > 0.6, 'Portalled progress menu did not use the light theme background')
       assert.ok(colors.item < 0.2, 'Portalled progress menu items did not use the light theme text color')
-      await js('window.confirmCount=0;window.confirm=()=>{window.confirmCount++;return false};void 0;')
+      await js('window.confirmCount=0;if(window.__autoConfirm)window.__autoConfirm.disconnect();window.__autoConfirm=new MutationObserver(()=>{const d=document.querySelector("[role=alertdialog]");if(!d||d.dataset.answered)return;d.dataset.answered="1";window.confirmCount++;const b=d.querySelectorAll("button");(false?b[b.length-1]:b[0]).click()});window.__autoConfirm.observe(document.body,{childList:true,subtree:true});window.confirm=()=>{window.confirmCount++;return false};void 0;')
       await clickProgressMenuItem('削除')
       await until('window.confirmCount===1', 'Light-theme progress delete did not request confirmation')
       assert.equal((await js('window.api.progressNoteGetByTodo(window.tasks.b.id)')).length, 1, 'Cancel removed the progress log')
@@ -114,7 +114,7 @@ async function runElectron() {
     }
 
     // Failed DELETE and retry keep their existing confirmation semantics.
-    await js('window.confirm=()=>true;window.deleteRequests=0;window.fetch=(...args)=>{if(args[1]?.method==="DELETE"&&String(args[0]).endsWith("/progress-notes/"+window.deletionNote.id)){window.deleteRequests++;return Promise.resolve(new Response(JSON.stringify({error:"進捗削除テスト失敗"}),{status:500,headers:{"Content-Type":"application/json"}}));}return window.originalFetch(...args);};void 0;')
+    await js('window.confirmCount=0;if(window.__autoConfirm)window.__autoConfirm.disconnect();window.__autoConfirm=new MutationObserver(()=>{const d=document.querySelector("[role=alertdialog]");if(!d||d.dataset.answered)return;d.dataset.answered="1";window.confirmCount++;const b=d.querySelectorAll("button");(true?b[b.length-1]:b[0]).click()});window.__autoConfirm.observe(document.body,{childList:true,subtree:true});window.confirm=()=>{window.confirmCount++;return true};window.deleteRequests=0;window.fetch=(...args)=>{if(args[1]?.method==="DELETE"&&String(args[0]).endsWith("/progress-notes/"+window.deletionNote.id)){window.deleteRequests++;return Promise.resolve(new Response(JSON.stringify({error:"進捗削除テスト失敗"}),{status:500,headers:{"Content-Type":"application/json"}}));}return window.originalFetch(...args);};void 0;')
     await openProgressMenu()
     await clickProgressMenuItem('削除')
     await until('document.body.innerText.includes("進捗削除テスト失敗")', 'Failed progress delete was not explained')
@@ -232,12 +232,12 @@ async function runElectron() {
     assert.equal((await js('window.api.todoGetAll()')).find(todo => todo.id === tasks.b.id).title, '別メンバーの変更')
 
     // Native commands obey the current unsaved confirmation.
-    await js('window.confirmCount=0;window.confirm=()=>{window.confirmCount++;return false};void 0;')
+    await js('window.confirmCount=0;if(window.__autoConfirm)window.__autoConfirm.disconnect();window.__autoConfirm=new MutationObserver(()=>{const d=document.querySelector("[role=alertdialog]");if(!d||d.dataset.answered)return;d.dataset.answered="1";window.confirmCount++;const b=d.querySelectorAll("button");(false?b[b.length-1]:b[0]).click()});window.__autoConfirm.observe(document.body,{childList:true,subtree:true});window.confirm=()=>{window.confirmCount++;return false};void 0;')
     navigate(tasks.a.id)
     await delay(250)
     assert.equal(await js('window.confirmCount'), 1)
     assert.equal(await js('Array.from(document.querySelectorAll("input")).some(e=>e.value==="手元の競合下書き")'), true)
-    await js('void(window.confirm=()=>true);')
+    await js('window.confirmCount=0;if(window.__autoConfirm)window.__autoConfirm.disconnect();window.__autoConfirm=new MutationObserver(()=>{const d=document.querySelector("[role=alertdialog]");if(!d||d.dataset.answered)return;d.dataset.answered="1";window.confirmCount++;const b=d.querySelectorAll("button");(true?b[b.length-1]:b[0]).click()});window.__autoConfirm.observe(document.body,{childList:true,subtree:true});window.confirm=()=>{window.confirmCount++;return true};void 0;')
     await currentTask(tasks.a.id, tasks.a.title)
 
     // A 400 keeps the draft, gives a retry cue, and is not unhandled.
@@ -292,14 +292,14 @@ async function runElectron() {
     await until('Array.from(document.querySelectorAll("h2")).some(e=>e.textContent==="失敗しても残すA")', 'Gantt side detail did not open')
     await js('window.tasks.currentTitle="失敗しても残すA"')
     await editTitle('ガントの未保存下書き')
-    await js('window.confirmCount=0;window.confirm=()=>{window.confirmCount++;return false};void 0;')
+    await js('window.confirmCount=0;if(window.__autoConfirm)window.__autoConfirm.disconnect();window.__autoConfirm=new MutationObserver(()=>{const d=document.querySelector("[role=alertdialog]");if(!d||d.dataset.answered)return;d.dataset.answered="1";window.confirmCount++;const b=d.querySelectorAll("button");(false?b[b.length-1]:b[0]).click()});window.__autoConfirm.observe(document.body,{childList:true,subtree:true});window.confirm=()=>{window.confirmCount++;return false};void 0;')
     navigate(tasks.a.id)
     await delay(250)
     assert.equal(await js('window.confirmCount'), 1, 'Same-ID Gantt navigation skipped dirty confirmation')
     assert.equal(await js('Array.from(document.querySelectorAll("input")).some(e=>e.value==="ガントの未保存下書き")'), true)
 
     // Inline description/memo keep their edit-start expected value across realtime updates.
-    await js('void(window.confirm=()=>true)')
+    await js('window.confirmCount=0;if(window.__autoConfirm)window.__autoConfirm.disconnect();window.__autoConfirm=new MutationObserver(()=>{const d=document.querySelector("[role=alertdialog]");if(!d||d.dataset.answered)return;d.dataset.answered="1";window.confirmCount++;const b=d.querySelectorAll("button");(true?b[b.length-1]:b[0]).click()});window.__autoConfirm.observe(document.body,{childList:true,subtree:true});window.confirm=()=>{window.confirmCount++;return true};void 0;')
     navigate(tasks.a.id)
     await until('Array.from(document.querySelectorAll("h2")).some(e=>e.textContent==="失敗しても残すA")', 'Could not leave the Gantt editor')
     await js('(function(){const description=document.querySelector("textarea[aria-label=\'説明\']");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(description,"手元の説明");description.dispatchEvent(new Event("input",{bubbles:true}));})()')
@@ -348,7 +348,7 @@ async function runElectron() {
 
     // Notifications also obey the unsaved-detail confirmation before opening progress.
     await editTitle('通知から移動しても残す下書き')
-    await js('window.originalNotificationList=window.api.notificationList;window.originalUnread=window.api.notificationUnreadCount;window.api.notificationList=async()=>[{id:"dirty-notification",user_id:"fixture",type:"mention",actor_user_id:null,actor_name:null,actor_color:null,todo_id:window.tasks.a.id,todo_title:window.tasks.a.title,progress_note_id:"fixture-note",progress_comment_id:null,title:"未保存確認テスト通知",body:"進捗へ移動",created_at:"2026-10-09T03:00:00Z",read_at:"2026-10-09T03:00:01Z"}];window.api.notificationUnreadCount=async()=>0;window.confirmCount=0;window.confirm=()=>{window.confirmCount++;return false};Array.from(document.querySelectorAll("button")).find(e=>e.textContent.trim().startsWith("通知")&&!e.textContent.includes("設定")).click();void 0;')
+    await js('window.originalNotificationList=window.api.notificationList;window.originalUnread=window.api.notificationUnreadCount;window.api.notificationList=async()=>[{id:"dirty-notification",user_id:"fixture",type:"mention",actor_user_id:null,actor_name:null,actor_color:null,todo_id:window.tasks.a.id,todo_title:window.tasks.a.title,progress_note_id:"fixture-note",progress_comment_id:null,title:"未保存確認テスト通知",body:"進捗へ移動",created_at:"2026-10-09T03:00:00Z",read_at:"2026-10-09T03:00:01Z"}];window.api.notificationUnreadCount=async()=>0;window.confirmCount=0;if(window.__autoConfirm)window.__autoConfirm.disconnect();window.__autoConfirm=new MutationObserver(()=>{const d=document.querySelector("[role=alertdialog]");if(!d||d.dataset.answered)return;d.dataset.answered="1";window.confirmCount++;const b=d.querySelectorAll("button");(false?b[b.length-1]:b[0]).click()});window.__autoConfirm.observe(document.body,{childList:true,subtree:true});window.confirm=()=>{window.confirmCount++;return false};Array.from(document.querySelectorAll("button")).find(e=>e.textContent.trim().startsWith("通知")&&!e.textContent.includes("設定")).click();void 0;')
     await until('Boolean(document.querySelector("section[aria-labelledby=notification-title]"))', 'Notification panel did not open')
     await js('Array.from(document.querySelectorAll("section[aria-labelledby=notification-title] button")).find(e=>e.textContent==="すべて").click();void 0;')
     await until('document.body.innerText.includes("未保存確認テスト通知")', 'Controlled notification did not load')

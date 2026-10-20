@@ -11,6 +11,7 @@ import { subscribeProgressDraftChanges } from '../lib/legacyProgressDrafts'
 import { dataInk } from '../lib/theme'
 import { taskOptionLabel } from '../lib/taskLabel'
 
+import { confirmAction } from '../lib/confirm'
 export interface ProgressTimelineFocusTarget {
   date?: string | null
   todoId?: string | null
@@ -424,7 +425,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   }
 
   const handleDeleteNote = async (noteId: string): Promise<void> => {
-    if (!window.confirm('この進捗ログを削除しますか?')) return
+    if (!(await confirmAction('この進捗ログを削除しますか？\n付いている返信も一緒に削除されます。元に戻せません。', { confirmLabel: '削除する', danger: true }))) return
     try {
       await window.api.progressNoteDelete(noteId)
       setNotes((previous) => previous.filter((note) => note.id !== noteId))
@@ -514,7 +515,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
   }
 
   const handleDeleteComment = async (commentId: string): Promise<void> => {
-    if (!window.confirm('この返信と、その返信への返信を削除しますか？')) return
+    if (!(await confirmAction('この返信と、その返信への返信を削除しますか？\n元に戻せません。', { confirmLabel: '削除する', danger: true }))) return
     try {
       const updated = await window.api.progressNoteCommentDelete(commentId)
       setNotes((previous) => patchNote(previous, updated))
