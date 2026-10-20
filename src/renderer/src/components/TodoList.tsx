@@ -567,8 +567,8 @@ function actionBtn(color: string): React.CSSProperties {
 function avatarStyle(color: string | null | undefined): React.CSSProperties {
   return {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    width: 15, height: 15, borderRadius: '50%', flexShrink: 0,
+    width: 17, height: 17, borderRadius: '50%', flexShrink: 0,
     background: color ?? 'var(--slate-500)', border: '1px solid var(--c-0d1525)',
-    color: 'var(--ink-on-data)', fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase'
+    color: 'var(--ink-on-data)', fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase'
   }
 }

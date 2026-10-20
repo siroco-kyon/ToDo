@@ -253,6 +253,8 @@ export function App(): React.JSX.Element {
   const [progressTimelineFocus, setProgressTimelineFocus] = useState<ProgressTimelineFocusTarget | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null)
+  const selectedAssigneeIdRef = useRef(selectedAssigneeId)
+  selectedAssigneeIdRef.current = selectedAssigneeId
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(initialUrlState.taskId)
   const [detailDirty, setDetailDirty] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
@@ -336,7 +338,10 @@ export function App(): React.JSX.Element {
     const id = ++toastIdRef.current
     setToasts((prev) => [
       // 成功したら、前に出ていた失敗の知らせは片付ける（再試行して成功したのに「✗」が残り、まだ失敗しているように見えていた）
-      ...(action?.key ? prev.filter((toast) => toast.key !== action.key) : prev).filter((toast) => type !== 'success' || toast.type !== 'error'),
+      // 同じ文の失敗が続いたときは1枚にまとめる（通信が切れているあいだに何度も操作すると、同じ知らせが重なっていた）
+      ...(action?.key ? prev.filter((toast) => toast.key !== action.key) : prev)
+        .filter((toast) => type !== 'success' || toast.type !== 'error')
+        .filter((toast) => type !== 'error' || toast.type !== 'error' || toast.message !== message),
       { id, message, type, actionLabel: action?.label && action.run ? action.label : undefined, onAction: action?.label ? action.run : undefined, key: action?.key }
     ])
   }, [])
@@ -698,6 +703,10 @@ export function App(): React.JSX.Element {
   const autoHideTaskPane = (isKanban && kanbanBoardWidth({ side: true, category: true }) < KANBAN_MIN_BOARD_WIDTH)
     || (activeView !== 'detail' && effectiveViewportWidth < 1000)
   const [openedWhileNarrow, setOpenedWhileNarrow] = useState({ category: false, side: false, task: false })
+  // 狭い窓で開いたパネルは、その画面のあいだだけ開く（ガントで一覧を開くと、カンバンや報告まで本文が狭くなっていた）
+  useEffect(() => {
+    setOpenedWhileNarrow((previous) => previous.category || previous.side || previous.task ? { category: false, side: false, task: false } : previous)
+  }, [activeView])
   useEffect(() => {
     setOpenedWhileNarrow((previous) => {
       const next = { category: previous.category && autoHideCategoryPane, side: previous.side && autoHideSidePanel, task: previous.task && autoHideTaskPane }
@@ -1069,6 +1078,19 @@ export function App(): React.JSX.Element {
   // チームの数（超過・遅れ・報告なし）から開いたときに、開いた画面へ一度だけ渡す絞り込み（画面は開いたときにだけ読む）
   const [ganttInitialHealthFilter, setGanttInitialHealthFilter] = useState<'overdue' | 'behind' | null>(null)
   const [reportFocusAssigneeId, setReportFocusAssigneeId] = useState<string | null>(null)
+  // チームからほかの人のタスクをガントで見るときは、担当の絞り込みを一時的に借りる。
+  // ガントを離れたら元の絞り込みに戻す（以前は自分の計画の候補まで、その人のタスクに絞られたままだった）
+  const borrowedAssigneeRef = useRef<{ previous: string | null } | null>(null)
+  const borrowAssigneeFilter = useCallback((userId: string) => {
+    if (!borrowedAssigneeRef.current) borrowedAssigneeRef.current = { previous: selectedAssigneeIdRef.current }
+    setSelectedAssigneeId(userId)
+  }, [])
+  useEffect(() => {
+    if (activeView === 'gantt' || !borrowedAssigneeRef.current) return
+    const { previous } = borrowedAssigneeRef.current
+    borrowedAssigneeRef.current = null
+    setSelectedAssigneeId(previous)
+  }, [activeView])
   useEffect(() => {
     if (activeView !== 'gantt' && ganttInitialHealthFilter) setGanttInitialHealthFilter(null)
     if (activeView !== 'report' && reportFocusAssigneeId) setReportFocusAssigneeId(null)
@@ -1325,6 +1347,12 @@ export function App(): React.JSX.Element {
       setSelectedTodoId(null)
       // ほかの画面（報告・チームなど）から開いた詳細でアーカイブしたら、その画面へ戻る（「タスクを選択してください」だけの画面で行き止まりにしない）
       if (activeView === 'detail' && detailReturnView) void toggleCenterView(detailReturnView)
+      // 詳細が消えるので、フォーカスを一覧の行（なければ本文）へ移す（「⋯」から操作するとページの先頭へ落ちていた）
+      window.requestAnimationFrame(() => {
+        const active = document.activeElement
+        if (active && active !== document.body && active.isConnected && !active.hasAttribute('data-focus-region')) return
+        ;(document.querySelector<HTMLElement>('[data-todo-row][tabindex="0"]') ?? document.getElementById('hakobi-main'))?.focus()
+      })
     }
     showToast(archived ? `「${archived.title}」をアーカイブしました` : 'アーカイブしました', 'success', { label: '元に戻す', run: () => { void window.api.todoUnarchive(id, previousStatus === 'archived' ? 'active' : previousStatus).then(loadTodos).then(() => showToast('元の状態に戻しました')) } })
   }, [activeView, detailReturnView, loadTodos, selectedTodoId, showToast, todos, toggleCenterView])
@@ -1351,7 +1379,8 @@ export function App(): React.JSX.Element {
     try {
       await window.api.todoUpdate(todo.id, { status: newStatus })
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '状態を変えられませんでした', 'error')
+      // 進捗ログと同じく、知らせからそのまま送り直せるようにする
+      showToast(error instanceof Error ? error.message : '状態を変えられませんでした', 'error', { label: '再試行', run: () => { void handleToggleDoneRef.current(todo) } })
       return
     }
 
@@ -1383,6 +1412,8 @@ export function App(): React.JSX.Element {
 
     await loadTodos()
   }, [loadTodos, showToast])
+  const handleToggleDoneRef = useRef(handleToggleDone)
+  handleToggleDoneRef.current = handleToggleDone
 
   // カンバンの列間ドラッグでステータスを変更。完了化したら handleToggleDone と同じく
   // 繰り返しタスクの次回分作成（DB層が自動生成）を通知する。
@@ -1399,6 +1430,8 @@ export function App(): React.JSX.Element {
     const previousStatus = todo.status
     showToast(`「${todo.title}」を${KANBAN_STATUS_LABELS[status]}にしました${recurrenceMessage ? `。${recurrenceMessage}` : ''}`, 'success', {
       label: '元に戻す',
+      // 同じカードを続けて動かしたときは、前の「元に戻す」を置き換える（古い方を押すと逆の操作になる）
+      key: `status:${todo.id}`,
       run: () => {
         void window.api.todoUpdate(todo.id, { status: previousStatus }).then(
           () => { showToast(`「${todo.title}」を${KANBAN_STATUS_LABELS[previousStatus]}に戻しました`); void loadTodos() },
@@ -1691,8 +1724,12 @@ export function App(): React.JSX.Element {
   const isManualSort = sortField === 'sort_order'
   // ガントの画面だけ、パネルの開閉をほかの画面とは別に持つ
   const isGanttView = activeView === 'gantt'
-  const categoryPaneVisible = isGanttView ? ganttPanes.category : showCategoryPane && (!autoHideCategoryPane || openedWhileNarrow.category)
-  const taskPaneVisible = isGanttView ? ganttPanes.task : showTaskPane && (!autoHideTaskPane || openedWhileNarrow.task)
+  // ガントでも、狭い窓ではほかの画面と同じ幅でカテゴリ一覧・タスク一覧を自動で畳む（広い画面で開いたと覚えていても、
+  // 1024px でガントが 330px ほどになっていた）。「表示」から開くと、その幅のあいだだけ開く
+  const ganttCategoryAutoHidden = isGanttView && autoHideCategoryPane && !openedWhileNarrow.category
+  const ganttTaskAutoHidden = isGanttView && autoHideTaskPane && !openedWhileNarrow.task
+  const categoryPaneVisible = isGanttView ? ganttPanes.category && !ganttCategoryAutoHidden : showCategoryPane && (!autoHideCategoryPane || openedWhileNarrow.category)
+  const taskPaneVisible = isGanttView ? ganttPanes.task && !ganttTaskAutoHidden : showTaskPane && (!autoHideTaskPane || openedWhileNarrow.task)
   // ガントでも、狭い窓では右の「今日の予定」を自動で畳む（ほかの画面と同じ。覚えている設定は変えない）。
   // 1024px で開いたままだと、時間軸が5日分ほどしか見えなかった。タスクの詳細を開いたときは出す
   const ganttSideAutoHidden = isGanttView && effectiveViewportWidth < NARROW_SIDE_PANEL_WIDTH && !openedWhileNarrow.side
@@ -1702,6 +1739,10 @@ export function App(): React.JSX.Element {
       // 狭くて自動で畳んでいる「今日の予定」は、設定を変えずにその幅のあいだだけ開け閉めする
       if (key === 'side' && effectiveViewportWidth < NARROW_SIDE_PANEL_WIDTH && ganttPanes.side) {
         setOpenedWhileNarrow((previous) => ({ ...previous, side: !previous.side }))
+        return
+      }
+      if ((key === 'category' && autoHideCategoryPane && ganttPanes.category) || (key === 'task' && autoHideTaskPane && ganttPanes.task)) {
+        setOpenedWhileNarrow((previous) => ({ ...previous, [key]: !previous[key] }))
         return
       }
       const next = { ...ganttPanes, [key]: !ganttPanes[key] }
@@ -1950,6 +1991,8 @@ export function App(): React.JSX.Element {
             />
             {multiUser && (
               <select
+                aria-label="一覧の担当"
+                title="一覧・ガント・カンバン・計画を絞り込みます。報告の担当と進捗の投稿者は各画面で選びます"
                 value={selectedAssigneeId === null ? '__all__' : selectedAssigneeId === '' ? '__none__' : selectedAssigneeId}
                 onChange={(e) => {
                   const v = e.target.value
@@ -1968,12 +2011,12 @@ export function App(): React.JSX.Element {
                   boxSizing: 'border-box'
                 }}
               >
-                <option value="__all__">担当: 全員</option>
-                {currentUser && <option value={currentUser.id}>担当: 自分（{currentUser.display_name}）</option>}
-                <option value="__none__">担当: 未割り当て</option>
+                <option value="__all__">一覧の担当: 全員</option>
+                {currentUser && <option value={currentUser.id}>一覧の担当: 自分（{currentUser.display_name}）</option>}
+                <option value="__none__">一覧の担当: 未割り当て</option>
                 {users.filter((user) => user.id !== currentUser?.id).map((user) => (
                   <option key={user.id} value={user.id}>
-                    担当: {user.display_name}{user.is_active ? '' : '（無効）'}
+                    一覧の担当: {user.display_name}{user.is_active ? '' : '（無効）'}
                   </option>
                 ))}
               </select>
@@ -2190,9 +2233,9 @@ export function App(): React.JSX.Element {
               todos={lensTodos}
               onSelectTodo={openTodoDetail}
               onSelectMember={(userId) => {
-                setSelectedAssigneeId(userId)
+                borrowAssigneeFilter(userId)
                 toggleCenterView('gantt')
-                showToast(`${users.find((user) => user.id === userId)?.display_name ?? 'メンバー'}さんのタスクに絞り込みました。見出しの横のチップで解除できます`, 'info')
+                showToast(`${users.find((user) => user.id === userId)?.display_name ?? 'メンバー'}さんのタスクに絞り込みました。ガントを離れると元の絞り込みに戻ります`, 'info')
               }}
               onSelectMemberMetric={(userId, metric) => {
                 const name = users.find((user) => user.id === userId)?.display_name ?? 'メンバー'
@@ -2202,15 +2245,16 @@ export function App(): React.JSX.Element {
                   toggleCenterView('report')
                   return
                 }
-                setSelectedAssigneeId(userId)
+                borrowAssigneeFilter(userId)
                 setGanttInitialHealthFilter(metric)
                 toggleCenterView('gantt')
-                showToast(`${name}さんの${metric === 'overdue' ? '期限超過' : '遅れている'}タスクを表示しています。見出しのチップで解除できます`, 'info')
+                showToast(`${name}さんの${metric === 'overdue' ? '期限超過' : '遅れている'}タスクを表示しています。ガントを離れると元の絞り込みに戻ります`, 'info')
               }}
               includePrivate={scopeLens === 'personal'}
             />
           ) : (
             <TodoDetail
+              textScale={fontScaleFactor}
               key={`${currentUser?.id ?? 'local'}:${selectedTodo?.id ?? 'none'}`}
               todo={selectedTodo}
               allTodos={lensTodos}
@@ -2228,6 +2272,7 @@ export function App(): React.JSX.Element {
               onDirtyChange={setDetailDirty}
               onArchive={handleArchive}
               onDelete={handleDelete}
+              onUnarchive={handleUnarchive}
               returnTo={detailReturnView ? { label: CENTER_VIEW_LABELS[detailReturnView], onReturn: () => toggleCenterView(detailReturnView) } : null}
             />
           )}
@@ -2288,6 +2333,7 @@ export function App(): React.JSX.Element {
                   <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
                     {ganttSidePanelMode === 'detail' ? (
                       <TodoDetail
+                        textScale={fontScaleFactor}
                         key={`${currentUser?.id ?? 'local'}:${selectedTodo?.id ?? 'none'}`}
                         todo={selectedTodo}
                         allTodos={lensTodos}
@@ -2305,6 +2351,7 @@ export function App(): React.JSX.Element {
                         onDirtyChange={setDetailDirty}
                         onArchive={handleArchive}
                         onDelete={handleDelete}
+                        onUnarchive={handleUnarchive}
                       />
                     ) : (
                       <TodayFlowRail

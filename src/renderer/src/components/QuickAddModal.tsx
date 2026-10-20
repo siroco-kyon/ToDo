@@ -115,6 +115,12 @@ export function QuickAddModal({
   // ToDoリスト（中の項目を毎日・毎週などでチェックし直すタスク）として作る。期限は「なし」のままでも決めてもよい
   const [listMode, setListMode] = useState(defaultListMode)
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
   const submittingRef = useRef(false)
   // 「追加後も続けて入力する」は、続けて何件も入れる人のために端末に覚える
   const [keepOpen, setKeepOpen] = useState(() => {
@@ -198,6 +204,7 @@ export function QuickAddModal({
 
     submittingRef.current = true
     setSubmitting(true)
+    setSubmitError(null)
     const remainingTitles = [...titles]
     const created: Todo[] = []
     try {
@@ -230,7 +237,13 @@ export function QuickAddModal({
       else onClose()
     } catch (error) {
       const detail = error instanceof Error ? error.message : '追加できませんでした'
-      onShowToast(created.length > 0 ? `${created.length}件は追加済みです。残りを再試行できます: ${detail}` : detail, 'error')
+      const message = created.length > 0
+        ? remainingTitles.length > 0
+          ? `${created.length}件は追加済みです。未追加の名前だけ残しています。${detail}`
+          : `タスクは追加済みですが、テンプレートの項目をすべて追加できませんでした。詳細画面で項目を確認してください。${detail}`
+        : detail
+      if (mountedRef.current) setSubmitError(message)
+      else onShowToast(`タスクの追加を完了できませんでした: ${message}`, 'error')
       // 送信中は欄を無効にしていてフォーカスが外れるので、無効を解いたあとで名前の欄へ戻す（そのまま Enter で再試行できる）
       window.setTimeout(() => inputRef.current?.focus(), 0)
     } finally {
@@ -312,11 +325,15 @@ export function QuickAddModal({
               placeholder="例: 見積書を作る"
               aria-required="true"
               aria-invalid={titleMissing || undefined}
-              aria-describedby={titleMissing ? 'quick-add-title-error' : undefined}
+              aria-describedby={[titleMissing ? 'quick-add-title-error' : '', submitError ? 'quick-add-submit-error' : ''].filter(Boolean).join(' ') || undefined}
               rows={titles.length > 1 ? Math.min(6, titles.length + 1) : 2}
               style={{ ...selectStyle, fontSize: '1rem', resize: 'vertical', lineHeight: 1.5 }}
             />
             {titleMissing && <div id="quick-add-title-error" role="alert" style={{ marginTop: 4, fontSize: 'var(--font-control)', color: 'var(--red-300)', fontWeight: 600 }}>タスク名を入力してください</div>}
+            {submitError && <div id="quick-add-submit-error" role="alert" style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--red-500)', background: 'var(--red-950)', color: 'var(--red-200)', fontSize: 'var(--font-control)', lineHeight: 1.6 }}>
+              <strong>追加を完了できませんでした。</strong> {submitError}
+              {title.trim() && <div>入力は残っています。接続・保存状況を確認してから「追加」で再試行できます。</div>}
+            </div>}
             {restoredDraft && (
               <div role="status" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem', color: 'var(--amber-300)' }}>
                 前回の書きかけを戻しました

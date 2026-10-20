@@ -551,7 +551,7 @@ function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
         disabled={disabled}
         onChange={onToggle}
         aria-label={`${item.title}を${done ? '未チェックに戻す' : 'チェックする'}`}
-        style={{ width: 17, height: 17, accentColor: 'var(--green-500)', cursor: disabled ? 'default' : 'pointer', flexShrink: 0, margin: 0 }}
+        style={{ width: 18, height: 18, accentColor: 'var(--green-500)', cursor: disabled ? 'default' : 'pointer', flexShrink: 0, margin: 3 }}
       />
       <button
         onClick={onEdit}
@@ -573,7 +573,7 @@ function ItemRow({ item, todayKey, draggable, disabled, onToggle, onEdit }: {
           onClick={onEdit}
           aria-label={`${item.title}を編集`}
           title="編集（名前・繰り返し・開始日・期限・担当・メモ・並べ替え・削除）"
-          style={{ background: 'none', border: 'none', padding: '0 2px', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 'var(--font-control)' }}
+          style={{ background: 'none', border: 'none', padding: '2px 4px', minWidth: 26, minHeight: 26, borderRadius: 6, color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 'var(--font-control)' }}
         >
           ✎
         </button>

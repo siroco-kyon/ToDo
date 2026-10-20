@@ -26,7 +26,7 @@ interface Props {
   currentUser?: PublicUser | null
   focusTarget?: ProgressTimelineFocusTarget | null
   onSelectTodo: (id: string) => void
-  onShowToast: (message: string, type?: 'success' | 'error') => void
+  onShowToast: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
   /** 全体レンズ時に隠す（プライベートカテゴリの）タスクID。既定は空＝全部表示 */
   hiddenTodoIds?: Set<string>
 }
@@ -405,7 +405,8 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       }
       onShowToast('進捗ログを投稿しました')
     } catch (error) {
-      onShowToast(error instanceof Error ? error.message : '進捗ログを追加できませんでした', 'error')
+      // 入力は残っているので、知らせからそのまま送り直せるようにする
+      onShowToast(error instanceof Error ? error.message : '進捗ログを追加できませんでした', 'error', { label: '再試行', run: () => void handleCreateNote(bodyOverride) })
     } finally {
       savingNoteRef.current = false
       setSavingNote(false)
@@ -705,6 +706,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
       <div style={headerStyle}>
         <div>
           <div style={{ fontSize: '1rem', color: 'var(--slate-50)', fontWeight: 800 }}>進捗タイムライン</div>
+          <div style={{ marginTop: 3, color: 'var(--text-subtle)', fontSize: 'var(--font-control)' }}>進捗ログと返信を時系列で確認します。{users.length > 0 && '投稿者はこの画面で選べます（一覧の担当とは別）。'}</div>
           <div style={{ marginTop: 3, color: 'var(--text-subtle)', fontSize: 'var(--font-control)' }}>
             {range.from === range.to ? range.from : `${range.from} ～ ${range.to}`} ・ 投稿 {visibleNotes.length}件 / 返信 {totalComments}件
             {unseenCount > 0 && <span style={{ color: 'var(--blue-300)', fontWeight: 700 }}> ・ 新着 {unseenCount}件</span>}
@@ -902,7 +904,7 @@ export function ProgressTimeline({ todos, users = [], currentUser = null, focusT
                   {!editingNote && (
                     <div style={postActionRowStyle}>
                       <ReactionBar reactions={note.reactions} onToggle={(emoji) => void handleToggleReaction(note.id, emoji)} />
-                      <span style={actionMetaStyle}>返信 {commentCount}件</span>
+                      {commentCount > 0 && <span style={actionMetaStyle}>返信 {commentCount}件</span>}
                       <button id={noteReplyButtonId(note.id)} onClick={() => setCommentingOnNoteId(note.id)} aria-label={`${authorName}さんの進捗ログに返信する`} style={inlineActionStyle}>返信</button>
                       {/* 報告タブと同じく、要相談・編集・削除は ⋯ にまとめる */}
                       <NoteMenu

@@ -562,7 +562,8 @@ const notificationBadgeStyle: React.CSSProperties = {
   height: 18,
   padding: '0 5px',
   borderRadius: 99,
-  background: 'var(--red-500)',
+  // 白い数字が読めるよう、一段濃い塗りにする（--red-500 では 3.8:1 だった）
+  background: 'var(--red-600)',
   color: 'var(--on-fill-white)',
   display: 'inline-flex',
   alignItems: 'center',
@@ -578,7 +579,7 @@ const tabBadgeStyle: React.CSSProperties = {
   height: 16,
   padding: '0 4px',
   borderRadius: 99,
-  background: 'var(--blue-500)',
+  background: 'var(--blue-600)',
   color: 'var(--on-fill-white)',
   display: 'inline-flex',
   alignItems: 'center',

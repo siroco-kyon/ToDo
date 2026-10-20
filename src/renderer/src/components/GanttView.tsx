@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Category, CreateSubTaskInput, ProgressNote, PublicUser, SubTask, Todo, TodoDependency, TodoStatus, UpdateSubTaskInput, UpdateTodoInput } from '../types'
 import { discussionBadgeStyle } from './ProgressNoteThread'
 import { buildChecklistSummaries, checklistBadgeText } from '../lib/todoList'
@@ -1093,6 +1093,16 @@ function GanttViewContent({
   // 行の Tab の止まる所は1行だけ（最後に触った行。なければ先頭）。ほかの行へは ↑↓/Home/End で移る。
   // 以前は1行ごとに名前・保留・＋で Tab が3回止まり、本文だけで100か所を超えていた
   const [activeGanttRowId, setActiveGanttRowId] = useState<string | null>(null)
+  // 横にスクロールして止まった位置（時間軸の左端）。止まったときだけ更新する（スクロール中に毎回全行を描き直さない）。
+  // 期間の左に切れたバーで名前が見えなくなるとき、名前をバーの右の外に出すのに使う
+  const [settledScrollLeft, setSettledScrollLeft] = useState(0)
+  const scrollSettleTimerRef = useRef<number | null>(null)
+  const handleChartScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const left = event.currentTarget.scrollLeft
+    if (scrollSettleTimerRef.current != null) window.clearTimeout(scrollSettleTimerRef.current)
+    scrollSettleTimerRef.current = window.setTimeout(() => setSettledScrollLeft(left), 150)
+  }, [])
+  useEffect(() => () => { if (scrollSettleTimerRef.current != null) window.clearTimeout(scrollSettleTimerRef.current) }, [])
   // Ctrl+K からの表示の切り替え
   useEffect(() => {
     const handle = (event: Event): void => {
@@ -1144,12 +1154,12 @@ function GanttViewContent({
     return () => observer.disconnect()
   })
   const displayedLeftColumnWidths = useMemo<GanttLeftColumnWidths>(() => {
-    const scaled = leftColumnScale === 1
+    let scaled = leftColumnScale === 1
       ? leftColumnWidths
       : Object.fromEntries(Object.entries(leftColumnWidths).map(([key, width]) => [key, Math.round(width * leftColumnScale)])) as unknown as GanttLeftColumnWidths
     if (chartAreaWidth <= 0) return scaled
     if (!hasCustomColumnWidths && chartAreaWidth >= WIDE_CHART_WIDTH) {
-      return { ...scaled, title: Math.max(scaled.title, Math.round(WIDE_TITLE_COLUMN_WIDTH * leftColumnScale)) }
+      scaled = { ...scaled, title: Math.max(scaled.title, Math.round(WIDE_TITLE_COLUMN_WIDTH * leftColumnScale)) }
     }
     const overflow = leftTableWidthFor(scaled, visibleLeftColumns) - Math.round(chartAreaWidth * 0.4)
     if (overflow <= 0) return scaled
@@ -1159,6 +1169,12 @@ function GanttViewContent({
   const compactRowTools = displayedLeftColumnWidths.title < 200
   const leftGridTemplate = useMemo(() => leftGridTemplateFor(displayedLeftColumnWidths, visibleLeftColumns), [displayedLeftColumnWidths, visibleLeftColumns])
   const leftTableWidth = useMemo(() => leftTableWidthFor(displayedLeftColumnWidths, visibleLeftColumns), [displayedLeftColumnWidths, visibleLeftColumns])
+  // 時間軸を残すための40%制限を、読み上げる最大値とキー操作にも反映する。
+  const maxTitleColumnWidth = chartAreaWidth > 0
+    ? Math.min(leftColumnDef('title').max, Math.max(150, Math.round((Math.round(chartAreaWidth * 0.4) - leftTableWidth + displayedLeftColumnWidths.title) / leftColumnScale)))
+    : leftColumnDef('title').max
+  const minTitleColumnWidth = chartAreaWidth > 0 && leftTableWidthFor({ ...displayedLeftColumnWidths, title: Math.round(leftColumnDef('title').min * leftColumnScale) }, visibleLeftColumns) > Math.round(chartAreaWidth * 0.4)
+    ? 150 : leftColumnDef('title').min
   const visibleLeftColumnDefs = useMemo(() => visibleLeftColumnDefsFor(visibleLeftColumns), [visibleLeftColumns])
   // 行の左の表は5つの欄を同じ順で並べている。出さない列は CSS で隠し、残りが表示中の列の幅に入る
   const leftGridAttributes = useMemo(() => ({
@@ -3785,7 +3801,7 @@ function GanttViewContent({
             </div>
           </div>
         ) : (
-          <div ref={scrollRef} style={{ height: '100%', minHeight: 0, overflow: 'auto' }}>
+          <div ref={scrollRef} onScroll={handleChartScroll} style={{ height: '100%', minHeight: 0, overflow: 'auto' }}>
             <div style={{ minWidth: leftTableWidth + timelineWidth }}>
               <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 6 }}>
                 <div style={{ position: 'sticky', left: 0, width: leftTableWidth, minWidth: leftTableWidth, boxSizing: 'border-box', background: 'var(--slate-900)', borderRight: '1px solid var(--slate-800)', borderBottom: '1px solid var(--slate-800)', padding: '6px 8px' }}>
@@ -3794,12 +3810,32 @@ function GanttViewContent({
                       <div key={column.key} style={leftHeaderCellStyle}>
                         <span style={leftHeaderLabelStyle}>{column.label}</span>
                         <span
+                          className="hakobi-column-resize"
                           role="separator"
+                          tabIndex={0}
                           aria-orientation="vertical"
                           aria-label={`${column.label}列幅を変更`}
+                          aria-valuemin={column.key === 'title' ? minTitleColumnWidth : column.min}
+                          aria-valuemax={column.key === 'title' ? maxTitleColumnWidth : column.max}
+                          aria-valuenow={Math.round(displayedLeftColumnWidths[column.key] / leftColumnScale)}
+                          aria-valuetext={`${Math.round(displayedLeftColumnWidths[column.key] / leftColumnScale)}。左右キーで調整、Shiftで大きく調整`}
+                          onKeyDown={(event) => {
+                            if (event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing) return
+                            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                            event.preventDefault()
+                            event.stopPropagation()
+                            const current = Math.round(displayedLeftColumnWidths[column.key] / leftColumnScale)
+                            const max = column.key === 'title' ? maxTitleColumnWidth : column.max
+                            const min = column.key === 'title' ? minTitleColumnWidth : column.min
+                            const width = event.key === 'Home' ? min : event.key === 'End' ? max
+                              : Math.max(min, Math.min(max, clampLeftColumnWidth(column.key, current + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 40 : 10))))
+                            setHasCustomColumnWidths(true)
+                            try { window.localStorage.setItem(GANTT_COLUMNS_CUSTOMIZED_STORAGE_KEY, '1') } catch { /* 保存できなくても幅は変える */ }
+                            setLeftColumnWidths((previous) => ({ ...previous, [column.key]: width }))
+                          }}
                           onPointerDown={(event) => beginLeftColumnResize(column.key, event)}
                           style={leftColumnResizeHandleStyle(resizingLeftColumn?.column === column.key)}
-                          title={`${column.label}列の幅を変更`}
+                          title={`${column.label}列の幅を変更（ドラッグ・← →。Shiftで大きく調整、Home/Endで最小/最大）`}
                         />
                       </div>
                     ))}
@@ -4039,8 +4075,10 @@ function GanttViewContent({
                 const discussionMarkerLeft = Math.min(overdueTail ? overdueTail.left + overdueTail.width + 6 : barEnd + 18, Math.max(timelineWidth - 60, 0))
                 // バーが短くて名前が入らないときは、バーの右の外（依存関係のつかみ・期限超過の斜線・要相談の印の後ろ）に名前を出す
                 const parentTitleText = `${listMode ? '☑ ' : group.todo.status === 'on_hold' ? '保留中 · ' : ''}${group.todo.title}`
-                const parentTitleWidth = Array.from(parentTitleText).reduce((sum, char) => sum + (char.charCodeAt(0) < 0x2000 ? 7 : 11.5), 0) + 24
-                const parentLabelOutside = Boolean(displayedTodoBar && todoVisible && !todoOutsideRange && unitWidth >= UNIT_WIDTH[timeScale].normal && barWidth < parentTitleWidth)
+                const parentTitleWidth = (Array.from(parentTitleText).reduce((sum, char) => sum + (char.charCodeAt(0) < 0x2000 ? 7 : 11.5), 0) + 24) * Math.max(1, textScale)
+                // 期間の左に切れていて、見えている部分が名前より短いときも外に出す（「者・70%…」のように名前が欠けていた）
+                const clippedAtLeft = barLeft < settledScrollLeft && barEnd > settledScrollLeft && barEnd - settledScrollLeft < parentTitleWidth + 90
+                const parentLabelOutside = Boolean(displayedTodoBar && todoVisible && !todoOutsideRange && (barWidth < parentTitleWidth || clippedAtLeft))
                 const parentLabelLeft = discussionCount > 0
                   ? discussionMarkerLeft + 64
                   : overdueTail ? overdueTail.left + overdueTail.width + 8 : barEnd + 22
@@ -4103,6 +4141,7 @@ function GanttViewContent({
                             }}
                             disabled={!canToggleSubtasks}
                             aria-hidden={canToggleSubtasks ? undefined : true}
+                            aria-expanded={canToggleSubtasks ? isExpanded : undefined}
                             tabIndex={canToggleSubtasks && rowTabbable ? 0 : -1}
                             aria-label={isExpanded ? `「${group.todo.title}」のサブタスクを折りたたむ` : `「${group.todo.title}」のサブタスクを展開する`}
                             title={canToggleSubtasks ? (isExpanded ? 'サブタスクを折りたたむ' : 'サブタスクを開く') : undefined}
@@ -4173,6 +4212,7 @@ function GanttViewContent({
                                     // 保留・再開も知らせる（バーの「保留中・」の文字だけでは気付きにくい）
                                     onShowToast?.(nextStatus === 'on_hold' ? `「${todo.title}」を保留にしました` : `「${todo.title}」を進行中に戻しました`, 'success', {
                                       label: '元に戻す',
+                                      key: `status:${todo.id}`,
                                       run: () => void onUpdateTodo(todo.id, { status: previousStatus }).catch(() => onShowToast?.('元に戻せませんでした', 'error'))
                                     })
                                   }, () => {
@@ -4987,8 +5027,11 @@ function leftColumnResizeHandleStyle(active: boolean): React.CSSProperties {
   return {
     position: 'absolute',
     top: 2,
-    right: -6,
-    width: 12,
+    right: -12,
+    width: 24,
+    padding: '0 8px',
+    boxSizing: 'border-box',
+    backgroundClip: 'content-box',
     height: 27,
     cursor: 'col-resize',
     borderRadius: 4,

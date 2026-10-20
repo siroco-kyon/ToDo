@@ -78,7 +78,8 @@ function ReactionChip({ emoji, reaction, onClick }: {
         aria-label={reactors.length > 0 ? `${label}: ${reactors.map((reactor) => reactor.display_name).join('、')}` : label}
         style={chipStyle(active, Boolean(onClick), emoji === LIKE_EMOJI && count === 0)}
       >
-        {emoji} {count}
+        {/* まだ誰も押していないときは「0」を出さない（全部の投稿に「👍 0」が並んで読みにくかった） */}
+        {emoji}{count > 0 ? ` ${count}` : ''}
       </button>
       {tooltipVisible && reactors.length > 0 && (
         <span role="tooltip" style={tooltipStyle}>

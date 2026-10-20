@@ -159,6 +159,9 @@ async function main() {
         results.push(`${shot.name}: 操作に失敗 ${error.message}`)
       }
     }
+    // ビルドの差し替え等でエラーページになった画像を、正常な比較画像として残さない。
+    const rendered = await win.webContents.executeJavaScript("Boolean(window.api && document.querySelector('main')?.textContent.trim())")
+    if (!rendered) throw new Error(`${shot.name}: アプリの本文が表示されていません。ビルド完了後に再撮影してください`)
     const image = await win.webContents.capturePage()
     const file = path.join(outDir, `${shot.name}.png`)
     fs.writeFileSync(file, image.toPNG())
