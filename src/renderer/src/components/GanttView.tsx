@@ -31,6 +31,8 @@ interface Props {
   textScale?: number
   /** 知らせを出す（キーで日程を変えたときに「元に戻す」付きで知らせる） */
   onShowToast?: (message: string, type?: 'success' | 'error', action?: { label?: string; run?: () => void; key?: string }) => void
+  /** 開いたときにかける「期限超過」「遅れ」の絞り込み（チームの数字から開いたとき） */
+  initialHealthFilter?: 'overdue' | 'behind' | null
 }
 
 /** チャートの最小の高さ（これより低い窓では、ガントの画面ごとスクロールする） */
@@ -1000,7 +1002,8 @@ function GanttViewContent({
   focusTodoId = null,
   dataLoading = false,
   textScale = 1,
-  onShowToast
+  onShowToast,
+  initialHealthFilter = null
 }: Props): React.JSX.Element {
   const unscheduledSectionRef = useRef<HTMLDivElement>(null)
   const initialSettings = useMemo(() => loadGanttViewSettings(), [])
@@ -1037,7 +1040,7 @@ function GanttViewContent({
   const [manualPreset, setManualPreset] = useState<RangePreset>(initialSettings.manualPreset)
   const [controlsCollapsed, setControlsCollapsed] = useState(initialSettings.controlsCollapsed)
   // 見出しの「期限超過」「遅れ」を押したときの絞り込み（覚えない）
-  const [healthFilter, setHealthFilter] = useState<'overdue' | 'behind' | null>(null)
+  const [healthFilter, setHealthFilter] = useState<'overdue' | 'behind' | null>(initialHealthFilter)
   const [selectedCategoryKeys, setSelectedCategoryKeys] = useState<CategoryFilterKey[]>(initialSettings.selectedCategoryKeys)
   const [taskQuery, setTaskQuery] = useState('')
   const [selectedTodoIds, setSelectedTodoIds] = useState<string[]>([])
@@ -4775,7 +4778,7 @@ function GanttViewContent({
       </div>
 
       {/* 日付のないタスクが0件のときは1行だけにして、チャートの高さを取らない */}
-      {showUnscheduled && unscheduledGroups.length === 0 && (
+      {showUnscheduled && unscheduledGroups.length === 0 && !loading && !dataLoading && (
         <div ref={unscheduledSectionRef} style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)', padding: '2px 4px' }}>
           未配置タスク（日付なし）はありません。開始日も期限もないタスクは、ここに並びます。
         </div>

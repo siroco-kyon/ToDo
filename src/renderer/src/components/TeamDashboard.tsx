@@ -9,6 +9,8 @@ interface Props {
   onSelectTodo: (id: string) => void
   /** メンバーのカードを押したとき（そのメンバーで一覧を絞ってガントを開く） */
   onSelectMember?: (userId: string) => void
+  /** メンバーの「超過」「遅れ」「報告なし」の数を押したとき（そのタスクだけを開く） */
+  onSelectMemberMetric?: (userId: string, metric: 'overdue' | 'behind' | 'unreported') => void
   /** false のときプライベートカテゴリのタスクを集計から除外（全体レンズ） */
   includePrivate?: boolean
   /** メンバーごとの「遅れ」を数えるタスク（ガント・報告タブと同じ判定にする） */
@@ -43,7 +45,7 @@ function dueSoonLabel(days: number): string {
   return `あと${days}日`
 }
 
-export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = true, todos = [] }: Props): React.JSX.Element {
+export function TeamDashboard({ onSelectTodo, onSelectMember, onSelectMemberMetric, includePrivate = true, todos = [] }: Props): React.JSX.Element {
   const [data, setData] = useState<TeamDashboardData>(EMPTY)
   const [loadedAt, setLoadedAt] = useState<number>(Date.now())
   const [nowMs, setNowMs] = useState<number>(Date.now())
@@ -163,7 +165,7 @@ export function TeamDashboard({ onSelectTodo, onSelectMember, includePrivate = t
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 330px), 1fr))', gap: 8 }}>
             {data.workloads.map((member) => (
-              <WorkloadCard key={member.user_id} member={member} behindCount={behindCountByUser.get(member.user_id) ?? 0} onSelect={onSelectMember ? () => onSelectMember(member.user_id) : undefined} />
+              <WorkloadCard key={member.user_id} member={member} behindCount={behindCountByUser.get(member.user_id) ?? 0} onSelect={onSelectMember ? () => onSelectMember(member.user_id) : undefined} onSelectMetric={onSelectMemberMetric ? (metric) => onSelectMemberMetric(member.user_id, metric) : undefined} />
             ))}
           </div>
         )}
@@ -264,38 +266,70 @@ function DeadlineRow({ item, accent, label, onSelectTodo }: { item: TeamDeadline
   )
 }
 
-function WorkloadCard({ member, behindCount, onSelect }: { member: TeamMemberWorkload; behindCount: number; onSelect?: () => void }): React.JSX.Element {
-  const Container = onSelect ? 'button' : 'div'
+// 名前を押すとその人のタスクをガントで、「超過」「遅れ」「報告なし」の数を押すとそのタスクだけを開く
+function WorkloadCard({ member, behindCount, onSelect, onSelectMetric }: { member: TeamMemberWorkload; behindCount: number; onSelect?: () => void; onSelectMetric?: (metric: 'overdue' | 'behind' | 'unreported') => void }): React.JSX.Element {
+  const nameContent = (
+    <>
+      <span style={{ width: 11, height: 11, borderRadius: '50%', background: member.user_color, flexShrink: 0 }} />
+      <span style={{ fontSize: '0.86rem', color: 'var(--slate-200)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.display_name}</span>
+      {onSelect && <span aria-hidden="true" style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>→</span>}
+    </>
+  )
+  const metricAction = (metric: 'overdue' | 'behind' | 'unreported', count: number): (() => void) | undefined =>
+    onSelectMetric && count > 0 ? () => onSelectMetric(metric) : undefined
   return (
-    <Container
-      type={onSelect ? 'button' : undefined}
-      onClick={onSelect}
-      title={onSelect ? `${member.display_name}さんのタスクだけをガントで見る` : undefined}
-      style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 10, padding: '8px 12px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 14px', textAlign: 'left', color: 'inherit', font: 'inherit', cursor: onSelect ? 'pointer' : 'default', width: '100%' }}
+    <div
+      style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 10, padding: '8px 12px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 14px', textAlign: 'left', color: 'inherit', width: '100%', boxSizing: 'border-box' }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '7.5rem', minWidth: 0 }}>
-        <span style={{ width: 11, height: 11, borderRadius: '50%', background: member.user_color }} />
-        <span style={{ fontSize: '0.86rem', color: 'var(--slate-200)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.display_name}</span>
-      </div>
+      {onSelect ? (
+        <button
+          type="button"
+          onClick={onSelect}
+          title={`${member.display_name}さんのタスクだけをガントで見る`}
+          aria-label={`${member.display_name}さんのタスクをガントで見る`}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, width: '7.5rem', minWidth: 0, minHeight: 32, padding: 0, background: 'transparent', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }}
+        >
+          {nameContent}
+        </button>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '7.5rem', minWidth: 0 }}>{nameContent}</div>
+      )}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
         <Metric label="未完了" title="未着手と進行中の数（保留中は別に数える）" value={`${member.active_tasks}`} color="var(--slate-200)" />
         <Metric label="保留中" value={`${member.on_hold_tasks}`} color="var(--purple-300)" />
-        <Metric label="超過" title="期限を過ぎた未完了のタスク" value={`${member.overdue_tasks}`} color={member.overdue_tasks > 0 ? 'var(--red-400)' : 'var(--slate-500)'} />
-        <Metric label="遅れ" title="期限前で、予定の進捗より遅れているタスク（ガントの「遅れ」と同じ判定）" value={`${behindCount}`} color={behindCount > 0 ? 'var(--amber-300)' : 'var(--slate-500)'} />
+        <Metric label="超過" title="期限を過ぎた未完了のタスク" value={`${member.overdue_tasks}`} color={member.overdue_tasks > 0 ? 'var(--red-400)' : 'var(--text-subtle)'}
+          onClick={metricAction('overdue', member.overdue_tasks)} actionLabel={`${member.display_name}さんの期限超過のタスク${member.overdue_tasks}件をガントで見る`} />
+        <Metric label="遅れ" title="期限前で、予定の進捗より遅れているタスク（ガントの「遅れ」と同じ判定）" value={`${behindCount}`} color={behindCount > 0 ? 'var(--amber-300)' : 'var(--text-subtle)'}
+          onClick={metricAction('behind', behindCount)} actionLabel={`${member.display_name}さんの遅れているタスク${behindCount}件をガントで見る`} />
         {member.unreported_tasks !== undefined && (
-          <Metric label="報告なし（直近7日）" title="直近7日に、担当（主・副）の進捗ログもメモの更新もない、進行中（または開始日を過ぎた未着手）の主担当のタスク。報告タブの「報告なし」と同じ数え方で、期間を直近7日にしたもの（報告のリマインドも同じ条件）" value={`${member.unreported_tasks}`} color={member.unreported_tasks > 0 ? 'var(--amber-200)' : 'var(--slate-500)'} />
+          <Metric label="報告なし（直近7日）" title="直近7日に、担当（主・副）の進捗ログもメモの更新もない、進行中（または開始日を過ぎた未着手）の主担当のタスク。報告タブの「報告なし」と同じ数え方で、期間を直近7日にしたもの（報告のリマインドも同じ条件）" value={`${member.unreported_tasks}`} color={member.unreported_tasks > 0 ? 'var(--amber-200)' : 'var(--text-subtle)'}
+            onClick={metricAction('unreported', member.unreported_tasks)} actionLabel={`${member.display_name}さんの報告なしのタスク${member.unreported_tasks}件を報告タブで見る`} />
         )}
         <Metric label="今日" value={formatMinutes(member.today_minutes)} color="var(--green-400)" />
       </div>
-    </Container>
+    </div>
   )
 }
 
-function Metric({ label, value, color, title }: { label: string; value: string; color: string; title?: string }): React.JSX.Element {
+// 数。押せるとき（onClick）はボタンにし、下線で押せることを見せる
+function Metric({ label, value, color, title, onClick, actionLabel }: { label: string; value: string; color: string; title?: string; onClick?: () => void; actionLabel?: string }): React.JSX.Element {
+  const content = (
+    <>
+      <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>{label}</span>
+      <span style={{ fontSize: '0.92rem', color, fontWeight: 700, fontVariantNumeric: 'tabular-nums', textDecoration: onClick ? 'underline' : 'none', textUnderlineOffset: 3 }}>{value}</span>
+    </>
+  )
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} title={title} aria-label={actionLabel}
+        style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '2px 4px', margin: '-2px -4px', background: 'transparent', border: 'none', borderRadius: 6, font: 'inherit', cursor: 'pointer' }}>
+        {content}
+      </button>
+    )
+  }
   return (
     <div title={title} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <span style={{ fontSize: '0.64rem', color: 'var(--text-subtle)' }}>{label}</span>
-      <span style={{ fontSize: '0.92rem', color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+      {content}
     </div>
   )
 }

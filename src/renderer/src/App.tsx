@@ -1062,6 +1062,13 @@ export function App(): React.JSX.Element {
 
   // ほかの画面（チーム・報告など）からタスクを開いたときは、詳細にその画面へ戻るボタンを出す。タブで画面を変えたら消す
   const [detailReturnView, setDetailReturnView] = useState<CenterView | null>(null)
+  // チームの数（超過・遅れ・報告なし）から開いたときに、開いた画面へ一度だけ渡す絞り込み（画面は開いたときにだけ読む）
+  const [ganttInitialHealthFilter, setGanttInitialHealthFilter] = useState<'overdue' | 'behind' | null>(null)
+  const [reportFocusAssigneeId, setReportFocusAssigneeId] = useState<string | null>(null)
+  useEffect(() => {
+    if (activeView !== 'gantt' && ganttInitialHealthFilter) setGanttInitialHealthFilter(null)
+    if (activeView !== 'report' && reportFocusAssigneeId) setReportFocusAssigneeId(null)
+  }, [activeView, ganttInitialHealthFilter, reportFocusAssigneeId])
 
   // 上部のタブで画面を切り替える。表示中のタブをもう一度押しても、ほかの画面には移らない
   const toggleCenterView = useCallback((view: CenterView) => {
@@ -2059,6 +2066,7 @@ export function App(): React.JSX.Element {
               groupByCategory={selectedCategoryId === null}
               textScale={(Number.parseFloat(fontScale) || 100) / 100}
               onShowToast={showToast}
+              initialHealthFilter={ganttInitialHealthFilter}
             />
           ) : activeView === 'kanban' ? (
             <KanbanView
@@ -2124,6 +2132,7 @@ export function App(): React.JSX.Element {
               onCreateSubTask={handleCreateSubTask}
               onShowToast={showToast}
               onCreateTodo={handleAdd}
+              initialUnreportedAssigneeId={reportFocusAssigneeId}
             />
           ) : activeView === 'todo' ? (
             <TodoListsView
@@ -2146,7 +2155,20 @@ export function App(): React.JSX.Element {
               onSelectMember={(userId) => {
                 setSelectedAssigneeId(userId)
                 toggleCenterView('gantt')
-                showToast(`${users.find((user) => user.id === userId)?.display_name ?? 'メンバー'}さんのタスクに絞り込みました。見出しの横のチップで解除できます`)
+                showToast(`${users.find((user) => user.id === userId)?.display_name ?? 'メンバー'}さんのタスクに絞り込みました。見出しの横のチップで解除できます`, 'info')
+              }}
+              onSelectMemberMetric={(userId, metric) => {
+                const name = users.find((user) => user.id === userId)?.display_name ?? 'メンバー'
+                if (metric === 'unreported') {
+                  // 報告タブはタスク一覧の担当の絞り込みを使わないので、報告タブの中でその人の「報告なし」だけを出す
+                  setReportFocusAssigneeId(userId)
+                  toggleCenterView('report')
+                  return
+                }
+                setSelectedAssigneeId(userId)
+                setGanttInitialHealthFilter(metric)
+                toggleCenterView('gantt')
+                showToast(`${name}さんの${metric === 'overdue' ? '期限超過' : '遅れている'}タスクを表示しています。見出しのチップで解除できます`, 'info')
               }}
               includePrivate={scopeLens === 'personal'}
             />
