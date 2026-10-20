@@ -543,11 +543,11 @@ export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, 
         {/* ─── 自分の進捗サマリー ─── */}
         {onMySummary && (
           <section>
-            <h3 style={sectionHead}>進捗サマリー</h3>
+            <h3 style={sectionHead}>自分の進捗レポート</h3>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
               期間を指定して、追加タスク・タスク変更・進捗ログ・作業時間を振り返ります。タスク別のMarkdownをコピーして日報・週報に貼れます。
             </p>
-            <button onClick={onMySummary} style={secondaryBtn}>📊 自分の進捗サマリーを開く</button>
+            <button onClick={onMySummary} style={secondaryBtn}>📊 自分の進捗レポートを開く（右上のメニューの「進捗レポート」と同じ）</button>
           </section>
         )}
 

@@ -195,7 +195,7 @@ export function TodayFlowRail({
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.72rem', color: active ? 'var(--on-fill-blue-100)' : 'var(--blue-300)', fontWeight: 700 }}>
+                      <span style={{ fontSize: '0.72rem', color: active ? 'var(--blue-100)' : 'var(--blue-300)', fontWeight: 700 }}>
                         {formatClock(item.startMinutes)} - {formatClock(item.endMinutes)}
                       </span>
                       <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>{formatDuration(item.durationMinutes)}</span>

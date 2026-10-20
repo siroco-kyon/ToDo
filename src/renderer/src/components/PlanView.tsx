@@ -1105,8 +1105,13 @@ export function PlanView({
   // 予定を外す。タスクは消えないが、時刻と長さは消えるので、知らせから同じ時刻・長さで戻せるようにする。
   // 外したボタンは消えるので、フォーカスは時間割へ移す（区分けの先頭へ飛ばないように）
   const removeItemWithUndo = async (item: DailyPlanItem): Promise<void> => {
+    // 時刻が未定のカードから外したときは、隣のカードの「時間に置く」へフォーカスを移す（なければ時間割へ）
+    const card = item.scheduled_start ? null : document.querySelector<HTMLElement>(`[data-plan-unscheduled-id="${CSS.escape(item.id)}"]`)
+    const neighbor = (card?.nextElementSibling ?? card?.previousElementSibling) as HTMLElement | null | undefined
+    const neighborButton = neighbor?.querySelector<HTMLElement>('button[aria-label$="を時間割に置く"]') ?? null
     await onRemoveItem(item.id)
-    timelineRef.current?.focus({ preventScroll: true })
+    if (neighborButton?.isConnected) neighborButton.focus({ preventScroll: true })
+    else timelineRef.current?.focus({ preventScroll: true })
     onShowToast?.(`「${item.title}」を計画から外しました（タスクは消えません）`, 'success', {
       label: '元に戻す',
       run: () => {

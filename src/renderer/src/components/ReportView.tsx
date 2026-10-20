@@ -204,7 +204,7 @@ function loadPreset(): Exclude<PeriodPreset, 'custom'> {
 }
 
 // タブを開いているあいだだけ覚えるもの（ほかの画面へ行って戻ったときに続きから見られるように）
-const SESSION_KEYS = { quickFilter: 'report.quickFilter', scrollTop: 'report.scrollTop' }
+const SESSION_KEYS = { quickFilter: 'report.quickFilter', scrollTop: 'report.scrollTop', returnPending: 'report.returnPending' }
 const QUICK_FILTERS: readonly QuickFilter[] = ['all', 'needsReport', 'discussion', 'onHold', 'overdue', 'behind', 'postponed', 'myNeedsReport']
 
 function loadSessionQuickFilter(): QuickFilter {
@@ -216,8 +216,13 @@ function loadSessionQuickFilter(): QuickFilter {
   }
 }
 
+// 位置を戻すのは、報告タブからタスクを開いて戻ってきたときだけ（タブで開き直したときは先頭から。
+// 以前は前回の位置で開き、題名や期間の選択が画面の外に隠れていた）
 function loadSessionScrollTop(): number | null {
   try {
+    const returning = window.sessionStorage.getItem(SESSION_KEYS.returnPending) === '1'
+    window.sessionStorage.removeItem(SESSION_KEYS.returnPending)
+    if (!returning) return null
     const stored = Number(window.sessionStorage.getItem(SESSION_KEYS.scrollTop))
     return Number.isFinite(stored) && stored > 0 ? stored : null
   } catch {
@@ -901,6 +906,11 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const lastScrollTopRef = useRef(0)
   const scrollRestoreRef = useRef<number | null>(loadSessionScrollTop())
+  // タスクを開くときは、戻ってきたら今の位置へ戻せるよう印を付ける
+  const openTodoFromReport = useCallback((id: string): void => {
+    try { window.sessionStorage.setItem(SESSION_KEYS.returnPending, '1') } catch { /* 位置は戻せなくてもよい */ }
+    onSelectTodo(id)
+  }, [onSelectTodo])
   // 画面を離れるとき（DOM が消える前）に位置を覚える
   useLayoutEffect(() => () => {
     const top = scrollContainerRef.current?.scrollTop ?? lastScrollTopRef.current
@@ -1410,13 +1420,13 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
     onUpdateTask: updateTask,
     onUpdateSubTask: updateSubTask,
     onCreateSubTask: createSubTask,
-    onSelectTodo,
+    onSelectTodo: openTodoFromReport,
     onHideTodo: (todo) => setTodoHidden(todo, true),
     onShowToast,
     users,
     // 「@」の候補（自分を呼んでも通知は届かないので外す）
     mentionUsers: users.filter((user) => user.id !== currentUser?.id)
-  }), [canModifyNote, createNote, createSubTask, currentUser, deleteNote, onSelectTodo, onShowToast, replyNote, setTodoHidden, toggleDiscussion, toggleReaction, updateNote, updateSubTask, updateTask, users])
+  }), [canModifyNote, createNote, createSubTask, currentUser, deleteNote, openTodoFromReport, onShowToast, replyNote, setTodoHidden, toggleDiscussion, toggleReaction, updateNote, updateSubTask, updateTask, users])
 
   const handleCopyMarkdown = async (): Promise<void> => {
     try {
@@ -1448,7 +1458,7 @@ export function ReportView({ todos, subTasks, categories, users, currentUser, on
       multiUser={multiUser}
       isMine={currentUser != null && isMyTask(row.todo, row.subTasks, currentUser.id)}
       showOnTrackHelper={!inMeeting}
-      onSelectTodo={onSelectTodo}
+      onSelectTodo={openTodoFromReport}
       actions={actions}
     />
   )
