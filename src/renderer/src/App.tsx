@@ -23,6 +23,7 @@ import { TodayTodoCard } from './components/TodayTodo'
 import { mergeSubsetOrder } from './lib/reorder'
 import { buildUrlSearch, parseUrlState } from './lib/urlState'
 import { recurrenceDoneMessage, recurrenceReopenMessage } from './lib/recurrence'
+import { notifyReopenedRecurrence } from './lib/recurrenceUndo'
 import { elapsedSecondsSince } from './hooks/useElapsedSeconds'
 import { formatShortDate, shiftDateKey } from './lib/dueDate'
 import { FOCUS_PROGRESS_LOG_EVENT, FOCUS_TASK_DETAIL_EVENT } from './lib/appEvents'
@@ -1312,11 +1313,12 @@ export function App(): React.JSX.Element {
   }, [])
 
   const handleArchive = useCallback(async (id: string) => {
-    const previousStatus = todos.find((todo) => todo.id === id)?.status
+    const archived = todos.find((todo) => todo.id === id)
+    const previousStatus = archived?.status
     await window.api.todoArchive(id)
     await loadTodos()
     if (selectedTodoId === id) setSelectedTodoId(null)
-    showToast('アーカイブしました', 'success', { label: '元に戻す', run: () => { void window.api.todoUnarchive(id, previousStatus === 'archived' ? 'active' : previousStatus).then(loadTodos).then(() => showToast('元の状態に戻しました')) } })
+    showToast(archived ? `「${archived.title}」をアーカイブしました` : 'アーカイブしました', 'success', { label: '元に戻す', run: () => { void window.api.todoUnarchive(id, previousStatus === 'archived' ? 'active' : previousStatus).then(loadTodos).then(() => showToast('元の状態に戻しました')) } })
   }, [loadTodos, selectedTodoId, showToast, todos])
 
   const handleUnarchive = useCallback(async (id: string) => {
@@ -1337,6 +1339,7 @@ export function App(): React.JSX.Element {
       ? (todo.progress > 0 ? 'active' : 'not_started')
       : 'done'
     // 繰り返しタスクの次回分はDB層が完了時に自動生成する
+    const changedAt = new Date().toISOString()
     try {
       await window.api.todoUpdate(todo.id, { status: newStatus })
     } catch (error) {
@@ -1360,7 +1363,7 @@ export function App(): React.JSX.Element {
         label: '元に戻す',
         run: () => {
           void window.api.todoUpdate(todo.id, { status: previousStatus }).then(
-            () => { showToast(`「${todo.title}」の完了を取り消しました`); void loadTodos() },
+            () => { void loadTodos(); void notifyReopenedRecurrence(todo, changedAt, showToast, loadTodos) },
             (error: unknown) => showToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
           )
         }
@@ -2189,6 +2192,7 @@ export function App(): React.JSX.Element {
               onAddToTodayPlan={handleAddToTodayPlan}
               onShowToast={showToast}
               onDirtyChange={setDetailDirty}
+              onArchive={handleArchive}
               returnTo={detailReturnView ? { label: CENTER_VIEW_LABELS[detailReturnView], onReturn: () => toggleCenterView(detailReturnView) } : null}
             />
           )}
@@ -2248,6 +2252,7 @@ export function App(): React.JSX.Element {
                         onAddToTodayPlan={handleAddToTodayPlan}
                         onShowToast={showToast}
                         onDirtyChange={setDetailDirty}
+                        onArchive={handleArchive}
                       />
                     ) : (
                       <TodayFlowRail

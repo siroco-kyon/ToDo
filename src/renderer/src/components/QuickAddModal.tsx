@@ -130,6 +130,8 @@ export function QuickAddModal({
 
   const titles = title.split(/\r?\n/).map((value) => value.trim()).filter(Boolean)
   const canSubmit = titles.length > 0 && !isDateRangeInvalid && !submitting
+  const [titleRequiredShown, setTitleRequiredShown] = useState(false)
+  const titleMissing = titleRequiredShown && titles.length === 0
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -175,6 +177,12 @@ export function QuickAddModal({
   }
 
   const submit = async (): Promise<void> => {
+    // 名前が空のまま追加しようとしたら、黙って何もしないのではなく、欄の下に理由を出してフォーカスを戻す
+    if (titles.length === 0 && !submittingRef.current) {
+      setTitleRequiredShown(true)
+      inputRef.current?.focus()
+      return
+    }
     if (!canSubmit || submittingRef.current) return
 
     submittingRef.current = true
@@ -275,7 +283,7 @@ export function QuickAddModal({
           )}
 
           <div>
-            <label htmlFor="quick-add-input" style={labelStyle}>タスク名</label>
+            <label htmlFor="quick-add-input" style={labelStyle}>タスク名 <span style={{ color: 'var(--text-subtle)', fontWeight: 400 }}>（必須。ほかの欄は空でも追加できます）</span></label>
             <textarea
               id="quick-add-input"
               ref={inputRef}
@@ -289,9 +297,13 @@ export function QuickAddModal({
                 }
               }}
               placeholder="例: 見積書を作る"
+              aria-required="true"
+              aria-invalid={titleMissing || undefined}
+              aria-describedby={titleMissing ? 'quick-add-title-error' : undefined}
               rows={titles.length > 1 ? Math.min(6, titles.length + 1) : 2}
               style={{ ...selectStyle, fontSize: '1rem', resize: 'vertical', lineHeight: 1.5 }}
             />
+            {titleMissing && <div id="quick-add-title-error" role="alert" style={{ marginTop: 4, fontSize: 'var(--font-control)', color: 'var(--red-300)', fontWeight: 600 }}>タスク名を入力してください</div>}
             {restoredDraft && (
               <div role="status" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem', color: 'var(--amber-300)' }}>
                 前回の書きかけを戻しました
@@ -518,7 +530,8 @@ export function QuickAddModal({
             </button>
             <button
               type="submit"
-              disabled={!canSubmit}
+              disabled={submitting || isDateRangeInvalid}
+              aria-disabled={!canSubmit || undefined}
               style={{
                 padding: '8px 16px',
                 background: canSubmit ? 'var(--blue-600)' : 'var(--slate-700)',

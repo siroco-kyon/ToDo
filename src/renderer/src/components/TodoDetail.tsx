@@ -21,6 +21,7 @@ import { changeFieldLabel } from '../lib/changeFields'
 import { FOCUS_PROGRESS_LOG_EVENT, FOCUS_TASK_DETAIL_EVENT } from '../lib/appEvents'
 import { taskOptionLabel } from '../lib/taskLabel'
 import { TODO_RECURRENCE_OPTIONS, nextRecurrenceDue, recurrenceDoneMessage, recurrenceKindLabel, recurrenceReopenMessage, todoRecurrenceLabel } from '../lib/recurrence'
+import { notifyReopenedRecurrence } from '../lib/recurrenceUndo'
 
 interface Props {
   todo: Todo | null
@@ -38,6 +39,8 @@ interface Props {
   onAddToTodayPlan: (todoId: string) => Promise<DailyPlanItem>
   onShowToast: (message: string, type?: 'success' | 'error', action?: { label?: string; run?: () => void; key?: string }) => void
   onDirtyChange?: (dirty: boolean) => void
+  /** 「⋯」から片付ける（一覧から外す。あとで戻せる。完全な削除はアーカイブの中から） */
+  onArchive?: (id: string) => Promise<void>
   /** ほかの画面（チーム・報告など）から開いたとき、その画面へ戻るボタン */
   returnTo?: { label: string; onReturn: () => void } | null
 }
@@ -163,6 +166,7 @@ export function TodoDetail({
   onAddToTodayPlan,
   onShowToast,
   onDirtyChange,
+  onArchive,
   returnTo = null
 }: Props): React.JSX.Element {
   const [logs, setLogs] = useState<WorkLog[]>([])
@@ -535,12 +539,16 @@ export function TodoDetail({
       : 'done'
     const previousStatus = todo.status
     const todoId = todo.id
-    // 一覧で完了にしたときと同じく、知らせから元に戻せるようにする
+    const changedAt = new Date().toISOString()
+    const source = todo
+    // 一覧で完了にしたときと同じく、知らせから元に戻せるようにする。繰り返しの完了を戻したときは、作られた次回分も片付けられるようにする
     const undo = {
       label: '元に戻す',
       run: () => {
         void onUpdate(todoId, { status: previousStatus }).then(
-          () => onShowToast('元に戻しました'),
+          () => nextStatus === 'done' && recurrenceKindLabel(source.recurrence)
+            ? void notifyReopenedRecurrence(source, changedAt, onShowToast, () => undefined)
+            : onShowToast('元に戻しました'),
           (error: unknown) => onShowToast(error instanceof Error ? error.message : '元に戻せませんでした', 'error')
         )
       }
@@ -1751,7 +1759,8 @@ export function TodoDetail({
                 // サーバー版だけ。チャットなどに貼ると、このタスクの詳細を開ける（個人用のデスクトップ版はファイルの URL なので出さない）
                 ...(users.length > 0 ? [{ label: 'リンクをコピー', onSelect: () => void copyTaskLink() }] : []),
                 { label: '複製する（サブタスクも一緒に）', onSelect: () => void duplicateTodo() },
-                { label: 'テンプレートとして保存', onSelect: saveAsTemplate }
+                { label: 'テンプレートとして保存', onSelect: saveAsTemplate },
+                ...(onArchive ? [{ label: 'アーカイブする（一覧から片付ける。あとで戻せます）', onSelect: () => void onArchive(todo.id) }] : [])
               ]}
             />
           )}
