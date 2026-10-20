@@ -1867,6 +1867,22 @@ R37 で ④⑤ は9点だったが、評価者が変わり、通信失敗の新�
 - 今後の提案: 次の作業で新しい評価者による総合1ラウンドと実SRの代表フローを確認する。作業ログの事後修正等、旧提案の大きな仕様変更は未実装。ユーザーに途中確認は求めていない。
 - 次に再開する場合: この節とGit仕上げを確認し、隔離DBの起動・現状画像を取り直してから未検証範囲を評価する。9点を前提にしない。本番配布は別作業。
 
-コミットID: R46_COMMIT_PENDING（Git仕上げで実ID記録）。
+コミットID: d4823e1（Git仕上げで実ID記録）。
 
-R46の撮影追記: 撮影とビルドの差し替えが重なり、途中の報告画像1枚にENOENTページが混入した。ビルドを終えてから全33画面を再撮影し、report-1024-large等を画像で再確認。scripts/ux-screenshots.cjsにwindow.apiとmain本文の存在チェックを足し、エラーページを正常な比較画像として保存しないようにした。最終41枚（33画面＋追加検証8枚）の画像は撮影チェックを通過。
+R46の撮影追記: 撮影とビルドの差し替えが重なり、途中の報告画像1枚にENOENTページが混入した。ビルドを終えてから全33画面を再撮影し、report-1024-large等を画像で再確認。scripts/ux-screenshots.cjsにwindow.apiとmain本文の存在チェックを足し、エラーページを正常な比較画像として保存しないようにした。最終41枚のうち、バッチの33画面は撮影チェックを通過。追加検証8枚は親が実操作中に撮影したもの。
+
+### Git仕上げ（2026-10-21）
+
+作業ブランチ: ux-improve（既存を継続、削除しない）。PR: https://github.com/siroco-kyon/ToDo/pull/97 （base main、マージ可能、登録されたCIチェックなし。ローカルの検証結果と独立レビューで判断）。依頼に基づきマージする。本番配布は含めない。
+
+|コミット|内容|
+|---|---|
+|ed3a78f|R42: 文字拡大詳細・保留計測・自動保存案内|
+|6dc7511|R43: 追加失敗の回復・担当条件の区別|
+|3556f44|R44: 列幅キー操作・強制カラー・操作領域|
+|91bba9d|R45: 拡大時エラー・月年ガント件名・README|
+|d4823e1|R46: 全体検証・列幅/遅延失敗の回帰修正・最終41画像|
+
+この表のあとに記録確定用のdocsコミットを1件追加する。PRには引き継いだR39〜41の未マージ分（5bcc0f3/0a96109/cc6390a/9144553）も含む。
+主な変更ファイル: src/renderer/src/App.tsx、components/TodoDetail.tsx・QuickAddModal.tsx・GanttView.tsx・ListFilterChips.tsx・ProgressTimeline.tsx・ReportView.tsx、styles/theme.css、tests/ux-usability-electron.cjs、scripts/ux-screenshots.cjs、package.json、README.md、UX_LOG.md、ux-shots/before/resume-42 と round-42〜46。
+元からあった未追跡のUX_REVIEW.md・資料・画像・.playwright-mcpは保持。不要な無効撮影2枚（今回だけが作ったもの）は除去。API/DB/配布先に変更なし。作業中の隔離サーバー4612は終了時に止め、既存4601には触れない。
