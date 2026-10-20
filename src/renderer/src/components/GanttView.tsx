@@ -175,6 +175,7 @@ const ASSIGNEE_SECTION_PREFIX = 'assignee:'
 /** 最新の進捗ログをツールチップに出すために読む期間（日） */
 const PROGRESS_NOTE_LOOKBACK_DAYS = 60
 const COLLAPSED_TODO_STORAGE_KEY = 'gantt-collapsed-todo-ids'
+const GANTT_UNSCHEDULED_OPEN_STORAGE_KEY = 'hakobi-gantt-unscheduled-open'
 const GANTT_BASELINE_STORAGE_KEY = 'gantt-baseline-snapshot'
 const GANTT_SCROLL_STATE_STORAGE_KEY = 'gantt-scroll-state'
 const GANTT_LEFT_COLUMN_WIDTHS_STORAGE_KEY = 'gantt-left-column-widths'
@@ -1016,6 +1017,18 @@ function GanttViewContent({
   const [showSubtasks, setShowSubtasks] = useState(initialSettings.showSubtasks)
   const [showOutOfRange, setShowOutOfRange] = useState(initialSettings.showOutOfRange)
   const [showUnscheduled, setShowUnscheduled] = useState(initialSettings.showUnscheduled)
+  // 未配置タスクの一覧は畳める。覚えていなければ、高さの低い窓（900px 未満）では畳んでチャートの行を多く見せる
+  const [unscheduledOpen, setUnscheduledOpen] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem(GANTT_UNSCHEDULED_OPEN_STORAGE_KEY)
+      if (saved === '1' || saved === '0') return saved === '1'
+    } catch { /* 読めなければ既定 */ }
+    return window.innerHeight >= 900
+  })
+  const toggleUnscheduledOpen = useCallback((open: boolean) => {
+    setUnscheduledOpen(open)
+    try { window.localStorage.setItem(GANTT_UNSCHEDULED_OPEN_STORAGE_KEY, open ? '1' : '0') } catch { /* 覚えられなくても開閉はする */ }
+  }, [])
   const [showScheduleSignals, setShowScheduleSignals] = useState(initialSettings.showScheduleSignals)
   const [showBaseline, setShowBaseline] = useState(initialSettings.showBaseline)
   const [rangeMode, setRangeMode] = useState<'auto' | 'manual'>(initialSettings.rangeMode)
@@ -3275,6 +3288,7 @@ function GanttViewContent({
           <button
             onClick={() => {
               setShowUnscheduled(true)
+              toggleUnscheduledOpen(true)
               window.requestAnimationFrame(() => unscheduledSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
             }}
             title="開始日・期限のないタスク。押すとチャートの下の一覧へ移動します"
@@ -4767,16 +4781,24 @@ function GanttViewContent({
         </div>
       )}
       {showUnscheduled && unscheduledGroups.length > 0 && (
-        <div ref={unscheduledSectionRef} style={{ background: 'var(--gray-900)', border: '1px solid var(--gray-800)', borderRadius: 16, padding: 16, scrollMarginTop: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: '0.92rem', color: 'var(--slate-50)', fontWeight: 700 }}>未配置タスク（日付なし）{unscheduledGroups.length > 0 ? ` ${unscheduledGroups.length}件` : ''}</div>
+        <div ref={unscheduledSectionRef} style={{ background: 'var(--gray-900)', border: '1px solid var(--gray-800)', borderRadius: 16, padding: unscheduledOpen ? 16 : '8px 16px', scrollMarginTop: 8, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              aria-expanded={unscheduledOpen}
+              aria-controls="gantt-unscheduled-list"
+              onClick={() => toggleUnscheduledOpen(!unscheduledOpen)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', padding: '4px 2px', cursor: 'pointer', fontSize: '0.92rem', color: 'var(--slate-50)', fontWeight: 700 }}
+            >
+              <span aria-hidden="true" style={{ display: 'inline-block', width: 12, color: 'var(--slate-400)', transform: unscheduledOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>▶</span>
+              未配置タスク（日付なし） {unscheduledGroups.length}件
+              <span style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)', fontWeight: 600 }}>{unscheduledOpen ? '畳む' : '開く'}</span>
+            </button>
             <div style={{ fontSize: 'var(--font-control)', color: 'var(--text-subtle)' }}>開始日も期限もないタスクです。「今日に配置」を押すか、詳細で日程を入れるとチャートに出ます。</div>
           </div>
 
-          {unscheduledGroups.length === 0 ? (
-            <div style={{ marginTop: 12, fontSize: '0.82rem', color: 'var(--text-subtle)' }}>未配置タスクはありません。</div>
-          ) : (
-            <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+          {!unscheduledOpen ? null : (
+            <div id="gantt-unscheduled-list" style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
               {unscheduledGroups.map((group) => (
                 <div key={group.todo.id} style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 12, padding: '12px 13px' }}>
                   <button onClick={() => onSelectTodo(group.todo.id)} style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700, textAlign: 'left' }}>{group.todo.title}</button>

@@ -1338,7 +1338,15 @@ export function App(): React.JSX.Element {
     const recurrenceMessage = newStatus === 'done' ? recurrenceDoneMessage(todo) : recurrenceReopenMessage(todo)
     if (newStatus === 'done') {
       const previousStatus = todo.status
-      showToast(`「${todo.title}」を完了にしました${recurrenceMessage ? `。${recurrenceMessage}` : ''}`, 'success', {
+      // サブタスクが残ったまま完了にしたときは、知らせに件数を書き添える（止めはしない。元に戻すで戻せる）
+      let openSubTaskNote = ''
+      if (!todo.list_mode) {
+        try {
+          const openCount = (await window.api.subtaskGetByTodo(todo.id)).filter((subTask) => subTask.progress < 100).length
+          if (openCount > 0) openSubTaskNote = `（未完了のサブタスクが${openCount}件あります）`
+        } catch { /* 数えられなくても完了の知らせは出す */ }
+      }
+      showToast(`「${todo.title}」を完了にしました${openSubTaskNote}${recurrenceMessage ? `。${recurrenceMessage}` : ''}`, 'success', {
         label: '元に戻す',
         run: () => {
           void window.api.todoUpdate(todo.id, { status: previousStatus }).then(

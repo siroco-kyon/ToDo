@@ -65,6 +65,13 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box'
 }
 
+const fieldErrorStyle: React.CSSProperties = {
+  marginTop: 4,
+  fontSize: 'var(--font-control)',
+  color: 'var(--red-300)',
+  fontWeight: 600
+}
+
 /** 説明・メモを自動で保存するまでの、入力が止まってからの時間 */
 const AUTOSAVE_DELAY_MS = 1500
 /** 詳細の欄がこの幅以上あれば2列にする（左: 説明・メモ・サブタスク・進捗ログ、右: 状態などの欄・計測・進捗・依存関係・記録） */
@@ -158,6 +165,10 @@ export function TodoDetail({
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const [saveError, setSaveError] = useState('')
+  // 保存できない入力は、知らせだけでなく欄の下にも出し、その欄へフォーカスを移す
+  const [fieldError, setFieldError] = useState<{ field: 'title' | 'dates'; message: string } | null>(null)
+  const editStartDateInputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { if (!editing) setFieldError(null) }, [editing])
   const editBaseRef = useRef<UpdateTodoInput>({})
   const subTaskBasesRef = useRef(new Map<string, EditableSubTask>())
   const [editData, setEditData] = useState<UpdateTodoInput>({})
@@ -524,7 +535,10 @@ export function TodoDetail({
       await onUpdate(todo.id, { status: nextStatus })
       if (nextStatus === 'done') {
         const recurrenceMessage = recurrenceDoneMessage(todo)
-        onShowToast(recurrenceMessage ? `完了にしました。${recurrenceMessage}` : '完了にしました', 'success', undo)
+        // サブタスクが残ったまま完了にしたときは件数を書き添える（一覧で完了にしたときと同じ）
+        const openSubTaskCount = todo.list_mode ? 0 : subTasks.filter((subTask) => subTask.progress < 100).length
+        const doneMessage = openSubTaskCount > 0 ? `完了にしました（未完了のサブタスクが${openSubTaskCount}件あります）` : '完了にしました'
+        onShowToast(recurrenceMessage ? `${doneMessage}。${recurrenceMessage}` : doneMessage, 'success', undo)
       } else {
         const reopenMessage = recurrenceReopenMessage(todo)
         onShowToast(reopenMessage ? `完了を取り消しました。${reopenMessage}` : '完了を取り消しました', 'success', undo)
@@ -668,7 +682,12 @@ export function TodoDetail({
 
   const handleSave = async (): Promise<void> => {
     if (!todo || savingRef.current) return
-    if (!(editData.title ?? '').trim()) { onShowToast('タスク名を入力してください', 'error'); return }
+    if (!(editData.title ?? '').trim()) {
+      setFieldError({ field: 'title', message: 'タスク名を入力してください' })
+      onShowToast('タスク名を入力してください', 'error')
+      editTitleInputRef.current?.focus()
+      return
+    }
 
     if (editableSubTasks.some((subTask) => !subTask.title.trim())) {
       onShowToast('サブタスク名を入力してください', 'error')
@@ -679,9 +698,12 @@ export function TodoDetail({
       return
     }
     if (editData.start_date && editData.due_date && editData.start_date > editData.due_date) {
+      setFieldError({ field: 'dates', message: '開始日は期限以前にしてください' })
       onShowToast('開始日は期限以前にしてください', 'error')
+      editStartDateInputRef.current?.focus()
       return
     }
+    setFieldError(null)
 
     const nextEditData = { ...editData, title: editData.title!.trim() }
     const taskPatch = buildEditPatch(editBaseRef.current, nextEditData)
@@ -1156,7 +1178,8 @@ export function TodoDetail({
                 )}
               </div>
               <div><label style={labelStyle}>説明</label><textarea aria-label="説明" value={editData.description ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, description: event.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} /></div>
-              <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input type="date" aria-label="開始日" value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, start_date: event.target.value || null }))} style={inputStyle} /></div><div style={{ flex: 1 }}><label style={labelStyle}>{editingListMode ? '期限（空にすると期限なし）' : '期限'}</label><input type="date" aria-label="期限" value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, due_date: event.target.value || null }))} style={inputStyle} /></div></div>
+              <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>開始日</label><input ref={editStartDateInputRef} type="date" aria-label="開始日" aria-invalid={fieldError?.field === 'dates' || undefined} aria-describedby={fieldError?.field === 'dates' ? 'detail-dates-error' : undefined} value={editData.start_date?.slice(0, 10) ?? ''} onChange={(event) => { setEditData((previous) => ({ ...previous, start_date: event.target.value || null })); if (fieldError?.field === 'dates') setFieldError(null) }} style={fieldError?.field === 'dates' ? { ...inputStyle, borderColor: 'var(--red-500)' } : inputStyle} /></div><div style={{ flex: 1 }}><label style={labelStyle}>{editingListMode ? '期限（空にすると期限なし）' : '期限'}</label><input type="date" aria-label="期限" aria-invalid={fieldError?.field === 'dates' || undefined} aria-describedby={fieldError?.field === 'dates' ? 'detail-dates-error' : undefined} value={editData.due_date?.slice(0, 10) ?? ''} onChange={(event) => { setEditData((previous) => ({ ...previous, due_date: event.target.value || null })); if (fieldError?.field === 'dates') setFieldError(null) }} style={fieldError?.field === 'dates' ? { ...inputStyle, borderColor: 'var(--red-500)' } : inputStyle} /></div></div>
+              {fieldError?.field === 'dates' && <div id="detail-dates-error" role="alert" style={fieldErrorStyle}>{fieldError?.message}</div>}
               <div style={{ display: 'flex', gap: 10 }}><div style={{ flex: 1 }}><label style={labelStyle}>カテゴリ</label><select aria-label="カテゴリ" value={editData.category_id ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, category_id: event.target.value || null }))} style={inputStyle}><option value="">なし</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div><div style={{ flex: 1 }}><label style={labelStyle}>優先度</label><select aria-label="優先度" value={editData.priority ?? 3} onChange={(event) => setEditData((previous) => ({ ...previous, priority: Number(event.target.value) }))} style={inputStyle}><option value={1}>最低</option><option value={2}>低</option><option value={3}>中</option><option value={4}>高</option><option value={5}>最高</option></select></div></div>
               {!editingListMode && (
                 <div>
@@ -1643,7 +1666,23 @@ export function TodoDetail({
             </button>
           )}
           {editing ? (
-            <input ref={editTitleInputRef} disabled={saving} aria-label="タスク名" value={editData.title ?? ''} onChange={(event) => setEditData((previous) => ({ ...previous, title: event.target.value }))} style={inputStyle} />
+            <>
+              <input
+                ref={editTitleInputRef}
+                disabled={saving}
+                aria-label="タスク名"
+                aria-invalid={fieldError?.field === 'title' || undefined}
+                aria-describedby={fieldError?.field === 'title' ? 'detail-title-error' : undefined}
+                value={editData.title ?? ''}
+                onChange={(event) => {
+                  const title = event.target.value
+                  setEditData((previous) => ({ ...previous, title }))
+                  if (fieldError?.field === 'title' && title.trim()) setFieldError(null)
+                }}
+                style={fieldError?.field === 'title' ? { ...inputStyle, borderColor: 'var(--red-500)' } : inputStyle}
+              />
+              {fieldError?.field === 'title' && <div id="detail-title-error" role="alert" style={fieldErrorStyle}>{fieldError.message}</div>}
+            </>
           ) : (
             <h2 ref={titleHeadingRef} tabIndex={-1} style={{ fontSize: '1.1rem', color: 'var(--slate-200)', lineHeight: 1.4, margin: 0, overflowWrap: 'anywhere' }}>{todo.title}</h2>
           )}

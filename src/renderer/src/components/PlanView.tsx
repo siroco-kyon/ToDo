@@ -80,6 +80,8 @@ const BLOCK_GAP = 8
 const LANE_COUNT = 1
 const MAX_LANES = 2
 const COMPACT_BLOCK_THRESHOLD = 64
+/** これより狭いブロックは、操作ボタンを「⋯」にまとめる（1行に収まらずタスク名を隠すため） */
+const NARROW_BLOCK_WIDTH = 400
 const EDGE_SCROLL_THRESHOLD = 72
 const EDGE_SCROLL_PIXELS = 24
 const AUTO_SCROLL_LEAD_MINUTES = 60
@@ -398,7 +400,8 @@ function miniActionBtn(background: string, color: string): React.CSSProperties {
     padding: '2px 6px',
     cursor: 'pointer',
     fontSize: '0.66rem',
-    lineHeight: 1.2
+    lineHeight: 1.2,
+    whiteSpace: 'nowrap'
   }
 }
 
@@ -609,7 +612,9 @@ function UnscheduledCard({
             event.stopPropagation()
             void onRemove(item.id)
           }}
-          style={actionBtn('var(--c-3f1d1d)', 'var(--red-300)', 'var(--red-900)')}
+          style={actionBtn('var(--slate-800)', 'var(--slate-300)', 'var(--slate-700)')}
+          title="今日の計画から外す（タスクは消えません）"
+          aria-label={`「${item.title}」を計画から外す（タスクは消えません）`}
         >
           外す
         </button>
@@ -649,6 +654,28 @@ export function PlanView({
   }, [reportActionError])
   useEffect(() => setActionError(null), [date])
   const timelineRef = useRef<HTMLDivElement>(null)
+  // ブロックが狭いと、操作ボタンが2段になってタスク名が隠れる。狭いブロックでは −15・+15 以外を「⋯」にまとめる
+  const [timelineWidth, setTimelineWidth] = useState(0)
+  const [openMenuItemId, setOpenMenuItemId] = useState<string | null>(null)
+  // メニューの外を押したら閉じる（details は外を押しても閉じないため）
+  useEffect(() => {
+    if (!openMenuItemId) return
+    const handlePointerDown = (event: PointerEvent): void => {
+      const target = event.target as Element | null
+      document.querySelectorAll<HTMLDetailsElement>('details.hakobi-plan-block-menu[open]').forEach((details) => {
+        if (!target || !details.contains(target)) details.open = false
+      })
+    }
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true)
+  }, [openMenuItemId])
+  useEffect(() => {
+    const element = timelineRef.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => setTimelineWidth(entry.contentRect.width))
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<InteractionState | null>(null)
 
@@ -1032,7 +1059,7 @@ export function PlanView({
       )}
       {/* 2列（時間割と候補）。狭いときは候補を時間割の下へ回す（時間割が細くならないように） */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
-        <div style={{ flex: '1.5 1 440px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        <div style={{ flex: '1.5 1 400px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
             {/* 日付と件数は1行にまとめる（時間割を上に寄せる） */}
             <div
               title="今日の時間割をまとめて調整できます"
@@ -1329,6 +1356,8 @@ export function PlanView({
                     const dueLabel = formatDueLabel(item.due_date, date)
                     const blockHeight = item.durationMinutes * PIXELS_PER_MINUTE
                     const compactBlock = blockHeight < COMPACT_BLOCK_THRESHOLD
+                    const blockWidth = (timelineWidth - BLOCK_GAP * (placement.cols - 1)) / Math.max(1, placement.cols)
+                    const narrowBlocks = timelineWidth > 0 && blockWidth < NARROW_BLOCK_WIDTH
 
                     return (
                       <div
@@ -1344,8 +1373,9 @@ export function PlanView({
                           border: `1px solid ${runningTodoId === item.todo_id ? 'var(--green-500)' : `color-mix(in srgb, ${categoryColor} 43.9%, transparent)`}`,
                           borderRadius: 12,
                           boxSizing: 'border-box',
-                          overflow: 'hidden',
-                          zIndex: interaction?.itemId === item.id ? 5 : 2,
+                          // 「⋯」のメニューを開いている間は、ブロックの外へはみ出して出す
+                          overflow: openMenuItemId === item.id ? 'visible' : 'hidden',
+                          zIndex: interaction?.itemId === item.id || openMenuItemId === item.id ? 5 : 2,
                           transition: interaction?.itemId === item.id ? 'none' : 'top 120ms ease, left 120ms ease, height 120ms ease, box-shadow 120ms ease',
                           boxShadow: interaction?.itemId === item.id ? '0 16px 32px color-mix(in srgb, var(--slate-900) 28%, transparent)' : 'none'
                         }}
@@ -1366,7 +1396,7 @@ export function PlanView({
                             userSelect: 'none'
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: compactBlock ? 'nowrap' : 'wrap', rowGap: 4 }}>
                             <span style={{ fontSize: '0.7rem', color: 'var(--blue-100)', fontWeight: 700, whiteSpace: 'nowrap' }}>
                               {offsetToClock(item.startMinutes)} - {offsetToClock(item.endMinutes)}
                             </span>
@@ -1381,9 +1411,32 @@ export function PlanView({
                               </span>
                             )}
                             {!compactBlock && <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void runAction(() => onShiftItem(item.id, -15))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分早める">−15</button>
-                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void runAction(() => onShiftItem(item.id, 15))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分遅らせる">+15</button>
-                              {onShiftFollowing && (
+                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void runAction(() => onShiftItem(item.id, -15))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分早める" aria-label={`「${item.title}」を15分早める`}>−15</button>
+                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void runAction(() => onShiftItem(item.id, 15))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分遅らせる" aria-label={`「${item.title}」を15分遅らせる`}>+15</button>
+                              {narrowBlocks ? (
+                                <details
+                                  className="hakobi-plan-block-menu"
+                                  onToggle={(event) => {
+                                    const open = event.currentTarget.open
+                                    setOpenMenuItemId((previous) => open ? item.id : previous === item.id ? null : previous)
+                                  }}
+                                  onPointerDown={(event) => event.stopPropagation()}
+                                  onKeyDown={(event) => {
+                                    if (event.key !== 'Escape') return
+                                    const details = event.currentTarget
+                                    if (!details.open) return
+                                    event.stopPropagation()
+                                    details.open = false
+                                    details.querySelector('summary')?.focus()
+                                  }}
+                                  style={{ position: 'relative' }}
+                                >
+                                  <summary aria-label={`「${item.title}」のほかの操作`} title="ほかの操作（以降+15・複製・未定・外す）" style={{ ...miniActionBtn('var(--slate-800)', 'var(--slate-300)'), listStyle: 'none' }}>⋯</summary>
+                                  <div
+                                    onClick={(event) => { const details = event.currentTarget.parentElement as HTMLDetailsElement | null; if (details && (event.target as HTMLElement).closest('button')) details.open = false }}
+                                    style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 20, display: 'flex', flexDirection: 'column', gap: 4, padding: 6, borderRadius: 8, background: 'var(--slate-900)', border: '1px solid var(--slate-700)', boxShadow: '0 8px 20px rgba(0,0,0,0.35)' }}
+                                  >
+                                    {onShiftFollowing && (
                                 <button
                                   onPointerDown={(event) => event.stopPropagation()}
                                   onClick={() => void runAction(() => onShiftFollowing!(item.id, 15))}
@@ -1418,11 +1471,59 @@ export function PlanView({
                               <button
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={() => void runAction(() => onRemoveItem(item.id))}
-                                style={miniActionBtn('var(--c-3f1d1d)', 'var(--red-300)')}
-                                title="今日の計画から外す"
+                                style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
+                                title="今日の計画から外す（タスクは消えません）"
+                                aria-label={`「${item.title}」を計画から外す（タスクは消えません）`}
                               >
                                 外す
                               </button>
+                                  </div>
+                                </details>
+                              ) : (
+                                <>
+                                  {onShiftFollowing && (
+                                <button
+                                  onPointerDown={(event) => event.stopPropagation()}
+                                  onClick={() => void runAction(() => onShiftFollowing!(item.id, 15))}
+                                  style={miniActionBtn('var(--blue-950)', 'var(--blue-200)')}
+                                  title="この予定と、これ以降の予定を15分遅らせる"
+                                >
+                                  以降+15
+                                </button>
+                              )}
+                              <button
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={() => void runAction(() => duplicateBlock(item))}
+                                style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
+                                title="同じタスクをこの直後にもう1つ置く"
+                              >
+                                複製
+                              </button>
+                              <button
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={() => {
+                                  const nextItems = planItems.map((planItem) => {
+                                    if (planItem.id !== item.id) return planItem
+                                    return { ...planItem, scheduled_start: null }
+                                  })
+                                  void runAction(() => onUpdateItem(item.id, { scheduled_start: null }).then(() => onReorder(reorderIdsByTime(nextItems))))
+                                }}
+                                style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
+                                title="未定に戻す"
+                              >
+                                未定
+                              </button>
+                              <button
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={() => void runAction(() => onRemoveItem(item.id))}
+                                style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
+                                title="今日の計画から外す（タスクは消えません）"
+                                aria-label={`「${item.title}」を計画から外す（タスクは消えません）`}
+                              >
+                                外す
+                              </button>
+                                </>
+                              )}
                             </div>}
                           </div>
 
@@ -1479,7 +1580,7 @@ export function PlanView({
             </div>
           </Section>
         </div>
-        <div style={{ flex: '0.9 1 320px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+        <div style={{ flex: '0.9 1 270px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <Section title="時刻が未定のタスク" subtitle="まだ時刻を決めていないタスクです。ドラッグかクリックで時間割に置けます。">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {unscheduledItems.length === 0 ? (

@@ -29,6 +29,9 @@
       :focus-visible { outline: 3px solid var(--sky-400, #38bdf8); outline-offset: 2px; }
       /* 入力欄は部品の書き方（outline: none）に関係なく、キーボードで入ったことが分かる枠を出す */
       input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--sky-400, #38bdf8) !important; outline-offset: 0 !important; }
+      /* 保存できない入力の欄。色だけに頼らず、欄の下の文（role=alert）でも伝える */
+      input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--red-500) !important; }
+      input[aria-invalid="true"]:focus-visible, select[aria-invalid="true"]:focus-visible, textarea[aria-invalid="true"]:focus-visible { outline-color: var(--red-500) !important; }
       /* 画面全体（本文の区分け）にフォーカスを移したときは、内側に枠を出す（外側だと画面の端で切れる） */
       /* チェックボックス・ラジオは文字の大きさに合わせる（ブラウザの既定は 13px のまま変わらない） */
       input[type="checkbox"], input[type="radio"] { width: 1rem; height: 1rem; }
