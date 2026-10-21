@@ -1,0 +1,444 @@
+<<<yomiyasu:material README.md:1-85>>>
+# HAKOBI
+
+ガントチャートを中心にしたタスク管理アプリです。タスク管理、サブタスク、依存関係、今日の計画、作業ログを 1 つのアプリで扱えます。
+
+デスクトップ版は、チーム接続と個人用を選べます。
+
+- チーム接続のデスクトップ版（Electron）
+  初回に自分のグループのサーバー URL を登録し、次回から自動接続します。サーバーが配信する画面を表示するので、ブラウザ版と同じ担当者・チーム管理・リアルタイム同期を使えます。右下のタイマー、進捗のクイック投稿、トレイ操作、OS の通知と未読バッジ、トレイ・タスクバーからの計測の開始/切り替え/停止を追加しています。インストーラーはサーバーのダウンロードページ（`/download`、ログイン不要）から入手でき、新しい版を公開するとアプリにお知らせが出ます（インストールは手動）。
+- 個人用のデスクトップ版（Electron）
+  1 人で使うローカルアプリです。従来どおりデータを端末内の SQLite に保存します。
+- チーム向けサーバー版（マルチユーザー Web）
+  中央サーバーに配置し、ブラウザから複数人（6 人規模を想定）で利用します。担当者ごとの進捗・期限や「今だれが何をやっているか」を、ガントとチームダッシュボードで共有できます。
+
+React 部分（レンダラー）は共通です。個人用では Electron IPC、チーム接続ではサーバーの HTTP/WebSocket API を使います。デスクトップからサーバーの DB ファイルへ直接接続しません。チーム接続の配布・グループ分離・更新の手順は [HAKOBI 運用ガイド](docs/HAKOBI.md) を参照してください。
+
+## 主な機能
+
+- ガントチャート中心のタスク管理
+- 説明・メモ・進捗タブの投稿と返信に貼ったHTTP/HTTPS URLをクリックして開く（Webは別タブ、デスクトップは標準ブラウザー）
+- 管理者によるメンバー削除（担当件数を確認し、対象ログインIDを入力して実行）。担当を解除し、ログインと接続を終了。作業ログ・投稿・変更履歴は保持し、削除済みログインIDは再利用不可
+- 報告タブで保留開始日時と保留期間を確認。保留中のみの絞り込み、古い順の表示、メモによる保留理由・再開条件の記録、Markdown・CSV出力に対応
+- タスクの保留・再開（進捗・日付を保持。ガントの紫色表示と保留中フィルター、詳細画面の操作、カンバンの保留中列）
+- 保留時は実行中タイマーを停止して作業ログを保存（サーバー版では同じタスクを計測する全員を停止）。再開後に計測できる
+- 保留中のタスクは今日の作業候補と前日からの繰り越し対象から除外。登録済みの予定と期限通知・依存関係は保持
+- タスクバーのドラッグ移動、開始日・終了日のリサイズ
+- 親タスクごとのサブタスク展開・折りたたみ
+- サブタスクの任意並べ替え（詳細画面の上下ボタン／ガントのドラッグ）
+- 表示期間外のタスク・サブタスクを左右端のマーカーで確認
+- 完了／未完了フィルターを親タスクとサブタスクへ個別に適用
+- サブタスクの期限が親タスクを超えたとき、親タスクの期限を自動延長
+- 依存関係の管理
+  - ガント上のドラッグ接続
+  - 依存関係パネルからの追加
+  - タスク詳細画面からの追加・待機日数変更・削除
+  - Finish to Start 形式の依存関係と待機日数
+- 基準線の保存と比較表示
+- 進捗シグナル表示（バーの色で区別。期間のうち今日までに過ぎた日数の割合を「予定の進捗」とし、実際の進捗が予定より何日分遅れているかで判定。「何日分遅れたら遅れにするか」と「土日・祝日を除いて数えるか」は表示設定で変更できる）
+  - 順調（青）
+  - 遅れ（橙。「約3日遅れ」のように日数で表示）
+  - 期限超過（赤。期限から今日までを斜線で表示）
+  - 開始前（灰）
+- ガントの見やすさ
+  - 土日・祝日の列の色分け（祝日名はヘッダーのツールチップ）と、今日の列を囲む赤い枠
+  - タスク名・担当・進捗をバーの上に表示。開始日が画面の左外にあっても、見えている範囲の左端に出し続ける
+  - マウスを乗せた行を、左の一覧からバーまで横一列でハイライト
+  - バーのツールチップに担当・予定との差・最新の進捗ログ、要相談があるタスクにはバーの右に印
+  - カテゴリ別／担当者別の並び替え（担当者別はサーバー版）。タスクは表のように続けて並べ、まとまりの境目は色付きの見出しと左端の線、タスクの境目は区切り線で示す。サブタスクは「├ └」で字下げし、背景を少し暗くする
+  - 表示単位は日・週・月・年。初期表示と「今日に戻る」では、今日を左から 1/4 の位置に表示
+- 今日の計画ビュー
+- 任意日の計画、前日未完了の繰り越し、予定の15分単位調整
+- 概要ダッシュボード
+- メモ・サブタスク・担当者を含む検索、保存ビュー
+- 担当者別の概要集計、タスク担当表示、メンバーごとの活動サマリー
+- 複数行／連続追加、タスク複製、タスクテンプレート
+- 作業ログとタイマー
+- カテゴリ管理
+- Markdown エクスポート
+- タスクの繰り返し設定（完了にすると次回分を作る）
+  - 毎日・毎週・毎月・毎年
+  - 開始日・期限を前回から1周期ずらして次回分を作る。毎年は同じ月日（2/29の翌年は2/28）
+  - 完了を取り消しても、作成済みの次回分は残る。不要なら次回分をアーカイブする
+- ToDoリスト（中の項目をチェックして使うタスク）
+  - タスクの「種類」で選ぶ。期限は「なし」のままでも、決めてもよい（作るときの期限欄か、あとから詳細・ガント・報告タブで入れる）
+  - 中の項目ごとに 毎日／平日／毎週／毎月 を選ぶと、周期が変わったときに未チェックに戻る（毎週は月曜、毎月は1日）
+  - 繰り返さない項目は、チェックすると「済み」に移る。開始日と期限を付けられ、開始日が来たら（期限だけなら期限の日から）「今日やること」に出る
+  - 一覧・カンバン・ガントに「今回 3/5・残り2」のように表示。ガントでは開始日から今日（期限があれば期限）までのバー
+  - 報告タブでは「報告なし」に数えず、周期ごとに終わった回の実施（例: 昨日まで 18/20回（90%））と今の回（例: 今日 1/5）を分けて表示。今日・今週・今月の分は途中なので、チェックしても実施の回数に入れない。率（%）は5回以上たまってから出す。まだのやること・期間中に済んだやることも表示
+- アーカイブ
+- 別ウィンドウでのガント表示
+
+### チーム向けサーバー版の追加機能
+
+- 管理者によるアカウント発行（自己登録なし、bcrypt でパスワードをハッシュ化）
+- セッション Cookie による認証
+- タスクへの担当者割り当てと担当者カラー
+- ガントの担当者フィルタ、担当者カラー表示、稼働中ハイライト
+- チームダッシュボード
+  - いま稼働中（メンバーごとの実行中タイマー）
+  - 期限超過 / まもなく期限
+  - メンバーの負荷
+- WebSocket によるリアルタイム同期（変更が全員に即時反映）
+- 進捗タイムラインの「いいね」利用者表示と、返信への返信通知
+- 通知履歴、種類別通知設定、期限通知、タスク購読、@メンション
+- 管理者用ユーザー管理画面（追加・編集・権限変更・パスワード再設定）
+
+
+<<<yomiyasu:material docs/HAKOBI.md:1-36>>>
+# HAKOBI のチーム接続と運用
+
+HAKOBI のデスクトップ版は、サーバーが配信する Web 画面を Electron のウィンドウに表示します。画面と API はサーバー側で更新し、タイマーやトレイなどの端末機能はデスクトップ版が担当します。タスクと進捗の保存先は既存のサーバー DB です。
+
+## メンバーへの配布
+
+1. サーバーで `npm run build:web` を実行し、`dist-web/` と更新した `server/` を配置します。
+2. サーバーを起動し、同じ LAN の端末から `http://<サーバーIP>:4577` を開けることを確認します。
+3. 管理者がメンバーのアカウントを発行します。
+4. `npm run dist` でインストーラーを作り、`npm run publish:desktop` でサーバーへ公開します。メンバーには `http://<サーバー>:4577/download` を案内します。手順は[デスクトップ版の配布と更新のお知らせ](#デスクトップ版の配布と更新のお知らせ)にまとめています。
+5. メンバーはダウンロードページからインストールします。HAKOBI の接続設定でグループ名とサーバー URL を登録し、接続します。ログインは普段の Web 版と同じアカウントです。
+
+接続先は記憶され、次の起動では自分のグループへ自動接続します。接続先の変更は設定やトレイから行います。複数のグループを同時に使う前提にはしていません。同じインストーラーを配り、各メンバーが自分のグループの URL を使います。
+
+接続設定の「グループ名」は、その端末で接続先を見分けるための表示名です。サーバー側への登録や、Windows のサービス名との一致は不要です。今の1グループを使い続ける場合、既存の `TodoTeamServer` をそのまま使えます。メンバーには今のサーバー URL とアカウントを案内します。
+
+グループ名は、メイン画面のタイトルバー（`HAKOBI — グループ名`）、トレイのメニューとツールチップ、設定の「HAKOBI デスクトップ」、ミニタイマーと進捗入力のヘッダーに表示します。タイトルバーは1.0.3で修正し、サーバーのHTMLタイトルが読み込まれてもグループ名を保持します。
+
+新しい端末では最初に接続設定が開きます。旧版の個人用設定がある端末では、従来どおり個人用で起動します。トレイの「チーム接続 / 個人用モード」から接続設定を開いてください。個人用 DB を消す必要はありません。
+
+起動時にはローカルのスプラッシュを表示し、サーバーが開けない場合は再接続または接続設定へ進めます。個人用を選べば、従来のローカル DB を使うデスクトップ版を利用できます。ブランド変更後もインストーラーの更新用識別子と旧データ保存先を維持します。
+
+### ダウンロード回数の確認
+
+管理者は「ユーザー管理」の「デスクトップ版の配布状況」で、バージョン別のダウンロード回数を確認できます。「更新」で最新の件数を取得します。ブラウザ版・チーム接続中のデスクトップ版の両方で利用でき、インストーラーの更新は不要です。
+
+計測はこの機能を導入した後から始まります。サーバーからファイル全体を送信できた GET（HTTP 200）を1回とし、同じ人の取り直しも数えます。ファイル情報だけの確認、途中再開などの部分送信、送信失敗は数えません。端末への保存完了やインストール台数を保証する数字ではありません。
+
+日付（サーバーの現地日付）・バージョン・件数のみをサーバーDBに保存します。IP・PC名・ユーザー情報は保存しません。更新後の起動時に専用テーブルが自動作成され、再起動や配布バージョンの変更後も件数が残ります。同じ配布フォルダを複数のサーバーで共有していても、件数は各サーバーのDBごとです。
+
+### デスクトップ版の配布と更新のお知らせ
+
+1.0.5 から、サーバーがデスクトップ版のインストーラーを配布します。メンバーは `http://<サーバー>:4577/download` のページからダウンロードします。このページはログインなしで開けます。新しい版を公開すると、デスクトップ版の画面にお知らせが出ます。インストールはメンバーが手動で行います。自動更新はありません。
+
+インストーラーの置き場所は、サーバーの配布フォルダです。`TODO_DESKTOP_DIST` で指定し、既定はリポジトリ直下の `dist-desktop/` です。全グループで同じフォルダを共有できます。サーバーが配るのは、配布フォルダの `latest.yml` に書かれたインストーラー1つだけです。`latest.yml` のバージョン・サイズ・sha512 がインストーラーと一致しないと配布しません。ファイルを手でコピーせず、必ず `npm run publish:desktop` で公開してください。
+
+
+<<<yomiyasu:material src/renderer/src/components/ProgressNoteHelpers.tsx:1-80>>>
+import React from 'react'
+
+/** 進捗ログのひな形。書き出しに迷うときの枠 */
+export const PROGRESS_NOTE_TEMPLATE = 'やったこと：\n次にやること：\n困っていること：'
+/** 「予定どおり」で入力欄に入れる文 */
+export const ON_TRACK_NOTE = '予定どおり進んでいます。'
+
+const TEMPLATE_HEADINGS = PROGRESS_NOTE_TEMPLATE.split('\n')
+
+/** 投稿する前に、何も書かなかったひな形の見出し（「困っていること：」のまま次の見出しや終わりが来るもの）を外す */
+export function cleanProgressNote(text: string): string {
+  const lines = text.split('\n')
+  const kept: string[] = []
+  for (let index = 0; index < lines.length; index += 1) {
+    if (TEMPLATE_HEADINGS.includes(lines[index].trim())) {
+      let next = index + 1
+      while (next < lines.length && lines[next].trim() === '') next += 1
+      if (next >= lines.length || TEMPLATE_HEADINGS.includes(lines[next].trim())) continue
+    }
+    kept.push(lines[index])
+  }
+  return kept.join('\n').trim()
+}
+
+/** 入力中の文にひな形を入れる（空ならそのまま、書きかけなら改行して後ろに足す） */
+export function withProgressNoteTemplate(draft: string): string {
+  if (draft.includes(PROGRESS_NOTE_TEMPLATE)) return draft
+  return draft.trim() ? `${draft.replace(/\s+$/, '')}\n${PROGRESS_NOTE_TEMPLATE}` : PROGRESS_NOTE_TEMPLATE
+}
+
+// 進捗ログの投稿欄に置く「ひな形」「予定どおり」（詳細・報告タブ・進捗タブで共通）。
+// 変化がない週でも一言で報告でき、書き出しに迷う人は枠から書き始められる。
+// どちらも入力欄に文を入れるだけで、投稿は「投稿」ボタンで行う（押し間違いでチームに報告が出ないように）
+export function ProgressNoteHelpers({ draft, disabled = false, showOnTrack = true, onInsertTemplate, onInsertOnTrack }: {
+  draft: string
+  disabled?: boolean
+  showOnTrack?: boolean
+  onInsertTemplate: () => void
+  onInsertOnTrack: () => void
+}): React.JSX.Element {
+  const hasDraft = draft.trim() !== ''
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onInsertTemplate}
+        title="「やったこと／次にやること／困っていること」の枠を入れます"
+        style={helperButtonStyle(disabled)}
+      >
+        ひな形
+      </button>
+      {showOnTrack && (
+        <button
+          type="button"
+          disabled={disabled || hasDraft}
+          onClick={onInsertOnTrack}
+          title={hasDraft ? '書きかけの文があるときは使えません' : `「${ON_TRACK_NOTE}」を入力欄に入れます（「投稿」で送ります）`}
+          style={helperButtonStyle(disabled || hasDraft)}
+        >
+          予定どおり
+        </button>
+      )}
+    </div>
+  )
+}
+
+function helperButtonStyle(disabled: boolean): React.CSSProperties {
+  return {
+    padding: '4px 10px',
+    borderRadius: 999,
+    border: '1px solid var(--slate-700)',
+    background: 'transparent',
+    color: disabled ? 'var(--slate-500)' : 'var(--slate-300)',
+    cursor: disabled ? 'default' : 'pointer',
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    whiteSpace: 'nowrap'
+  }
+}
+
+<<<yomiyasu:material src/renderer/src/components/MeetingMode.tsx:300-371>>>
+        <button onClick={() => goTo(index - 1)} disabled={index === 0} title="前の人（←）" style={navButtonStyle(index === 0)}>◀ 前の人</button>
+        <button ref={nextButtonRef} onClick={() => goTo(index + 1)} disabled={index >= groups.length - 1} title="次の人（→）" style={navButtonStyle(index >= groups.length - 1, true)}>次の人 ▶</button>
+        <button onClick={() => void copyMinutes()} title="メモ・追加したタスク・時間をまとめてコピーします" style={navButtonStyle(false)}>議事録をコピー</button>
+        <button onClick={close} title="定例モードを閉じます（Esc）。進み具合は残ります" style={navButtonStyle(false)}>閉じる</button>
+      </div>
+
+      {group ? (
+        <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(260px, 340px)', gap: 0 }}>
+          <div style={{ overflowY: 'auto', padding: '16px 20px 40px' }}>
+            <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {renderBody(group.key)}
+            </div>
+          </div>
+          <aside style={{ borderLeft: '1px solid var(--slate-800)', background: 'var(--slate-900)', padding: 16, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
+            {onCreateTask && (
+              <section style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--slate-200)' }}>決まったことをタスクにする</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>{createTaskHint(group.key)}・開始日は今日</div>
+                <div role="group" aria-label="期限" style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>期限</span>
+                  {dueChoices.map((choice) => (
+                    <button
+                      key={choice.label}
+                      type="button"
+                      aria-pressed={taskDue === choice.value}
+                      onClick={() => setTaskDue(choice.value)}
+                      style={{ padding: '3px 9px', borderRadius: 999, border: `1px solid ${taskDue === choice.value ? 'var(--blue-500)' : 'var(--slate-700)'}`, background: taskDue === choice.value ? 'var(--blue-950)' : 'transparent', color: taskDue === choice.value ? 'var(--blue-100)' : 'var(--slate-300)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}
+                    >
+                      {choice.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    value={taskTitle}
+                    onChange={(event) => setTaskTitle(event.target.value)}
+                    onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); void createTask() } }}
+                    aria-label="決まったこと（タスク名）"
+                    placeholder="例: 見積書を再提出する"
+                    style={{ flex: 1, minWidth: 0, padding: '7px 9px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--c-0b1220)', color: 'var(--slate-200)', fontSize: '0.82rem' }}
+                  />
+                  <button onClick={() => void createTask()} disabled={!taskTitle.trim() || creatingTask} style={navButtonStyle(!taskTitle.trim() || creatingTask, true)}>
+                    {creatingTask ? '追加中…' : '追加'}
+                  </button>
+                </div>
+                {(state.createdTasks[group.key] ?? []).length > 0 && (
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.8rem', color: 'var(--slate-300)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {(state.createdTasks[group.key] ?? []).map((title, taskIndex) => <li key={`${title}-${taskIndex}`}>{title}</li>)}
+                  </ul>
+                )}
+              </section>
+            )}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--slate-200)' }}>定例メモ</div>
+              <textarea
+                value={state.notes[group.key] ?? ''}
+                onChange={(event) => {
+                  const value = event.target.value
+                  onStateChange((previous) => ({ ...previous, notes: { ...previous.notes, [group.key]: value } }))
+                }}
+                aria-label={`${group.label}の定例メモ`}
+                rows={8}
+                placeholder="話したこと・決まったこと"
+                style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--c-0b1220)', color: 'var(--slate-200)', fontSize: '0.82rem', lineHeight: 1.6, resize: 'vertical' }}
+              />
+              <div style={{ fontSize: '0.75rem', color: 'var(--slate-400)', lineHeight: 1.6 }}>
+                このメモはこの端末に12時間残ります（ほかの画面へ移っても、読み込み直しても消えません）。議事録として残す場合は、上の「議事録をコピー」でコピーしてください。
+              </div>
+            </section>
+            <section style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--slate-200)' }}>順番</div>
+              {groups.map((item, itemIndex) => {
+
+<<<yomiyasu:material src/renderer/src/components/ReportView.tsx:1467-1481>>>
+  const handleCopyMarkdown = async (): Promise<void> => {
+    try {
+      await copyTextToClipboard(reportToMarkdown(groups, range, {
+        period: range,
+        mode: effectiveGroupMode,
+        multiUser,
+        subGroupMode,
+        categories,
+        users,
+        subTaskMode: settings.subTaskMode
+      }))
+      onShowToast('Markdownをコピーしました')
+    } catch {
+      onShowToast('クリップボードへのコピーに失敗しました', 'error')
+    }
+
+<<<yomiyasu:material src/renderer/src/components/ReportView.tsx:1658-1675>>>
+                <button onClick={() => applyPreset('7')} style={{ ...chipStyle(false), padding: '2px 10px' }}>直近7日にする</button>
+              </span>
+            )}
+            <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
+              <button onClick={() => void load()} disabled={loading} style={secondaryButtonStyle}>{loading ? '更新中…' : '更新'}</button>
+              <button onClick={() => void handleCopyMarkdown()} disabled={loading || !loaded || Boolean(loadError)} title="表示中の内容をMarkdownでコピーします（議事録などに貼れます）" style={secondaryButtonStyle}>Markdownをコピー</button>
+              <button onClick={handleDownloadCsv} disabled={loading || !loaded || Boolean(loadError)} title="表示中の内容をCSVで保存します（Excelで開けます）" style={secondaryButtonStyle}>CSV</button>
+              <button
+                data-meeting-open=""
+                onClick={openMeeting}
+                disabled={loading || !loaded || Boolean(loadError) || groups.length === 0}
+                title="担当者を1人ずつ大きく表示し、持ち時間を計りながら進めます。決まったことはその場でタスクにでき、終わったら議事録をコピーできます"
+                style={{ ...secondaryButtonStyle, borderColor: 'var(--indigo-600)', color: 'var(--indigo-200)' }}
+              >
+                {meetingState ? '定例モードに戻る' : '定例モード'}
+              </button>
+              {meetingState && !meetingOpen && (
+                <button onClick={() => { void confirmAction('定例のメモ・決まったこと・持ち時間を消して、最初からにしますか？', { confirmLabel: '最初からにする', danger: true }).then((ok) => { if (ok) setMeetingState(null) }) }} title="定例モードの進み具合（時間・メモ）を消して、最初からにします" style={secondaryButtonStyle}>定例をリセット</button>
+
+<<<yomiyasu:material src/renderer/src/components/ProgressTimeline.tsx:388-408>>>
+
+  // bodyOverride を渡すと（「予定どおり」）、入力中の文には触らずにその文を投稿する
+  const handleCreateNote = async (bodyOverride?: string): Promise<void> => {
+    const body = cleanProgressNote(bodyOverride ?? noteDraft)
+    if (!selectedTodoId || savingNoteRef.current) return
+    if (!body) {
+      if (noteDraft.trim()) onShowToast('ひな形の見出しだけでは投稿できません。やったことなどを書いてください', 'error')
+      return
+    }
+
+    try {
+      savingNoteRef.current = true
+      setSavingNote(true)
+      const created = await window.api.progressNoteCreate(selectedTodoId, body)
+      if (bodyOverride === undefined) setNoteDraft('')
+      try { window.localStorage.setItem(lastTodoKey, selectedTodoId) } catch { /* 記憶できなくても投稿は済んでいる */ }
+      if (isInRange(getDateKeyFromIso(created.created_at), range)) {
+        setNotes((previous) => [normalizeNote(created), ...previous])
+      }
+      onShowToast('進捗ログを投稿しました')
+    } catch (error) {
+
+<<<yomiyasu:material src/renderer/src/lib/recurrence.ts:1-33>>>
+// タスクの繰り返し（完了にすると次回分を作る）の表記と、次回分の日付の計算（画面用。React に依存しない）。
+// 日付の計算は server/src/shared/todo-recurrence.ts と同じ。tests/recurrence-dates.cjs で一致を確かめている。
+import type { Todo, TodoRecurrence } from '../types'
+import { formatShortDate } from './dueDate'
+
+export const TODO_RECURRENCE_OPTIONS: ReadonlyArray<{ value: TodoRecurrence; label: string }> = [
+  { value: 'daily', label: '毎日' },
+  { value: 'weekly', label: '毎週' },
+  { value: 'monthly', label: '毎月' },
+  { value: 'yearly', label: '毎年' }
+]
+
+/** 毎日・毎週・毎月・毎年。繰り返さない・知らない値は null */
+export function recurrenceKindLabel(recurrence: string | null | undefined): string | null {
+  return TODO_RECURRENCE_OPTIONS.find((option) => option.value === recurrence)?.label ?? null
+}
+
+function toKey(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/** 日付（YYYY-MM-DD）を1周期ずらす。毎月・毎年はその月にない日を末日に丸める（2/29 の次の年は平年なら 2/28） */
+export function nextRecurrenceDateKey(dateKey: string, recurrence: TodoRecurrence): string {
+  const [year, month, day] = dateKey.slice(0, 10).split('-').map(Number)
+  if (recurrence === 'daily' || recurrence === 'weekly') {
+    const date = new Date(Date.UTC(year, month - 1, day + (recurrence === 'daily' ? 1 : 7)))
+    return toKey(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate())
+  }
+  const targetYear = recurrence === 'yearly' ? year + 1 : year + Math.floor(month / 12)
+  const targetMonth = recurrence === 'yearly' ? month : (month % 12) + 1
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate()
+  return toKey(targetYear, targetMonth, Math.min(day, lastDay))
+}
+
+<<<yomiyasu:material src/renderer/src/components/TeamDashboard.tsx:269-314>>>
+// 名前を押すとその人のタスクをガントで、「超過」「遅れ」「報告なし」の数を押すとそのタスクだけを開く
+function WorkloadCard({ member, behindCount, onSelect, onSelectMetric }: { member: TeamMemberWorkload; behindCount: number; onSelect?: () => void; onSelectMetric?: (metric: 'overdue' | 'behind' | 'unreported') => void }): React.JSX.Element {
+  const nameContent = (
+    <>
+      <span style={{ width: 11, height: 11, borderRadius: '50%', background: member.user_color, flexShrink: 0 }} />
+      <span style={{ fontSize: '0.86rem', color: 'var(--slate-200)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.display_name}</span>
+      {onSelect && <span aria-hidden="true" style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }}>→</span>}
+    </>
+  )
+  const metricAction = (metric: 'overdue' | 'behind' | 'unreported', count: number): (() => void) | undefined =>
+    onSelectMetric && count > 0 ? () => onSelectMetric(metric) : undefined
+  return (
+    <div
+      style={{ background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 10, padding: '8px 12px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 14px', textAlign: 'left', color: 'inherit', width: '100%', boxSizing: 'border-box' }}
+    >
+      {onSelect ? (
+        <button
+          type="button"
+          onClick={onSelect}
+          title={`${member.display_name}さんのタスクだけをガントで見る`}
+          aria-label={`${member.display_name}さんのタスクをガントで見る`}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, width: '7.5rem', minWidth: 0, minHeight: 32, padding: 0, background: 'transparent', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }}
+        >
+          {nameContent}
+        </button>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '7.5rem', minWidth: 0 }}>{nameContent}</div>
+      )}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+        <Metric label="未完了" title="未着手と進行中の数（保留中は別に数える）" value={`${member.active_tasks}`} color="var(--slate-200)" />
+        <Metric label="保留中" value={`${member.on_hold_tasks}`} color="var(--purple-300)" />
+        <Metric label="超過" title="期限を過ぎた未完了のタスク" value={`${member.overdue_tasks}`} color={member.overdue_tasks > 0 ? 'var(--red-400)' : 'var(--text-subtle)'}
+          onClick={metricAction('overdue', member.overdue_tasks)} actionLabel={`${member.display_name}さんの期限超過のタスク${member.overdue_tasks}件をガントで見る`} />
+        <Metric label="遅れ" title="期限前で、予定の進捗より遅れているタスク（ガントの「遅れ」と同じ判定）" value={`${behindCount}`} color={behindCount > 0 ? 'var(--amber-300)' : 'var(--text-subtle)'}
+          onClick={metricAction('behind', behindCount)} actionLabel={`${member.display_name}さんの遅れているタスク${behindCount}件をガントで見る`} />
+        {member.unreported_tasks !== undefined && (
+          <Metric label="報告なし（直近7日）" title="直近7日に、担当（主・副）の進捗ログもメモの更新もない、進行中（または開始日を過ぎた未着手）の主担当のタスク。報告タブの「報告なし」と同じ数え方で、期間を直近7日にしたもの（報告のリマインドも同じ条件）" value={`${member.unreported_tasks}`} color={member.unreported_tasks > 0 ? 'var(--amber-200)' : 'var(--text-subtle)'}
+            onClick={metricAction('unreported', member.unreported_tasks)} actionLabel={`${member.display_name}さんの報告なしのタスク${member.unreported_tasks}件を報告タブで見る`} />
+        )}
+        <Metric label="今日" value={formatMinutes(member.today_minutes)} color="var(--green-400)" />
+      </div>
+    </div>
+  )
+}
+
+// 数。押せるとき（onClick）はボタンにし、下線で押せることを見せる
+
+<<<yomiyasu:material assets/capture-info.json>>>
+{
+  "date": "2026-10-21",
+  "viewport": [
+    1440,
+    960
+  ],
+  "theme": "light",
+  "fontScale": "120%",
+  "fictional": true,
+  "sourceCommit": "339089aa43230ff4a34ad8e3f6dbdaee4365f406"
+}
+
+
+<<<yomiyasu:material assets/demo-action.json>>>
+{
+  "title": "部署別に残す項目を確認する",
+  "due_date": "2026-10-23",
+  "assignee": "佐藤"
+}
