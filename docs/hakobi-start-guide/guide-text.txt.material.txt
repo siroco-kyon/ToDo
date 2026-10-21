@@ -1,0 +1,3117 @@
+<<<yomiyasu:material docs/HAKOBI.md>>>
+# HAKOBI のチーム接続と運用
+
+HAKOBI のデスクトップ版は、サーバーが配信する Web 画面を Electron のウィンドウに表示します。画面と API はサーバー側で更新し、タイマーやトレイなどの端末機能はデスクトップ版が担当します。タスクと進捗の保存先は既存のサーバー DB です。
+
+## メンバーへの配布
+
+1. サーバーで `npm run build:web` を実行し、`dist-web/` と更新した `server/` を配置します。
+2. サーバーを起動し、同じ LAN の端末から `http://<サーバーIP>:4577` を開けることを確認します。
+3. 管理者がメンバーのアカウントを発行します。
+4. `npm run dist` でインストーラーを作り、`npm run publish:desktop` でサーバーへ公開します。メンバーには `http://<サーバー>:4577/download` を案内します。手順は[デスクトップ版の配布と更新のお知らせ](#デスクトップ版の配布と更新のお知らせ)にまとめています。
+5. メンバーはダウンロードページからインストールします。HAKOBI の接続設定でグループ名とサーバー URL を登録し、接続します。ログインは普段の Web 版と同じアカウントです。
+
+接続先は記憶され、次の起動では自分のグループへ自動接続します。接続先の変更は設定やトレイから行います。複数のグループを同時に使う前提にはしていません。同じインストーラーを配り、各メンバーが自分のグループの URL を使います。
+
+接続設定の「グループ名」は、その端末で接続先を見分けるための表示名です。サーバー側への登録や、Windows のサービス名との一致は不要です。今の1グループを使い続ける場合、既存の `TodoTeamServer` をそのまま使えます。メンバーには今のサーバー URL とアカウントを案内します。
+
+グループ名は、メイン画面のタイトルバー（`HAKOBI — グループ名`）、トレイのメニューとツールチップ、設定の「HAKOBI デスクトップ」、ミニタイマーと進捗入力のヘッダーに表示します。タイトルバーは1.0.3で修正し、サーバーのHTMLタイトルが読み込まれてもグループ名を保持します。
+
+新しい端末では最初に接続設定が開きます。旧版の個人用設定がある端末では、従来どおり個人用で起動します。トレイの「チーム接続 / 個人用モード」から接続設定を開いてください。個人用 DB を消す必要はありません。
+
+起動時にはローカルのスプラッシュを表示し、サーバーが開けない場合は再接続または接続設定へ進めます。個人用を選べば、従来のローカル DB を使うデスクトップ版を利用できます。ブランド変更後もインストーラーの更新用識別子と旧データ保存先を維持します。
+
+### ダウンロード回数の確認
+
+管理者は「ユーザー管理」の「デスクトップ版の配布状況」で、バージョン別のダウンロード回数を確認できます。「更新」で最新の件数を取得します。ブラウザ版・チーム接続中のデスクトップ版の両方で利用でき、インストーラーの更新は不要です。
+
+計測はこの機能を導入した後から始まります。サーバーからファイル全体を送信できた GET（HTTP 200）を1回とし、同じ人の取り直しも数えます。ファイル情報だけの確認、途中再開などの部分送信、送信失敗は数えません。端末への保存完了やインストール台数を保証する数字ではありません。
+
+日付（サーバーの現地日付）・バージョン・件数のみをサーバーDBに保存します。IP・PC名・ユーザー情報は保存しません。更新後の起動時に専用テーブルが自動作成され、再起動や配布バージョンの変更後も件数が残ります。同じ配布フォルダを複数のサーバーで共有していても、件数は各サーバーのDBごとです。
+
+### デスクトップ版の配布と更新のお知らせ
+
+1.0.5 から、サーバーがデスクトップ版のインストーラーを配布します。メンバーは `http://<サーバー>:4577/download` のページからダウンロードします。このページはログインなしで開けます。新しい版を公開すると、デスクトップ版の画面にお知らせが出ます。インストールはメンバーが手動で行います。自動更新はありません。
+
+インストーラーの置き場所は、サーバーの配布フォルダです。`TODO_DESKTOP_DIST` で指定し、既定はリポジトリ直下の `dist-desktop/` です。全グループで同じフォルダを共有できます。サーバーが配るのは、配布フォルダの `latest.yml` に書かれたインストーラー1つだけです。`latest.yml` のバージョン・サイズ・sha512 がインストーラーと一致しないと配布しません。ファイルを手でコピーせず、必ず `npm run publish:desktop` で公開してください。
+
+管理者の公開手順:
+
+1. ルートの `package.json` の `version` を上げます（例: `1.0.5`）。
+2. `npm run dist` を実行します。`dist/` に `HAKOBI-1.0.5-setup.exe`、`HAKOBI-1.0.5-setup.exe.blockmap`、`latest.yml` ができます。
+3. `npm run publish:desktop` を実行します。`dist/` のインストーラーが `latest.yml` と一致し、`package.json` と同じバージョンかを確かめてから、配布フォルダへコピーします。`latest.yml` は最後に置き換えるので、コピー途中のインストーラーは配布されません。
+4. 「公開しました: HAKOBI 1.0.5（…）」と表示されたら、ブラウザで `http://<サーバー>:4577/download` を開き、バージョンを確認します。
+
+サーバーの再起動は不要です。サーバーは `latest.yml` とインストーラーの差し替えを検出して読み直します。古いインストーラーは配布フォルダから消しません。公開元と公開先は `--from <フォルダ>` と `--to <フォルダ>` で変えられます。既定の公開先は `server/.env`（`TODO_ENV_FILE` を指定した場合はそのファイル）の `TODO_DESKTOP_DIST` です。バージョンが `package.json` と違うと公開は止まります。`package.json` と違う版を公開するときは、`--expect-version 1.0.5` のように指定します。
+
+配布中と同じバージョンで、中身の違うインストーラーは公開できません。配布中のファイルをその場で書き換えないためです。インストール済みの PC にも新しい版として伝わらないので、作り直したときは `version` を上げてから `npm run dist` を実行します。同じ中身の公開し直しはできます。
+
+#### ビルドする PC とサーバーが別のとき
+
+インストーラーは開発用の PC でビルドし、サーバーから配布できます。サーバーが配るのは配布フォルダの中身だけなので、ビルドした PC からその配布フォルダへ公開します。方法は2つあります。
+
+**方法1: サーバーの共有フォルダへ直接公開する（おすすめ）**
+
+最初に1回だけ準備します。
+
+1. サーバー PC に配布フォルダを作ります（例: `C:\HakobiServer\dist-desktop`）。
+2. このフォルダを Windows の共有フォルダにします（例: 共有名 `hakobi-desktop`）。書き込みは管理者だけに許可します。ここに書き込める人は、メンバーの PC に入るインストーラーを差し替えられるためです。
+3. サーバーの `server\.env` に `TODO_DESKTOP_DIST=C:\HakobiServer\dist-desktop` を書き、サービスを再起動します。グループごとの env ファイルを使っている場合は、そのすべてに書きます。
+4. ビルド PC で `npm --prefix server install` を実行します。公開コマンドが使います。`npm run dev:server` を使っている PC なら済んでいます。
+5. ビルド PC の `server\.env` に `TODO_DESKTOP_DIST=\\<サーバー名>\hakobi-desktop` を書きます。これがビルド PC からの公開先になります。
+
+公開するたびに、ビルド PC で次の操作をします。
+
+1. ルートの `package.json` の `version` を上げます。
+2. `npm run dist` を実行します。
+3. `npm run publish:desktop` を実行します。表示される「公開先:」が `\\<サーバー名>\hakobi-desktop` であることを確かめます。
+4. ブラウザで `http://<サーバー>:4577/download` を開き、新しいバージョンになったことを確かめます。
+
+サーバー PC での作業や再起動はいりません。`server\.env` を変えずに1回だけ公開先を変えるときは、`npm run publish:desktop -- --to \\<サーバー名>\hakobi-desktop` と指定します。
+
+**方法2: ファイルを持っていき、サーバーで公開する**
+
+共有フォルダを使えないときの方法です。
+
+1. ビルド PC で `version` を上げて `npm run dist` を実行します。
+2. `dist\` にできた `HAKOBI-<バージョン>-setup.exe`、`HAKOBI-<バージョン>-setup.exe.blockmap`、`latest.yml` の3つを、サーバー PC の `dist\` にコピーします。`dist\` は `server\` と同じ階層に作ります（例: `C:\HakobiServer\dist\`）。USB メモリなどで構いません。
+3. サーバー PC の `server\` フォルダで `npm run publish:desktop` を実行します。サーバーの `server\.env` の `TODO_DESKTOP_DIST` へ公開されます。グループごとの env ファイルを使っている場合は、`npm run publish:desktop -- --to <配布フォルダ>` と指定します。
+4. ブラウザで `http://<サーバー>:4577/download` を開き、新しいバージョンになったことを確かめます。
+
+- サーバー PC の `server\` は 1.0.5 以降のもの（`server\scripts\publish-desktop.ts` があるもの）にしておきます。
+- サーバー PC にルートの `package.json` があると、そのバージョンと照合します。古いままだと公開が止まるので、新しいものに置き換えるか、`npm run publish:desktop -- --expect-version 1.0.5` のように指定します。ルートの `package.json` がなければ照合しません。
+
+配布できないときは、管理者でログインして設定の「デスクトップ版（Windows）」を開くと理由が出ます。サーバーのログにも `[desktop]` で始まる行が出ます。理由には配布フォルダのパスが含まれるため、管理者にだけ表示します。設定のこの欄には、メンバーに案内するダウンロードページの URL も出ます。サーバー PC で `http://localhost:4577` から開いた場合は、ほかの PC では使えない URL になるため注意が出ます。メンバーにはサーバーの IP アドレス（例: `http://192.168.1.10:4577/download`）を案内してください。
+
+メンバーに見えるもの:
+
+| 場所 | 表示 |
+| --- | --- |
+| デスクトップ版のメイン画面 | 新しい版があると、左下に「HAKOBI の新しいバージョン 1.0.5 があります」のカードが出ます。「ダウンロードページを開く」で、いつものブラウザーにダウンロードページが開きます。「後で」を押すと、その版のカードは出なくなります。さらに新しい版を公開すると、また出ます |
+| デスクトップ版の設定「HAKOBI デスクトップ」 | 「このPCのバージョン」を表示します。新しい版があれば「新しいバージョン 1.0.5 を配布しています。」と「ダウンロードページを開く」が出ます |
+| ブラウザの設定「デスクトップ版（Windows）」 | 配布中なら「タイマーや通知が使えるデスクトップ版を配布しています」と「ダウンロードページを開く」が出ます |
+| ブラウザのログイン画面 | 配布中なら「デスクトップ版（Windows）をダウンロード」のリンクが出ます |
+| ダウンロードページ | バージョン、サイズ、公開日、SHA-256、接続先URL、ダウンロードボタン、インストールの手順を表示します。接続先URLは、初めて起動したときの接続設定で入力します |
+
+デスクトップ版は、起動時、サーバーへの再接続時、6時間ごとに新しい版を確かめます。お知らせはインストール済みより新しい版のときだけ出ます。1.0.4 以前のアプリは自分のバージョンを画面へ伝えないため、「1.0.4 以前」として扱います。サーバーを 1.0.5 にすれば、1.0.4 以前のアプリにもお知らせが出ます。サーバーが 1.0.4 以前のままなら、お知らせは出ず、ダウンロードページも使えません。
+
+ダウンロードとインストールで出る表示と、進め方:
+
+| 場面 | 表示 | 進め方 |
+| --- | --- | --- |
+| Chrome でダウンロード | 「安全でないダウンロードがブロックされました」 | ダウンロード一覧を開き、「保存」を選びます |
+| Edge でダウンロード | 「安全でないダウンロードがブロックされました」 | 「…」→「保存」を選びます。続けて「一般的にダウンロードされていません」と出たら、「…」（または「詳細表示」）→「保持する」を選びます |
+| インストーラーを開く | 「Windows によって PC が保護されました」 | 「詳細情報」を押し、アプリ: `HAKOBI-1.0.5-setup.exe`、発行元: 不明な発行元 であることを確かめて「実行」を押します |
+| HAKOBI の起動中にインストール | 「HAKOBI が起動しています。OKをクリックして、閉じてください。」 | OK を押すと HAKOBI が閉じ、インストールが続きます |
+
+- Chrome と Edge のブロックは、サーバーが `http://` で動いているために出ます。LAN の IP アドレスでも同じです。例外は `localhost` だけです。
+- 「Windows によって PC が保護されました」は、インストーラーにコード署名がないために出ます。新しい版のたびに出ます。
+- 起動中の HAKOBI は OK で閉じられます。先にトレイの「HAKOBIを終了」で終了しておくと、より確実です。終了は必須ではありません。
+- 管理者権限は不要です。ユーザーごとのインストールなので、UAC の確認も出ません。データと接続設定はそのまま引き継ぎます。
+- スマート アプリ コントロールが有効な PC では、署名のないインストーラーがブロックされ、インストールできません。ダウンロードページでは、管理者へ相談するよう案内しています。
+- ダウンロードしたファイルは、PowerShell の `Get-FileHash` で SHA-256 を出し、ダウンロードページの値と照合できます。
+
+社内の IT 管理者が設定できる場合の任意の対策:
+
+- Chrome / Edge のポリシー `InsecureContentAllowedForUrls` に、サーバーのオリジン（例: `http://192.168.1.10:4577`）を登録します。このサーバーからのダウンロードがブロックされなくなります。
+- サーバーを Windows の「ローカル イントラネット」ゾーンに登録します。ブラウザーや Windows の警告が減る可能性がありますが、効果は未確認です。
+
+前の版に戻すとき:
+
+- 古いコードから、より高いバージョン番号（例: `1.0.6`）でビルドし、`npm run publish:desktop` で公開します。
+- アプリが自動で古い版へ戻ることはありません。インストール済みと同じか低い番号を公開しても、その PC にはお知らせが出ません。
+- 公開しても前のインストーラーは配布フォルダに残ります。ダウンロードページで配るのは `latest.yml` に書かれた最新の1つだけです。
+
+自動更新（自動のダウンロードやインストール）は含みません。`electron-builder.yml` の `publish:` は `dist/latest.yml` を作るために残しています。アプリはこの URL へ接続しません。
+
+### Windows のタスクバーに旧アイコンが残る場合
+
+1. トレイから動作中の HAKOBI / ToDo を終了します。旧プロセスが残っていると、新版を起動しても旧ウィンドウが表示されます。
+2. 新しいインストーラーで更新するか、新版の `HAKOBI.exe` を起動します。
+3. 旧 ToDo をタスクバーに固定している場合は固定を外し、新版を起動して固定し直します。
+
+1.0.3 では、WindowsのタスクバーとショートカットにHAKOBI専用のアプリIDを使い、旧ToDoと同じグループにまとめられないようにします。チーム接続と接続設定のウィンドウには、現在の実行ファイルのアイコンと起動先も明示します。インストーラーの更新用GUID、データと接続設定の保存先、個人用のカスタムアイコンは保持します。この修正ではサーバー更新やサービスの再登録は不要です。
+
+## デスクトップで増える操作
+
+| 操作 | 使い方 |
+| --- | --- |
+| 右下のミニタイマー | 作業中タスクと経過時間を表示。ウィンドウを移動し、表示や最前面固定を切り替えられます |
+| 進捗のクイック投稿 | トレイや `Ctrl+Alt+P` から開き、作業中タスクなどに短い進捗を投稿します |
+| 投稿のショートカット | 入力後に `Ctrl+Enter` で投稿します。入力途中の内容は端末に下書きとして保存します |
+| トレイ | メイン画面、タイマー、進捗入力、通知、接続設定を開きます。最近計測したタスクを選んで、計測の開始・切り替え・停止もできます |
+| 通知 | 担当の追加・返信・メンション・いいね・期限の通知を、OS の通知として表示します。クリックすると、アプリ内の通知一覧で選んだときと同じ画面を開きます |
+| 未読バッジ | 未読の通知があると、トレイのアイコンに赤い丸、Windows のタスクバーのアイコンに未読数を表示します |
+| タスクバー（Windows） | タスクバーのプレビューに「計測の開始/停止」「進捗をすぐ書く」「タスクを追加」のボタンを表示します。アイコンの右クリック（ジャンプリスト）でもトレイと同じ操作ができます。「計測」の欄に、計測中なら「計測を停止」、最近のタスクの「計測開始（計測中は切り替え）」を出し、「タスク」の欄から、メイン画面・通知（未読数つき）・タスク追加・進捗入力・タイマー表示・接続先の変更・終了を選べます |
+| メイン画面の呼び出し | `Ctrl+Alt+T` で前面表示します |
+
+タイマーの開始・停止と記録はサーバーが管理します。経過時間の表示は端末で進めるため、サーバーへ毎秒通信しません。別の端末で変更された作業状態はサーバーの同期で反映されます。ウィジェットを閉じても、計測を止める操作をしない限りタイマーは継続します。
+
+1.0.4では、タイマーの枠をドラッグして大きさを変更できます。コンパクト表示は初期サイズ320×150、通常表示は360×250で、それぞれ変更した大きさを端末に保存します。表示モードも再起動後に復元します。コンパクトでも作業中のタスク名、経過時間、進捗入力ボタン、停止ボタンを表示します。「タイマーにタスク名を表示しない」を選んだ場合は、どちらのモードでも名前を隠します。
+
+### 通知とタスクバー
+
+OS の通知は、サーバーで新しく作られた未読の通知だけを表示します。最初の起動では、それまでの通知を一度に出さずに記録だけします。スリープ中などにまとめて届いた場合は、4件以上を「新しい通知が◯件あります」の1件にまとめ、クリックで通知一覧を開きます。メイン画面を前面で見ているときは、アプリ内のベルで分かるので OS の通知を出しません。通知の表示は、トレイまたは設定の「通知をデスクトップに表示」で端末ごとに切り替えます。通知の種類ごとのオン・オフは、従来どおりアプリ内の通知設定で行います。
+
+トレイとタスクバーに出すタスクは、自分が最近14日以内に計測したタスク（新しい順）と、自分が担当する進行中のタスク（期限の近い順）から最大5件です。保留中・完了・計測中のタスクは出しません。計測の開始・停止はサーバーで行い、失敗したときは理由をダイアログで表示します。停止はトレイに表示していた計測だけを止めるので、別の端末で切り替えた計測を誤って止めません。
+
+サーバーの画面とデスクトップ版は別々に更新できます。サーバーだけが古い場合はトレイの計測切り替えと通知が出ず、デスクトップ版だけが古い場合はサーバーの画面がこれらの機能を使いません。どちらの組み合わせでも従来の操作はそのまま使えます。
+
+ガントは、タスクの期間を伸ばす・同期で更新する・ウィンドウ幅を変える・ズームを変える操作で、見ている日付を保持します。今日へ移動するのは初回表示と「今日に戻る」を押したときです。
+
+メイン画面・右下タイマー・トレイの経過時間はサーバー時刻に合わせます。端末の時計がずれていても、同じ作業の時間を揃えて表示します。サーバーへの保存は従来どおりサーバー時刻で行います。
+
+クイック投稿の「保存した下書き」から、未投稿・送信結果未確認・削除済みタスクの文章を開けます。本文のコピーや、未送信の文章を別タスクへ移す操作もできます。送信結果が未確認の場合は、同じ投稿を再試行して結果を確認してください。結果が分かるまで投稿先と文章の移し替えを止め、二重投稿を防ぎます。
+
+更新前のWeb版の文章は、設定の「旧版の下書きを確認・復元」から選択して回復できます。保存したブラウザと接続URLで操作し、自分が書いたものだけを選んでください。現在の下書きは上書きしません。ブラウザとElectronの保存領域は別なので、ブラウザの書きかけの文章は必要に応じてコピーしてElectronへ移します。投稿済みの進捗はサーバーDBにあります。
+
+ショートカットをOSや別アプリへ登録できない場合は、日本語で失敗を表示します。設定変更に失敗したら元の設定へ戻ります。起動時の一部のキーの競合で、ほかの使えるキーまで無効にはしません。
+
+接続先やウィンドウ設定は端末側に保存します。グループの共有設定や他のメンバーの画面配置を変更しません。ログインセッションは接続先ごとの Electron の保存領域で分けます。
+
+## グループごとにサーバーと DB を分ける
+
+グループごとにサーバープロセスを立て、`PORT` と `TODO_DATA_DIR` を変えます。DB・アカウント・作業記録・添付データは指定したデータフォルダごとに独立します。ポート番号を変えるだけでは DB は分かれません。
+
+| グループ | 接続 URL | データ保存先 | Cookie 名 | サービス名 |
+| --- | --- | --- | --- | --- |
+| A | `http://192.168.1.10:4577` | `C:\HakobiData\group-a` | `hakobi_group_a` | `HakobiGroupA` |
+| B | `http://192.168.1.10:4578` | `C:\HakobiData\group-b` | `hakobi_group_b` | `HakobiGroupB` |
+
+ブラウザの Cookie はポート別には分離されません。同じホストの別ポートを使う場合は、サーバーごとに `SESSION_COOKIE` を変えます。Cookie 名の違いだけをアクセス制御に使うことはできません。各サーバーがログインを検証します。デスクトップ版はこれに加え、接続先ごとにセッションの保存領域を分けます。
+
+`C:\HakobiServer\groups\group-a.env` の例:
+
+```dotenv
+PORT=4577
+TODO_DATA_DIR=C:\HakobiData\group-a
+TODO_WEB_DIST=C:\HakobiServer\dist-web
+TODO_DESKTOP_DIST=C:\HakobiServer\dist-desktop
+SESSION_COOKIE=hakobi_group_a
+TODO_SERVICE_NAME=HakobiGroupA
+TODO_SERVICE_DESCRIPTION=HAKOBI Aグループ
+ADMIN_USERNAME=admin
+```
+
+B グループ用には別ファイルを作り、ポート、データフォルダ、Cookie 名、サービス名を変更します。`TODO_DESKTOP_DIST` は全グループで同じフォルダを指定できます。一度公開すれば、全グループのメンバーが同じインストーラーをダウンロードできます。初期パスワードを指定する場合は `ADMIN_PASSWORD` を設定します。未指定では初回起動ログに生成されたパスワードが表示されます。
+
+PowerShell でグループ A を起動する例:
+
+```powershell
+$env:TODO_ENV_FILE='C:\HakobiServer\groups\group-a.env'
+npm run start:server
+```
+
+`TODO_ENV_FILE` が指定されているのにファイルが存在しない場合は、既定の DB に接続せずエラーで止まります。設定ファイルよりシェルの環境変数が優先されるため、別グループの `PORT` や `TODO_DATA_DIR` を残さないでください。
+
+## 複数の Windows サービス
+
+管理者として開いた PowerShell から、グループごとに設定ファイルを選んで登録します。次のコマンドはサービスの登録と起動を行います。
+
+```powershell
+$env:TODO_ENV_FILE='C:\HakobiServer\groups\group-a.env'
+npm run service:install
+
+$env:TODO_ENV_FILE='C:\HakobiServer\groups\group-b.env'
+npm run service:install
+```
+
+独自名のサービスでは `PORT` と `TODO_DATA_DIR` が必須です。サービス名は英字で始まる英数字・アンダースコア、64 文字以内で指定します。ラッパーは `server/service/instances/<サービス名の小文字>/daemon/`、ログはその隣の `logs/` に分離します。既定名 `TodoTeamServer` は旧版との互換性のため維持し、既存の `server/service/daemon/` を使います。
+
+`TODO_ENV_FILE` はサービスに絶対パスで渡します。ファイル内のサーバー設定を変えたらサービスを再起動します。シェルで指定してから登録した環境変数はサービスに固定され、ファイルの値より優先されます。その値を変える場合は登録し直します。サービス名の変更でも再登録が必要です。
+
+グループ B のサービスを解除する例:
+
+```powershell
+$env:TODO_ENV_FILE='C:\HakobiServer\groups\group-b.env'
+npm run service:uninstall
+```
+
+サービス解除では DB を削除しません。既存の `TodoTeamServer` を解除する際は、独自の `TODO_SERVICE_NAME` と `TODO_ENV_FILE` が指定されていないことを確認します。
+
+## 更新とバックアップ
+
+- サーバーコードと Web ビルドを一組として更新し、ブラウザとデスクトップの両方でログイン・タスク保存・同期を確認します。
+- デスクトップのネイティブ機能を変更した場合は、`package.json` の `version` を上げて `npm run dist` を実行し、`npm run publish:desktop` で公開します。メンバーにはアプリのお知らせで伝わるので、インストーラーを個別に配る必要はありません。Web 画面だけの変更では、サーバーの更新後に画面を再読み込みします。
+- 配布フォルダ（既定 `dist-desktop/`、`TODO_DESKTOP_DIST` 設定時はその場所）は、`dist-web/` を置き換えるときも残します。DB ではないのでバックアップは必須ではありません。消えた場合は `npm run publish:desktop` で公開し直します。
+- グループごとのデータフォルダをバックアップします。SQLite の WAL を使うため、運用中に `todo.db` だけをコピーする方法は避けます。サーバー停止後にデータフォルダ全体をコピーするか、SQLite のバックアップ機能を使います（下の自動バックアップと、設定画面のダウンロードはこの機能を使っています）。
+- 旧版で保存先を変更していた個人用データは、その保存先を保持します。チームの DB への自動移行は行いません。
+
+### 自動バックアップ
+
+サーバーは起動時と1分ごとの点検で、その日のバックアップがなければ取ります（1日1つ、`hakobi-YYYY-MM-DD.db`）。既定ではデータフォルダの `backups/` に置き、14日分を残して古いものから消します。ほかのファイルは消しません。
+
+| 設定 | 既定 | 内容 |
+| --- | --- | --- |
+| `TODO_BACKUP_DIR` | `<TODO_DATA_DIR>\backups` | 自動バックアップの置き場所。別のドライブにすると、ディスクの故障にも備えられます |
+| `TODO_BACKUP_KEEP` | `14` | 残す数（日数）。`0` で自動バックアップを止めます |
+
+管理者は、設定画面の「チーム管理」→「バックアップ」から今のデータを1つのファイル（`hakobi-backup-YYYYMMDD-HHmm.db`）でダウンロードできます。自動バックアップの最新の日時と置き場所もそこで確かめられます。バックアップは1つのファイルだけで開けます（`-wal`・`-shm` は要りません）。
+
+### バックアップから戻す
+
+画面からは戻しません。サーバーで次の順に行います。
+
+1. サーバー（Windows サービス）を止めます。
+2. データフォルダの `todo.db`・`todo.db-wal`・`todo.db-shm` を別の場所へ移します（戻した結果がおかしかったときに使います）。
+3. 戻したいバックアップ（`backups\hakobi-YYYY-MM-DD.db` やダウンロードしたファイル）を、データフォルダへ `todo.db` という名前でコピーします。
+4. サーバーを起動し、ブラウザで開き直して、タスクとアカウントを確かめます。
+
+バックアップを取ったあとの変更（タスク・進捗ログ・作業記録など）は消えます。ログインのセッションもバックアップの時点に戻るので、ログインし直しが必要な人がいます。
+
+## 利用範囲
+
+社内 LAN と常時オンラインでの利用を前提とします。サーバーへ接続できない間は、タスクや進捗をサーバーに保存できません。進捗の下書きを端末に残し、再接続してから投稿できます。アプリ全体のオフライン編集・自動同期、インターネット公開、複数グループの同時利用は今回の実装には含みません。デスクトップ版はサーバーからダウンロードでき、新しい版があるとお知らせを出します。自動更新（自動のダウンロードやインストール）は含みません。インストールはメンバーが手動で行います。
+
+## 開発時の確認
+
+`npm run build` と `npm run build:web` の後に `npm run test:quality` と `npm run test:hakobi` を実行します。保存先変更・削除・依存関係・同時編集・取り込みを確認し、実際の Electron でログイン、タイマー、下書き、進捗投稿、通信失敗からの再試行、同期も確認します。テストは独立した一時 DB と保存領域を使い、運用中の DB や Windows サービスを変更しません。
+
+`npm run dist` の後に `node tests/hakobi-package.cjs` を実行すると、配布物に必要なクライアントファイルがあり、サーバーの設定や DB が含まれていないことを確認できます。
+
+Windowsではインストーラー作成後に `npm run test:installer` を実行すると、同名ショートカットの更新処理を実NSISとWinShellで確認できます。リンクは専用の一時フォルダに作成し、実ユーザーのスタートメニューやデスクトップは変更しません。
+
+`npm run test:gantt-scroll` は、実Reactと非表示Electronで期間バーの伸縮、同期中、幅変更、ズーム、保存したスクロール位置の復元を確認します。
+
+障害条件を含む確認結果は[2026年10月9日の修正結果](./HAKOBI_REVIEW_2026-10-09.md)にまとめています。
+
+その後の全体確認と追加修正は[全体確認・修正結果](./HAKOBI_FULL_REVIEW_2026-10-09.md)にまとめています。1.0.4 までは、サーバー本体の `server/` は1.0.1を継続できました。タイマーとガントの修正を使うには、配布用インストーラーとサーバーが配信するWeb画面を1.0.4へ更新してください。1.0.5 のダウンロードと更新のお知らせを使うには、`server/` の更新も必要です（下記）。チーム利用は既存のサーバーDBを継続して使うため、個人DBの取り込みは不要です。
+
+1.0.4 の作成済みファイルは `dist/HAKOBI-1.0.4-setup.exe` と `dist/HAKOBI-web-1.0.4.zip` です。WebのZIPは展開した `index.html` と `assets/` を、サーバーが使っている `dist-web/`（`TODO_WEB_DIST` のフォルダ）へ配置します。DB・アカウント・設定ファイルは変更せず、画面を再読み込みしてください。検証用Webビルドは `dist/1.0.4/web/` に作成し、稼働中の `dist-web/` は自動で置き換えていません。
+
+1.0.5 では、デスクトップ版のダウンロードと更新のお知らせを追加しました。`npm run dist` で `dist/HAKOBI-1.0.5-setup.exe`、`dist/HAKOBI-1.0.5-setup.exe.blockmap`、`dist/latest.yml` を作成します。メンバーへはファイルを直接配らず、`npm run publish:desktop` でサーバーの配布フォルダへ公開します。この機能を使うには、`server/`（`server/src/`、`server/scripts/`、`server/package.json`）とサーバーが配信するWeb画面も1.0.5へ更新し、サーバーを再起動します。サーバーの依存パッケージと DB は変わりません。
+
+<<<yomiyasu:material docs/web-setup-guide.md>>>
+# Web 版（チーム向けサーバー版）の立ち上げガイド
+
+ブラウザから複数人で使う「サーバー版」の起動手順をまとめた資料です。
+コマンドを叩く**フォルダ**と**順番**を中心に、初めてでも迷わないように書いています。
+
+---
+
+## いちばん大事なこと：コマンドはすべて `D:\Github\ToDo` で叩く
+
+> **すべてのコマンドは、リポジトリの一番上のフォルダ `D:\Github\ToDo` で実行します。**
+> `server\` や `web\` の中に入る必要はありません。
+
+`npm run dev:server` のようなコマンドが、裏側で自動的に `server\` フォルダの処理を呼び出します。
+自分で `cd server` する必要はない、という点だけ覚えておけば大丈夫です。
+
+### フォルダが合っているかの確認方法
+
+PowerShell を開いたら、まず今いる場所を確認します。
+
+```powershell
+pwd
+```
+
+表示が次のようになっていれば OK です。
+
+```
+Path
+----
+D:\Github\ToDo
+```
+
+もし違う場所にいたら、次のコマンドで移動します。
+
+```powershell
+cd D:\Github\ToDo
+```
+
+> 💡 コツ: エクスプローラーで `D:\Github\ToDo` フォルダを開き、アドレスバーに `powershell` と打ち込んで Enter を押すと、そのフォルダで PowerShell が開きます。
+
+---
+
+## 0. 事前に必要なもの
+
+| 必要なもの | 説明 |
+| --- | --- |
+| Node.js（v20 以上） | `node -v` で確認できます。入っていなければ [nodejs.org](https://nodejs.org/) から LTS 版を入れてください。 |
+| このリポジトリ | `D:\Github\ToDo` に置いてある前提で説明します。 |
+
+確認コマンド（`D:\Github\ToDo` で）:
+
+```powershell
+node -v
+npm -v
+```
+
+---
+
+## 1. 初回だけ：依存パッケージのインストール
+
+最初の 1 回だけ実行します。2 回目以降は不要です（パッケージを増やしたときだけ再実行）。
+
+```powershell
+# フロント側（画面）の依存をインストール
+npm install
+
+# サーバー側の依存をインストール（server\ は独立したパッケージなので別途必要）
+npm --prefix server install
+```
+
+> `npm --prefix server install` は「`server\` フォルダに対して install を実行する」という意味です。
+> 自分で `cd server` しなくても、このコマンド 1 つで済みます。
+
+---
+
+## 2. 開発モード（まず自分の PC で試す）
+
+自分の PC だけで動作確認したいとき用です。**ターミナルを 2 つ**使います。
+
+### ターミナル 1：サーバーを起動（ポート 4577）
+
+```powershell
+npm run dev:server
+```
+
+次のようなログが出れば起動成功です（初回はここに管理者パスワードも出ます → [4 章](#4-管理者アカウントと初回パスワード)）。
+
+```
+[server] listening on http://localhost:4577
+```
+
+開発モードで `dist-web\` がまだ無い場合は、続けて `web build not found ...` と出ることがあります。
+これは「本番用のビルド済み画面が無い」という案内なので、次の `npm run dev:web` で確認する開発モードでは問題ありません。
+同じように `[server] デスクトップ版の配布フォルダ: ...（なし。npm run publish:desktop で作成されます）` と出ることもあります。デスクトップ版を配らない場合は気にしなくて大丈夫です。
+
+このターミナルは**開いたままにします**（閉じるとサーバーが止まります）。
+
+### ターミナル 2：Web フロントを起動（ポート 5273）
+
+**別の** PowerShell をもう 1 つ開き、また `D:\Github\ToDo` にいることを確認してから:
+
+```powershell
+npm run dev:web
+```
+
+### ブラウザでアクセス
+
+ブラウザで次を開きます。
+
+```
+http://localhost:5273
+```
+
+ログイン画面が出れば成功です。
+（ポート 5273 のフロントが、API と WebSocket を裏でポート 4577 のサーバーへ中継します。だから両方起動が必要です。）
+
+> 💡 サーバーのポートを変えて開発する場合は、サーバー側の `PORT` と、Web フロント側の `SERVER_PORT` を同じ値にします。
+> 例: ターミナル 1 で `$env:PORT = "8080"; npm run dev:server`、ターミナル 2 で `$env:SERVER_PORT = "8080"; npm run dev:web`
+
+> **止めるとき**: それぞれのターミナルで `Ctrl + C` を押します。
+
+---
+
+## 3. 本番モード（チームのみんなに公開する）
+
+社内 LAN の他の人がブラウザで使えるようにする手順です。
+開発モードと違い、**サーバー 1 つだけ**で画面も API も配信します（ポート 4577 のみ）。
+
+### 手順 1：Web フロントをビルド
+
+```powershell
+npm run build:web
+```
+
+`dist-web\` フォルダに成果物が出力されます。
+
+### 手順 2：サーバーを起動
+
+```powershell
+npm run start:server
+```
+
+`dist-web\` があれば、サーバーが同じポート（4577）で**画面も API も両方**配信します。
+このターミナルは開いたままにします。
+
+### 手順 3：自分の PC の IP アドレスを調べる
+
+```powershell
+ipconfig
+```
+
+`IPv4 アドレス` の値（例: `192.168.1.50`）を確認します。
+
+### 手順 4：メンバーがアクセス
+
+各メンバーは、同じ社内 LAN につないだ PC のブラウザで次を開きます。
+
+```
+http://192.168.1.50:4577
+```
+
+（`192.168.1.50` は手順 3 で調べたあなたの IP に置き換えます。）
+
+> 🔥 **初回は Windows ファイアウォールの許可ダイアログ**が出ることがあります。
+> 「プライベートネットワーク」にチェックを入れて「アクセスを許可する」を押してください。
+> これを許可しないと、他の人からつながりません。
+
+---
+
+## 3.4 別のサーバー PC で動かすとき（何を持っていくか）
+
+開発した PC とは別の「サーバー役の PC」で常駐させる場合の手順です。
+
+### 持っていくもの
+
+| 持っていくもの | 説明 |
+| --- | --- |
+| `server\` フォルダ一式 | ただし `server\node_modules\` と `server\data\` は**コピーしない**（node_modules はサーバー PC で作り直す。data は新規ならそもそも無い） |
+| `dist-web\` フォルダ | **開発 PC で** `npm run build:web` してできたもの。サーバー PC でビルドし直す必要はありません |
+| `dist-desktop\` フォルダ | デスクトップ版（HAKOBI）を配る場合だけ。`npm run publish:desktop` で作られるインストーラーの配布フォルダです。コピーは不要です（下の 📌 を参照） |
+| ルートの `package.json` | `npm run service:install` などの呼び出しに使います |
+| `docs\` フォルダ | このガイド。なくても動きますが、あると便利 |
+
+> 📌 リポジトリごと（`node_modules\` と `data\` を除いて）コピーするのが一番簡単です。
+> Git が使えるなら `git clone` でも OK（`dist-web\` だけは別途コピーするか、後述の注意を読んでください）。
+
+> 📌 デスクトップ版のインストーラーは、開発 PC でビルドしてサーバーから配布できます。やり方は2つです。
+> - **おすすめ**: サーバー PC の配布フォルダ（例: `C:\HakobiServer\dist-desktop`、`TODO_DESKTOP_DIST` に指定）を管理者だけが書き込める共有フォルダにします。開発 PC の `server\.env` に `TODO_DESKTOP_DIST=\\<サーバー名>\<共有名>` を書いておけば、開発 PC で `npm run dist` → `npm run publish:desktop` を実行するだけで公開できます。
+> - **共有フォルダを使えないとき**: 開発 PC の `dist\` にできた `HAKOBI-<バージョン>-setup.exe`、`HAKOBI-<バージョン>-setup.exe.blockmap`、`latest.yml` を、サーバー PC の `dist\`（`server\` と同じ階層）にコピーし、サーバー PC の `server\` で `npm run publish:desktop` を実行します。
+>
+> どちらも手順の詳細は [HAKOBI 運用ガイドの「ビルドする PC とサーバーが別のとき」](./HAKOBI.md#ビルドする-pc-とサーバーが別のとき) を参照してください。メンバーは `http://<サーバーのIP>:4577/download` からダウンロードします。
+
+### サーバー PC での手順
+
+1. **Node.js（v20 以上の LTS）をインストール**します。
+
+2. コピーしたフォルダ（例: `C:\TodoServer`）で PowerShell を開き、**サーバーの依存だけ**インストールします。
+
+   ```powershell
+   npm --prefix server install
+   ```
+
+   > ⚠️ ルートの `npm install` は**実行しないでください**。デスクトップ版（Electron）の重い依存まで入ってしまいます。サーバー運用に必要なのは `server\` の依存だけです。
+   > （`better-sqlite3` はネイティブモジュールのため、サーバー PC 上でのこのインストールが必須です。開発 PC の `node_modules` をコピーしても動きません。）
+
+   > 💡 もしサーバー PC で `dist-web\` を自分でビルドしたい場合だけ、ルートの `npm install` → `npm run build:web` が必要になります。基本は開発 PC でビルドしてコピーする方が軽くて簡単です。
+
+3. **設定ファイルを作ります。** `server\.env.example` を同じフォルダに `.env` という名前でコピーして編集します。
+
+   ```powershell
+   Copy-Item server\.env.example server\.env
+   notepad server\.env
+   ```
+
+   最低限 `ADMIN_PASSWORD` を決めておくのがおすすめです（初回パスワードのログ探しが不要になります）。
+
+4. あとは次の **3.5 章**のとおり、管理者 PowerShell で `npm run service:install` すれば完了です。
+
+---
+
+## 3.5 Windows サービスにして常駐させる（おすすめ）
+
+3 章の方法はターミナルを閉じるとサーバーが止まります。
+**Windows サービス**として登録すると、ターミナル不要・PC 再起動後も自動起動になります。
+
+### 登録手順（初回のみ）
+
+1. まだなら Web フロントをビルドしておきます。
+
+   ```powershell
+   npm run build:web
+   ```
+
+2. **PowerShell を「管理者として実行」で開きます**（スタートメニューで PowerShell を右クリック →「管理者として実行」）。サービスの登録には管理者権限が必要です。
+
+3. `D:\Github\ToDo` に移動して登録コマンドを実行します。
+
+   ```powershell
+   cd D:\Github\ToDo
+   npm run service:install
+   ```
+
+   「インストールしました。起動します...」と出れば完了です。
+   サービス名は **TodoTeamServer** で、Windows の「サービス」一覧（`services.msc`）にも表示されます。
+
+4. ブラウザで `http://localhost:4577` を開いて動作確認します。
+
+> 💡 ポートやパスワードなどの設定は **`server\.env` ファイル**に書くのがおすすめです（[3.4 章](#34-別のサーバー-pc-で動かすとき何を持っていくか)の手順 3）。
+> `.env` はサーバー起動のたびに読み込まれるため、内容を変えたら `services.msc` から TodoTeamServer を**再起動するだけ**で反映されます（サービスの再登録は不要）。
+>
+> 環境変数（`$env:PORT = "8080"` など）でも指定できますが、その場合はインストール時点の値がサービスに焼き込まれ、変更には再登録が必要です。両方ある場合は環境変数が優先されます。
+
+### 起動・停止・解除
+
+| やりたいこと | 方法 |
+| --- | --- |
+| 状態確認・手動の開始/停止 | `services.msc` を開いて「TodoTeamServer」を操作（または管理者 PowerShell で `Start-Service TodoTeamServer` / `Stop-Service TodoTeamServer`） |
+| サービス登録の解除 | 管理者 PowerShell で `npm run service:uninstall`（データベースは消えません） |
+| ログの確認 | `server\service\daemon\` フォルダに出力されます（初回管理者パスワードのログもここ） |
+
+> ⚠️ サービス運用で初回起動した場合、ランダム生成される管理者パスワードはターミナルではなく
+> `server\service\daemon\` 内のログファイルに出力されます。控え忘れに注意してください。
+> 確実なのは、登録前に `server\.env` で `ADMIN_PASSWORD=...` を決めておく方法です。
+
+---
+
+## 3.6 既に動いているサーバーを更新する
+
+更新時に置き換える実行物は、基本的に次の2か所です。
+
+| 置き換えるもの | 内容 |
+| --- | --- |
+| `server\src\` | API、DB処理、通知などのサーバープログラム |
+| `dist-web\` | `npm run build:web` で生成したブラウザ画面。ハッシュ付きファイルがあるため、フォルダ単位で丸ごと置き換える |
+
+次のものは運用データやサーバー固有設定なので、**上書き・削除しません**。
+
+- `server\data\`（SQLiteデータベース）
+- `server\.env`（ポート、データ保存先、初期管理者設定など）
+- `server\node_modules\`（サーバーPCでインストールした依存）
+- `server\service\daemon\`（サービスラッパーが生成した実行物）
+- `dist-desktop\`（`npm run publish:desktop` で公開したデスクトップ版インストーラー。`TODO_DESKTOP_DIST` 設定時はその場所）。`dist-web\` を置き換えるときも、このフォルダは残します
+
+今回の更新では通知設定とタスク購読用のテーブルを追加します。サービス起動時に `CREATE TABLE IF NOT EXISTS` で自動追加されるため、手動のマイグレーションコマンドは不要です。依存パッケージは変更していないため、サービスの再登録や `npm install` も不要です。
+
+`TODO_WEB_DIST` を `.env` で変更している場合、以下の `dist-web\` はその指定先に読み替えてください。
+
+### 方法A：サーバーPCでGit更新・ビルドする
+
+ルートの依存パッケージがサーバーPCにも入っている場合の手順です。管理者PowerShellで実行します。
+
+```powershell
+cd D:\Github\ToDo
+Stop-Service TodoTeamServer
+
+# 停止中にDBディレクトリ全体をバックアップする（todo.db / WAL / SHMを含む）
+$backupDir = "D:\TodoBackup\$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+New-Item -ItemType Directory -Path $backupDir -Force
+Copy-Item server\data $backupDir -Recurse
+
+git pull --ff-only origin main
+npm run build:web
+
+Start-Service TodoTeamServer
+$port = 4577 # server\.env の PORT を変更している場合は合わせる
+Invoke-RestMethod "http://localhost:$port/api/health"
+```
+
+最後のコマンドで正常なレスポンスが返れば、サーバー起動と起動時DB拡張は成功しています。ブラウザを `Ctrl + F5` で再読み込みし、ログイン、通知設定、タスク詳細の購読ボタンまで簡易確認してください。
+
+> `TODO_DATA_DIR` を `.env` で変更している場合、バックアップ元は `server\data` ではなく指定した保存先ディレクトリに置き換えてください。必ずサービス停止後にフォルダ単位でコピーします。
+
+依存パッケージが変更された更新では、ロックファイルに応じて追加で次を実行します。
+
+```powershell
+# server\package-lock.json が変わった場合
+npm --prefix server ci
+
+# ルート package-lock.json が変わり、サーバーPCでWeb画面をビルドする場合
+npm ci
+```
+
+### 方法B：開発PCでビルドして成果物をコピーする
+
+サーバーPCへルートのElectron／フロント依存を入れたくない場合はこちらが軽量です。
+
+1. 開発PCのリポジトリで `npm run build:web` を実行する。
+2. サーバーPCで `Stop-Service TodoTeamServer` を実行する。
+3. 停止中にサーバーPCの `TODO_DATA_DIR`（既定 `server\data\`）をフォルダごとバックアップする。
+4. 開発PCの `server\src\` で、サーバーPCの `server\src\` を置き換える。
+5. 開発PCの `dist-web\` で、サーバーPCの実際の配信先（既定 `dist-web\`、`TODO_WEB_DIST` 設定時はその場所）を**フォルダごと**置き換える。
+6. サーバーPCで `Start-Service TodoTeamServer` を実行する。
+7. 実際の `PORT` に対する `/api/health` と、ブラウザの `Ctrl + F5` で確認する。
+
+`dist-web\assets\` 内はファイル名がビルドごとに変わります。古いファイルを残した部分コピーではなく、必ず `dist-web\` 全体を置き換えてください。
+
+`dist-desktop\` は `dist-web\` とは別のフォルダです。置き換えずにそのまま残します。新しいデスクトップ版を配るときは、ファイルを手でコピーせず `npm run publish:desktop` で公開します（サービスの再起動は不要）。開発 PC から共有フォルダへ公開するか、サーバー PC で公開します。サーバー PC で公開する場合は、`server\scripts\`、`server\package.json`、ルートの `package.json` も新しいものにしておきます。
+
+### 問題が起きた場合の戻し方
+
+サービスを停止し、更新前に退避した `server\src\` と実際のWeb配信先を戻してからサービスを開始します。今回のDB変更はテーブル追加のみなので、旧プログラムは追加テーブルを無視でき、通常はDBを戻す必要はありません。完全に更新前へ戻す場合やデータに問題がある場合は、サービス停止中に `TODO_DATA_DIR` をバックアップ一式から復元してください。
+
+---
+
+## 4. 管理者アカウントと初回パスワード
+
+データベースにユーザーが 1 人もいないとき（＝いちばん最初の起動時）だけ、
+**管理者アカウントが自動で 1 つ**作られます。
+
+- ユーザー名: 既定は `admin`
+- パスワード: 環境変数 `ADMIN_PASSWORD` を指定していなければ、**ランダム生成されて起動ログに 1 回だけ表示**されます。
+
+初回起動時、サーバーのターミナルに次のように出ます。
+
+```
+[auth] 初期管理者アカウントを作成しました
+[auth]   ユーザー名: admin
+[auth]   初期パスワード: （ここにランダムなパスワード）
+[auth]   ※このパスワードは今だけ表示されます。ログイン後に変更してください。
+```
+
+> ⚠️ **この初期パスワードは一度きりの表示です。** 必ずメモしてください。
+> 万一控え忘れたら、[トラブル対応](#パスワードを忘れた--初期パスワードを控え忘れた)を参照。
+
+### 自分でパスワードを決めたい場合
+
+起動する**前に**、同じターミナルで環境変数をセットしてから起動します（PowerShell）。
+
+```powershell
+$env:ADMIN_PASSWORD = "好きなパスワード"
+npm run start:server
+```
+
+この場合、ログにはパスワードは表示されず「環境変数で設定済み」と出ます。
+
+---
+
+## 5. メンバーを追加する
+
+このアプリは**自己登録（サインアップ）はありません**。アカウントは管理者が発行します。
+
+1. 管理者アカウントでログインする
+2. 画面の**設定**を開く
+3. 「**ユーザー管理**」（管理者にだけ表示されます）を開く
+4. メンバーの追加・編集・権限変更・パスワード再設定ができます
+
+---
+
+## 6. データの保存先
+
+- サーバー版のデータベースは `server\data\todo.db` に作られます。
+- バックアップしたいときは、サーバーを止めてから `server\data\` フォルダごとコピーしてください。
+
+> 📌 **デスクトップ版（Electron）とはデータが別物です。**
+> デスクトップ版は `D:\Github\ToDo\data\todo.db`、サーバー版は `server\data\todo.db` を使います。
+> 両者は同期しません。Web 版で入れたタスクはデスクトップ版には出てきません（逆も同様）。
+
+### デスクトップ版の DB をサーバー版へ取り込む場合
+
+デスクトップ版で使っていた `todo.db` は、管理者だけがサーバー版へ取り込めます。
+取り込みは**一方向のコピー**です。取り込んだ後にデスクトップ版と自動同期されるわけではありません。
+
+画面から取り込む場合:
+
+1. 管理者アカウントで Web 版にログインする
+2. **設定**を開く
+3. **デスクトップDBを取り込む**を開く
+4. デスクトップ版の `todo.db` を選び、取り込み先メンバーを選択する
+5. まず **ドライラン（確認のみ）** で件数を確認し、問題なければ **取り込みを実行**する
+
+コマンドで取り込む場合は、サーバーを止めてから実行します。
+
+```powershell
+# 件数だけ確認
+npm run import:db -- --db "D:\Github\ToDo\data\todo.db" --user kenji --dry-run
+
+# 実際に取り込む
+npm run import:db -- --db "D:\Github\ToDo\data\todo.db" --user kenji
+```
+
+`--user` には、先に Web 版の「ユーザー管理」で作成したユーザー名を指定します。
+取り込まれたタスク、サブタスク、作業ログ、予定は、そのメンバーのデータとして登録されます。
+
+---
+
+## 7. 設定を変えたいとき（.env ファイル / 環境変数）
+
+既定のままで問題なければ読み飛ばして構いません。変えたいときは、次の 2 つの方法があります。
+
+**方法 1（おすすめ）: `server\.env` ファイル**
+
+`server\.env.example` を `server\.env` という名前でコピーして編集します。サーバー起動のたびに読み込まれるので、サービス運用でも再起動だけで反映されます。
+
+```powershell
+Copy-Item server\.env.example server\.env
+notepad server\.env
+```
+
+**方法 2: 環境変数** — 起動前に `$env:変数名 = "値"` でセットします。`.env` と両方ある場合は環境変数が優先されます。
+
+| 変数 | 既定値 | 説明 |
+| --- | --- | --- |
+| `PORT` | `4577` | サーバーの待ち受けポート |
+| `TODO_DATA_DIR` | `server\data` | データベースの保存先フォルダ |
+| `TODO_WEB_DIST` | `dist-web` | 配信する Web ビルドの場所 |
+| `TODO_DESKTOP_DIST` | `dist-desktop` | 配布するデスクトップ版インストーラーの置き場所（`npm run publish:desktop` の公開先）。全グループで共有できます |
+| `ADMIN_USERNAME` | `admin` | 初回に作る管理者のユーザー名 |
+| `ADMIN_PASSWORD` | （空） | 管理者の初期パスワード。未設定ならランダム生成 |
+| `SESSION_TTL_DAYS` | `30` | ログインの有効日数 |
+
+例（ポートを 8080 に変える）:
+
+```powershell
+$env:PORT = "8080"
+npm run start:server
+```
+
+> 💡 開発モードで `npm run dev:web` も使う場合、Web フロントのプロキシ先は既定で `4577` です。
+> サーバーを別ポートで起動するなら、`npm run dev:web` を叩く前に `$env:SERVER_PORT = "8080"` のように指定してください。
+
+---
+
+## 8. コマンド早見表（すべて `D:\Github\ToDo` で）
+
+| やりたいこと | コマンド | 使うフォルダ |
+| --- | --- | --- |
+| 初回：フロント依存 | `npm install` | `D:\Github\ToDo` |
+| 初回：サーバー依存 | `npm --prefix server install` | `D:\Github\ToDo` |
+| 開発：サーバー起動 | `npm run dev:server` | `D:\Github\ToDo` |
+| 開発：フロント起動 | `npm run dev:web` | `D:\Github\ToDo` |
+| 本番：ビルド | `npm run build:web` | `D:\Github\ToDo` |
+| 本番：サーバー起動 | `npm run start:server` | `D:\Github\ToDo` |
+| 本番：サービス登録（管理者 PowerShell） | `npm run service:install` | `D:\Github\ToDo` |
+| 本番：サービス解除（管理者 PowerShell） | `npm run service:uninstall` | `D:\Github\ToDo` |
+| 管理者：デスクトップDB取り込み | `npm run import:db -- --db "<todo.dbのパス>" --user <Webのユーザー名>` | `D:\Github\ToDo` |
+| 管理者：デスクトップ版の公開（`npm run dist` の後） | `npm run publish:desktop` | `D:\Github\ToDo`（開発 PC。共有フォルダへ公開）または サーバー PC の `server\` |
+
+| モード | アクセス先 |
+| --- | --- |
+| 開発（自分の PC で確認） | `http://localhost:5273` |
+| 本番（チームで利用） | `http://<サーバーのIP>:4577` |
+| デスクトップ版のダウンロード（ログイン不要） | `http://<サーバーのIP>:4577/download` |
+
+---
+
+## トラブル対応
+
+### `EADDRINUSE: address already in use :::4577`（ポートが使用中）
+
+すでにサーバーが別のターミナルで起動しています。古いほうを止めます。
+
+```powershell
+# 4577 を使っているプロセスを調べる
+Get-NetTCPConnection -LocalPort 4577 | Select-Object -ExpandProperty OwningProcess
+
+# 出てきた数字（PID）を止める
+Stop-Process -Id <PID> -Force
+```
+
+5273 が埋まっている場合も、ポート番号を `5273` に変えて同じことをします。
+
+### `Cannot find module ... src\index.ts` / コマンドが見つからない
+
+たいていは**フォルダ違い**です。`pwd` で `D:\Github\ToDo` にいるか確認してください。
+違っていたら `cd D:\Github\ToDo` で戻ります。
+
+### 他の PC からつながらない（本番モード）
+
+- サーバー側 PC で `npm run start:server` が動いたままか確認
+- Windows ファイアウォールの許可ダイアログで「プライベートネットワーク」を許可したか確認
+- アクセス先の IP が正しいか（`ipconfig` の IPv4 アドレス）を再確認
+- 両方の PC が**同じ社内 LAN / Wi‑Fi** につながっているか確認
+
+### パスワードを忘れた / 初期パスワードを控え忘れた
+
+- 他の管理者がいれば、その人の「ユーザー管理」から再設定できます。
+- 管理者が自分だけで控え忘れた場合は、サーバーを止めて `server\data\todo.db` を別の場所に退避（または削除）してから起動し直すと、ユーザー 0 人の状態になり管理者が再度自動作成されます（**既存データは消えるので注意**。退避したファイルは残しておけば後で戻せます）。
+
+### `npm install` がエラーになる
+
+`better-sqlite3` のネイティブビルドに失敗している可能性があります。
+Node.js のバージョン（v20 以上）を確認し、もう一度 `npm install` を試してください。
+
+---
+
+## まとめ（最短手順）
+
+**自分の PC で試すだけ:**
+
+```powershell
+# 初回だけ
+npm install
+npm --prefix server install
+
+# 毎回（ターミナル 2 つ）
+npm run dev:server   # ターミナル1
+npm run dev:web      # ターミナル2
+# → ブラウザで http://localhost:5273
+```
+
+**チームに公開する:**
+
+```powershell
+npm run build:web
+npm run start:server
+# → みんなは http://<あなたのIP>:4577
+```
+
+すべて `D:\Github\ToDo` で叩く。これだけ覚えておけば大丈夫です。
+
+<<<yomiyasu:material package.json>>>
+{
+  "name": "todo-app",
+  "version": "1.0.5",
+  "description": "HAKOBI team workspace with Gantt charts and time tracking",
+  "main": "./out/main/index.js",
+  "author": "",
+  "private": true,
+  "scripts": {
+    "test:ux": "node tests/ux-usability-electron.cjs",
+    "test:installer": "node tests/hakobi-installer.cjs",
+    "test:gantt-scroll": "node tests/gantt-scroll-regressions.cjs",
+    "test:quality": "node tests/local-data-regressions.cjs && node tests/task-data-regressions.cjs && node tests/timer-sync-regressions.cjs && npm --prefix server run test:auth-import && node tests/server-deployment.cjs && node tests/hakobi-detail-electron.cjs",
+    "test:hakobi": "node tests/windows-branding.cjs && node tests/hakobi-desktop.cjs && node tests/desktop-feed.cjs && node tests/desktop-release.cjs && npm --prefix server run test:desktop-release && node tests/desktop-download-server.cjs && node tests/service-config.cjs && node tests/server-clock.cjs && node tests/hakobi-progress-drafts.cjs && node tests/legacy-draft-recovery.cjs && node tests/web-client-regressions.cjs && node tests/auth-session.cjs && npm --prefix server run test:desktop && node tests/hakobi-native-electron.cjs && node tests/hakobi-electron.cjs",
+    "test:progress-timeline": "node tests/progress-timeline-desktop.cjs && node tests/progress-timeline-display.cjs && node tests/progress-note-helpers.cjs && npm --prefix server run test:progress-timeline",
+    "test:progress-report": "node tests/progress-report-authors.cjs && node tests/report-due-changes.cjs && node tests/schedule-health.cjs && npm --prefix server run test:progress-digest",
+    "test:links-members": "node tests/links.cjs && npm --prefix server run test:members",
+    "test:on-hold": "node tests/on-hold-display.cjs && node tests/on-hold-desktop.cjs && npm --prefix server run test:on-hold",
+    "test:todo-list": "node tests/todo-list-display.cjs && node tests/todo-list-desktop.cjs && npm --prefix server run test:todo-list",
+    "test:reorder": "node tests/subtask-reorder.cjs",
+    "test:url": "node tests/url-state.cjs",
+    "test:yearly": "node tests/recurrence-dates.cjs && node tests/yearly-recurrence-desktop.cjs && npm --prefix server run test:yearly",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "dev:web": "vite --config vite.web.config.ts",
+    "build:web": "vite build --config vite.web.config.ts",
+    "preview:web": "vite preview --config vite.web.config.ts",
+    "dev:server": "npm --prefix server run dev",
+    "start:server": "npm --prefix server run start",
+    "import:db": "npm --prefix server run import:db --",
+    "service:install": "npm --prefix server run service:install",
+    "service:uninstall": "npm --prefix server run service:uninstall",
+    "generate:icons": "node scripts/generate-build-icons.cjs",
+    "dist": "npm run generate:icons && npm run build && electron-builder",
+    "publish:desktop": "cd server && node node_modules/tsx/dist/cli.mjs scripts/publish-desktop.ts",
+    "postinstall": "electron-rebuild -f -w better-sqlite3"
+  },
+  "dependencies": {
+    "@holiday-jp/holiday_jp": "^2.5.1",
+    "better-sqlite3": "^9.4.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@electron-toolkit/preload": "^3.0.0",
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@electron-toolkit/utils": "^3.0.0",
+    "@electron/rebuild": "^4.0.3",
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^20.11.5",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.2.1",
+    "electron": "^29.1.0",
+    "electron-builder": "^24.9.1",
+    "electron-vite": "^2.0.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  }
+}
+
+<<<yomiyasu:material server/package.json>>>
+{
+  "name": "todo-server",
+  "version": "1.0.1",
+  "private": true,
+  "description": "Central server for the team Gantt TODO app",
+  "scripts": {
+    "test:auth-import": "tsx --test tests/auth-import-regressions.test.ts",
+    "test:desktop": "tsx --test tests/desktop.test.ts",
+    "test:progress-timeline": "tsx --test tests/progress-timeline.test.ts",
+    "test:progress-digest": "tsx --test tests/progress-digest.test.ts",
+    "test:members": "tsx --test tests/member-delete.test.ts",
+    "test:on-hold": "tsx --test tests/on-hold.test.ts",
+    "test:todo-list": "tsx --test tests/todo-list.test.ts",
+    "test:yearly": "tsx --test tests/yearly-recurrence.test.ts",
+    "test:mention": "tsx --test tests/mention.test.ts",
+    "test:report-reminder": "tsx --test tests/report-reminder.test.ts",
+    "test:due-notifications": "tsx --test tests/due-notifications.test.ts",
+    "test:backup": "tsx --test tests/backup.test.ts",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "test:overview": "tsx --test tests/overview.test.ts",
+    "test:desktop-release": "tsx --test tests/desktop-release.test.ts tests/desktop-download-counts.test.ts",
+    "import:db": "tsx src/import/cli.ts",
+    "publish:desktop": "tsx scripts/publish-desktop.ts",
+    "service:install": "node service/install.cjs",
+    "service:uninstall": "node service/uninstall.cjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@holiday-jp/holiday_jp": "^2.5.1",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.8.1",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "node-windows": "^1.0.0-beta.8",
+    "tsx": "^4.19.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.5",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.7.3"
+  }
+}
+
+<<<yomiyasu:material server/src/config.ts>>>
+import path from 'path'
+import fs from 'fs'
+
+/**
+ * TODO_ENV_FILE または server/.env を読み込む（シェルの環境変数が優先）。
+ * Windows サービス運用などで、起動シェルに依存せず設定を渡すための仕組み。
+ * 形式は1行1つの `KEY=value`。`#` 始まりはコメント。値は引用符で囲んでもよい。
+ */
+function loadEnvFile(): void {
+  const envPath = process.env.TODO_ENV_FILE
+    ? path.resolve(process.env.TODO_ENV_FILE)
+    : path.resolve(__dirname, '..', '.env')
+  if (!fs.existsSync(envPath)) {
+    if (process.env.TODO_ENV_FILE) throw new Error(`設定ファイルが見つかりません: ${envPath}`)
+    return
+  }
+
+  for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eq = trimmed.indexOf('=')
+    if (eq <= 0) continue
+
+    const key = trimmed.slice(0, eq).trim()
+    let value = trimmed.slice(eq + 1).trim()
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1)
+    }
+    if (process.env[key] === undefined) process.env[key] = value
+  }
+  console.log(`[config] ${envPath} を読み込みました`)
+}
+
+loadEnvFile()
+
+/** HTTP port the server listens on. */
+export const PORT = Number(process.env.PORT) || 4577
+
+/** Directory that holds the SQLite database and uploaded assets. */
+export const DATA_DIR = process.env.TODO_DATA_DIR
+  ? path.resolve(process.env.TODO_DATA_DIR)
+  : path.resolve(__dirname, '..', 'data')
+
+export const DB_PATH = path.join(DATA_DIR, 'todo.db')
+
+/** 自動バックアップ（1日1回）の置き場所。既定はデータフォルダの backups */
+export const BACKUP_DIR = process.env.TODO_BACKUP_DIR
+  ? path.resolve(process.env.TODO_BACKUP_DIR)
+  : path.join(DATA_DIR, 'backups')
+
+/** 自動バックアップを残す数（日数）。0 なら自動バックアップをしない */
+export const BACKUP_KEEP = ((): number => {
+  const raw = process.env.TODO_BACKUP_KEEP?.trim()
+  if (!raw) return 14
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 0) throw new Error('TODO_BACKUP_KEEP は 0 以上の整数にしてください')
+  return value
+})()
+
+/**
+ * Location of the built web frontend (the React app, built at the repo root
+ * into `dist-web`). Served as a single-page app when present.
+ */
+export const WEB_DIST_DIR = process.env.TODO_WEB_DIST
+  ? path.resolve(process.env.TODO_WEB_DIST)
+  : path.resolve(__dirname, '..', '..', 'dist-web')
+
+/**
+ * 配布するデスクトップ版インストーラーの置き場所（全グループで共有できる）。
+ * `npm run publish:desktop` が latest.yml とインストーラーをここへ置く。
+ */
+export const DESKTOP_DIST_DIR = process.env.TODO_DESKTOP_DIST
+  ? path.resolve(process.env.TODO_DESKTOP_DIST)
+  : path.resolve(__dirname, '..', '..', 'dist-desktop')
+
+/** Bootstrap admin account, created on first launch when no users exist. */
+export const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin'
+export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
+
+/** Session cookie name and lifetime. */
+export const SESSION_COOKIE = process.env.SESSION_COOKIE || 'todo_session'
+if (!/^[A-Za-z0-9_-]{1,64}$/.test(SESSION_COOKIE)) {
+  throw new Error('SESSION_COOKIE は英数字・ハイフン・アンダースコアで64文字以内にしてください')
+}
+export const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS) || 30
+
+export function ensureDataDir(): void {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
+}
+
+<<<yomiyasu:material server/src/auth.ts>>>
+import crypto from 'crypto'
+import bcrypt from 'bcryptjs'
+import type { NextFunction, Request, Response } from 'express'
+import { getDb } from './db/connection'
+import { countUsers, createUser, getUserById, toPublicUser } from './db/users'
+import type { PublicUser, Session, UserRecord } from './db/types'
+import { ADMIN_PASSWORD, ADMIN_USERNAME, SESSION_COOKIE, SESSION_TTL_DAYS } from './config'
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      user?: PublicUser
+      sessionToken?: string
+    }
+  }
+}
+
+const BCRYPT_ROUNDS = 10
+
+export function hashPassword(plain: string): string {
+  return bcrypt.hashSync(plain, BCRYPT_ROUNDS)
+}
+
+export function verifyPassword(plain: string, hash: string): boolean {
+  try {
+    return bcrypt.compareSync(plain, hash)
+  } catch {
+    return false
+  }
+}
+
+function addDaysIso(days: number): string {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+  return date.toISOString()
+}
+
+export function createSession(userId: string): string {
+  const token = crypto.randomBytes(32).toString('hex')
+  const now = new Date().toISOString()
+  getDb()
+    .prepare('INSERT INTO Sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)')
+    .run(token, userId, now, addDaysIso(SESSION_TTL_DAYS))
+  return token
+}
+
+export function getSessionUser(token: string | undefined): PublicUser | null {
+  if (!token) return null
+  const session = getDb().prepare('SELECT * FROM Sessions WHERE token = ?').get(token) as Session | undefined
+  if (!session) return null
+  if (new Date(session.expires_at).getTime() <= Date.now()) {
+    destroySession(token)
+    return null
+  }
+  const user = getUserById(session.user_id)
+  if (!user || user.is_active !== 1) return null
+  return toPublicUser(user)
+}
+
+export function destroySession(token: string): void {
+  getDb().prepare('DELETE FROM Sessions WHERE token = ?').run(token)
+}
+
+export function cleanupExpiredSessions(): void {
+  getDb().prepare('DELETE FROM Sessions WHERE expires_at <= ?').run(new Date().toISOString())
+}
+
+export function setSessionCookie(res: Response, token: string): void {
+  res.cookie(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: SESSION_TTL_DAYS * 86400000,
+    path: '/'
+  })
+}
+
+export function clearSessionCookie(res: Response): void {
+  res.clearCookie(SESSION_COOKIE, { path: '/' })
+}
+
+/** Attaches req.user when a valid session cookie is present. Never blocks. */
+export function attachUser(req: Request, _res: Response, next: NextFunction): void {
+  const token = req.cookies?.[SESSION_COOKIE] as string | undefined
+  const user = getSessionUser(token)
+  if (user) {
+    req.user = user
+    req.sessionToken = token
+  }
+  next()
+}
+
+export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user) {
+    res.status(401).json({ error: '認証が必要です' })
+    return
+  }
+  next()
+}
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user) {
+    res.status(401).json({ error: '認証が必要です' })
+    return
+  }
+  if (req.user.role !== 'admin') {
+    res.status(403).json({ error: '管理者権限が必要です' })
+    return
+  }
+  next()
+}
+
+export function verifyCredentials(username: string, password: string): UserRecord | null {
+  const user = getDb().prepare('SELECT * FROM Users WHERE username = ? AND deleted_at IS NULL').get(username) as UserRecord | undefined
+  if (!user || user.is_active !== 1) return null
+  if (!verifyPassword(password, user.password_hash)) return null
+  return user
+}
+
+/**
+ * On a fresh database, create the first admin account so the operator can log
+ * in and issue the rest of the team's accounts. The password comes from the
+ * ADMIN_PASSWORD env var; if unset, a random one is generated and printed once
+ * to the server console.
+ */
+export function seedAdminUser(): void {
+  if (countUsers() > 0) return
+
+  let password = ADMIN_PASSWORD
+  let generated = false
+  if (!password) {
+    password = crypto.randomBytes(9).toString('base64url')
+    generated = true
+  }
+
+  createUser({
+    username: ADMIN_USERNAME,
+    display_name: '管理者',
+    password_hash: hashPassword(password),
+    role: 'admin'
+  })
+
+  console.log('[auth] 初期管理者アカウントを作成しました')
+  console.log(`[auth]   ユーザー名: ${ADMIN_USERNAME}`)
+  if (generated) {
+    console.log(`[auth]   初期パスワード: ${password}`)
+    console.log('[auth]   ※このパスワードは今だけ表示されます。ログイン後に変更してください。')
+  } else {
+    console.log('[auth]   パスワード: (ADMIN_PASSWORD 環境変数で設定済み)')
+  }
+}
+
+<<<yomiyasu:material server/src/import/import-desktop-db.ts>>>
+import crypto from 'crypto'
+import Database from 'better-sqlite3'
+import { isItemRecurrence, normalizeRecurrenceDay } from '../shared/recurring-period'
+import { isTodoRecurrence } from '../shared/todo-recurrence'
+
+/**
+ * Imports a single-user desktop (Electron) `todo.db` into the multi-user web
+ * database, attributing every row to one target web user.
+ *
+ * The desktop schema is a subset of the web schema, so the mapping is:
+ *  - Categories are de-duplicated by name (web has a UNIQUE(name) constraint);
+ *    a same-named category is reused, otherwise a fresh one is created.
+ *  - Todos keep their original UUIDs and gain assignee_id / created_by = target.
+ *  - SubTasks gain assignee_id / created_by = target; TodoDependencies copy
+ *    as-is (their UUIDs do not collide).
+ *  - WorkLogs / DailyPlanItems gain the missing user_id = target.
+ *  - Progress notes, replies, reactions and change history keep their UUIDs;
+ *    all desktop authors / reaction actors become the target web user.
+ *  - New categories keep their private flag. Existing same-named categories
+ *    keep the server setting, with differing flags reported as conflicts.
+ *  - RunningState (a transient running timer) and Settings are skipped.
+ *
+ * Re-running is safe: every insert uses INSERT OR IGNORE / unique constraints,
+ * so already-imported rows are left untouched.
+ */
+export interface ImportResult {
+  categories: number
+  todos: number
+  subTasks: number
+  dependencies: number
+  workLogs: number
+  planItems: number
+  progressNotes: number
+  progressComments: number
+  progressReactions: number
+  todoChanges: number
+  subTaskChanges: number
+  categoryConflicts: string[]
+  skippedOrphans: number
+  dryRun: boolean
+}
+
+export interface ImportOptions {
+  webDb: Database.Database
+  sourceDbPath: string
+  targetUserId: string
+  dryRun?: boolean
+}
+
+type Row = Record<string, unknown>
+
+const asText = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback)
+const asInt = (v: unknown, fallback = 0): number =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.trunc(v) : fallback
+const asNullableText = (v: unknown): string | null =>
+  typeof v === 'string' && v.trim() !== '' ? v : null
+const asStoredText = (v: unknown): string | null => (typeof v === 'string' ? v : null)
+
+function tableExists(db: Database.Database, name: string): boolean {
+  return (
+    db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1")
+      .get(name) != null
+  )
+}
+
+function readAll(db: Database.Database, table: string): Row[] {
+  if (!tableExists(db, table)) return []
+  return db.prepare(`SELECT * FROM ${table}`).all() as Row[]
+}
+
+export function importDesktopDb(options: ImportOptions): ImportResult {
+  const { webDb, sourceDbPath, targetUserId, dryRun = false } = options
+  const target = webDb.prepare('SELECT deleted_at FROM Users WHERE id = ?').get(targetUserId) as { deleted_at: string | null } | undefined
+  if (!target || target.deleted_at) throw new Error('取り込み先のユーザーが見つからないか、削除されています。別のメンバーを選択してください')
+
+  const source = new Database(sourceDbPath, { readonly: true, fileMustExist: true })
+
+  const now = new Date().toISOString()
+  const result: ImportResult = {
+    categories: 0,
+    todos: 0,
+    subTasks: 0,
+    dependencies: 0,
+    workLogs: 0,
+    planItems: 0,
+    progressNotes: 0,
+    progressComments: 0,
+    progressReactions: 0,
+    todoChanges: 0,
+    subTaskChanges: 0,
+    categoryConflicts: [],
+    skippedOrphans: 0,
+    dryRun
+  }
+
+  try {
+    if (!tableExists(source, 'Todos')) {
+      throw new Error('指定したファイルはデスクトップ版の todo.db ではないようです（Todos テーブルがありません）。')
+    }
+    const srcCategories = readAll(source, 'Categories')
+    const srcTodos = readAll(source, 'Todos')
+    const srcSubTasks = readAll(source, 'SubTasks')
+    const srcDependencies = readAll(source, 'TodoDependencies')
+    const srcWorkLogs = readAll(source, 'WorkLogs')
+    const srcPlanItems = readAll(source, 'DailyPlanItems')
+    const srcProgressNotes = readAll(source, 'ProgressNotes')
+    const srcProgressComments = readAll(source, 'ProgressNoteComments')
+    const srcNoteReactions = readAll(source, 'ProgressNoteReactions')
+    const srcCommentReactions = readAll(source, 'ProgressCommentReactions')
+    const srcTodoChanges = readAll(source, 'TodoChangeLogs')
+    const srcSubTaskChanges = readAll(source, 'SubTaskChangeLogs')
+
+    const validTodoIds = new Set(srcTodos.map((t) => asText(t.id)))
+
+    const findCategoryByName = webDb.prepare('SELECT id, is_private FROM Categories WHERE name = ?')
+    const insertCategory = webDb.prepare(
+      `INSERT INTO Categories (id, name, color, description, sort_order, is_private, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    const insertTodo = webDb.prepare(
+      `INSERT OR IGNORE INTO Todos
+        (id, title, description, memo, category_id, assignee_id, created_by, status,
+         priority, progress, start_date, due_date, sort_order, recurrence, recurrence_copy_subtasks,
+         recurrence_skip_weekends, recurrence_skip_holidays, list_mode,
+         created_at, updated_at, completed_at, archived_at, on_hold_since)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    const insertSubTask = webDb.prepare(
+      `INSERT OR IGNORE INTO SubTasks
+        (id, todo_id, title, description, assignee_id, start_date, due_date, progress, done, completed_at, sort_order, created_at, created_by,
+         recurrence, recurrence_workdays, recurrence_day)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    const insertDependency = webDb.prepare(
+      `INSERT OR IGNORE INTO TodoDependencies
+        (id, predecessor_todo_id, successor_todo_id, type, lag_days, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    const insertWorkLog = webDb.prepare(
+      `INSERT OR IGNORE INTO WorkLogs
+        (id, todo_id, user_id, start_time, end_time, duration_seconds, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    const insertPlanItem = webDb.prepare(
+      `INSERT OR IGNORE INTO DailyPlanItems
+        (id, plan_date, todo_id, user_id, scheduled_start, estimated_minutes, lane, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    const insertNote = webDb.prepare(
+      `INSERT OR IGNORE INTO ProgressNotes (id, todo_id, user_id, body, needs_discussion, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    const findNote = webDb.prepare('SELECT todo_id FROM ProgressNotes WHERE id = ?')
+    const insertComment = webDb.prepare(
+      `INSERT OR IGNORE INTO ProgressNoteComments (id, note_id, parent_comment_id, user_id, body, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    const findComment = webDb.prepare('SELECT note_id FROM ProgressNoteComments WHERE id = ?')
+    const insertNoteReaction = webDb.prepare(
+      `INSERT OR IGNORE INTO ProgressNoteReactions (id, note_id, user_id, actor_key, emoji, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    const insertCommentReaction = webDb.prepare(
+      `INSERT OR IGNORE INTO ProgressCommentReactions (id, comment_id, user_id, actor_key, emoji, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    const insertTodoChange = webDb.prepare(
+      `INSERT OR IGNORE INTO TodoChangeLogs (id, todo_id, user_id, field, old_value, new_value, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    const insertSubTaskChange = webDb.prepare(
+      `INSERT OR IGNORE INTO SubTaskChangeLogs (id, subtask_id, todo_id, user_id, field, old_value, new_value, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    const findSubTask = webDb.prepare('SELECT todo_id FROM SubTasks WHERE id = ?')
+
+    webDb.exec('BEGIN')
+
+    // Categories — de-dupe by name, remembering the desktop→web id mapping.
+    const categoryMap = new Map<string, string>()
+    for (const cat of srcCategories) {
+      const srcId = asText(cat.id)
+      const name = asText(cat.name)
+      if (!name) continue
+      const isPrivate = asInt(cat.is_private, 0) === 1 ? 1 : 0
+      const existing = findCategoryByName.get(name) as { id: string; is_private: number } | undefined
+      if (existing) {
+        categoryMap.set(srcId, existing.id)
+        if (existing.is_private !== isPrivate && !result.categoryConflicts.includes(name)) result.categoryConflicts.push(name)
+        continue
+      }
+      const newId = crypto.randomUUID()
+      insertCategory.run(
+        newId,
+        name,
+        asText(cat.color, '#6366f1'),
+        asText(cat.description, ''),
+        asInt(cat.sort_order, 0),
+        isPrivate,
+        asText(cat.created_at, now)
+      )
+      categoryMap.set(srcId, newId)
+      result.categories += 1
+    }
+
+    // Todos
+    for (const todo of srcTodos) {
+      const srcCategoryId = asNullableText(todo.category_id)
+      const mappedCategoryId = srcCategoryId ? categoryMap.get(srcCategoryId) ?? null : null
+      const status = asText(todo.status, 'active')
+      const updatedAt = asText(todo.updated_at, now)
+      const completedAt = asNullableText(todo.completed_at) ?? (status === 'done' ? updatedAt : null)
+      const changes = insertTodo.run(
+        asText(todo.id),
+        asText(todo.title),
+        asText(todo.description, ''),
+        asText(todo.memo, ''),
+        mappedCategoryId,
+        targetUserId,
+        targetUserId,
+        status,
+        asInt(todo.priority, 3),
+        asInt(todo.progress, 0),
+        asNullableText(todo.start_date),
+        asNullableText(todo.due_date),
+        asInt(todo.sort_order, 0),
+        // 知らない繰り返しの値は取り込まない（DB の制約で取り込み全体が止まらないように）
+        isTodoRecurrence(todo.recurrence) ? todo.recurrence : null,
+        asInt(todo.recurrence_copy_subtasks, 0),
+        asInt(todo.recurrence_skip_weekends, 0),
+        asInt(todo.recurrence_skip_holidays, 0),
+        asInt(todo.list_mode, 0) === 1 ? 1 : 0,
+        asText(todo.created_at, now),
+        updatedAt,
+        completedAt,
+        asNullableText(todo.archived_at),
+        asNullableText(todo.on_hold_since)
+      ).changes
+      result.todos += changes
+    }
+
+    // SubTasks
+    const validSubTaskIds = new Set<string>()
+    for (const sub of srcSubTasks) {
+      const todoId = asText(sub.todo_id)
+      if (!validTodoIds.has(todoId)) {
+        result.skippedOrphans += 1
+        continue
+      }
+      result.subTasks += insertSubTask.run(
+        asText(sub.id),
+        todoId,
+        asText(sub.title),
+        asText(sub.description, ''),
+        targetUserId,
+        asNullableText(sub.start_date),
+        asNullableText(sub.due_date),
+        asInt(sub.progress, asInt(sub.done, 0) ? 100 : 0),
+        asInt(sub.done, 0),
+        asNullableText(sub.completed_at),
+        asInt(sub.sort_order, 0),
+        asText(sub.created_at, now),
+        targetUserId,
+        isItemRecurrence(sub.recurrence) ? sub.recurrence : null,
+        asInt(sub.recurrence_workdays, 0) === 1 ? 1 : 0,
+        normalizeRecurrenceDay(isItemRecurrence(sub.recurrence) ? sub.recurrence : null, sub.recurrence_day)
+      ).changes
+      const stored = findSubTask.get(asText(sub.id)) as { todo_id: string } | undefined
+      if (stored?.todo_id === todoId) validSubTaskIds.add(asText(sub.id))
+    }
+
+    // TodoDependencies
+    for (const dep of srcDependencies) {
+      const predId = asText(dep.predecessor_todo_id)
+      const succId = asText(dep.successor_todo_id)
+      if (!validTodoIds.has(predId) || !validTodoIds.has(succId)) {
+        result.skippedOrphans += 1
+        continue
+      }
+      result.dependencies += insertDependency.run(
+        asText(dep.id, crypto.randomUUID()),
+        predId,
+        succId,
+        asText(dep.type, 'finish_to_start'),
+        asInt(dep.lag_days, 0),
+        asText(dep.created_at, now)
+      ).changes
+    }
+
+    // WorkLogs — desktop has no user_id, so attribute to the target user.
+    for (const log of srcWorkLogs) {
+      const todoId = asText(log.todo_id)
+      if (!validTodoIds.has(todoId)) {
+        result.skippedOrphans += 1
+        continue
+      }
+      result.workLogs += insertWorkLog.run(
+        asText(log.id),
+        todoId,
+        targetUserId,
+        asText(log.start_time),
+        asText(log.end_time),
+        asInt(log.duration_seconds, 0),
+        asText(log.note, ''),
+        asText(log.created_at, now)
+      ).changes
+    }
+
+    // DailyPlanItems — desktop has no user_id; attribute to the target user.
+    for (const plan of srcPlanItems) {
+      const todoId = asText(plan.todo_id)
+      if (!validTodoIds.has(todoId)) {
+        result.skippedOrphans += 1
+        continue
+      }
+      result.planItems += insertPlanItem.run(
+        asText(plan.id),
+        asText(plan.plan_date),
+        todoId,
+        targetUserId,
+        asNullableText(plan.scheduled_start),
+        plan.estimated_minutes == null ? null : asInt(plan.estimated_minutes, 0),
+        asInt(plan.lane, 0),
+        asInt(plan.sort_order, 0),
+        asText(plan.created_at, now),
+        asText(plan.updated_at, now)
+      ).changes
+    }
+
+    // Progress notes — older desktop databases may not have these optional tables.
+    const validNoteIds = new Set<string>()
+    for (const note of srcProgressNotes) {
+      const todoId = asText(note.todo_id)
+      const noteId = asText(note.id)
+      if (!validTodoIds.has(todoId)) {
+        result.skippedOrphans += 1
+        continue
+      }
+      const createdAt = asNullableText(note.created_at) ?? now
+      result.progressNotes += insertNote.run(
+        noteId, todoId, targetUserId, asText(note.body), asInt(note.needs_discussion, 0) === 1 ? 1 : 0,
+        createdAt, asNullableText(note.updated_at) ?? createdAt
+      ).changes
+      const stored = findNote.get(noteId) as { todo_id: string } | undefined
+      if (stored?.todo_id === todoId) validNoteIds.add(noteId)
+      else result.skippedOrphans += 1
+    }
+
+    // Insert parents before replies without depending on SQLite's source row order.
+    // Missing parents, cross-note links and cycles are skipped with their descendants.
+    const pendingComments = new Map<string, Row>()
+    for (const comment of srcProgressComments) {
+      if (!validNoteIds.has(asText(comment.note_id))) result.skippedOrphans += 1
+      else pendingComments.set(asText(comment.id), comment)
+    }
+    const commentChildren = new Map<string, string[]>()
+    const commentQueue: string[] = []
+    for (const [id, comment] of pendingComments) {
+      const parentId = asNullableText(comment.parent_comment_id)
+      if (!parentId) commentQueue.push(id)
+      else {
+        const parent = pendingComments.get(parentId)
+        if (parent && parent.note_id === comment.note_id) {
+          const children = commentChildren.get(parentId) ?? []
+          children.push(id)
+          commentChildren.set(parentId, children)
+        }
+      }
+    }
+    const validCommentIds = new Set<string>()
+    for (let index = 0; index < commentQueue.length; index += 1) {
+      const id = commentQueue[index]
+      const comment = pendingComments.get(id)!
+      const noteId = asText(comment.note_id)
+      const parentId = asNullableText(comment.parent_comment_id)
+      const createdAt = asNullableText(comment.created_at) ?? now
+      result.progressComments += insertComment.run(
+        id, noteId, parentId, targetUserId, asText(comment.body), createdAt,
+        asNullableText(comment.updated_at) ?? createdAt
+      ).changes
+      const stored = findComment.get(id) as { note_id: string } | undefined
+      if (stored?.note_id !== noteId) continue
+      validCommentIds.add(id)
+      for (const childId of commentChildren.get(id) ?? []) commentQueue.push(childId)
+    }
+    result.skippedOrphans += pendingComments.size - validCommentIds.size
+
+    // Server reactions use the user's ID as actor_key; desktop uses "desktop".
+    for (const reaction of srcNoteReactions) {
+      const noteId = asText(reaction.note_id)
+      if (!validNoteIds.has(noteId)) {
+        result.skippedOrphans += 1
+        continue
+      }
+      result.progressReactions += insertNoteReaction.run(
+        asText(reaction.id), noteId, targetUserId, targetUserId, asText(reaction.emoji), asNullableText(reaction.created_at) ?? now
+      ).changes
+    }
+    for (const reaction of srcCommentReactions) {
+      const commentId = asText(reaction.comment_id)
+      if (!validCommentIds.has(commentId)) {
+        result.skippedOrphans += 1
+        continue
+      }
+      result.progressReactions += insertCommentReaction.run(
+        asText(reaction.id), commentId, targetUserId, targetUserId, asText(reaction.emoji), asNullableText(reaction.created_at) ?? now
+      ).changes
+    }
+
+    // Preserve the date-stamped changes used by period progress reports.
+    for (const change of srcTodoChanges) {
+      const todoId = asText(change.todo_id)
+      if (!validTodoIds.has(todoId)) {
+        result.skippedOrphans += 1
+        continue
+      }
+      result.todoChanges += insertTodoChange.run(
+        asText(change.id), todoId, targetUserId, asText(change.field), asStoredText(change.old_value),
+        asStoredText(change.new_value), asNullableText(change.created_at) ?? now
+      ).changes
+    }
+    for (const change of srcSubTaskChanges) {
+      const subTaskId = asText(change.subtask_id)
+      const todoId = asText(change.todo_id)
+      const stored = findSubTask.get(subTaskId) as { todo_id: string } | undefined
+      if (!validSubTaskIds.has(subTaskId) || stored?.todo_id !== todoId) {
+        result.skippedOrphans += 1
+        continue
+      }
+      result.subTaskChanges += insertSubTaskChange.run(
+        asText(change.id), subTaskId, todoId, targetUserId, asText(change.field), asStoredText(change.old_value),
+        asStoredText(change.new_value), asNullableText(change.created_at) ?? now
+      ).changes
+    }
+
+    webDb.exec(dryRun ? 'ROLLBACK' : 'COMMIT')
+  } catch (error) {
+    try {
+      webDb.exec('ROLLBACK')
+    } catch {
+      // already rolled back
+    }
+    throw error
+  } finally {
+    source.close()
+  }
+
+  return result
+}
+
+<<<yomiyasu:material src/renderer/src/components/DesktopImportModal.tsx>>>
+import React, { useEffect, useState, useRef } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
+import type { DesktopImportResult, PublicUser } from '../types'
+
+interface Props {
+  users: PublicUser[]
+  onClose: () => void
+  onShowToast: (message: string, type?: 'success' | 'error') => void
+}
+
+// デスクトップ版の todo.db をアップロードしてサーバー版に取り込む管理者用モーダル。
+// まずドライランで件数を確認してから本実行する流れを想定している。
+export function DesktopImportModal({ users, onClose, onShowToast }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
+  const [file, setFile] = useState<File | null>(null)
+  const [targetUserId, setTargetUserId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<DesktopImportResult | null>(null)
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && !e.isComposing) {
+        e.preventDefault()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  const runImport = async (dryRun: boolean): Promise<void> => {
+    if (!file) {
+      onShowToast('todo.db ファイルを選択してください', 'error')
+      return
+    }
+    if (!targetUserId) {
+      onShowToast('取り込み先のメンバーを選択してください', 'error')
+      return
+    }
+    setBusy(true)
+    try {
+      const data = await file.arrayBuffer()
+      const imported = await window.api.adminImportDesktopDb(data, targetUserId, dryRun)
+      setResult(imported)
+      onShowToast(dryRun ? 'ドライランが完了しました（まだ書き込んでいません）' : '取り込みが完了しました')
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '取り込みに失敗しました', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const activeUsers = users.filter((user) => user.is_active === 1)
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="デスクトップDBの取り込み" style={{
+        background: 'var(--slate-800)', borderRadius: 14, padding: 28, width: 560,
+        maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid var(--slate-700)',
+        display: 'flex', flexDirection: 'column', gap: 18
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)', margin: 0 }}>💾 デスクトップDBの取り込み</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: '1.2rem', padding: '2px 6px' }}>×</button>
+        </div>
+
+        <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)', lineHeight: 1.6 }}>
+          デスクトップ版（1人用）の <code style={{ color: 'var(--slate-300)' }}>todo.db</code> を、担当者を指定してこのサーバーに取り込みます。
+          同じファイルを再度取り込んでも二重登録はされません。まず「ドライラン」で件数を確認してから実行するのがおすすめです。
+          進捗・返信・リアクション・変更履歴の投稿者も、指定したメンバーとして引き継ぎます。
+        </div>
+
+        <div>
+          <label style={labelStyle}>todo.db ファイル</label>
+          <input
+            type="file"
+            accept=".db,.sqlite,.sqlite3"
+            onChange={(event) => { setFile(event.target.files?.[0] ?? null); setResult(null) }}
+            style={{ ...inputStyle, padding: 8 }}
+          />
+          {file && <div style={{ marginTop: 4, fontSize: '0.74rem', color: 'var(--text-subtle)' }}>{file.name}（{Math.max(1, Math.round(file.size / 1024))} KB）</div>}
+        </div>
+
+        <div>
+          <label style={labelStyle}>取り込み先メンバー（タスクの担当者になります）</label>
+          <select value={targetUserId} onChange={(event) => { setTargetUserId(event.target.value); setResult(null) }} style={inputStyle}>
+            <option value="">選択してください</option>
+            {activeUsers.map((user) => (
+              <option key={user.id} value={user.id}>{user.display_name}（{user.username}）</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={() => void runImport(true)} disabled={busy} style={btn('var(--slate-700)', 'var(--slate-300)')}>
+            {busy ? '処理中...' : 'ドライラン（確認のみ）'}
+          </button>
+          <button onClick={() => void runImport(false)} disabled={busy} style={btn('var(--indigo-500)', 'var(--on-fill-white)')}>
+            {busy ? '処理中...' : '取り込みを実行'}
+          </button>
+        </div>
+
+        {result && (
+          <div style={{ background: 'var(--slate-900)', borderRadius: 10, padding: 14, border: '1px solid var(--slate-700)' }}>
+            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: result.dryRun ? 'var(--amber-400)' : 'var(--green-400)', marginBottom: 8 }}>
+              {result.dryRun ? 'ドライラン結果（未保存）' : '取り込み完了'}
+            </div>
+            <table style={{ fontSize: '0.8rem', color: 'var(--slate-300)', borderCollapse: 'collapse' }}>
+              <tbody>
+                <ResultRow label="カテゴリ" value={result.categories} note="（新規追加分のみ）" />
+                <ResultRow label="タスク" value={result.todos} />
+                <ResultRow label="サブタスク" value={result.subTasks} />
+                <ResultRow label="依存関係" value={result.dependencies} />
+                <ResultRow label="作業ログ" value={result.workLogs} />
+                <ResultRow label="予定（レール）" value={result.planItems} />
+                <ResultRow label="進捗ログ" value={result.progressNotes ?? 0} />
+                <ResultRow label="コメント・返信" value={result.progressComments ?? 0} />
+                <ResultRow label="リアクション" value={result.progressReactions ?? 0} />
+                <ResultRow label="タスクの変更履歴" value={result.todoChanges ?? 0} />
+                <ResultRow label="サブタスクの変更履歴" value={result.subTaskChanges ?? 0} />
+                {result.skippedOrphans > 0 && <ResultRow label="スキップ" value={result.skippedOrphans} note="（参照先が無い、または不正なデータ）" />}
+              </tbody>
+            </table>
+            {!!result.categoryConflicts?.length && (
+              <p role="alert" style={{ margin: '10px 0 0', fontSize: '0.76rem', color: 'var(--amber-400)' }}>
+                次の同名カテゴリは集計除外の設定が異なるため、サーバー側の設定を維持します：{result.categoryConflicts.join('、')}
+              </p>
+            )}
+            {result.dryRun && (
+              <div style={{ marginTop: 8, fontSize: '0.76rem', color: 'var(--slate-400)' }}>
+                問題なければ「取り込みを実行」を押してください。
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ResultRow({ label, value, note }: { label: string; value: number; note?: string }): React.JSX.Element {
+  return (
+    <tr>
+      <td style={{ padding: '2px 16px 2px 0', color: 'var(--slate-400)' }}>{label}</td>
+      <td style={{ padding: '2px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{value} 件</td>
+      <td style={{ padding: '2px 0 2px 8px', color: 'var(--text-subtle)', fontSize: '0.72rem' }}>{note ?? ''}</td>
+    </tr>
+  )
+}
+
+const labelStyle: React.CSSProperties = {
+  display: 'block', fontSize: '0.74rem', color: 'var(--slate-400)', marginBottom: 6
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '8px 10px', background: 'var(--slate-900)', border: '1px solid var(--slate-700)',
+  borderRadius: 7, color: 'var(--slate-200)', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box'
+}
+
+function btn(background: string, color: string): React.CSSProperties {
+  return {
+    padding: '8px 16px', background, border: 'none', borderRadius: 8,
+    color, cursor: 'pointer', fontSize: '0.84rem', fontWeight: 'bold', whiteSpace: 'nowrap'
+  }
+}
+
+<<<yomiyasu:material src/renderer/src/components/SettingsModal.tsx>>>
+import React, { useState, useEffect, useRef } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
+import { toCsv, downloadCsv, dateStamp } from '../lib/csv'
+import type { AdminBackupInfo, Todo } from '../types'
+import type { DesktopContext, DesktopPreferences } from '../../../shared/desktop'
+import { desktopDownloadPageUrl, fetchDesktopRelease, isLoopbackOrigin, isNewerDesktopRelease, type DesktopReleaseStatus } from '../lib/desktopRelease'
+import { LegacyDraftRecoveryModal } from './LegacyDraftRecoveryModal'
+import { FONT_PRESETS, FONT_SCALE_PRESETS } from '../lib/fontSettings'
+import { todoRecurrenceLabel } from '../lib/recurrence'
+import { handleTablistKeyDown } from '../lib/tablistKeys'
+
+interface Props {
+  onClose: () => void
+  onShowToast: (message: string, type?: 'success' | 'error') => void
+  themeMode: ThemeMode
+  onThemeChange: (mode: ThemeMode) => Promise<void>
+  fontFamily: string
+  onFontFamilyChange: (value: string) => Promise<void>
+  fontScale: string
+  onFontScaleChange: (value: string) => Promise<void>
+  canManageUsers?: boolean
+  serverManaged?: boolean
+  onManageUsers?: () => void
+  onProgressReport?: () => void
+  onDesktopImport?: () => void
+  onMySummary?: () => void
+  onExportClipboard: () => Promise<void>
+  onExportFile: () => Promise<void>
+}
+
+const STATUS_LABEL: Record<Todo['status'], string> = {
+  not_started: '未着手',
+  active: '進行中',
+  on_hold: '保留中',
+  done: '完了',
+  archived: 'アーカイブ'
+}
+
+
+function formatLocal(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+type ThemeMode = 'dark' | 'light' | 'system'
+
+const THEME_LABELS: Record<ThemeMode, string> = { dark: 'ダーク', light: 'ライト', system: 'OS に合わせる' }
+
+interface ShortcutConfig {
+  key: string       // Settings DBのキー
+  label: string     // 表示名
+  value: string     // 現在値 (Electron accelerator形式)
+  editing: boolean
+}
+
+interface MdTemplates {
+  mdHeaderTpl: string
+  mdTaskTpl: string
+  mdEntryTpl: string
+  mdFooterTpl: string
+}
+
+function toDisplay(accelerator: string): string {
+  return accelerator
+    .replace('CommandOrControl', 'Ctrl')
+    .replace('Control', 'Ctrl')
+}
+
+function captureKeyEvent(e: React.KeyboardEvent): string | null {
+  if (e.nativeEvent.isComposing) return null
+  const modifiers: string[] = []
+  if (e.ctrlKey || e.metaKey) modifiers.push('CommandOrControl')
+  if (e.altKey) modifiers.push('Alt')
+  if (e.shiftKey) modifiers.push('Shift')
+
+  const ignored = ['Control', 'Alt', 'Shift', 'Meta', 'CapsLock', 'Tab']
+  if (ignored.includes(e.key)) return null
+
+  e.preventDefault()
+  let key = e.key
+  if (key.length === 1) key = key.toUpperCase()
+  // ファンクションキーはそのまま (F1-F12)
+  modifiers.push(key)
+  return modifiers.join('+')
+}
+
+const MEETING_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
+// サーバーと同じ最小の長さ（server/src/routes/users.ts）
+const MIN_PASSWORD_LENGTH = 6
+
+type SettingsTab = 'personal' | 'team' | 'data'
+
+function settingsTabStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: '6px 14px',
+    borderRadius: 999,
+    border: `1px solid ${active ? 'var(--indigo-500)' : 'var(--slate-700)'}`,
+    background: active ? 'var(--indigo-900)' : 'transparent',
+    color: active ? 'var(--indigo-100)' : 'var(--slate-400)',
+    cursor: 'pointer',
+    fontSize: '0.82rem',
+    fontWeight: active ? 700 : 500
+  }
+}
+
+export function SettingsModal({ onClose, onShowToast, themeMode, onThemeChange, fontFamily, onFontFamilyChange, fontScale, onFontScaleChange, canManageUsers = false, serverManaged = false, onManageUsers, onProgressReport, onDesktopImport, onMySummary, onExportClipboard, onExportFile }: Props): React.JSX.Element {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
+  const [exporting, setExporting] = useState(false)
+  // 定例の曜日（サーバー版の管理者だけ）。前日の17時に、報告がまだのタスクがある人へ知らせる
+  const [meetingWeekday, setMeetingWeekday] = useState<string>('')
+  useEffect(() => {
+    if (!serverManaged || !canManageUsers) return
+    let disposed = false
+    void window.api.settingsGet('reportMeetingWeekday').then((value) => { if (!disposed) setMeetingWeekday(value ?? '') }).catch(() => undefined)
+    return () => { disposed = true }
+  }, [canManageUsers, serverManaged])
+  const changeMeetingWeekday = (value: string): void => {
+    const previous = meetingWeekday
+    setMeetingWeekday(value)
+    void window.api.settingsSet('reportMeetingWeekday', value)
+      .then(() => onShowToast(value === '' ? '報告のリマインドを止めました' : `定例を${MEETING_WEEKDAYS[Number(value)]}曜日にしました。前日の17時に、報告がまだのタスクがある人へ知らせます`))
+      .catch((error) => {
+        setMeetingWeekday(previous)
+        onShowToast(error instanceof Error ? error.message : '定例の曜日を保存できませんでした', 'error')
+      })
+  }
+  const [showDraftRecovery, setShowDraftRecovery] = useState(false)
+  // 設定を「個人／チーム管理（管理者だけ）／データ」に分けて見せる
+  const showTeamTab = serverManaged && canManageUsers
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('personal')
+
+  // 自分のパスワードを変える（サーバー版だけ）
+  const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' })
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [savingPassword, setSavingPassword] = useState(false)
+  const updatePasswordForm = (patch: Partial<typeof passwordForm>): void => {
+    setPasswordForm((previous) => ({ ...previous, ...patch }))
+    setPasswordError(null)
+  }
+  const changePassword = async (): Promise<void> => {
+    if (savingPassword) return
+    if (passwordForm.next.length < MIN_PASSWORD_LENGTH) {
+      setPasswordError(`新しいパスワードは${MIN_PASSWORD_LENGTH}文字以上にしてください`)
+      return
+    }
+    if (passwordForm.next !== passwordForm.confirm) {
+      setPasswordError('新しいパスワードと確認用が一致しません')
+      return
+    }
+    setSavingPassword(true)
+    try {
+      await window.api.authChangePassword(passwordForm.current, passwordForm.next)
+      setPasswordForm({ current: '', next: '', confirm: '' })
+      onShowToast('パスワードを変えました。次のログインから新しいパスワードを使います')
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : 'パスワードを変えられませんでした')
+    } finally {
+      setSavingPassword(false)
+    }
+  }
+
+  // バックアップの状態（チーム管理を開いたときに読む）
+  const [backupInfo, setBackupInfo] = useState<AdminBackupInfo | null>(null)
+  const [backupError, setBackupError] = useState<string | null>(null)
+  useEffect(() => {
+    if (settingsTab !== 'team' || !showTeamTab) return
+    let disposed = false
+    setBackupError(null)
+    void window.api.adminBackupInfo()
+      .then((info) => {
+        if (disposed) return
+        setBackupInfo(info)
+        if (!info) setBackupError('バックアップはサーバー版でのみ使えます')
+      })
+      .catch((error) => { if (!disposed) setBackupError(error instanceof Error ? error.message : 'バックアップの状態を読み込めませんでした') })
+    return () => { disposed = true }
+  }, [settingsTab, showTeamTab])
+  const [desktopContext, setDesktopContext] = useState<DesktopContext | null>(null)
+  const [desktopRelease, setDesktopRelease] = useState<DesktopReleaseStatus | null>(null)
+  const saveDesktopPreference = async (patch: Partial<DesktopPreferences>): Promise<void> => {
+    try {
+      const preferences = await window.desktop?.setPreferences(patch)
+      if (preferences) setDesktopContext((value) => value ? { ...value, preferences } : value)
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '設定を保存できませんでした', 'error')
+    }
+  }
+
+  const exportCsv = async (kind: 'todos' | 'subtasks' | 'worklogs'): Promise<void> => {
+    if (exporting) return
+    setExporting(true)
+    try {
+      if (kind === 'todos') {
+        const todos = await window.api.todoGetAll()
+        downloadCsv(`tasks_${dateStamp()}.csv`, toCsv(
+          ['ID', 'タイトル', '説明', 'メモ', 'カテゴリ', '担当者', '状態', '優先度', '進捗(%)', '開始日', '期限', '繰り返し', '作成日時', '更新日時'],
+          todos.map((todo) => [
+            todo.id, todo.title, todo.description, todo.memo,
+            todo.category_name, todo.assignee_name,
+            STATUS_LABEL[todo.status] ?? todo.status, todo.priority, todo.progress,
+            todo.start_date, todo.due_date,
+            todo.recurrence ? todoRecurrenceLabel(todo) ?? todo.recurrence : '',
+            formatLocal(todo.created_at), formatLocal(todo.updated_at)
+          ])
+        ))
+      } else if (kind === 'subtasks') {
+        const [todos, subTasks] = await Promise.all([window.api.todoGetAll(), window.api.subtaskGetAll()])
+        const titleById = new Map(todos.map((todo) => [todo.id, todo.title]))
+        downloadCsv(`subtasks_${dateStamp()}.csv`, toCsv(
+          ['ID', 'タスク', 'サブタスク', 'メモ', '開始日', '期限', '進捗(%)', '完了', '完了日時', '作成日時'],
+          subTasks.map((sub) => [
+            sub.id, titleById.get(sub.todo_id) ?? sub.todo_id, sub.title, sub.description,
+            sub.start_date, sub.due_date, sub.done ? 100 : sub.progress ?? 0, sub.done ? '済' : '',
+            sub.completed_at ? formatLocal(sub.completed_at) : '', formatLocal(sub.created_at)
+          ])
+        ))
+      } else {
+        const logs = await window.api.worklogGetAll()
+        downloadCsv(`worklogs_${dateStamp()}.csv`, toCsv(
+          ['ID', 'タスク', 'カテゴリ', '開始', '終了', '分', 'メモ'],
+          logs.map((log) => [
+            log.id, log.title, log.category_name,
+            formatLocal(log.start_time), formatLocal(log.end_time),
+            Math.round(log.duration_seconds / 60), log.note
+          ])
+        ))
+      }
+      onShowToast('CSVを書き出しました')
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : 'CSVの書き出しに失敗しました', 'error')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const [shortcuts, setShortcuts] = useState<ShortcutConfig[]>([
+    { key: 'globalShortcutFocus', label: 'アプリを最前面に表示', value: 'CommandOrControl+Alt+T', editing: false },
+    { key: 'globalShortcutQuickAdd', label: 'クイック追加モーダル', value: 'CommandOrControl+Alt+N', editing: false },
+    { key: 'globalShortcutExport', label: 'Markdownコピー', value: 'CommandOrControl+Alt+E', editing: false },
+    ...(window.desktop ? [{ key: 'globalShortcutProgress', label: '進捗のクイック投稿', value: 'CommandOrControl+Alt+P', editing: false }] : [])
+  ])
+  const [iconDataUrl, setIconDataUrl] = useState('')
+  const [dataDir, setDataDir] = useState('')
+  const [newDataDir, setNewDataDir] = useState('')
+  const [changingDir, setChangingDir] = useState(false)
+  const changingDirRef = useRef(false)
+  const [archiveRetentionDays, setArchiveRetentionDays] = useState('90')
+  const [workLogRetentionDays, setWorkLogRetentionDays] = useState('0')
+  const [notifyBeforeDays, setNotifyBeforeDays] = useState('0')
+  const [mdTemplates, setMdTemplates] = useState<MdTemplates>({
+    mdHeaderTpl: '# 作業ログ - {{date}}',
+    mdTaskTpl: '## {{title}}{{category}}\n\n**合計: {{task_min}}分**',
+    mdEntryTpl: '- {{start}} ～ {{end}} ({{min}}分){{note}}',
+    mdFooterTpl: '**本日合計: {{total_min}}分**'
+  })
+  const captureRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (window.desktop) {
+      void window.desktop.getContext().then(setDesktopContext)
+      const unsubscribe = window.desktop.onCommand((command) => {
+        if (command.type === 'preferences') setDesktopContext((value) => value ? { ...value, preferences: command.preferences } : value)
+      })
+      return unsubscribe
+    }
+    return undefined
+  }, [])
+
+  useEffect(() => {
+    // Only the team server offers the installer; the personal app has nothing to ask.
+    if (!serverManaged && !window.desktop) return undefined
+    const controller = new AbortController()
+    void fetchDesktopRelease(controller.signal).then((status) => {
+      if (!controller.signal.aborted) setDesktopRelease(status)
+    })
+    return () => controller.abort()
+  }, [serverManaged])
+
+  useEffect(() => {
+    window.api.iconGetDataUrl().then(setIconDataUrl)
+    window.api.dataGetDir().then((d) => { setDataDir(d); setNewDataDir(d) })
+    // 設定値を読み込む
+    shortcuts.forEach((s, i) => {
+      window.api.settingsGet(s.key).then((v) => {
+        if (v) setShortcuts((prev) => prev.map((p, pi) => pi === i ? { ...p, value: v } : p))
+      })
+    })
+    window.api.settingsGet('archiveRetentionDays').then((v) => { if (v !== null) setArchiveRetentionDays(v) })
+    window.api.settingsGet('workLogRetentionDays').then((v) => { if (v !== null) setWorkLogRetentionDays(v) })
+    window.api.settingsGet('notifyBeforeDays').then((v) => { if (v !== null) setNotifyBeforeDays(v) })
+    Promise.all([
+      window.api.settingsGet('mdHeaderTpl'),
+      window.api.settingsGet('mdTaskTpl'),
+      window.api.settingsGet('mdEntryTpl'),
+      window.api.settingsGet('mdFooterTpl')
+    ]).then(([header, task, entry, footer]) => {
+      setMdTemplates((prev) => ({
+        mdHeaderTpl: header ?? prev.mdHeaderTpl,
+        mdTaskTpl: task ?? prev.mdTaskTpl,
+        mdEntryTpl: entry ?? prev.mdEntryTpl,
+        mdFooterTpl: footer ?? prev.mdFooterTpl
+      }))
+    })
+  }, [])
+
+  // ショートカット編集開始
+  const startEdit = (index: number): void => {
+    setShortcuts((prev) => prev.map((s, i) => ({ ...s, editing: i === index })))
+    setTimeout(() => captureRef.current?.focus(), 50)
+  }
+
+  const cancelEdit = (): void => {
+    setShortcuts((prev) => prev.map((s) => ({ ...s, editing: false })))
+  }
+
+  const handleKeyCapture = async (e: React.KeyboardEvent, index: number): Promise<void> => {
+    if (e.nativeEvent.isComposing) return
+    if (e.key === 'Escape') { cancelEdit(); return }
+    const accelerator = captureKeyEvent(e)
+    if (!accelerator) return
+
+    // 競合チェック
+    const conflict = shortcuts.find((s, i) => i !== index && s.value === accelerator)
+    if (conflict) {
+      onShowToast(`「${conflict.label}」と競合しています`, 'error')
+      return
+    }
+
+    const updated = shortcuts.map((s, i) =>
+      i === index ? { ...s, value: accelerator, editing: false } : s
+    )
+    try {
+      await window.api.settingsSet(shortcuts[index].key, accelerator)
+      await window.api.shortcutsReregister()
+      setShortcuts(updated)
+      onShowToast('ショートカットを更新しました')
+    } catch (error) {
+      cancelEdit()
+      onShowToast(error instanceof Error ? error.message : 'ショートカットを登録できませんでした', 'error')
+    }
+  }
+
+  // アイコン変更
+  const handlePickIcon = async (): Promise<void> => {
+    const result = await window.api.iconPick()
+    if (result.success && result.dataUrl) {
+      setIconDataUrl(result.dataUrl)
+      onShowToast('アイコンを変更しました')
+    }
+  }
+
+  const handleResetIcon = async (): Promise<void> => {
+    const url = await window.api.iconReset()
+    setIconDataUrl(url)
+    onShowToast('デフォルトアイコンに戻しました')
+  }
+
+  // データ保存場所変更
+  const handlePickDir = async (): Promise<void> => {
+    if (changingDirRef.current) return
+    const picked = await window.api.dataPickDir()
+    if (picked) setNewDataDir(picked)
+  }
+
+  const handleChangeDir = async (): Promise<void> => {
+    if (changingDirRef.current) return
+    if (newDataDir === dataDir) { onShowToast('現在と同じ場所です', 'error'); return }
+    changingDirRef.current = true
+    setChangingDir(true)
+    try {
+      const result = await window.api.dataChangeDir(newDataDir)
+      if (result.moved) {
+        setDataDir(newDataDir)
+        onShowToast('保存場所を変更しました。元のフォルダにもデータを残しています')
+      }
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '保存場所を変更できませんでした', 'error')
+    } finally {
+      changingDirRef.current = false
+      setChangingDir(false)
+    }
+  }
+
+  const handleThemeSelect = async (nextMode: ThemeMode): Promise<void> => {
+    if (nextMode === themeMode) return
+    try {
+      await onThemeChange(nextMode)
+      onShowToast(nextMode === 'system' ? '表示テーマを OS の設定に合わせます' : `表示テーマを${THEME_LABELS[nextMode]}に変更しました`)
+    } catch {
+      onShowToast('テーマの変更に失敗しました', 'error')
+    }
+  }
+
+  const handleFontSelect = async (nextFont: string): Promise<void> => {
+    if (nextFont === fontFamily) return
+    try {
+      await onFontFamilyChange(nextFont)
+      onShowToast('フォントを変更しました')
+    } catch {
+      onShowToast('フォントの変更に失敗しました', 'error')
+    }
+  }
+
+  const handleFontScaleSelect = async (nextScale: string): Promise<void> => {
+    if (nextScale === fontScale) return
+    try {
+      await onFontScaleChange(nextScale)
+      onShowToast('文字サイズを変更しました')
+    } catch {
+      onShowToast('文字サイズの変更に失敗しました', 'error')
+    }
+  }
+
+  const editingIndex = shortcuts.findIndex((s) => s.editing)
+  const offeredRelease = desktopRelease?.release ?? null
+  const newerRelease = desktopContext && isNewerDesktopRelease(offeredRelease, desktopContext) ? offeredRelease : null
+  // Members in a browser are offered the app; administrators also see what to share or why nothing is offered.
+  const offerDesktopApp = serverManaged && !window.desktop && !!offeredRelease
+  const showReleaseAdmin = serverManaged && canManageUsers && desktopRelease !== null
+  const settingsTabs: Array<{ key: SettingsTab; label: string }> = [
+    { key: 'personal', label: '個人' },
+    ...(showTeamTab ? [{ key: 'team' as const, label: 'チーム管理' }] : []),
+    { key: 'data', label: 'データ' }
+  ]
+  const desktopReleaseSection = (offerDesktopApp || showReleaseAdmin) ? (<section>
+      <h3 style={sectionHead}>デスクトップ版（Windows）</h3>
+      {offerDesktopApp && offeredRelease && <>
+        <p style={{ fontSize: '0.8rem', color: 'var(--slate-400)', margin: '8px 0 12px', lineHeight: 1.6 }}>タイマーや通知が使えるデスクトップ版を配布しています（最新 {offeredRelease.version}）。</p>
+        <a href={desktopDownloadPageUrl()} target="_blank" rel="noopener noreferrer" style={linkBtn}>ダウンロードページを開く</a>
+      </>}
+      {showReleaseAdmin && (offeredRelease ? <>
+        <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: offerDesktopApp ? '14px 0 4px' : '8px 0 4px' }}>メンバーに案内するダウンロードページ（管理者のみ表示）</p>
+        <div style={pathBox}>{desktopDownloadPageUrl()}</div>
+        {isLoopbackOrigin(window.location.origin) && <p style={{ fontSize: '0.72rem', color: 'var(--amber-400)', marginTop: 6, lineHeight: 1.6 }}>
+          このPC（サーバー）から開いているため、ほかのPCではこのURLを使えません。メンバーには {`http://<サーバーのIPアドレス>:${window.location.port || '80'}/download`} を案内してください。
+        </p>}
+      </> : <div style={{ fontSize: '0.8rem', color: 'var(--slate-400)', marginTop: 8, lineHeight: 1.6 }}>
+        <p>配布中のインストーラーはありません。</p>
+        {/* 配布フォルダのパスなどは、困ったときだけ開く */}
+        <details style={{ marginTop: 4 }}>
+          <summary style={detailsSummary}>詳しく</summary>
+          {desktopRelease?.reason && <p style={{ fontSize: '0.75rem', color: 'var(--amber-400)', overflowWrap: 'anywhere' }}>{desktopRelease.reason}</p>}
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}><code style={codeStyle}>npm run publish:desktop</code> で公開できます。</p>
+        </details>
+      </div>)}
+    </section>) : null
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (showDraftRecovery) return
+      if (event.key !== 'Escape' || event.isComposing) return
+      event.preventDefault()
+      if (editingIndex >= 0) {
+        cancelEdit()
+        return
+      }
+      onClose()
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [cancelEdit, editingIndex, onClose, showDraftRecovery])
+
+  return (
+    <><div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="設定" style={{
+        background: 'var(--slate-800)', borderRadius: 14, padding: 28, width: 560,
+        maxHeight: '85vh', overflowY: 'auto',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.6)', border: '1px solid var(--slate-700)',
+        display: 'flex', flexDirection: 'column', gap: 28
+      }}>
+        {/* ヘッダー */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)' }}>⚙ 設定</h2>
+          <button onClick={onClose} aria-label="設定を閉じる" title="閉じる（Esc）" style={closeBtnStyle}>×</button>
+        </div>
+
+        {/* 個人／チーム管理（管理者だけ）／データ */}
+        <div role="tablist" aria-label="設定の分類" onKeyDown={(event) => handleTablistKeyDown(event, true)} style={{ display: 'flex', gap: 6, marginTop: -12, borderBottom: '1px solid var(--slate-700)', paddingBottom: 10 }}>
+          {settingsTabs.map((item) => (
+            <button key={item.key} type="button" role="tab" aria-selected={settingsTab === item.key} tabIndex={settingsTab === item.key ? 0 : -1} onClick={() => setSettingsTab(item.key)} style={settingsTabStyle(settingsTab === item.key)}>
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        {settingsTab === 'personal' && <>
+        {desktopContext && <section>
+          <h3 style={sectionHead}>HAKOBI デスクトップ</h3>
+          <p style={{ fontSize: '0.8rem', color: 'var(--slate-300)', margin: '10px 0 4px' }}>{desktopContext.groupName}</p>
+          <p style={{ fontSize: '0.72rem', color: 'var(--slate-400)', marginBottom: 12, overflowWrap: 'anywhere' }}>{desktopContext.serverUrl}</p>
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-400)', marginBottom: newerRelease ? 6 : 12 }}>このPCのバージョン: {desktopContext.appVersion ?? '1.0.4 以前'}</p>
+          {newerRelease && <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--amber-400)' }}>新しいバージョン {newerRelease.version} を配布しています。</span>
+            <a href={desktopDownloadPageUrl()} target="_blank" rel="noopener noreferrer" style={linkBtn}>ダウンロードページを開く</a>
+          </div>}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => void window.desktop?.openConnectionSettings()} style={secondaryBtn}>接続先を変更</button>
+            <button disabled={desktopContext.serverVersion < 1} onClick={() => void window.desktop?.openTimer()} style={secondaryBtn}>右下タイマーを表示</button>
+            <button disabled={desktopContext.serverVersion < 1} onClick={() => void window.desktop?.openQuickProgress()} style={secondaryBtn}>進捗をひとこと</button>
+          </div>
+          {desktopContext.serverVersion < 1 && <p style={{ fontSize: '0.75rem', color: 'var(--amber-400)', marginTop: 8 }}>タイマーとクイック投稿を使うにはサーバー版を更新してください。</p>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14, fontSize: '0.8rem', color: 'var(--slate-300)' }}>
+            {([
+              ['showTimer', '起動時に右下タイマーを表示'],
+              ['alwaysOnTop', 'タイマーを最前面に固定'],
+              ['hideTaskTitle', 'タイマーにタスク名を表示しない'],
+              ['showNotifications', '通知をデスクトップに表示']
+            ] as const).filter(([key]) => typeof desktopContext.preferences[key] === 'boolean').map(([key, label]) => <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={desktopContext.preferences[key]} onChange={(event) => void saveDesktopPreference({ [key]: event.target.checked })} />{label}
+            </label>)}
+          </div>
+          <p style={{ fontSize: '0.72rem', color: 'var(--slate-400)', marginTop: 12 }}>接続先・タイマー・通知・グローバルショートカットの設定は、このPCだけに保存されます。</p>
+        </section>}
+
+        {!showTeamTab && desktopReleaseSection}
+
+        {serverManaged && <section>
+          <h3 style={sectionHead}>パスワードの変更</h3>
+          <form
+            onSubmit={(event) => { event.preventDefault(); void changePassword() }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10, maxWidth: 320 }}
+          >
+            <input type="password" autoComplete="current-password" aria-label="今のパスワード" placeholder="今のパスワード" value={passwordForm.current} onChange={(event) => updatePasswordForm({ current: event.target.value })} style={passwordInput} />
+            <input type="password" autoComplete="new-password" aria-label="新しいパスワード" placeholder={`新しいパスワード（${MIN_PASSWORD_LENGTH}文字以上）`} value={passwordForm.next} onChange={(event) => updatePasswordForm({ next: event.target.value })} style={passwordInput} />
+            <input type="password" autoComplete="new-password" aria-label="新しいパスワード（確認）" placeholder="新しいパスワード（確認）" value={passwordForm.confirm} onChange={(event) => updatePasswordForm({ confirm: event.target.value })} style={passwordInput} />
+            {passwordError && <p role="alert" style={{ fontSize: '0.75rem', color: 'var(--red-300)', margin: 0 }}>{passwordError}</p>}
+            <button type="submit" disabled={savingPassword || !passwordForm.current || !passwordForm.next || !passwordForm.confirm} style={{ ...primaryBtn, alignSelf: 'flex-start', opacity: savingPassword || !passwordForm.current || !passwordForm.next || !passwordForm.confirm ? 0.5 : 1 }}>
+              {savingPassword ? '変更中…' : 'パスワードを変える'}
+            </button>
+          </form>
+        </section>}
+
+        {/* ─── 自分の進捗サマリー ─── */}
+        {onMySummary && (
+          <section>
+            <h3 style={sectionHead}>自分の進捗レポート</h3>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
+              期間を指定して、追加タスク・タスク変更・進捗ログ・作業時間を振り返ります。タスク別のMarkdownをコピーして日報・週報に貼れます。
+            </p>
+            <button onClick={onMySummary} style={secondaryBtn}>📊 自分の進捗レポートを開く（右上のメニューの「進捗レポート」と同じ）</button>
+          </section>
+        )}
+
+        {/* ─── 1. キーボードショートカット ─── */}
+        <section>
+          <h3 style={sectionHead}>表示テーマ</h3>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
+            アプリの色をライト／ダークで切り替えます。「OS に合わせる」は Windows の設定に合わせて切り替わります。
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {(['dark', 'light', 'system'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => { void handleThemeSelect(mode) }}
+                aria-pressed={themeMode === mode}
+                style={{
+                  ...secondaryBtn,
+                  border: `1px solid ${themeMode === mode ? 'var(--blue-600)' : 'var(--slate-700)'}`,
+                  background: themeMode === mode ? 'var(--blue-700)' : 'var(--slate-700)',
+                  color: themeMode === mode ? 'var(--on-fill-blue-50)' : 'var(--slate-300)'
+                }}
+              >
+                {THEME_LABELS[mode]}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* ─── フォント ─── */}
+        <section>
+          <h3 style={sectionHead}>フォント</h3>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
+            アプリ全体の表示フォントを切り替えます。
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {FONT_PRESETS.map((preset) => (
+              <button
+                key={preset.value}
+                onClick={() => { void handleFontSelect(preset.value) }}
+                style={{
+                  ...secondaryBtn,
+                  fontFamily: preset.value,
+                  border: `1px solid ${fontFamily === preset.value ? 'var(--blue-600)' : 'var(--slate-700)'}`,
+                  background: fontFamily === preset.value ? 'var(--blue-700)' : 'var(--slate-700)',
+                  color: fontFamily === preset.value ? 'var(--on-fill-blue-50)' : 'var(--slate-300)'
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* ─── 文字サイズ ─── */}
+        <section>
+          <h3 style={sectionHead}>文字サイズ</h3>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
+            アプリ全体の文字サイズを切り替えます。
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {FONT_SCALE_PRESETS.map((preset) => (
+              <button
+                key={preset.value}
+                aria-pressed={fontScale === preset.value}
+                onClick={() => { void handleFontScaleSelect(preset.value) }}
+                style={{
+                  ...secondaryBtn,
+                  border: `1px solid ${fontScale === preset.value ? 'var(--blue-600)' : 'var(--slate-700)'}`,
+                  background: fontScale === preset.value ? 'var(--blue-700)' : 'var(--slate-700)',
+                  color: fontScale === preset.value ? 'var(--on-fill-blue-50)' : 'var(--slate-300)'
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {(!serverManaged || window.desktop) && <section>
+          <h3 style={sectionHead}>キーボードショートカット</h3>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
+            キーをクリックして新しいキーを押すと変更できます。Escでキャンセル。<br/>
+            グローバルショートカットは、アプリを隠したり最小化したりしていても使えます。
+          </p>
+
+          {/* キャプチャ用隠しinput */}
+          <input
+            ref={captureRef}
+            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+            onKeyDown={(e) => editingIndex >= 0 && handleKeyCapture(e, editingIndex)}
+            onBlur={cancelEdit}
+            readOnly
+          />
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {shortcuts.map((s, i) => (
+              <div key={s.key} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 12px', borderRadius: 8,
+                background: s.editing ? 'var(--slate-900)' : 'transparent',
+                border: `1px solid ${s.editing ? 'var(--indigo-500)' : 'transparent'}`
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.88rem', color: 'var(--slate-200)' }}>{s.label}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: 2 }}>グローバル</div>
+                </div>
+                <button
+                  onClick={() => s.editing ? cancelEdit() : startEdit(i)}
+                  title={s.editing ? 'キーを押してください (Escでキャンセル)' : 'クリックして変更'}
+                  style={{
+                    background: s.editing ? 'color-mix(in srgb, var(--indigo-500) 18.8%, transparent)' : 'var(--slate-900)',
+                    border: `1px solid ${s.editing ? 'var(--indigo-500)' : 'var(--slate-700)'}`,
+                    borderRadius: 6, padding: '4px 12px', cursor: 'pointer',
+                    color: s.editing ? 'var(--indigo-300)' : 'var(--slate-200)',
+                    fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'nowrap',
+                    minWidth: 160, textAlign: 'center'
+                  }}
+                >
+                  {s.editing ? '⌨ キーを押してください…' : toDisplay(s.value)}
+                </button>
+              </div>
+            ))}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 12px'
+            }}>
+              <div>
+                <div style={{ fontSize: '0.88rem', color: 'var(--slate-200)' }}>モーダルを閉じる</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: 2 }}>アプリ内</div>
+              </div>
+              <kbd style={kbdStyle}>Esc</kbd>
+            </div>
+          </div>
+        </section>}
+
+        {/* ─── 2. アイコン ─── */}
+        {!serverManaged && <section>
+          <h3 style={sectionHead}>アイコン</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 12 }}>
+            {iconDataUrl && (
+              <img
+                src={iconDataUrl}
+                alt="icon"
+                style={{ width: 56, height: 56, borderRadius: 12, border: '2px solid var(--slate-700)', imageRendering: 'pixelated' }}
+              />
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button onClick={handlePickIcon} style={primaryBtn}>📁 画像を選択… (PNG/JPG/ICO)</button>
+              <button onClick={handleResetIcon} style={secondaryBtn}>デフォルトに戻す</button>
+            </div>
+          </div>
+        </section>}
+
+        {/* ─── 3. 通知 ─── */}
+        {!serverManaged && <section>
+          <h3 style={sectionHead}>期限通知</h3>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
+            起動時・1時間ごとに期限が近いタスクを通知します。-1で通知しない。
+          </p>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <label style={{ fontSize: '0.78rem', color: 'var(--slate-400)', whiteSpace: 'nowrap' }}>何日前から通知</label>
+            <input
+              type="number"
+              min={-1}
+              max={30}
+              value={notifyBeforeDays}
+              onChange={(e) => setNotifyBeforeDays(e.target.value)}
+              style={{ ...numInputStyle, width: 70 }}
+            />
+            <button
+              onClick={async () => {
+                await window.api.settingsSet('notifyBeforeDays', notifyBeforeDays)
+                onShowToast('保存しました')
+              }}
+              style={secondaryBtn}
+            >保存</button>
+          </div>
+          <p style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: 4 }}>0 = 当日のみ　1 = 前日から　-1 = 通知しない</p>
+        </section>}
+        </>}
+
+        {settingsTab === 'team' && showTeamTab && <>
+        {/* ─── 管理者: ユーザー管理 ─── */}
+        {canManageUsers && onManageUsers && (
+          <section>
+            <h3 style={sectionHead}>管理者</h3>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
+              メンバーの追加・編集・削除、権限の変更、パスワードの再設定ができます。
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={onManageUsers} style={primaryBtn}>👤 ユーザー管理を開く</button>
+              {onProgressReport && (
+                <button onClick={onProgressReport} style={secondaryBtn}>📊 進捗レポートを開く</button>
+              )}
+              {onDesktopImport && (
+                <button onClick={onDesktopImport} style={secondaryBtn}>💾 デスクトップDBを取り込む</button>
+              )}
+            </div>
+            {serverManaged && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 12, fontSize: '0.8rem', color: 'var(--slate-300)' }}>
+                定例の曜日
+                <select value={meetingWeekday} onChange={(event) => changeMeetingWeekday(event.target.value)} aria-label="定例の曜日" style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)' }}>
+                  <option value="">決めない（リマインドしない）</option>
+                  {[1, 2, 3, 4, 5, 6, 0].map((day) => <option key={day} value={String(day)}>{MEETING_WEEKDAYS[day]}曜日</option>)}
+                </select>
+                <span style={{ fontSize: '0.75rem', color: 'var(--slate-400)' }}>前日の17時に、直近7日に報告がない担当タスクがある人へ通知します</span>
+              </label>
+            )}
+          </section>
+        )}
+
+        {serverManaged && <section>
+          <h3 style={sectionHead}>バックアップ</h3>
+          <p style={{ fontSize: '0.75rem', color: 'var(--slate-400)', margin: '6px 0 12px', lineHeight: 1.6 }}>
+            今のデータ（タスク・進捗ログ・作業記録・アカウントなど全部）を1つのファイルに保存します。
+          </p>
+          {backupInfo ? <>
+            <a href={backupInfo.downloadUrl} download style={linkBtn}>💾 今のデータをダウンロード</a>
+            <p style={{ fontSize: '0.75rem', color: 'var(--slate-400)', marginTop: 12, lineHeight: 1.6 }}>
+              {backupInfo.keep > 0
+                ? `サーバーは毎日1回、自動でバックアップを取り、${backupInfo.keep}日分を残します。${backupInfo.latestAt ? `いちばん新しいもの: ${formatLocal(backupInfo.latestAt)}（${backupInfo.count}件）` : 'まだ自動のバックアップはありません。'}`
+                : '自動のバックアップは止めています（サーバーの設定 TODO_BACKUP_KEEP=0）。'}
+            </p>
+            <details style={{ marginTop: 6 }}>
+              <summary style={detailsSummary}>詳しく</summary>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '8px 0 4px' }}>自動のバックアップの置き場所（サーバーのフォルダ）</p>
+              <div style={pathBox}>{backupInfo.directory}</div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: 8, lineHeight: 1.6 }}>戻すときは、サーバーを止めてから DB を差し替えます。手順は docs/HAKOBI.md の「バックアップから戻す」にあります。</p>
+            </details>
+          </> : <p style={{ fontSize: '0.8rem', color: backupError ? 'var(--red-300)' : 'var(--slate-400)' }}>{backupError ?? '読み込み中…'}</p>}
+        </section>}
+
+        {desktopReleaseSection}
+        </>}
+
+        {settingsTab === 'data' && <>
+        {/* ─── データのエクスポート ─── */}
+        <section>
+          <h3 style={sectionHead}>データのエクスポート</h3>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
+            CSV（UTF-8 BOM付き・Excel対応）でダウンロードします。
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => void exportCsv('todos')} disabled={exporting} style={secondaryBtn}>📋 タスクCSV</button>
+            <button onClick={() => void exportCsv('subtasks')} disabled={exporting} style={secondaryBtn}>📑 サブタスクCSV</button>
+            <button onClick={() => void exportCsv('worklogs')} disabled={exporting} style={secondaryBtn}>⏱ 作業ログCSV</button>
+          </div>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '14px 0 12px' }}>
+            Markdown形式でタスク一覧を出力します（クリップボードへのコピーは Ctrl+Alt+E でも可能）。
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => void onExportClipboard()} style={secondaryBtn}>📝 Markdownをコピー</button>
+            <button onClick={() => void onExportFile()} style={secondaryBtn}>💾 Markdownを書き出し</button>
+          </div>
+        </section>
+
+        {/* ─── 4. Markdownテンプレート ─── */}
+        <section>
+          <h3 style={sectionHead}>Markdownテンプレート</h3>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 14px' }}>
+            Markdownエクスポートの出力形式を変更します。変数: <code style={codeStyle}>{'{{date}}'}</code> <code style={codeStyle}>{'{{title}}'}</code> <code style={codeStyle}>{'{{category}}'}</code> <code style={codeStyle}>{'{{task_min}}'}</code> <code style={codeStyle}>{'{{start}}'}</code> <code style={codeStyle}>{'{{end}}'}</code> <code style={codeStyle}>{'{{min}}'}</code> <code style={codeStyle}>{'{{note}}'}</code> <code style={codeStyle}>{'{{total_min}}'}</code>
+          </p>
+          {(
+            [
+              { key: 'mdHeaderTpl', label: 'ヘッダー', hint: '変数: {{date}}' },
+              { key: 'mdTaskTpl', label: 'タスク行', hint: '変数: {{title}} {{category}} {{task_min}}' },
+              { key: 'mdEntryTpl', label: 'エントリー行', hint: '変数: {{start}} {{end}} {{min}} {{note}}' },
+              { key: 'mdFooterTpl', label: 'フッター', hint: '変数: {{total_min}}' }
+            ] as { key: keyof MdTemplates; label: string; hint: string }[]
+          ).map(({ key, label, hint }) => (
+            <div key={key} style={{ marginBottom: 14 }}>
+              <label htmlFor={`settings-${key}`} style={{ fontSize: '0.78rem', color: 'var(--slate-400)', display: 'block', marginBottom: 2 }}>
+                {label} <span style={{ color: 'var(--text-subtle)', fontWeight: 'normal' }}>— {hint}</span>
+              </label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <textarea
+                  id={`settings-${key}`}
+                  aria-label={`Markdownテンプレートの${label}`}
+                  value={mdTemplates[key]}
+                  onChange={(e) => setMdTemplates((prev) => ({ ...prev, [key]: e.target.value }))}
+                  rows={2}
+                  style={{ ...textareaStyle, flex: 1 }}
+                />
+                <button
+                  onClick={async () => {
+                    await window.api.settingsSet(key, mdTemplates[key])
+                    onShowToast(`Markdownテンプレートの${label}を保存しました`)
+                  }}
+                  aria-label={`${label}を保存`}
+                  style={{ ...secondaryBtn, alignSelf: 'flex-start' }}
+                >保存</button>
+              </div>
+            </div>
+          ))}
+        </section>
+
+        {/* ─── 4. 保持期間 ─── */}
+        {!serverManaged && <section>
+          <h3 style={sectionHead}>データ保持期間</h3>
+          <div style={{ display: 'flex', gap: 20, marginTop: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--slate-400)', display: 'block', marginBottom: 4 }}>
+                アーカイブ保持（日数）
+              </label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  min={0}
+                  value={archiveRetentionDays}
+                  onChange={(e) => setArchiveRetentionDays(e.target.value)}
+                  style={{ ...numInputStyle, width: 80 }}
+                />
+                <button
+                  onClick={async () => {
+                    await window.api.settingsSet('archiveRetentionDays', archiveRetentionDays)
+                    onShowToast('保存しました')
+                  }}
+                  style={secondaryBtn}
+                >保存</button>
+              </div>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: 4 }}>0 = 自動削除しない</p>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--slate-400)', display: 'block', marginBottom: 4 }}>
+                作業ログ保持（日数）
+              </label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  min={0}
+                  value={workLogRetentionDays}
+                  onChange={(e) => setWorkLogRetentionDays(e.target.value)}
+                  style={{ ...numInputStyle, width: 80 }}
+                />
+                <button
+                  onClick={async () => {
+                    await window.api.settingsSet('workLogRetentionDays', workLogRetentionDays)
+                    onShowToast('保存しました')
+                  }}
+                  style={secondaryBtn}
+                >保存</button>
+              </div>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: 4 }}>0 = 無期限保持</p>
+            </div>
+          </div>
+        </section>}
+
+        {/* ─── 5. データ保存場所 ─── */}
+        {!serverManaged && <section>
+          <h3 style={sectionHead}>データ保存場所</h3>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', margin: '6px 0 12px' }}>
+            変更すると既存データを新しいフォルダにコピーします。<br/>
+            保存先はすぐに切り替わり、元のフォルダにもバックアップを残します。<br/>
+            データが入っているフォルダは選択できません。
+          </p>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginBottom: 4 }}>現在の場所</div>
+          <div style={pathBox}>{dataDir || '読み込み中…'}</div>
+
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', margin: '12px 0 4px' }}>変更先</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ ...pathBox, flex: 1, cursor: 'default', color: newDataDir !== dataDir ? 'var(--indigo-300)' : 'var(--slate-400)' }}>
+              {newDataDir || '…'}
+            </div>
+            <button onClick={handlePickDir} disabled={changingDir} style={secondaryBtn}>参照…</button>
+          </div>
+
+          {newDataDir !== dataDir && (
+            <button
+              onClick={handleChangeDir}
+              disabled={changingDir}
+              style={{ ...primaryBtn, marginTop: 10, width: '100%' }}
+            >
+              {changingDir ? '保存場所を変更中…' : 'コピーして保存場所を変更'}
+            </button>
+          )}
+
+          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {[
+              { label: 'データベース', path: dataDir ? `${dataDir}\\todo.db` : '…' },
+              { label: 'アイコン画像', path: dataDir ? `${dataDir}\\icons\\` : '…' }
+            ].map(({ label, path: p }) => (
+              <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', whiteSpace: 'nowrap', width: 80 }}>{label}</span>
+                <span style={{ ...pathBox, flex: 1, fontSize: '0.75rem' }}>{p}</span>
+              </div>
+            ))}
+          </div>
+        </section>}
+
+        {serverManaged && <section>
+          <h3 style={sectionHead}>旧版の下書き</h3>
+          <p style={{ fontSize: '0.8rem', color: 'var(--slate-400)', margin: '8px 0 12px', lineHeight: 1.6 }}>更新前にこのPCで入力した進捗やコメントが見つからない場合は、内容を確認して自分のアカウントへ復元できます。</p>
+          <button type="button" onClick={() => setShowDraftRecovery(true)} style={secondaryBtn}>旧版の下書きを確認・復元</button>
+        </section>}
+        </>}
+      </div>
+    </div>
+    {serverManaged && showDraftRecovery && <LegacyDraftRecoveryModal onClose={() => setShowDraftRecovery(false)} onShowToast={onShowToast} />}</>
+  )
+}
+
+// ─── スタイル定数 ─────────────────────────────────────────────
+
+const sectionHead: React.CSSProperties = {
+  fontSize: '0.72rem', color: 'var(--text-subtle)',
+  letterSpacing: '0.08em', fontWeight: 'bold'
+}
+
+const closeBtnStyle: React.CSSProperties = {
+  background: 'none', border: 'none', color: 'var(--text-subtle)',
+  cursor: 'pointer', fontSize: '1.2rem', padding: '2px 6px'
+}
+
+const primaryBtn: React.CSSProperties = {
+  padding: '7px 14px', background: 'var(--indigo-500)', border: 'none',
+  borderRadius: 7, color: 'var(--on-fill-white)', cursor: 'pointer', fontSize: '0.85rem',
+  fontWeight: 'bold', whiteSpace: 'nowrap'
+}
+
+const secondaryBtn: React.CSSProperties = {
+  padding: '7px 14px', background: 'var(--slate-700)', border: 'none',
+  borderRadius: 7, color: 'var(--slate-400)', cursor: 'pointer', fontSize: '0.85rem',
+  whiteSpace: 'nowrap'
+}
+
+const linkBtn: React.CSSProperties = {
+  ...secondaryBtn, display: 'inline-block', color: 'var(--slate-200)', textDecoration: 'none'
+}
+
+const kbdStyle: React.CSSProperties = {
+  display: 'inline-block', background: 'var(--slate-900)', border: '1px solid var(--slate-600)',
+  borderRadius: 5, padding: '4px 12px', fontSize: '0.8rem',
+  color: 'var(--slate-200)', fontFamily: 'monospace', whiteSpace: 'nowrap'
+}
+
+const detailsSummary: React.CSSProperties = {
+  cursor: 'pointer',
+  fontSize: '0.75rem',
+  color: 'var(--slate-400)'
+}
+
+const passwordInput: React.CSSProperties = {
+  padding: '7px 10px',
+  borderRadius: 7,
+  border: '1px solid var(--slate-700)',
+  background: 'var(--slate-900)',
+  color: 'var(--slate-200)',
+  fontSize: '0.85rem'
+}
+
+const pathBox: React.CSSProperties = {
+  background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 5,
+  padding: '6px 10px', fontSize: '0.78rem', color: 'var(--slate-400)',
+  fontFamily: 'monospace', userSelect: 'all', wordBreak: 'break-all'
+}
+
+const numInputStyle: React.CSSProperties = {
+  padding: '6px 8px', background: 'var(--slate-900)', border: '1px solid var(--slate-700)',
+  borderRadius: 6, color: 'var(--slate-200)', fontSize: '0.85rem', outline: 'none'
+}
+
+const textareaStyle: React.CSSProperties = {
+  padding: '6px 8px', background: 'var(--slate-900)', border: '1px solid var(--slate-700)',
+  borderRadius: 6, color: 'var(--slate-200)', fontSize: '0.82rem', outline: 'none',
+  fontFamily: 'monospace', resize: 'vertical'
+}
+
+const codeStyle: React.CSSProperties = {
+  background: 'var(--slate-900)', border: '1px solid var(--slate-700)', borderRadius: 3,
+  padding: '1px 4px', fontSize: '0.78rem', color: 'var(--indigo-300)', fontFamily: 'monospace'
+}
+
+<<<yomiyasu:material src/renderer/src/components/HakobiLauncher.tsx>>>
+import { useEffect, useRef, useState } from 'react'
+import type { LauncherState } from '../../../shared/desktop'
+import './HakobiLauncher.css'
+
+function HakobiMark(): React.JSX.Element {
+  return (
+    <svg className="hakobi-launcher-mark" viewBox="0 0 128 128" fill="none" aria-hidden="true">
+      <rect x="9" y="9" width="110" height="110" rx="23" fill="#0F172A" />
+      <rect x="28" y="35" width="51" height="15" rx="4.5" fill="#2DD4BF" />
+      <rect x="42" y="56" width="56" height="15" rx="4.5" fill="#5EEAD4" />
+      <rect x="56" y="78" width="35" height="15" rx="4.5" fill="#FBBF24" />
+    </svg>
+  )
+}
+
+export function HakobiLauncher(): React.JSX.Element {
+  const [state, setState] = useState<LauncherState | null>(null)
+  const [name, setName] = useState('')
+  const [url, setUrl] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const profileKey = useRef<string | null>(null)
+
+  useEffect(() => {
+    document.title = 'HAKOBI'
+    const bridge = window.hakobiLauncher
+    if (!bridge) {
+      setError('接続画面を起動できませんでした。HAKOBIを再起動してください。')
+      return
+    }
+
+    let active = true
+    const update = (next: LauncherState): void => {
+      if (!active) return
+      setState(next)
+      const nextKey = next.profile ? `${next.profile.id}:${next.profile.url}:${next.profile.name}` : ''
+      if (profileKey.current !== nextKey) {
+        profileKey.current = nextKey
+        setName(next.profile?.name ?? '')
+        setUrl(next.profile?.url ?? '')
+      }
+    }
+    const unsubscribe = bridge.onState(update)
+    void bridge.getState().then(update).catch((reason: unknown) => {
+      if (active) setError(reason instanceof Error ? reason.message : '起動設定を読み込めませんでした。')
+    })
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [])
+
+  const run = async (action: () => Promise<void>): Promise<void> => {
+    setError('')
+    setBusy(true)
+    try {
+      await action()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '操作を完了できませんでした。もう一度お試しください。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const connect = (event: React.FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    const bridge = window.hakobiLauncher
+    if (!bridge) return
+    const address = url.trim()
+    if (!address) {
+      setError('管理者から案内されたサーバーのアドレスを入力してください。')
+      return
+    }
+    const groupName = name.trim()
+    if (!groupName) {
+      setError('接続先を見分けられるグループ名を入力してください。')
+      return
+    }
+    void run(() => bridge.connect({ name: groupName, url: address }))
+  }
+
+  const connecting = state?.connecting || busy
+  const message = error || (!state?.connecting ? state?.message : '')
+  const loading = !state && !error
+
+  return (
+    <main className="hakobi-launcher">
+      <section className="hakobi-launcher-brand" aria-label="HAKOBI">
+        <div className="hakobi-launcher-brand-lockup">
+          <HakobiMark />
+          <div>
+            <div className="hakobi-launcher-wordmark">HAKOBI</div>
+            <p className="hakobi-launcher-caption">今日の仕事を、一歩ずつ。</p>
+          </div>
+        </div>
+        <div className="hakobi-launcher-illustration" aria-hidden="true">
+          <div className="hakobi-launcher-grid">
+            <span className="hakobi-launcher-bar hakobi-launcher-bar-one" />
+            <span className="hakobi-launcher-bar hakobi-launcher-bar-two" />
+            <span className="hakobi-launcher-bar hakobi-launcher-bar-three" />
+            <span className="hakobi-launcher-bar hakobi-launcher-bar-four" />
+            <span className="hakobi-launcher-current-line" />
+          </div>
+          <div className="hakobi-launcher-illustration-note"><span />チームのタスクと進捗を、このPCから使えます。</div>
+        </div>
+        <p className="hakobi-launcher-brand-footer">タスクの計画・作業時間の計測・進捗の共有</p>
+      </section>
+
+      <section className="hakobi-launcher-content">
+        {loading || connecting ? (
+          <div className="hakobi-launcher-splash" role="status" aria-live="polite">
+            <div className="hakobi-launcher-spinner" />
+            <p className="hakobi-launcher-eyebrow">{loading ? 'WELCOME' : 'CONNECTING'}</p>
+            <h1>{loading ? 'HAKOBIを起動しています' : 'チームに接続しています'}</h1>
+            <p className="hakobi-launcher-help">
+              {loading ? '設定を読み込んでいます。' : state?.message || 'サーバーの応答を待っています。'}
+            </p>
+            {state?.profile && (
+              <div className="hakobi-launcher-destination">
+                <strong>{state.profile.name}</strong>
+                <span>{state.profile.url}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="hakobi-launcher-setup">
+            <p className="hakobi-launcher-eyebrow">YOUR TEAM</p>
+            <h1>{state?.canCancel ? '接続先の設定' : 'チームにつなぐ'}</h1>
+            <p className="hakobi-launcher-help">管理者から案内された接続先を登録します。次回からは、このグループに自動で接続します。</p>
+
+            {message && <div className="hakobi-launcher-error" role="alert">{message}</div>}
+
+            <form onSubmit={connect} className="hakobi-launcher-form">
+              <label htmlFor="hakobi-group-name">グループ名</label>
+              <input id="hakobi-group-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="例：開発チーム" maxLength={80} autoComplete="organization" disabled={!state} />
+              <label htmlFor="hakobi-server-url">サーバーのアドレス</label>
+              <input id="hakobi-server-url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="例：http://192.168.1.20:4577" inputMode="url" autoComplete="url" spellCheck={false} disabled={!state} />
+              <p className="hakobi-launcher-field-help">ログインには、管理者が発行したアカウントを使います。</p>
+              <button className="hakobi-launcher-primary" type="submit" disabled={!state || !name.trim() || !url.trim()}>
+                このチームに接続する <span aria-hidden="true">→</span>
+              </button>
+            </form>
+
+            {state?.profile && (
+              <button className="hakobi-launcher-secondary" type="button" onClick={() => void run(() => window.hakobiLauncher!.retry())}>
+                保存済みの接続先でもう一度試す
+              </button>
+            )}
+
+            {state && (
+              <div className="hakobi-launcher-bottom-actions">
+                <button className="hakobi-launcher-text-button" type="button" onClick={() => void run(() => window.hakobiLauncher!.useLocal())}>
+                  このPCで個人用として使う
+                </button>
+                {state.canCancel && (
+                  <button className="hakobi-launcher-text-button" type="button" onClick={() => void run(() => window.hakobiLauncher!.cancel())}>
+                    戻る
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+    </main>
+  )
+}
+
+<<<yomiyasu:material server/service/install.cjs>>>
+// HAKOBI チームサーバーを Windows サービスとして登録する。
+// 管理者として開いた PowerShell で `npm run service:install` を実行すること。
+//
+// 設定は server\.env または TODO_ENV_FILE に書く（起動時に毎回読まれるため、
+// 変更してもサービスの再起動だけで反映される）。
+// シェルの環境変数（PORT / TODO_DATA_DIR / ADMIN_PASSWORD など）も
+// 「インストール時点の値」としてサービスに焼き込まれ、.env より優先される。
+const fs = require('fs')
+const { Service } = require('node-windows')
+const { getServiceConfiguration } = require('./config.cjs')
+
+const config = getServiceConfiguration()
+const svc = new Service(config)
+// 同じ run.cjs を使う複数サービスでもラッパーとログを分離する。
+svc.directory(config.directory)
+if (config.logpath) fs.mkdirSync(config.logpath, { recursive: true })
+
+svc.on('install', () => {
+  console.log('[service] インストールしました。起動します...')
+  svc.start()
+})
+svc.on('alreadyinstalled', () => {
+  console.log('[service] すでにインストール済みです。設定を変えたい場合は service:uninstall → 再インストールしてください。')
+})
+svc.on('start', () => {
+  console.log(`[service] ${config.name} が起動しました。http://localhost:${config.port} を開いて確認してください。`)
+  console.log('[service] 以後は PC を再起動しても自動で立ち上がります。')
+})
+svc.on('invalidinstallation', () => {
+  console.error('[service] インストール状態が壊れています。service:uninstall を試してください。')
+  process.exitCode = 1
+})
+svc.on('error', (err) => {
+  console.error('[service] エラー:', err)
+  console.error('[service] PowerShell を「管理者として実行」で開いているか確認してください。')
+  process.exitCode = 1
+})
+
+console.log(`[service] ${config.name} をインストールします...`)
+if (config.env.length > 0) {
+  console.log('[service] 焼き込む環境変数:', config.env.map((e) => e.name).join(', '))
+} else {
+  console.log(`[service] 設定は ${config.envPath} から読み込まれます（無ければ既定値）。`)
+}
+svc.install()
+
+<<<yomiyasu:material electron-builder.yml>>>
+appId: com.hakobi.app
+productName: HAKOBI
+directories:
+  buildResources: build
+files:
+  - 'out/**/*'
+  - 'package.json'
+asarUnpack:
+  - resources/**
+  - '**/*.{node,dll}'
+win:
+  executableName: HAKOBI
+  icon: build/icon.ico
+nsis:
+  # Per-user install: members install and update without administrator rights or a UAC prompt,
+  # and running a newer installer upgrades in place (electron-builder's defaults, written out on purpose).
+  oneClick: true
+  perMachine: false
+  # Keep the original ToDo installer identity for upgrades and uninstall registration.
+  guid: 6d3bbc18-ec0d-50ad-9775-a5b726355fc6
+  include: build/hakobi-installer.nsh
+  artifactName: '${productName}-${version}-setup.${ext}'
+  shortcutName: '${productName}'
+  uninstallDisplayName: '${productName}'
+  createDesktopShortcut: always
+  deleteAppDataOnUninstall: false
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+mac:
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    - NSCameraUsageDescription: Application requests access to the device's camera.
+    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  notarize: false
+dmg:
+  artifactName: '${name}-${version}.${ext}'
+linux:
+  target:
+    - AppImage
+    - snap
+    - deb
+  maintainer: electronjs.org
+  category: Utility
+appImage:
+  artifactName: '${name}-${version}.${ext}'
+npmRebuild: false
+# Keep this: it makes electron-builder write dist/latest.yml (version, file name, size, sha512),
+# which `npm run publish:desktop` and the team server rely on. The app has no auto-updater,
+# so this URL is never contacted; members download installers from their team server.
+publish:
+  provider: generic
+  url: https://example.com/auto-update
+
+<<<yomiyasu:material node_modules/@electron/rebuild/package.json engines>>>
+{"node": ">=22.12.0"}

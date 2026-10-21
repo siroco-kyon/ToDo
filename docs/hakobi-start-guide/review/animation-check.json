@@ -1,0 +1,9 @@
+{
+  "source_seconds_0_and_6_pixel_identical": true,
+  "different_frame_at_2_seconds": true,
+  "gif_duration_ms": 6000,
+  "gif_frames": 90,
+  "gif_loop": 0,
+  "static_text_regions_pixel_identical": true,
+  "svg_sha256": "85def352b0df8b908916549ee106aebad9cd08be91169cccd633720ac694ff98"
+}
