@@ -1,3 +1,8 @@
+export interface DesktopDownloadStat {
+  version: string
+  downloadCount: number
+}
+
 /** タスクの繰り返し（完了にすると次回分を作る）。server/src/shared/todo-recurrence.ts と同じ選択肢 */
 export type TodoRecurrence = 'daily' | 'weekly' | 'monthly' | 'yearly'
 

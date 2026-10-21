@@ -171,6 +171,7 @@ export function registerIpcHandlers(
 
   // Users & team — single-user desktop build has no team, so report none.
   // (The web server provides the real multi-user implementations.)
+  ipcMain.handle('desktop:downloadStats', () => [])
   ipcMain.handle('user:list', () => [])
   ipcMain.handle('team:getDashboard', () => ({ now: [], overdue: [], dueSoon: [], workloads: [] }))
   ipcMain.handle('auth:getCurrentUser', () => null)

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { DesktopDownloadStats } from './DesktopDownloadStats'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import type { CreateUserInput, PublicUser, UpdateUserInput, UserRole, UserDeletePreview } from '../types'
 
@@ -216,6 +217,8 @@ export function UserManagementModal({ currentUserId, onClose, onShowToast, onCha
           <h2 style={{ fontSize: '1.1rem', color: 'var(--slate-200)', margin: 0 }}>👤 ユーザー管理</h2>
           <button onClick={onClose} style={closeBtnStyle}>×</button>
         </div>
+
+        <DesktopDownloadStats />
 
         {/* ─── メンバー一覧 ─── */}
         <section>
