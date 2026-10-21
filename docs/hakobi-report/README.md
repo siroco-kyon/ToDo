@@ -4,6 +4,12 @@ ERチェックシートに沿って書いたHAKOBIの技術レポートである
 
 紹介用の社内レポート（`docs/hakobi-introduction/HAKOBI_社内レポート.pdf`）とは別の資料である。チェックシートに照らした自己判定は [HAKOBI_REPORT_CHECKLIST.md](HAKOBI_REPORT_CHECKLIST.md)、品質確認の記録は [evidence/VALIDATION_20261017.md](evidence/VALIDATION_20261017.md) にある。
 
+## 2026年10月21日の更新
+
+原稿と推敲版をコミット`a823ba5`の仕様に合わせて更新した。定例の途中経過の保存、年次繰り返し、報告なし・遅れ・延期の条件、一覧と報告の担当範囲、操作と失敗時の案内を反映した。Word・PDFも同じ原稿から再生成した。提出用PDFは両方とも33ページである。
+
+10月17日のテスト結果は当時の結果として残した。追加確認の結果と未解決のガント表示位置テストは [evidence/VALIDATION_20261021.md](evidence/VALIDATION_20261021.md)、照合に用いた実装の抜き書きは [evidence/SPEC_MATERIAL_20261021.txt](evidence/SPEC_MATERIAL_20261021.txt) にある。図の元となるデモ画面は10月17日のものを保持している。
+
 ## 必要環境
 
 - Windows 11（図の文字に Yu Gothic を使う）
@@ -58,4 +64,4 @@ Wordの目次はフィールドなので、Wordで開いて「フィールドの
 
 ## 推敲版
 
-`HAKOBI_TECHNICAL_REPORT_推敲版.md` は、元の原稿の主張と数値を保ったまま、読みやすさを整えた原稿である（主述のかみ合わせ、分かりにくい言い回し、見出しの読点など）。Word とPDFは `output/HAKOBI_技術レポート_推敲版.docx`・`.pdf` で、上と同じ手順で原稿と出力の名前を替えて作る。目次のページ番号は `tools/toc_pages_HAKOBI_TECHNICAL_REPORT_推敲版.json` に記録する。推敲で補った語句の出典は `HAKOBI_TECHNICAL_REPORT_推敲版.md.material.txt` にある。
+`HAKOBI_TECHNICAL_REPORT_推敲版.md` は、元の原稿の主張と数値を保ったまま、読みやすさを整えた原稿である（主述のかみ合わせ、分かりにくい言い回し、見出しの読点など）。Word とPDFは `output/HAKOBI_技術レポート_推敲版.docx`・`.pdf` で、上と同じ手順で原稿と出力の名前を替えて作る。目次のページ番号は `tools/toc_pages_HAKOBI_TECHNICAL_REPORT_推敲版.json` に記録する。10月17日の推敲で補った語句の出典は `HAKOBI_TECHNICAL_REPORT_推敲版.md.material.txt` にある。

@@ -1,0 +1,688 @@
+<<<yomiyasu:material src/renderer/src/lib/scheduleHealth.ts:1-130>>>
+// 予定の進捗（今日時点で何%進んでいるはずか）と、実績との差（何日分の遅れか）の計算。React に依存しない。
+// ガントの「遅れ」と報告タブの「進捗の遅れ」で同じ判定にするため、ガントの表示設定（遅れとみなす日数・土日祝を数えないか）も読む。
+
+export interface ScheduleOptions {
+  /** 予定より何日分以上遅れていたら「遅れ」にするか */
+  behindThresholdDays: number
+  /** true のとき土日・祝日を数えない */
+  workingDaysOnly: boolean
+  holidayNames: ReadonlyMap<string, string>
+}
+
+export interface ScheduleBar {
+  startDate: string
+  endDate: string
+}
+
+/** ガントの表示設定の保存先（GanttView.tsx と同じ） */
+export const GANTT_VIEW_SETTINGS_STORAGE_KEY = 'gantt-view-settings'
+export const BEHIND_THRESHOLD_OPTIONS = [1, 2, 3, 5, 7]
+export const DEFAULT_BEHIND_THRESHOLD_DAYS = 2
+
+function parseKey(dateKey: string): Date {
+  const [year, month, day] = dateKey.slice(0, 10).split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+function formatKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function addDays(dateKey: string, days: number): string {
+  const date = parseKey(dateKey)
+  date.setDate(date.getDate() + days)
+  return formatKey(date)
+}
+
+function diffCalendarDays(dateKey: string, baseKey: string): number {
+  return Math.round((parseKey(dateKey).getTime() - parseKey(baseKey).getTime()) / 86400000)
+}
+
+function isCountedDay(dateKey: string, options: ScheduleOptions): boolean {
+  if (!options.workingDaysOnly) return true
+  const day = parseKey(dateKey).getDay()
+  return day !== 0 && day !== 6 && !options.holidayNames.has(dateKey)
+}
+
+/** 開始日から終了日まで（両端を含む）の日数。workingDaysOnly のときは土日・祝日を除く */
+export function countScheduleDays(startKey: string, endKey: string, options: ScheduleOptions): number {
+  if (endKey < startKey) return 0
+  if (!options.workingDaysOnly) return diffCalendarDays(endKey, startKey) + 1
+  let count = 0
+  for (let key = startKey; key <= endKey; key = addDays(key, 1)) {
+    if (isCountedDay(key, options)) count += 1
+  }
+  return count
+}
+
+/**
+ * 予定の進捗（今日時点で何%進んでいるはずか）と、期間の日数。
+ * 期間のうち昨日までに過ぎた日数に、今日の半日分を足した割合を予定とする
+ */
+export function calculateSchedule(bar: ScheduleBar, todayKey: string, options: ScheduleOptions): { expectedProgress: number; totalDays: number } {
+  let effective = options
+  let totalDays = countScheduleDays(bar.startDate, bar.endDate, effective)
+  // 期間がすべて休日のタスクは、暦日で数える
+  if (totalDays === 0) {
+    effective = { ...options, workingDaysOnly: false }
+    totalDays = countScheduleDays(bar.startDate, bar.endDate, effective)
+  }
+  if (todayKey < bar.startDate) return { expectedProgress: 0, totalDays }
+  if (todayKey > bar.endDate) return { expectedProgress: 100, totalDays }
+  const passedDays = countScheduleDays(bar.startDate, addDays(todayKey, -1), effective) + (isCountedDay(todayKey, effective) ? 0.5 : 0)
+  return { expectedProgress: Math.min(100, Math.max(0, Math.round((passedDays / totalDays) * 100))), totalDays }
+}
+
+/** 予定との差を期間の日数に換算した値（正なら遅れ。例: 10日間のタスクで 25% 足りなければ 2.5） */
+export function behindDaysOf(progress: number, bar: ScheduleBar, todayKey: string, options: ScheduleOptions): { expectedProgress: number; behindDays: number } {
+  const { expectedProgress, totalDays } = calculateSchedule(bar, todayKey, options)
+  const actual = Math.min(100, Math.max(0, progress))
+  return { expectedProgress, behindDays: ((expectedProgress - actual) / 100) * totalDays }
+}
+
+/** 予定の進捗を半分以上下回ったら、日数が短くても遅れとみなす（2日間のタスクの最終日に 0% など） */
+export const BEHIND_PROGRESS_GAP = 50
+
+/**
+ * 遅れているか。予定との差が遅れとみなす日数以上か、予定の進捗を半分以上下回っているとき。
+ * 期間の短いタスクは日数の差が小さく、日数だけでは最終日に 0% でも「順調」になってしまうため
+ */
+export function isBehindSchedule(expectedProgress: number, progress: number, behindDays: number, thresholdDays: number): boolean {
+  if (behindDays <= 0) return false
+  return behindDays >= thresholdDays || expectedProgress - progress >= BEHIND_PROGRESS_GAP
+}
+
+/**
+ * 遅れを判定するタスクか（ガント・報告タブ・チームタブで共通）。
+ * 完了・アーカイブ・保留中・ToDoリスト、開始日か期限のないタスクは判定しない
+ */
+export function isScheduleTracked(todo: { status: string; list_mode?: number | boolean | null; start_date: string | null; due_date: string | null }): boolean {
+  if (todo.status === 'done' || todo.status === 'archived' || todo.status === 'on_hold' || todo.list_mode) return false
+  return Boolean(todo.start_date && todo.due_date)
+}
+
+/** 遅れの日数の表記。1日に満たないときは「1日未満」と書き、丸めて大きく見せない */
+export function behindDaysLabel(behindDays: number): string {
+  return behindDays < 1 ? '1日未満の遅れ' : `約${Math.round(behindDays)}日遅れ`
+}
+
+/** ガントの表示設定から、遅れとみなす日数と土日祝を数えないかを読む */
+export function loadScheduleSettings(): { behindThresholdDays: number; workingDaysOnly: boolean } {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(GANTT_VIEW_SETTINGS_STORAGE_KEY) ?? 'null') as { behindThresholdDays?: unknown; workingDaysOnly?: unknown } | null
+    return {
+      behindThresholdDays: typeof parsed?.behindThresholdDays === 'number' && BEHIND_THRESHOLD_OPTIONS.includes(parsed.behindThresholdDays)
+        ? parsed.behindThresholdDays
+        : DEFAULT_BEHIND_THRESHOLD_DAYS,
+      workingDaysOnly: typeof parsed?.workingDaysOnly === 'boolean' ? parsed.workingDaysOnly : false
+    }
+  } catch {
+    return { behindThresholdDays: DEFAULT_BEHIND_THRESHOLD_DAYS, workingDaysOnly: false }
+  }
+}
+
+<<<yomiyasu:material src/renderer/src/lib/dueChanges.ts:1-30>>>
+// 報告タブの「期間中に延期」の数え方（React に依存しない）。
+
+interface DueChange {
+  old_value: string | null
+  new_value: string | null
+}
+
+/**
+ * 期間中に期限を後ろへずらした回数。期間の終わりの期限が始めより後ろになったときだけ数える。
+ * 動かしてから戻した（ガントの「1つ戻る」など）・前倒しで終わったものは延期にしない。
+ * changes は古い順
+ */
+export function countPostponements(changes: readonly DueChange[]): number {
+  const firstDue = changes[0]?.old_value?.slice(0, 10) ?? null
+  const endDue = changes[changes.length - 1]?.new_value?.slice(0, 10) ?? null
+  if (firstDue == null || endDue == null || endDue <= firstDue) return 0
+  return changes.filter((change) =>
+    change.old_value != null && change.new_value != null && change.new_value.slice(0, 10) > change.old_value.slice(0, 10)
+  ).length
+}
+
+<<<yomiyasu:material src/renderer/src/lib/recurrence.ts:1-88>>>
+// タスクの繰り返し（完了にすると次回分を作る）の表記と、次回分の日付の計算（画面用。React に依存しない）。
+// 日付の計算は server/src/shared/todo-recurrence.ts と同じ。tests/recurrence-dates.cjs で一致を確かめている。
+import type { Todo, TodoRecurrence } from '../types'
+import { formatShortDate } from './dueDate'
+
+export const TODO_RECURRENCE_OPTIONS: ReadonlyArray<{ value: TodoRecurrence; label: string }> = [
+  { value: 'daily', label: '毎日' },
+  { value: 'weekly', label: '毎週' },
+  { value: 'monthly', label: '毎月' },
+  { value: 'yearly', label: '毎年' }
+]
+
+/** 毎日・毎週・毎月・毎年。繰り返さない・知らない値は null */
+export function recurrenceKindLabel(recurrence: string | null | undefined): string | null {
+  return TODO_RECURRENCE_OPTIONS.find((option) => option.value === recurrence)?.label ?? null
+}
+
+function toKey(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/** 日付（YYYY-MM-DD）を1周期ずらす。毎月・毎年はその月にない日を末日に丸める（2/29 の次の年は平年なら 2/28） */
+export function nextRecurrenceDateKey(dateKey: string, recurrence: TodoRecurrence): string {
+  const [year, month, day] = dateKey.slice(0, 10).split('-').map(Number)
+  if (recurrence === 'daily' || recurrence === 'weekly') {
+    const date = new Date(Date.UTC(year, month - 1, day + (recurrence === 'daily' ? 1 : 7)))
+    return toKey(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate())
+  }
+  const targetYear = recurrence === 'yearly' ? year + 1 : year + Math.floor(month / 12)
+  const targetMonth = recurrence === 'yearly' ? month : (month % 12) + 1
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate()
+  return toKey(targetYear, targetMonth, Math.min(day, lastDay))
+}
+
+/** 毎年の基準の月日（期限、なければ開始日）。例: 10/18 */
+function yearlyMonthDay(todo: Pick<Todo, 'start_date' | 'due_date'>): string | null {
+  const dateKey = (todo.due_date ?? todo.start_date)?.slice(0, 10)
+  if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null
+  return `${Number(dateKey.slice(5, 7))}/${Number(dateKey.slice(8, 10))}`
+}
+
+/** 繰り返しの表記。毎年は月日を付ける（例: 毎年 10/18。月日は期限、なければ開始日）。繰り返さないときは null */
+export function todoRecurrenceLabel(todo: Pick<Todo, 'recurrence' | 'start_date' | 'due_date'>): string | null {
+  const label = recurrenceKindLabel(todo.recurrence)
+  if (!label) return null
+  if (todo.recurrence !== 'yearly') return label
+  const monthDay = yearlyMonthDay(todo)
+  return monthDay ? `${label} ${monthDay}` : label
+}
+
+type RecurrenceSource = Pick<Todo, 'recurrence' | 'start_date' | 'due_date' | 'recurrence_skip_weekends' | 'recurrence_skip_holidays'>
+
+/**
+ * 完了にしたときに作る次回分の期限（期限がなければ開始日）。日付がないときは null。
+ * 土日をスキップする設定なら、土日に当たるときは月曜にずらす。祝日は画面では数えないので、
+ * 祝日をスキップする設定のときは holidayMayShift を立てる（日付がさらに後ろへずれることがある）
+ */
+export function nextRecurrenceDue(todo: RecurrenceSource): { kind: '期限' | '開始日'; dateKey: string; holidayMayShift: boolean } | null {
+  const recurrence = TODO_RECURRENCE_OPTIONS.find((option) => option.value === todo.recurrence)?.value
+  if (!recurrence) return null
+  const base = todo.due_date ? { kind: '期限' as const, dateKey: todo.due_date } : todo.start_date ? { kind: '開始日' as const, dateKey: todo.start_date } : null
+  if (!base) return null
+  let next = nextRecurrenceDateKey(base.dateKey, recurrence)
+  if (todo.recurrence_skip_weekends) {
+    while ([0, 6].includes(new Date(`${next}T00:00:00`).getDay())) next = nextRecurrenceDateKey(next, 'daily')
+  }
+  return { kind: base.kind, dateKey: next, holidayMayShift: Boolean(todo.recurrence_skip_holidays) }
+}
+
+/** 繰り返しのタスクの完了を取り消したときの知らせ。繰り返さないときは null */
+export function recurrenceReopenMessage(todo: Pick<Todo, 'recurrence'>): string | null {
+  return recurrenceKindLabel(todo.recurrence)
+    ? '作った次回分はそのまま残ります（もう一度完了にしても、次回分は増えません）'
+    : null
+}
+
+/** 完了にしたあとの知らせ（例: 毎年 10/20 の次回分（期限 2027/10/20）を作りました）。繰り返さないときは null */
+export function recurrenceDoneMessage(todo: RecurrenceSource, today = new Date()): string | null {
+  const label = todoRecurrenceLabel(todo)
+  if (!label) return null
+  const next = nextRecurrenceDue(todo)
+  // 祝日でずれるかは画面では分からないので、そのときは日付を書かない
+  return next && !next.holidayMayShift
+    ? `${label}の次回分（${next.kind} ${formatShortDate(next.dateKey, today)}）を作りました`
+    : `${label}の次回分を作りました`
+}
+
+<<<yomiyasu:material src/renderer/src/lib/recurrenceUndo.ts:1-75>>>
+// 繰り返しタスクの完了を「元に戻す」で取り消したときの後始末（React に依存しない）。
+// 完了にすると DB が次回分を作り、取り消しても次回分は残る（もう一度完了にしても増えない仕様）。
+// 日付のない繰り返しでは同じ名前の行が2つ並んで見分けにくいので、知らせから次回分を片付けられるようにする。
+// 消すのではなくアーカイブにして、知らせの「元に戻す」で戻せるようにする。
+import type { Todo } from '../types'
+import { formatShortDate } from './dueDate'
+import { recurrenceKindLabel } from './recurrence'
+
+type Toast = (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
+
+/** 完了にした時刻（ISO）より後に作られた、同じ名前・同じ繰り返しの未完了のタスク（＝そのとき作られた次回分） */
+export function findSpawnedNext(todos: Todo[], source: Pick<Todo, 'id' | 'title' | 'recurrence'>, completedAtIso: string): Todo | null {
+  if (!recurrenceKindLabel(source.recurrence)) return null
+  // 端末とサーバーの時計の差を見込んで、少し前から探す
+  const since = new Date(new Date(completedAtIso).getTime() - 60_000).toISOString()
+  return todos
+    .filter((todo) => todo.id !== source.id && todo.title === source.title && todo.recurrence === source.recurrence
+      && todo.status !== 'done' && todo.status !== 'archived' && todo.created_at >= since)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null
+}
+
+/** 完了の取り消しのあとに出す知らせ。次回分が残っていれば、アーカイブする操作を付ける */
+export async function notifyReopenedRecurrence(
+  source: Pick<Todo, 'id' | 'title' | 'recurrence'>,
+  completedAtIso: string,
+  showToast: Toast,
+  reload: () => Promise<unknown> | void
+): Promise<void> {
+  let spawned: Todo | null = null
+  try {
+    spawned = findSpawnedNext(await window.api.todoGetAll(), source, completedAtIso)
+  } catch { /* 見つけられなくても取り消しの知らせは出す */ }
+  if (!spawned) {
+    showToast(`「${source.title}」の完了を取り消しました`)
+    return
+  }
+  const next = spawned
+  const when = next.start_date ? `開始 ${formatShortDate(next.start_date)}` : next.due_date ? `期限 ${formatShortDate(next.due_date)}` : '日付なし'
+  showToast(`「${source.title}」の完了を取り消しました。作られた次回分（${when}）は残っています`, 'success', {
+    label: '次回分をアーカイブ',
+    run: () => {
+      void window.api.todoArchive(next.id).then(
+        async () => {
+          await reload()
+          showToast('次回分をアーカイブしました', 'success', {
+            label: '元に戻す',
+            run: () => { void window.api.todoUnarchive(next.id, next.status === 'archived' ? 'not_started' : next.status).then(() => reload()) }
+          })
+        },
+        (error: unknown) => showToast(error instanceof Error ? error.message : '次回分をアーカイブできませんでした', 'error')
+      )
+    }
+  })
+}
+
+<<<yomiyasu:material src/renderer/src/components/ReportView.tsx:239-252>>>
+/** 定例の進み具合を読む。12時間より前に始めたもの（前の定例の残り）は使わない */
+const MEETING_KEEP_MS = 12 * 60 * 60 * 1000
+function loadMeetingState(key: string): MeetingState | null {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) ?? 'null') as MeetingState | null
+    if (!parsed || typeof parsed.startedAt !== 'number' || Date.now() - parsed.startedAt > MEETING_KEEP_MS) return null
+    if (typeof parsed.notes !== 'object' || typeof parsed.spentSeconds !== 'object' || typeof parsed.createdTasks !== 'object') return null
+    // 開いたまま離れた（閉じた時刻がない）ときは、読んだ時刻から止まっていたことにする
+    return parsed.pausedAt == null ? { ...parsed, pausedAt: Date.now() } : parsed
+  } catch {
+    return null
+  }
+}
+
+
+<<<yomiyasu:material src/renderer/src/components/ReportView.tsx:369-418>>>
+  activity: TodoReportActivity | undefined,
+  range: DateRange,
+  changes: TodoChangeEntry[],
+  discussions: ProgressNote[],
+  checkSummaries: Map<string, SubTaskCheckSummary>,
+  behind: ReportRow['behind']
+): ReportRow {
+  const lastNoteAt = activity?.last_note_at ?? null
+  const lastMemoAt = activity?.last_memo_at ?? null
+  const lastReportAt = latestIso(lastNoteAt, lastMemoAt)
+  // 最終更新だけでは、過去の期間を選んだときに期間中の更新を見落とすので、期間中の変更履歴も見る
+  const memoUpdatedInPeriod = (lastMemoAt != null && isInRange(isoToDateKey(lastMemoAt), range))
+    || changes.some((change) => change.subtask_id == null && change.field === 'memo')
+  // 「報告あり」は担当（主・サブ）の書いた進捗ログで数える。リーダーなどほかの人の書き込みだけでは、本人が報告したことにしない。
+  // 担当がいないタスク・デスクトップ版（書いた人の記録がない）は、すべての書き込みを数える
+  const memberIds = new Set([todo.assignee_id, ...(todo.co_assignees ?? []).map((item) => item.user_id)].filter((id): id is string => Boolean(id)))
+  const memberNotes = memberIds.size === 0 ? notes : notes.filter((note) => note.user_id == null || memberIds.has(note.user_id))
+
+  let freshness: Freshness
+  if (todo.status === 'done') {
+    freshness = 'done'
+  } else if (todo.list_mode) {
+    // ToDoリストは日々の項目のチェックで回すもので、進捗ログでの報告は求めない
+    freshness = 'list'
+  } else if (todo.status === 'on_hold') {
+    freshness = 'onHold'
+  } else if (memberNotes.length > 0 || memoUpdatedInPeriod) {
+    freshness = 'fresh'
+  } else if (todo.status === 'not_started' && (
+    !todo.start_date
+    || todo.start_date.slice(0, 10) > range.to
+    // 今日から始めるタスクは、まだ報告がなくて当然なので「報告なし」にしない
+    || diffDaysFromToday(todo.start_date) >= 0
+  )) {
+    freshness = 'notStarted'
+  } else if (!lastReportAt) {
+    freshness = 'none'
+  } else if (-diffDaysFromToday(isoToDateKey(lastReportAt)) >= STALE_DAYS) {
+    freshness = 'stale'
+  } else {
+    freshness = 'quiet'
+  }
+
+  const summary = summarizeChanges(changes.filter((change) => change.subtask_id == null))
+  const subTaskSummaries = new Map(subTasks.map((subTask) => [subTask.id, {
+    ...summarizeChanges(changes.filter((change) => change.subtask_id === subTask.id)),
+    addedInPeriod: isInRange(isoToDateKey(subTask.created_at), range)
+  }]))
+
+  return { todo, subTasks, notes, lastReportAt, lastMemoAt, freshness, reportedInPeriod: memberNotes.length > 0 || memoUpdatedInPeriod, ...summary, subTaskSummaries, discussions, checkSummaries, behind }
+
+<<<yomiyasu:material src/renderer/src/components/ReportView.tsx:949-975>>>
+  const [meetingOpen, setMeetingOpen] = useState(false)
+  // 定例の進み具合（メモ・決まったこと・持ち時間）は、ほかの画面を見に行っても消えないよう端末に覚える（見ている人ごと）
+  // 読み込み直した直後はログイン中の人がまだ分からず、保存先が変わる。保存先が変わったら、その人の進み具合を読み直す
+  // （以前は空の状態のまま新しい保存先に書いてしまい、再読み込みで定例の途中経過が消えていた）
+  const meetingStorageKey = `report.meeting:${settingsUserId ?? 'local'}`
+  const [meetingStore, setMeetingStore] = useState<{ key: string; state: MeetingState | null }>(() => ({ key: meetingStorageKey, state: loadMeetingState(meetingStorageKey) }))
+  if (meetingStore.key !== meetingStorageKey) setMeetingStore({ key: meetingStorageKey, state: loadMeetingState(meetingStorageKey) })
+  const meetingState = meetingStore.key === meetingStorageKey ? meetingStore.state : null
+  const setMeetingState = useCallback((next: MeetingState | null | ((previous: MeetingState | null) => MeetingState | null)): void => {
+    setMeetingStore((previous) => ({ key: previous.key, state: typeof next === 'function' ? next(previous.state) : next }))
+  }, [])
+  useEffect(() => {
+    try {
+      if (meetingState) window.localStorage.setItem(meetingStorageKey, JSON.stringify(meetingState))
+      else window.localStorage.removeItem(meetingStorageKey)
+    } catch { /* 覚えられなくても定例は続けられる */ }
+  }, [meetingState, meetingStorageKey])
+  // 定例モードを開いたままほかの画面へ移ったときは、その時刻を「閉じた時刻」として覚え、戻ったときに離れていた時間を除く
+  const meetingStateRef = useRef(meetingState)
+  meetingStateRef.current = meetingState
+  useEffect(() => () => {
+    const state = meetingStateRef.current
+    if (!state || state.pausedAt != null) return
+    try { window.localStorage.setItem(meetingStorageKey, JSON.stringify({ ...state, pausedAt: Date.now() })) } catch { /* 覚えられなくてもよい */ }
+  }, [meetingStorageKey])
+  // 折りたたんだ担当者（カテゴリ）の見出しキー。定例で話し終えた人を畳んでおける
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
+
+<<<yomiyasu:material src/renderer/src/components/MeetingMode.tsx:350-368>>>
+              </section>
+            )}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--slate-200)' }}>定例メモ</div>
+              <textarea
+                value={state.notes[group.key] ?? ''}
+                onChange={(event) => {
+                  const value = event.target.value
+                  onStateChange((previous) => ({ ...previous, notes: { ...previous.notes, [group.key]: value } }))
+                }}
+                aria-label={`${group.label}の定例メモ`}
+                rows={8}
+                placeholder="話したこと・決まったこと"
+                style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--c-0b1220)', color: 'var(--slate-200)', fontSize: '0.82rem', lineHeight: 1.6, resize: 'vertical' }}
+              />
+              <div style={{ fontSize: '0.75rem', color: 'var(--slate-400)', lineHeight: 1.6 }}>
+                このメモはこの端末に12時間残ります（ほかの画面へ移っても、読み込み直しても消えません）。議事録として残す場合は、上の「議事録をコピー」でコピーしてください。
+              </div>
+            </section>
+
+<<<yomiyasu:material AGENTS.md:1-180>>>
+# AGENTS.md
+
+このファイルは、このリポジトリを扱うエージェント向けの簡易メモです。
+
+## コマンド
+
+```bash
+# デスクトップ版（Electron）
+npm install
+npm run dev
+npm run build
+npm run dist
+
+# チーム向けサーバー版（マルチユーザー Web）
+npm --prefix server install   # サーバー依存（独立パッケージ）
+npm run dev:server            # サーバー（ポート 4577）
+npm run dev:web               # Web フロント（ポート 5273、/api と /ws を 4577 へプロキシ）
+npm run build:web             # Web ビルド → dist-web/
+npm run start:server          # dist-web/ を配信しつつサーバー起動
+npm run publish:desktop       # npm run dist の後、dist/ のインストーラーをサーバーの配布フォルダへ公開
+```
+
+Web 版の型チェックは `npx tsc --noEmit -p web/tsconfig.json`。ルートに `typecheck` スクリプトは無い。
+
+## アプリの方向性
+
+- 現在はガントチャート中心のアプリ
+- `カレンダー` と `概要` はメイン導線から外している
+- 依存関係は Finish to Start を採用
+- 依存関係はガント画面とタスク詳細画面の両方から編集できる
+- データの動作モードは 2 つ。個人用（Electron・ローカル DB）と、チーム用（社内 LAN・サーバー DB）。チーム用はブラウザと HAKOBI デスクトップ版の両方から利用できる
+- チーム接続の機能: 担当者割り当て、チームダッシュボード（今/期限）、管理者によるアカウント発行、リアルタイム同期。ブラウザとデスクトップ版で共通
+- **デスクトップ版（`src/`）を壊さないこと。** 両モードは同じ React 画面を共有する
+
+## 技術構成
+
+- main process
+  Electron + better-sqlite3
+- renderer
+  React + TypeScript（デスクトップ版・サーバー版で共通）
+- renderer から DB を直接触らず、`window.api` 経由でアクセスする
+  - 個人用デスクトップ版: Electron IPC（`src/preload/index.ts`）
+  - チーム接続（ブラウザ・デスクトップ版）: HTTP/WebSocket（`web/lib/client.ts`）。デスクトップ版はサーバーで配信する Web 画面を読み込む
+- server
+  Express + ws + better-sqlite3（`tsx` で TypeScript を直接実行、ポート 4577）。`server/` は自前の `node_modules` を持つ独立パッケージ（Electron ABI と Node ABI の競合回避）
+
+## 重要ファイル
+
+```text
+src/main/index.ts          Electron 起動とウィンドウ管理
+src/main/db.ts             SQLite アクセスと依存関係の連鎖処理
+src/main/ipc.ts            IPC ハンドラ
+src/main/config.ts         データ保存先
+src/main/desktop-controller.ts チーム接続のウィンドウ・タイマー管理
+src/main/desktop-config.ts 接続先・デスクトップ設定
+src/main/shortcuts.ts      グローバルショートカット
+
+src/preload/index.ts       renderer に公開する API（Api 契約の定義元）
+src/preload/desktop.ts     チーム画面に公開するデスクトップ機能
+
+src/renderer/src/App.tsx                       レイアウトと画面切り替え
+src/renderer/src/components/GanttView.tsx     ガント本体
+src/renderer/src/components/TodoDetail.tsx    タスク詳細
+src/renderer/src/components/PlanView.tsx      今日の計画
+src/renderer/src/components/WorkLogSummary.tsx 作業ログ
+src/renderer/src/components/UserManagementModal.tsx 管理者用ユーザー管理（サーバー版）
+src/renderer/src/lib/desktopRelease.ts        配布中のデスクトップ版の取得・検証とバージョン比較（React 非依存）
+
+web/main.tsx               window.api を HTTP/WS 実装で差し替える Web エントリ
+web/lib/client.ts          Api 契約の HTTP/WebSocket 実装
+web/auth/                  ログイン画面・認証ゲート・セッション
+web/desktop/               デスクトップ版のタイマー・進捗入力画面
+web/desktop/desktopFeed.ts OS 通知に出す新着の判定と、トレイ・タスクバーに出すタスクの選定
+web/desktop/DesktopUpdateNotice.tsx 新しい版のお知らせ（デスクトップ版のメイン画面だけ。左下のカード）
+web/download/DesktopDownloadPage.tsx ログイン不要のダウンロードページ（/download）
+src/main/desktop-glyphs.ts 未読バッジ・トレイの赤丸・タスクバーのボタン画像を生成（DB に依存しない icon-pixels.ts を使う）
+
+server/src/index.ts        サーバー起動・静的配信・ルートのマウント
+server/src/config.ts       ポート・データ保存先・管理者・セッション設定
+server/src/auth.ts         bcrypt 認証・セッション・管理者シード
+server/src/realtime.ts     WebSocket リアルタイム同期
+server/src/db/             マルチユーザー対応の SQLite アクセス層
+server/src/routes/         auth / data / users の REST ルート
+server/src/desktopRelease.ts latest.yml の解析とインストーラーの検証（サイズ・sha512）、結果のキャッシュ
+server/src/routes/desktopRelease.ts /api/desktop-release（ログイン不要。配布中の版の情報とダウンロード）
+server/scripts/publish-desktop.ts npm run publish:desktop の本体（dist/ を検証して配布フォルダへ公開）
+```
+
+## 実装メモ
+
+- タスク日付変更時は `db.ts` 側で依存関係の連鎖を再計算する
+- 依存関係の追加、待機日数変更、削除でも後続タスクを再計算する
+- ガントの表示設定は `localStorage` に保存している
+- ガントは初回表示と「今日に戻る」の操作で今日へ移動する。編集・同期・期間変更・ズーム・表示幅変更では、現在見ている日付を保つ
+- **`Api` 契約 = `typeof api`（`src/preload/index.ts`）。** メソッドを 1 つ足すと、`web/lib/client.ts` も実装しないとコンパイルが通らない（左右対称が型で強制される）。`src/main/ipc.ts` のハンドラも対で要る
+- 型定義は二重管理: `src/main/db.ts`（Api 契約の元）と `src/renderer/src/types.ts`（renderer 用の独立コピー）。両者を同一構造に保つ
+- 現在ユーザーの取得は `window.api.authGetCurrentUser()` を使う（個人用では `null`、チーム接続では認証済みユーザーを返す）。`web/auth` の `useCurrentUser()` は Web エントリ専用なので共通の `App.tsx` からは使わない
+- マルチユーザー判定は `users.length > 0`、管理者判定は `currentUser?.role === 'admin'`。個人用ではどちらも false、デスクトップ版のチーム接続ではブラウザと同じ判定を使う
+- 依存連鎖ロジックはサーバー版 `server/src/db/todos.ts` に同じものを移植している（両方を直す）
+- チーム接続のデスクトップ版の OS 通知・未読バッジ・トレイのタスク一覧は、非表示のメイン画面の `DesktopCompanion` が判定して `window.desktop` へ渡す。main 側はサーバー API を呼ばない。新着かどうかは端末の localStorage（`hakobi-desktop-notified:<userId>`）で判定し、初回は既存の通知を出さない
+- サーバーが配信する画面とインストール済みのデスクトップ版は別々に更新される。`DesktopBridge` に足したメソッドは任意（`notify?`）にして存在を確かめてから呼び、`DesktopState` に足した項目は古い画面が送らない前提で扱う
+- デスクトップ版の配布（`/api/desktop-release`）はログイン不要。`server/src/index.ts` で `/api/health` の直後、`/api/auth`・`/api/users`・`dataRouter`（`/api` 以下はすべて認証必須）と SPA のフォールバックより前にマウントする。配布できない理由（配布フォルダのパスを含む）は管理者にだけ返す
+- 配信するのは、検証済みの `latest.yml` に書かれた exe 1つだけ（ファイル名のパターン・サイズ・sha512 を確認）。リクエストのパスからファイル名を作らない。`latest.yml` やインストーラーが差し替わると、サーバーを再起動せずに読み直す
+- 公開は `npm run publish:desktop`（`server/scripts/publish-desktop.ts`）だけで行う。インストーラーを先に置き、`latest.yml` を最後に差し替える。古いインストーラーは消さない。`electron-builder.yml` の `publish:` は `dist/latest.yml` を出力させるために残す（自動更新はしない）
+- `DesktopContext.appVersion`（`src/shared/desktop.ts`）は任意。1.0.4 以前のアプリは送らないので、無いときは 1.0.4 以前として扱う（`LAST_VERSION_WITHOUT_APP_VERSION`）
+- `/download` はログイン不要のページ。`web/main.tsx` で `AuthGate` より前に分岐して描画する
+- 更新のお知らせ（`DesktopUpdateNotice`）はデスクトップ版のメイン画面（`isDesktopMain`）だけで出し、`App.tsx` には入れない。「後で」で閉じた版は localStorage の `hakobi-desktop-update-dismissed` に保存する
+- タスク一覧の絞り込み（担当・カテゴリ・検索）はガント・カンバン・計画・概要・報告にも効く。効いているときは各画面の見出しの横に「絞り込み中」のチップ（`ListFilterChips`、`App.tsx` の `listFilters` を各画面に渡す）を出し、その場で解除できる。1行を取る帯にはしない。報告タブには一覧の担当絞り込みをかけず（`reportTodos`）、報告タブ自身の担当絞り込みで決める。進捗タブの投稿先の選択肢も絞り込み前のタスクから選ぶ
+- タスク追加（`QuickAddModal`）の初期値は、担当＝一覧の担当絞り込みの人（絞っていなければ自分）、カテゴリ＝左で選んでいるもの、開始日＝今日。追加したタスクが今の絞り込みで見えないときは、`handleAdded` が「絞り込みを解除して開く」付きで知らせる
+- 上部のタブは、表示中のタブをもう一度押しても画面を変えない（以前はタスク詳細へ戻るトグルだった）
+- 進捗率のバーは `ProgressSlider` に揃えている（タスク詳細・サブタスク・報告タブ）。ドラッグは要素の pointer イベントで受け、ウィンドウ全体にリスナーを付けない
+- ガントの保留ボタンは、保留中のタスクだけ紫の「▶」を常に出す。保留していない行の「Ⅱ」は `.tarbo-gantt-hold-toggle`（行にマウスを乗せたときだけ表示）
+- 「集計から外す」カテゴリ（`is_private`）はアクセス制限ではない。画面では「プライベート」と書かず「集計外」と表記する。上部の「すべて表示／集計外を隠す」は集計外カテゴリがあるときだけ出す
+- 用語は「期限」（締切と書かない）、「進捗ログ」（進捗メモと書かない）に揃える。説明＝目的、メモ＝今の状況（上書き）、進捗ログ＝日付つきで積み上がる報告
+- 進捗タブの「新着」は、前回タブを見た時刻（`progressTimeline.lastSeenAt:<userId>`、`lib/progressActivity.ts`）より後にほかの人が書いた投稿・返信。タブを開いた時点と離れる時点で `serverNow()` を書き込む。上部タブの件数は `useProgressUnseenCount`（サーバー版のみ、`onDataChanged('progress')` で取り直す）
+- 「@名前」の判定はサーバーの `server/src/mention.ts` と画面の `lib/progressActivity.ts`（`mentionsUser`・`MENTION_BEFORE`）で同じ規則にする（片方だけ直さない）。入力欄の候補は `MentionTextarea`
+- 進捗ログ・返信のリアクションは `ReactionBar`（`LikeButton.tsx`）。👍 は常に出し、🎉 👀 🙏 は「☺＋」から。サーバー・デスクトップの DB は任意の絵文字を受け付ける
+
+## 注意点
+
+- `better-sqlite3` を使うので、依存インストール後にネイティブ再ビルドが必要
+- 文字化けした日本語が残っていたら、README と UI 文言の両方を確認する
+- ドキュメント更新時は、ガント中心の仕様と依存関係機能の説明を優先する
+- UI 文言はすべて日本語
+- サーバー版は社内 LAN 前提（インターネット公開は想定外、セキュリティは軽め）。アカウントは管理者が発行（自己登録なし）、パスワードは bcrypt、セッションは Cookie
+- 個人用デスクトップ版（`src/`）を壊さない。共通の `App.tsx` などに手を入れるときは、チーム用機能をフラグ（`multiUser` / `isAdmin`）でガードする
+
+<<<yomiyasu:material UX_REPORT.md:1-80>>>
+# HAKOBI の UI/UX 改善と「毎年」の繰り返し 最終報告
+
+期間: 2026-10-18〜10-20。ブランチ: `ux-improve`（ラウンド1〜26は PR #93・#94 で main にまとめた。ラウンド27〜36（第3期）は末尾の節を参照）。
+作業の細かい記録（ラウンドごとの指摘・変更・判断・検証）は [UX_LOG.md](UX_LOG.md) にある。
+
+## 結果
+
+- 繰り返しに「毎年」を足した。完了にすると、翌年の同じ月日で次回分を作る（2/29 は平年なら 2/28）。
+- 評価→改善→検証を26ラウンド行った。ラウンド1〜16はこのセッション、17〜26は別のセッション（「今回最大10ラウンド」の指示）が同じブランチで続けた。
+- 完了の条件（全項目9点以上が2ラウンド続く）には届かなかった。最後の総合評価（ラウンド26）は7項目すべて8点。最初のラウンドは4〜6点だった。
+- 本番環境・本番データには触れていない。確認はすべて、別のポートと別のデータフォルダで動かしたテスト用のサーバーで行った。
+- 型チェック3種・ビルド2種・既存のテスト一式は通っている。`hakobi-package` だけは、`dist/` のインストーラーが古いため一致せず失敗する（配布物を上書きしないよう、作り直していない）。
+
+## 「毎年」の繰り返し
+
+| 項目 | 内容 |
+| --- | --- |
+| 次回の日付 | 前回の開始日・期限の翌年の同じ月日（12/31 → 翌年 12/31）。2/29 は平年なら 2/28。土日・祝日を飛ばす設定も効く |
+| 画面 | 繰り返しの選択肢に「毎年」。詳細には「🔁 毎年 10/20」と出し、完了にすると「次回分を期限 2027/10/20 で作ります」と知らせる。今年でない日付には年を付ける |
+| 入力チェックと DB | 知らない値は保存しない（エラーで知らせる）。DB にも値を決まった種類に限る仕組み（トリガー）を入れた。既存のデータは書き換えない |
+| テスト | 通常の日付・2/29・12/31・完了後の次回分・既存のタスクを毎年に変える場合（`npm run test:yearly`。デスクトップ版・サーバー版の両方） |
+
+判断: 2/29 の翌年は 2/28、その次の年も 2/28 になる（うるう年に 2/29 へ戻らない）。毎月の繰り返しが前回の日付から計算する方式（1/31 → 2/28 → 3/28）なので、それに合わせた。ToDoリストの中の項目には「毎年」を足していない（項目の繰り返しは「未チェックに戻す」仕組みで、報告タブの実施率と結び付いているため）。
+
+## 主な画面の比較
+
+左が改善前（[ux-shots/before/](ux-shots/before/)、2026-10-18）、右が改善後（[ux-shots/after/](ux-shots/after/)、2026-10-20）。同じテスト用データ・同じ撮り方で撮った。日付が進み、評価で追加したタスクがあるので、件数は同じではない。
+
+| 画面 | 改善前 | 改善後 | 主な違い |
+| --- | --- | --- | --- |
+| ガント | [gantt](ux-shots/before/gantt.png) | [gantt](ux-shots/after/gantt.png) | チャートが窓の下まで広がる。遅れを「約3日遅れ」と文字でも出す。短いバーの名前はバーの外に出す。保留ボタンが見える |
+| ガント（ライト） | [gantt-light](ux-shots/before/gantt-light.png) | [gantt-light](ux-shots/after/gantt-light.png) | 期限超過の赤を濃くした。曜日・注記の文字を大きくした |
+| 報告 | [report](ux-shots/before/report.png) | [report](ux-shots/after/report.png) | 担当者以外の書き込みを「報告あり」に数えない。遅れ・報告なしの数え方をほかの画面とそろえた。上部を詰めた |
+| タスクの詳細 | [detail](ux-shots/before/detail.png) | [detail](ux-shots/after/detail.png) | 状態・担当・日程をその場で変えられ、知らせから元に戻せる。完了したタスクは「✓ 完了」と出す |
+| 詳細の編集 | [detail-edit](ux-shots/before/detail-edit.png) | [detail-edit](ux-shots/after/detail-edit.png) | 保存のボタンを上に固定し、Ctrl+Enter で保存できる |
+| タスク追加 | [quickadd](ux-shots/before/quickadd.png) | [quickadd](ux-shots/after/quickadd.png) | 期限の近道、日付の食い違いの説明と直すボタン、書きかけを戻したことの知らせ |
+| カンバン | [kanban](ux-shots/before/kanban.png) | [kanban](ux-shots/after/kanban.png) | 期限に「あと3日」を添える。キーボードで列を移せる。追加に失敗しても入力が残る |
+| チーム | [team](ux-shots/before/team.png) | [team](ux-shots/after/team.png) | メンバーごとに「遅れ」「報告なし（直近7日）」を出し、1行にまとめて上に置いた |
+| 計画 | [plan](ux-shots/before/plan.png) | [plan](ux-shots/after/plan.png) | 見出しを1行にまとめた。予定を入れても画面全体を読み直さない |
+| 進捗 | [progress](ux-shots/before/progress.png) | [progress](ux-shots/after/progress.png) | 絞り込みの選んでいるチップに ✓。返信したらその投稿へ移る |
+| 狭い窓（1024px） | [gantt-1024](ux-shots/before/gantt-1024.png) | [gantt-1024](ux-shots/after/gantt-1024.png) | 上部が1段に収まる。パネルを自動で畳み、タスク名の列も縮める |
+| 文字 150% | （改善前なし） | [detail-large-font](ux-shots/after/detail-large-font.png) | 文字に合わせてガントの列幅・小さいボタンが広がる |
+
+## 点数の推移
+
+10点満点。評価者は毎回立場を変えた、別のエージェント。変更の内容は伝えず、画面と実際の操作で採点してもらった。立場ごとに見る所が違うので、順に並べても同じ物差しの推移にはならない。ラウンド17〜25は改善前の評価、26は最後の総合評価（別のセッションの記録から転記）。
+
+| ラウンド | 評価者の立場 | 分かりやすさ | 操作効率 | 見た目と一貫性 | フィードバック | エラー防止と回復 | アクセシビリティ | 画面サイズ対応 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 初めて使う人 | 5 | 6 | 6 | 6 | 4 | 4 | 5 |
+| 2 | 毎日使う人 | 6 | 5 | 6 | 6 | 6 | 5 | 6 |
+| 3 | 急いでいるリーダー | 5 | 6 | 6 | 7 | 7 | 6 | 6 |
+| 4 | キーボードだけで操作する人 | 6 | 4 | 7 | 6 | 6 | 3 | 6 |
+| 5 | 文字が見えにくい人 | 6 | 7 | 5 | 7 | 5 | 4 | 5 |
+| 6 | チームリーダー | 6 | 6 | 7 | 6 | 5 | 6 | 7 |
+| 7 | 狭い幅で使う人 | 6 | 6 | 5 | 7 | 6 | 6 | 4 |
+| 8 | 初めて使う人（2回目） | 6 | 7 | 6 | 7 | 6 | 6 | 7 |
+| 9 | 毎日使う人（2回目） | 7 | 6 | 7 | 6 | 5 | 7 | 6 |
+| 10 | 急いでいるリーダー（2回目） | 6 | 7 | 6 | 7 | 6 | 6 | 7 |
+| 11 | キーボード（2回目） | 7 | 5 | 6 | 7 | 6 | 4 | 7 |
+| 12 | 文字が見えにくい人（2回目） | 6 | 6 | 5 | 6 | 7 | 4 | 5 |
+| 13 | チームリーダー（2回目） | 5 | 7 | 6 | 7 | 5 | 6 | 7 |
+| 14 | 狭い幅（2回目） | 6 | 7 | 6 | 7 | 7 | 7 | 5 |
+| 15 | 初めて使う一般のメンバー | 5 | 7 | 6 | 7 | 7 | 5 | 6 |
+| 16 | 毎日使う人（3回目） | 7 | 6 | 6 | 6 | 5 | 6 | 7 |
+| 17 | 急いでいるユーザー | 8 | 7 | 8 | 7 | 7 | 7 | 8 |
+| 18 | キーボード・不安定な LAN | 8 | 8 | 8 | 6 | 5 | 7 | 8 |
+| 19 | 文字が見えにくい人 | 8 | 8 | 8 | 8 | 8 | 7 | 8 |
+| 20 | チームリーダー・定例 | 8 | 7 | 8 | 8 | 8 | 8 | 8 |
+| 21 | 初めて使う人 | 8 | 8 | 8 | 8 | 8 | 8 | 8 |
+| 22 | 通信が不安定な LAN | 7 | 8 | 8 | 5 | 5 | 8 | 8 |
+| 23 | 狭い窓・文字拡大 | 8 | 7 | 8 | 8 | 8 | 7 | 7 |
+| 24 | 毎日更新するメンバー | 8 | 7 | 8 | 7 | 5 | 8 | 8 |
+| 25 | 計画調整・障害からの復旧 | 8 | 7 | 8 | 5 | 6 | 8 | 8 |
+| 26 | 総合の再評価 | 8 | 8 | 8 | 8 | 8 | 8 | 8 |
+
+同じ立場の点を比べると、キーボードだけで操作する人のアクセシビリティは 3（ラウンド4）→ 4（11）→ 7（18）、文字が見えにくい人のアクセシビリティは 4（5）→ 4（12）→ 7（19）と上がった。ラウンド17のあとは、どの立場でも分かりやすさと見た目が8点に届いた。点が下がったラウンド（18・22・25 のフィードバックと回復）は、通信の失敗という新しい条件で評価したもので、それぞれ同じラウンドで直している。
+
+## 主な変更
+
+
+<<<yomiyasu:material command results>>>
+[
+  {
+    "label": "Web型チェック",
+    "command": "npx tsc --noEmit -p web/tsconfig.json",
+    "exit_code": 0,
+    "seconds": 9.4
+  },
+  {
+    "label": "main型チェック",
+    "command": "npx tsc --noEmit -p tsconfig.node.json --composite false",
+    "exit_code": 0,
+    "seconds": 3.4
+  },
+  {
+    "label": "renderer型チェック",
+    "command": "npx tsc --noEmit -p tsconfig.web.json --composite false --noUnusedLocals false",
+    "exit_code": 0,
+    "seconds": 8.7
+  },
+  {
+    "label": "server型チェック",
+    "command": "npm --prefix server run typecheck",
+    "exit_code": 0,
+    "seconds": 2.7
+  },
+  {
+    "label": "Webビルド",
+    "command": "npx vite build --config vite.web.config.ts --outDir \"C:\\Users\\ku_em\\AppData\\Local\\Temp\\hakobi-report-20261021\\web-build\"",
+    "exit_code": 0,
+    "seconds": 4.9
+  },
+  {
+    "label": "年次繰り返し",
+    "command": "npm run test:yearly",
+    "exit_code": 0,
+    "seconds": 3.2
+  },
+  {
+    "label": "進捗集計・延期・遅れ",
+    "command": "npm run test:progress-report",
+    "exit_code": 0,
+    "seconds": 2.1
+  },
+  {
+    "label": "報告リマインド",
+    "command": "npm --prefix server run test:report-reminder",
+    "exit_code": 0,
+    "seconds": 4.0
+  },
+  {
+    "label": "期限通知",
+    "command": "npm --prefix server run test:due-notifications",
+    "exit_code": 0,
+    "seconds": 1.1
+  },
+  {
+    "label": "ガント表示位置",
+    "command": "npm run test:gantt-scroll",
+    "exit_code": 1,
+    "seconds": 2.2
+  }
+]
+<<<yomiyasu:material npm run test:ux>>>
+
+> todo-app@1.0.5 test:ux
+> node tests/ux-usability-electron.cjs
+
+
+HAKOBI UX checks passed: visible save, Ctrl+Enter, yearly preserved, record error/retry/order, column add failure/retention/single request/retry/focus, radio arrows, narrow plan menu, collapsible unscheduled, inline title error, keyboard plan placement, list roving tab, large-font list width and tab hint, recurring undo cleanup, empty title reason, overlapping block titles, gantt fill/scale event/settings escape, gantt row arrows, app confirm dialog
