@@ -1,0 +1,17 @@
+{
+  "images": true,
+  "links": true,
+  "desktopNoOverflow": true,
+  "routes": true,
+  "cases": true,
+  "zoom": true,
+  "commands": true,
+  "validation": true,
+  "motionPause": true,
+  "savedCheck": true,
+  "reloadedCheck": true,
+  "compactPcNoOverflow": true,
+  "pcZoom125NoOverflow": true,
+  "consoleErrors": [],
+  "animationPeriodSeconds": 6
+}

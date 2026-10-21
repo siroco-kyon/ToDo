@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 510" role="img" aria-labelledby="title desc">
+<title id="title">チームのデータはサーバーに集まり、ブラウザとデスクトップ版から使えます</title>
+<desc id="desc">操作を送る矢印と、変更を知らせる矢印に沿って光が流れる6秒ループの模式図です。文字は動きません。通信の速さや頻度を測定した図ではありません。</desc>
+<defs>
+ <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0L6 3L0 6" fill="none" stroke="#5b8b89" stroke-width="1.4"/></marker>
+ <filter id="glow"><feGaussianBlur stdDeviation="5"/></filter>
+ <style>
+ text{font-family:'Yu Gothic UI','Meiryo',sans-serif;fill:#173c43} .label{font-size:20px;font-weight:700}.small{font-size:15px;fill:#49636a}
+ .lane{fill:none;stroke:#88aaa6;stroke-width:2;stroke-dasharray:6 10;marker-end:url(#arrow);animation:flow 6s linear infinite}
+ .halo{fill:#c3f2e1;opacity:0;filter:url(#glow)}.server-halo{animation:server 6s linear infinite}.browser-halo{animation:browser 6s linear infinite}.desktop-halo{animation:desktop 6s linear infinite}
+ .browser-icon{animation:bounce-browser 6s ease-in-out infinite}.desktop-icon{animation:bounce-desktop 6s ease-in-out infinite}
+ @keyframes flow{to{stroke-dashoffset:-96}}@keyframes server{0%,32%,43%,56%,100%{opacity:0}38%,50%{opacity:.85}}
+ @keyframes browser{0%,66%,80%,100%{opacity:0}72%{opacity:.85}}@keyframes desktop{0%,79%,93%,100%{opacity:0}85%{opacity:.85}}
+ @keyframes bounce-browser{0%,68%,78%,100%{transform:translateY(0)}72%{transform:translateY(-5px)}}@keyframes bounce-desktop{0%,81%,91%,100%{transform:translateY(0)}85%{transform:translateY(-5px)}}
+ svg[data-paused] *{animation-play-state:paused!important}
+ @media(prefers-reduced-motion:reduce){svg:not([data-play]) *{animation:none!important}svg:not([data-play]) .packet{display:none}svg:not([data-play]) .halo{opacity:0}}
+ </style>
+</defs>
+<rect width="1100" height="510" rx="24" fill="#f1f7f4"/>
+<text x="36" y="43" class="label">同じチームの仕事を、いつものPCから</text>
+<text x="36" y="70" class="small">社内LAN内の構成例 / 1つのサーバーをみんなで使う</text>
+<path class="lane" d="M290 157C365 157 366 215 442 215"/>
+<path class="lane" d="M442 264C365 264 366 205 290 205"/>
+<path class="lane" d="M810 157C735 157 734 215 658 215"/>
+<path class="lane" d="M658 264C735 264 734 205 810 205"/>
+<text x="335" y="126" class="small" text-anchor="middle">操作を送る</text><text x="765" y="126" class="small" text-anchor="middle">操作を送る</text>
+<text x="336" y="311" class="small" text-anchor="middle">変更を知らせる</text><text x="765" y="311" class="small" text-anchor="middle">変更を知らせる</text>
+<rect class="halo browser-halo" x="28" y="104" width="270" height="160" rx="24"/>
+<rect x="36" y="112" width="254" height="144" rx="18" fill="white" stroke="#cadad5"/>
+<g class="browser-icon" fill="none" stroke="#227f78" stroke-width="2.5"><rect x="58" y="136" width="46" height="34" rx="5"/><path d="M58 146H104M66 141H68M73 141H75"/></g>
+<text x="120" y="153" class="label">ブラウザ</text><text x="58" y="202" class="small">インストールせずに利用</text><text x="58" y="228" class="small">URLとアカウントでログイン</text>
+<rect class="halo server-halo" x="434" y="144" width="232" height="240" rx="24"/>
+<rect x="442" y="152" width="216" height="224" rx="18" fill="#164d50"/>
+<text x="550" y="188" text-anchor="middle" style="fill:white" class="label">チームサーバー</text>
+<g fill="#d5eee0" stroke="#a6cfc4" stroke-width="2"><path d="M510 237V289C510 306 590 306 590 289V237"/><ellipse cx="550" cy="237" rx="40" ry="12"/></g>
+<text x="550" y="332" text-anchor="middle" style="fill:white;font-size:17px">チームのデータを保存</text><text x="550" y="356" text-anchor="middle" style="fill:#c9e7df;font-size:14px">画面とAPIもここから配信</text>
+<rect class="halo desktop-halo" x="802" y="104" width="270" height="160" rx="24"/>
+<rect x="810" y="112" width="254" height="144" rx="18" fill="white" stroke="#cadad5"/>
+<g class="desktop-icon" fill="none" stroke="#227f78" stroke-width="2.5"><rect x="832" y="135" width="45" height="30" rx="4"/><path d="M855 165V174M842 175H868"/></g>
+<text x="892" y="153" class="label">デスクトップ版</text><text x="832" y="202" class="small">チーム接続で同じデータへ</text><text x="832" y="228" class="small">タイマー・トレイ・OS通知も</text>
+<g class="packet" fill="#efaa48"><circle r="6"><animateMotion dur="6s" repeatCount="indefinite" path="M290 157C365 157 366 215 442 215" keyTimes="0;.08;.38;1" keyPoints="0;0;1;1" calcMode="linear"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;.08;.11;.35;.38;1" dur="6s" repeatCount="indefinite"/></circle>
+<circle r="6"><animateMotion dur="6s" repeatCount="indefinite" path="M810 157C735 157 734 215 658 215" keyTimes="0;.2;.5;1" keyPoints="0;0;1;1" calcMode="linear"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;.2;.23;.47;.5;1" dur="6s" repeatCount="indefinite"/></circle></g>
+<g class="packet" fill="#2c9b8b"><circle r="6"><animateMotion dur="6s" repeatCount="indefinite" path="M442 264C365 264 366 205 290 205" keyTimes="0;.42;.72;1" keyPoints="0;0;1;1" calcMode="linear"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;.42;.45;.69;.72;1" dur="6s" repeatCount="indefinite"/></circle>
+<circle r="6"><animateMotion dur="6s" repeatCount="indefinite" path="M658 264C735 264 734 205 810 205" keyTimes="0;.55;.85;1" keyPoints="0;0;1;1" calcMode="linear"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;.55;.58;.82;.85;1" dur="6s" repeatCount="indefinite"/></circle></g>
+<circle cx="46" cy="419" r="5" fill="#efaa48"/><text x="61" y="425" class="small">操作の送信（HTTP）</text><circle cx="302" cy="419" r="5" fill="#2c9b8b"/><text x="317" y="425" class="small">変更のお知らせ（WebSocket）</text>
+<text x="36" y="466" class="small">6秒で1周する模式図です。通信の速さ・回数を表すものではありません。</text>
+</svg>
