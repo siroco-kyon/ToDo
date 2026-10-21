@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-21",
+  "viewport": [
+    1440,
+    960
+  ],
+  "theme": "light",
+  "fontScale": "120%",
+  "fictional": true,
+  "sourceCommit": "30d44bba0090b6c574790c21319fc17ef85ff42e",
+  "crops": {
+    "tour-plan": [
+      510,
+      70,
+      1415,
+      950
+    ],
+    "tour-kanban": [
+      502,
+      70,
+      1430,
+      820
+    ],
+    "tour-timer": [
+      512,
+      396,
+      1408,
+      605
+    ],
+    "tour-record": [
+      510,
+      70,
+      1428,
+      430
+    ],
+    "tour-checklist": [
+      510,
+      70,
+      1428,
+      725
+    ],
+    "tour-dependencies": [
+      510,
+      548,
+      1408,
+      805
+    ]
+  },
+  "timer_demo": "The disposable running clock was set 35 minutes earlier to demonstrate timer and log UI. No real work duration is claimed."
+}

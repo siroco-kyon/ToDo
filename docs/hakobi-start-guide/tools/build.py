@@ -11,9 +11,15 @@ REPO = ROOT.parents[1]
 source = (ROOT / 'guide.template.html').read_text(encoding='utf-8')
 def replace_image(match):
     name = match.group(1)
-    path = REPO / 'docs/hakobi-showcase/assets' / (name + '.png')
+    path = ROOT / 'assets' / (name + '.png')
+    if not path.exists(): path = REPO / 'docs/hakobi-showcase/assets' / (name + '.png')
     labels = {'gantt-wide':'ガントの画面例', 'team-focus':'メンバーごとの担当状況',
-              'discussion':'仕事の相談と返信', 'meeting-focus':'定例で決めた対応と期限'}
+              'discussion':'仕事の相談と返信', 'meeting-focus':'定例で決めた対応と期限',
+              'tour-plan':'時間帯に並べた今日の計画', 'tour-kanban':'状態別に並べたカンバン',
+              'tour-timer':'タスク詳細の計測時間と進捗', 'tour-record':'計測した作業時間の記録',
+              'tour-checklist':'中の項目をチェックするToDoリスト',
+              'tour-dependencies':'先行・後続のタスクをつなぐ依存関係',
+              'report-focus':'期間と担当を選び、文章をコピーする報告画面'}
     data = base64.b64encode(path.read_bytes()).decode('ascii')
     return f'<img src="data:image/png;base64,{data}" alt="{labels[name]}" width="1000">'
 source = re.sub(r'@IMAGE:([a-z-]+)@', replace_image, source)

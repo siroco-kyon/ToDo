@@ -6,9 +6,11 @@
 - [紹介資料と導入ガイドの配布セット](HAKOBI_紹介資料と導入ガイド.zip)：レポートPDF、HTML、SVG、GIF、起動・運用ガイド。
 - [通信のSVG](team-traffic.svg)：トラフィック、到着先の発光、アイコンの小さな動きを6秒周期に統一。文字は静止。
 - [同じ図のGIF](team-traffic.gif)：90フレーム、合計6000ms、無限ループ。
-- [評価基準](review/criteria.md)、[初稿の評価](review/initial-review.md)、[最終評価](review/final-review.md)、[確認記録](review/validation.md)。
+- [評価基準](review/criteria.md)、[初稿の評価](review/initial-review.md)、[初版の最終評価](review/final-review.md)、[機能ツアー追加後の評価](review/feature-tour-review.md)、[確認記録](review/validation.md)。
 
-別エージェントによる同じ基準での評価は、初稿92点、最終96点／100点です。
+別エージェントによる同じ基準での評価は、初稿92点、初版96点、機能ツアー追加後96点／100点です。
+
+導入手順の前に、ガント・依存関係・計画・カンバン・タイマー・記録・ToDoリスト・報告の8機能を紹介しています。画面例は12枚（11種類）。6枚は今回、架空データの一時DBで撮影した実画面です。使う場面と最初に試す操作を添え、クリックで拡大できます。
 
 個人からチームへの取り込みは、一方向のコピーです。接続先の切り替えや、個人用DBとの継続的な同期とは区別して説明しています。HTMLの設定入力は、手順のパスとURLを変える機能です。PCの設定やサーバーへの接続・コマンド実行は行いません。
 
@@ -16,9 +18,14 @@ Windowsの「動きを減らす」設定が有効な場合、HTMLは静止した
 
 ## 編集と再生成
 
-本文・デザイン・動作の原稿は `guide.template.html`、通信図の原稿は `team-traffic.svg` です。画面例は既存の `docs/hakobi-showcase/assets/` の実画面を使います。PythonとPillow、ブラウザ検査にはリポジトリのElectronを使います。アプリの運用DBは開きません。
+本文・デザイン・動作の原稿は `guide.template.html`、通信図の原稿は `team-traffic.svg` です。画面例は `assets/` と既存の `docs/hakobi-showcase/assets/` の実画面を使います。新規画面の撮影元と切り出し座標は `assets/capture-info.json` に記録しています。PythonとPillow、ブラウザ検査にはリポジトリのElectronを使います。アプリの運用DBは開きません。
 
 ```powershell
+# 機能紹介の画像を撮り直す場合
+node docs/hakobi-start-guide/tools/capture_features.cjs
+python docs/hakobi-start-guide/tools/crop_features.py
+
+# HTMLと配布セットの生成
 python docs/hakobi-start-guide/tools/build.py
 node docs/hakobi-start-guide/tools/check.cjs --frames
 python docs/hakobi-start-guide/tools/build_animation.py
