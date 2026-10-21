@@ -1,4 +1,6 @@
 import { Router, type Response } from 'express'
+import { requireAdmin } from '../auth'
+import { getDesktopDownloadStats, recordDesktopDownload } from '../db/desktopDownloads'
 import { createDesktopReleaseReader, type DesktopReleaseResult } from '../desktopRelease'
 
 const NOT_PUBLISHED = '配布中のインストーラーがありません'
@@ -34,13 +36,30 @@ export function createDesktopReleaseRouter(dir: string): Router {
     res.json(req.user?.role === 'admin' ? { available: false, reason: result.reason } : { available: false })
   })
 
-  router.get('/download', async (_req, res) => {
+  router.get('/stats', requireAdmin, (_req, res) => {
+    res.set('Cache-Control', 'no-store')
+    res.json(getDesktopDownloadStats())
+  })
+
+  router.get('/download', async (req, res) => {
     const result = await read()
     if (!result.ok) {
       sendNotPublished(res)
       return
     }
-    const { fileName } = result.release
+    const { fileName, version } = result.release
+    // Count full GET responses only. HEAD, 206 resume/range responses, 304 and failed
+    // transfers must not inflate the count. Completion means the server sent the file,
+    // not that the browser saved it or that the installer was run.
+    res.once('finish', () => {
+      if (req.method !== 'GET' || res.statusCode !== 200) return
+      try {
+        recordDesktopDownload(version)
+      } catch (error) {
+        // A statistics failure must never prevent installer downloads.
+        console.warn('[desktop] ダウンロード回数を記録できませんでした', error)
+      }
+    })
     res.attachment(fileName)
     // 絶対パスではなく root + ファイル名で渡す（send は絶対パスの途中にある .フォルダ も拒否するため）。
     // HEAD と Range（途中からの再開）は send が処理する。

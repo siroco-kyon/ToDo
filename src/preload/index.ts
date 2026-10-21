@@ -21,6 +21,7 @@ import type {
   PublicUser,
   UserDeletePreview,
   AdminBackupInfo,
+  DesktopDownloadStat,
   UserRole,
   CreateUserInput,
   UpdateUserInput,
@@ -69,6 +70,7 @@ export type {
   PublicUser,
   UserDeletePreview,
   AdminBackupInfo,
+  DesktopDownloadStat,
   UserRole,
   CreateUserInput,
   UpdateUserInput,
@@ -177,6 +179,8 @@ const api = {
     ipcRenderer.invoke('markdown:export', mode),
 
   // Users & team (multi-user; the Electron build returns empty/no-op values)
+  desktopDownloadStats: (): Promise<DesktopDownloadStat[]> => ipcRenderer.invoke('desktop:downloadStats'),
+
   userList: (): Promise<PublicUser[]> => ipcRenderer.invoke('user:list'),
   teamGetDashboard: (includePrivate: boolean): Promise<TeamDashboard> => ipcRenderer.invoke('team:getDashboard', includePrivate),
   authGetCurrentUser: (): Promise<PublicUser | null> => ipcRenderer.invoke('auth:getCurrentUser'),

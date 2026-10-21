@@ -2,6 +2,13 @@ import type Database from 'better-sqlite3'
 
 export function createSchema(db: Database.Database): void {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS DesktopDownloadCounts (
+      version TEXT NOT NULL,
+      download_date TEXT NOT NULL,
+      download_count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (version, download_date)
+    );
+
     CREATE TABLE IF NOT EXISTS Users (
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL UNIQUE,

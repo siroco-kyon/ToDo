@@ -21,6 +21,7 @@ import type {
   PublicUser,
   UserDeletePreview,
   AdminBackupInfo,
+  DesktopDownloadStat,
   CreateUserInput,
   UpdateUserInput,
   UserNotification,
@@ -456,6 +457,8 @@ export const api: Api = {
   },
 
   // Users & team
+  desktopDownloadStats: () => get<DesktopDownloadStat[]>('/desktop-release/stats'),
+
   userList: () => get<PublicUser[]>('/users'),
   teamGetDashboard: (includePrivate) => get<TeamDashboard>('/team', { includePrivate: includePrivate === false ? 'false' : undefined }),
   authGetCurrentUser: async (): Promise<PublicUser | null> => {

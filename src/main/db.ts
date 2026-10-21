@@ -1,3 +1,8 @@
+export interface DesktopDownloadStat {
+  version: string
+  downloadCount: number
+}
+
 import Database from 'better-sqlite3'
 import fs from 'fs'
 import path from 'path'
