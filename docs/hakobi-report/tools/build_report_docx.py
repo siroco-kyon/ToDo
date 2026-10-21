@@ -692,7 +692,9 @@ def render_markdown(doc: Document, lines: list[str], source_dir: Path, assets, m
         if heading:
             level, title = len(heading.group(1)), heading.group(2)
             p = doc.add_heading(title, level=level)
-            if main_body and level == 1 and title.startswith("付録") and first_appendix:
+            # Keep the defaults appendix on a fresh page; its last row must not
+            # become the only content on the following page after specification updates.
+            if main_body and level == 1 and title.startswith("付録") and (first_appendix or title.startswith("付録B ")):
                 p.paragraph_format.page_break_before = True
                 first_appendix = False
             for run in p.runs:
