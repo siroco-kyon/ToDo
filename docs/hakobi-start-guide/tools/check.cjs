@@ -23,11 +23,13 @@ app.whenReady().then(async()=>{
   results.links=await js(`[...document.querySelectorAll('a[href^="#"]')].every(a=>document.getElementById(a.getAttribute('href').slice(1)))`)
   await shot('desktop-hero')
   results.desktopNoOverflow=await js('document.documentElement.scrollWidth<=innerWidth')
-  for(const id of ['solo','move','team','setup','desktop-build','server-build','care','trouble','check']){
+  for(const id of ['features','solo','move','team','setup','desktop-build','server-build','care','trouble','check']){
     await js(`document.documentElement.style.scrollBehavior='auto';document.getElementById('${id}').scrollIntoView()`)
     await shot('desktop-'+id)
   }
   results.routes=await js(`(()=>{document.querySelector('[data-route="host"]').click();return document.getElementById('route-next').getAttribute('href')==='#setup'})()`)
+  results.featureTour=await js(`document.querySelectorAll('#features .feature-card').length===8`)
+  results.screenshotCount=await js(`document.querySelectorAll('figure img').length`)
   results.cases=await js(`(()=>{document.querySelector('[data-case="discussion"]').click();return !document.querySelector('[data-panel="discussion"]').hidden&&document.querySelector('[data-panel="team"]').hidden})()`)
   results.zoom=await js(`(()=>{document.querySelector('[data-zoom]').click();const open=document.getElementById('zoom').open;document.getElementById('zoom-close').click();return open&&!document.getElementById('zoom').open})()`)
   results.commands=await js(String.raw`(()=>{const d=document.getElementById('workdir'),i=document.getElementById('serverip');d.value='D:\\Team Work\\HAKOBI';i.value='10.0.0.25';d.dispatchEvent(new Event('input'));i.dispatchEvent(new Event('input'));return document.getElementById('cmd-server').textContent.includes("Set-Location -LiteralPath 'D:\\Team Work\\HAKOBI'")&&document.querySelector('.generated-url').textContent==='http://10.0.0.25:4577'})()`)

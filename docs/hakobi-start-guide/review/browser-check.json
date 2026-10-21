@@ -3,6 +3,8 @@
   "links": true,
   "desktopNoOverflow": true,
   "routes": true,
+  "featureTour": true,
+  "screenshotCount": 12,
   "cases": true,
   "zoom": true,
   "commands": true,

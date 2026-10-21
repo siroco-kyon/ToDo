@@ -1,0 +1,2924 @@
+<<<yomiyasu:material README.md>>>
+# HAKOBI
+
+ガントチャートを中心にしたタスク管理アプリです。タスク管理、サブタスク、依存関係、今日の計画、作業ログを 1 つのアプリで扱えます。
+
+デスクトップ版は、チーム接続と個人用を選べます。
+
+- チーム接続のデスクトップ版（Electron）
+  初回に自分のグループのサーバー URL を登録し、次回から自動接続します。サーバーが配信する画面を表示するので、ブラウザ版と同じ担当者・チーム管理・リアルタイム同期を使えます。右下のタイマー、進捗のクイック投稿、トレイ操作、OS の通知と未読バッジ、トレイ・タスクバーからの計測の開始/切り替え/停止を追加しています。インストーラーはサーバーのダウンロードページ（`/download`、ログイン不要）から入手でき、新しい版を公開するとアプリにお知らせが出ます（インストールは手動）。
+- 個人用のデスクトップ版（Electron）
+  1 人で使うローカルアプリです。従来どおりデータを端末内の SQLite に保存します。
+- チーム向けサーバー版（マルチユーザー Web）
+  中央サーバーに配置し、ブラウザから複数人（6 人規模を想定）で利用します。担当者ごとの進捗・期限や「今だれが何をやっているか」を、ガントとチームダッシュボードで共有できます。
+
+React 部分（レンダラー）は共通です。個人用では Electron IPC、チーム接続ではサーバーの HTTP/WebSocket API を使います。デスクトップからサーバーの DB ファイルへ直接接続しません。チーム接続の配布・グループ分離・更新の手順は [HAKOBI 運用ガイド](docs/HAKOBI.md) を参照してください。
+
+## 主な機能
+
+- ガントチャート中心のタスク管理
+- 説明・メモ・進捗タブの投稿と返信に貼ったHTTP/HTTPS URLをクリックして開く（Webは別タブ、デスクトップは標準ブラウザー）
+- 管理者によるメンバー削除（担当件数を確認し、対象ログインIDを入力して実行）。担当を解除し、ログインと接続を終了。作業ログ・投稿・変更履歴は保持し、削除済みログインIDは再利用不可
+- 報告タブで保留開始日時と保留期間を確認。保留中のみの絞り込み、古い順の表示、メモによる保留理由・再開条件の記録、Markdown・CSV出力に対応
+- タスクの保留・再開（進捗・日付を保持。ガントの紫色表示と保留中フィルター、詳細画面の操作、カンバンの保留中列）
+- 保留時は実行中タイマーを停止して作業ログを保存（サーバー版では同じタスクを計測する全員を停止）。再開後に計測できる
+- 保留中のタスクは今日の作業候補と前日からの繰り越し対象から除外。登録済みの予定と期限通知・依存関係は保持
+- タスクバーのドラッグ移動、開始日・終了日のリサイズ
+- 親タスクごとのサブタスク展開・折りたたみ
+- サブタスクの任意並べ替え（詳細画面の上下ボタン／ガントのドラッグ）
+- 表示期間外のタスク・サブタスクを左右端のマーカーで確認
+- 完了／未完了フィルターを親タスクとサブタスクへ個別に適用
+- サブタスクの期限が親タスクを超えたとき、親タスクの期限を自動延長
+- 依存関係の管理
+  - ガント上のドラッグ接続
+  - 依存関係パネルからの追加
+  - タスク詳細画面からの追加・待機日数変更・削除
+  - Finish to Start 形式の依存関係と待機日数
+- 基準線の保存と比較表示
+- 進捗シグナル表示（バーの色で区別。期間のうち今日までに過ぎた日数の割合を「予定の進捗」とし、実際の進捗が予定より何日分遅れているかで判定。「何日分遅れたら遅れにするか」と「土日・祝日を除いて数えるか」は表示設定で変更できる）
+  - 順調（青）
+  - 遅れ（橙。「約3日遅れ」のように日数で表示）
+  - 期限超過（赤。期限から今日までを斜線で表示）
+  - 開始前（灰）
+- ガントの見やすさ
+  - 土日・祝日の列の色分け（祝日名はヘッダーのツールチップ）と、今日の列を囲む赤い枠
+  - タスク名・担当・進捗をバーの上に表示。開始日が画面の左外にあっても、見えている範囲の左端に出し続ける
+  - マウスを乗せた行を、左の一覧からバーまで横一列でハイライト
+  - バーのツールチップに担当・予定との差・最新の進捗ログ、要相談があるタスクにはバーの右に印
+  - カテゴリ別／担当者別の並び替え（担当者別はサーバー版）。タスクは表のように続けて並べ、まとまりの境目は色付きの見出しと左端の線、タスクの境目は区切り線で示す。サブタスクは「├ └」で字下げし、背景を少し暗くする
+  - 表示単位は日・週・月・年。初期表示と「今日に戻る」では、今日を左から 1/4 の位置に表示
+- 今日の計画ビュー
+- 任意日の計画、前日未完了の繰り越し、予定の15分単位調整
+- 概要ダッシュボード
+- メモ・サブタスク・担当者を含む検索、保存ビュー
+- 担当者別の概要集計、タスク担当表示、メンバーごとの活動サマリー
+- 複数行／連続追加、タスク複製、タスクテンプレート
+- 作業ログとタイマー
+- カテゴリ管理
+- Markdown エクスポート
+- タスクの繰り返し設定（完了にすると次回分を作る）
+  - 毎日・毎週・毎月・毎年
+  - 開始日・期限を前回から1周期ずらして次回分を作る。毎年は同じ月日（2/29の翌年は2/28）
+  - 完了を取り消しても、作成済みの次回分は残る。不要なら次回分をアーカイブする
+- ToDoリスト（中の項目をチェックして使うタスク）
+  - タスクの「種類」で選ぶ。期限は「なし」のままでも、決めてもよい（作るときの期限欄か、あとから詳細・ガント・報告タブで入れる）
+  - 中の項目ごとに 毎日／平日／毎週／毎月 を選ぶと、周期が変わったときに未チェックに戻る（毎週は月曜、毎月は1日）
+  - 繰り返さない項目は、チェックすると「済み」に移る。開始日と期限を付けられ、開始日が来たら（期限だけなら期限の日から）「今日やること」に出る
+  - 一覧・カンバン・ガントに「今回 3/5・残り2」のように表示。ガントでは開始日から今日（期限があれば期限）までのバー
+  - 報告タブでは「報告なし」に数えず、周期ごとに終わった回の実施（例: 昨日まで 18/20回（90%））と今の回（例: 今日 1/5）を分けて表示。今日・今週・今月の分は途中なので、チェックしても実施の回数に入れない。率（%）は5回以上たまってから出す。まだのやること・期間中に済んだやることも表示
+- アーカイブ
+- 別ウィンドウでのガント表示
+
+### チーム向けサーバー版の追加機能
+
+- 管理者によるアカウント発行（自己登録なし、bcrypt でパスワードをハッシュ化）
+- セッション Cookie による認証
+- タスクへの担当者割り当てと担当者カラー
+- ガントの担当者フィルタ、担当者カラー表示、稼働中ハイライト
+- チームダッシュボード
+  - いま稼働中（メンバーごとの実行中タイマー）
+  - 期限超過 / まもなく期限
+  - メンバーの負荷
+- WebSocket によるリアルタイム同期（変更が全員に即時反映）
+- 進捗タイムラインの「いいね」利用者表示と、返信への返信通知
+- 通知履歴、種類別通知設定、期限通知、タスク購読、@メンション
+- 管理者用ユーザー管理画面（追加・編集・権限変更・パスワード再設定）
+
+## 画面構成
+
+- `ガント`
+  メイン画面です。日程調整、依存関係、基準線、進捗確認をここで行います。
+- `計画`
+  任意日の予定を時間レーンで並べ、前日からの繰り越しや後続予定の一括移動を行います。
+- `概要`
+  完了率、期限、作業記録、カテゴリ別進捗を1画面で確認します。メンバーごとの活動欄には、期間内の進捗ログを返信まで全文で表示します。
+- `進捗`
+  投稿と返信の最新日時で期間を絞り、更新が新しい順に表示します。過去の投稿への返信や返信への返信も、その投稿を上に移します。投稿には最終返信日時を表示します。編集・いいね・要相談の切り替えでは並び順を変えません。
+- `報告`
+  担当者の名前を選び、その人の担当タスクだけを表示できます。担当者別表示では選んだ人の見出しにまとめます。「副担当のタスクを除く（主担当のみ）」を有効にすると、自分または選んだ人が主担当のタスクだけを残します。この設定も次回まで保持します。
+  サーバー版では担当の絞り込みを「すべて」「自分の担当のみ」「自分の担当＋サブタスク担当」から選べます。「自分の担当のみ」は親タスクの担当者で判定し、配下のサブタスクは担当者にかかわらず表示します。選択は次回も保持します。選んだ期間より前に完了したサブタスクは件数付きで折りたたみ、クリックで展開できます。期間内に完了したものは通常表示し、完了数の集計には折りたたんだ分も含めます。
+  定例ミーティング用の一覧です。担当者別（またはカテゴリ別）に、タスク・サブタスク・期限・進捗と、選んだ期間の進捗ログ（返信込み）・メモを全文で並べます。最終報告日時から「期間内に報告あり／期間内の報告なし／14日以上報告なし」を色分けし、期間中の進捗の変化（例: 40% → 60%（+20））と期限の延期回数も、タスク・サブタスクごとに表示します（期間中に追加したサブタスクには「期間中に追加」と出ます）。ステータス・開始日・期限・メモの変更、進捗率の変更（バーをマウスで左右にドラッグ）、サブタスクの追加と、完了・期限・進捗の変更、進捗ログの投稿・編集・削除・返信、進捗ログと返信への「いいね」（押した人の表示つき）をこの画面で行えます。定例で話したい進捗ログには「要相談」の印を付けられ、担当者ごとの先頭にまとめて表示されます（相談が済んだら外します）。Markdown コピーと CSV 出力に対応しています。
+- `記録`
+  作業ログを確認します。
+- `詳細`
+  タスクの説明、日付、カテゴリ、サブタスク、依存関係、ログを確認・編集します。
+
+補足: ガントを中心にしつつ、用途に応じて概要・カンバン・進捗・報告・計画へ切り替えられます。
+
+## 技術スタック
+
+| 項目 | 内容 |
+| --- | --- |
+| デスクトップ | Electron 29 |
+| UI | React 18 + TypeScript |
+| DB | better-sqlite3 |
+| ビルド | electron-vite |
+| 配布 | electron-builder |
+| サーバー | Express + ws + better-sqlite3（`tsx` で実行） |
+| 認証 | bcryptjs + セッション Cookie |
+| Web ビルド | Vite（`dist-web/` へ出力） |
+
+## セットアップ
+
+```bash
+npm install
+```
+
+`better-sqlite3` を使っているため、`postinstall` でネイティブモジュールの再ビルドが走ります。
+
+## 開発
+
+```bash
+npm run dev
+```
+
+開発モードでは Electron と Vite が同時に起動します。
+
+不具合の再現条件を含めて確認する場合は、両方をビルドしてからテストします。
+
+```bash
+npm run build
+npm run build:web
+npm run test:quality
+npm run test:hakobi
+```
+
+`test:quality`は保存先変更・データ削除・依存関係・同時編集・メンバー管理・旧DB取り込み・サーバー配布を確認します。実Electronでは詳細画面とタイマーを動かし、古い応答、保存失敗、通信失敗からの再試行も検証します。独立した一時DBを使い、運用中のデータは変更しません。
+
+## ビルド
+
+```bash
+npm run build
+```
+
+本番用のビルド成果物は `out/` に出力されます。
+
+## 配布ビルド
+
+```bash
+npm run dist
+```
+
+`npm run dist` では次を順に実行します。
+
+1. `build/icon.png` と `build/icon.ico` を生成
+2. 本番ビルドを作成
+3. `electron-builder` で Windows 向けパッケージを生成
+
+主な出力先:
+
+- `dist/HAKOBI-1.0.5-setup.exe`
+- `dist/HAKOBI-1.0.5-setup.exe.blockmap`
+- `dist/latest.yml`（バージョン・ファイル名・サイズ・sha512。`electron-builder.yml` の `publish:` 設定で出力されます）
+- `dist/win-unpacked/HAKOBI.exe`
+
+チーム接続のメンバーには、インストーラーをサーバーから配ります。
+
+```bash
+npm run publish:desktop
+```
+
+`dist/` のインストーラーが `latest.yml` と `package.json` のバージョンに一致するかを確かめてから、サーバーの配布フォルダ（`TODO_DESKTOP_DIST`、既定 `dist-desktop/`）へコピーします。`latest.yml` は最後に置き換えます。開発 PC でビルドした場合は、サーバーの配布フォルダを共有フォルダにして、開発 PC の `server/.env` の `TODO_DESKTOP_DIST` に `\\<サーバー名>\<共有名>` を書けば、開発 PC から直接公開できます。メンバーは `http://<サーバーのIP>:4577/download` からダウンロードします。手順は [HAKOBI 運用ガイド](docs/HAKOBI.md#デスクトップ版の配布と更新のお知らせ) を参照してください。
+
+## 個人用のデータ保存先
+
+- 開発時
+  `D:\Github\ToDo\data`
+- パッケージ版
+  ユーザーのアプリデータ内（既存の ToDo の保存先を引き継ぎます）
+
+初回セットアップ後は、設定画面から保存先を変更できます。
+
+チーム接続では DB はサーバーの `TODO_DATA_DIR` に置きます。接続先・ウィジェット設定は端末側に保存し、グループの他のメンバーには影響しません。
+
+## チーム向けサーバー版（マルチユーザー Web）
+
+中央サーバー（社内 LAN）に配置し、ブラウザから複数人で利用するモードです。サーバーは `server/` にある独立した Node パッケージで、`better-sqlite3` のネイティブ ABI 競合を避けるため自前の `node_modules` を持ちます。
+
+### 構成
+
+- フロントエンド
+  `src/renderer/` の React をそのまま使い、`web/` のエントリでビルドします（出力先 `dist-web/`）。
+- サーバー
+  Express + better-sqlite3 + ws。`tsx` で TypeScript を直接実行します。既定ポートは `4577`。
+- 認証
+  管理者がアカウントを発行します（自己登録なし）。パスワードは bcrypt でハッシュ化し、セッションは Cookie（`todo_session`）で管理します。
+- リアルタイム同期
+  `/ws` の WebSocket で、変更を全クライアントへ即時通知します。
+
+### セットアップ
+
+```bash
+# 1. ルート（フロント）依存をインストール
+npm install
+
+# 2. サーバー依存をインストール（独立パッケージ）
+npm --prefix server install
+```
+
+### 開発
+
+フロントとサーバーを別々に起動します。
+
+```bash
+# サーバー（ポート 4577、ファイル変更を監視）
+npm run dev:server
+
+# Web フロント（ポート 5273、/api と /ws を 4577 にプロキシ）
+npm run dev:web
+```
+
+ブラウザで `http://localhost:5273` を開きます。
+
+### 本番デプロイ
+
+1. Web フロントをビルドします。成果物は `dist-web/` に出力されます。
+
+   ```bash
+   npm run build:web
+   ```
+
+2. サーバーを起動します。`dist-web/` が存在すれば、サーバーが同一ポートで画面と API の両方を配信します。
+
+   ```bash
+   npm run start:server
+   ```
+
+3. デスクトップ版も配る場合は、`npm run dist` の後に `npm run publish:desktop` を実行します。インストーラーは `dist-desktop/`（`TODO_DESKTOP_DIST`）に置かれ、サーバーが `/download` で配布します。公開後のサーバーの再起動は不要です。
+
+4. 各メンバーは `http://<サーバーのIP>:4577` にブラウザでアクセスします。デスクトップ版は `http://<サーバーのIP>:4577/download` からダウンロードします。
+
+サーバーが使うフォルダは `server/`、`dist-web/`、`dist-desktop/` の3か所です。`dist-web/` を置き換えるときも、`dist-desktop/` は残します。
+
+### 環境変数
+
+| 変数 | 既定値 | 説明 |
+| --- | --- | --- |
+| `PORT` | `4577` | サーバーの待ち受けポート |
+| `TODO_DATA_DIR` | `server/data` | SQLite データベースの保存先ディレクトリ |
+| `TODO_WEB_DIST` | `dist-web`（リポジトリ直下） | 配信する Web ビルドの場所 |
+| `TODO_DESKTOP_DIST` | `dist-desktop`（リポジトリ直下） | 配布するデスクトップ版インストーラーの置き場所。`npm run publish:desktop` の公開先にもなります。全グループで共有できます |
+| `ADMIN_USERNAME` | `admin` | 初回起動時に作る管理者のユーザー名 |
+| `ADMIN_PASSWORD` | （空） | 管理者の初期パスワード。未設定ならランダム生成し、起動ログに 1 回だけ表示します |
+| `SESSION_TTL_DAYS` | `30` | セッションの有効日数 |
+| `SESSION_COOKIE` | `todo_session` | Cookie 名。同じホストの別ポートでグループを分ける場合は別名にします |
+| `TODO_ENV_FILE` | `server/.env` | 起動時に読み込む設定ファイルの絶対パス。シェルの環境変数が優先されます |
+| `TODO_SERVICE_NAME` | `TodoTeamServer` | Windows サービス名。グループごとに別名にします。独自名では `PORT` と `TODO_DATA_DIR` が必須です |
+| `TODO_SERVICE_DESCRIPTION` | HAKOBI チームサーバー（ポート番号） | Windows サービスの説明 |
+
+### 初回起動と管理者
+
+- データベースは `TODO_DATA_DIR/todo.db`（既定 `server/data/todo.db`）に作成されます。
+- ユーザーが 0 人のときだけ、管理者アカウントを 1 つ自動作成します。
+  - `ADMIN_PASSWORD` を指定していればそのパスワードを使います。
+  - 未指定ならランダムなパスワードを生成し、起動ログに 1 回だけ表示します。必ず控えてください。
+- 以降のメンバー追加・編集・権限変更・パスワード再設定は、管理者でログイン後、設定画面の「ユーザー管理」から行います。
+
+### 注意点
+
+- 社内 LAN での利用を前提にした構成です（インターネット公開は想定していません）。
+- サーバーの `better-sqlite3` は Node 用 ABI、デスクトップ版は Electron 用 ABI でビルドされます。`server/` は独立パッケージなので、依存を混在させないでください。
+
+## ディレクトリ構成
+
+```text
+src/
+  main/
+    index.ts          # Electron メインプロセス
+    db.ts             # SQLite アクセス
+    ipc.ts            # IPC ハンドラ
+    config.ts         # データ保存先設定
+    shortcuts.ts      # グローバルショートカット
+    archive.ts        # アーカイブ整理
+    markdown.ts       # Markdown エクスポート
+    icon.ts           # アイコン操作
+  preload/
+    index.ts          # renderer に公開する API（Api 契約の定義元）
+  renderer/           # React 画面（デスクトップ／サーバー両モードで共通）
+    src/
+      App.tsx
+      types.ts
+      components/
+        GanttView.tsx
+        TodoDetail.tsx
+        TodoList.tsx
+        PlanView.tsx
+        WorkLogSummary.tsx
+        Toolbar.tsx
+        SettingsModal.tsx
+        SetupWizardModal.tsx
+        UserManagementModal.tsx   # 管理者用ユーザー管理（サーバー版）
+      lib/
+        desktopRelease.ts         # 配布中のデスクトップ版の取得とバージョン比較
+web/                  # Web 版のエントリと HTTP/WS クライアント
+  index.html
+  main.tsx            # window.api を HTTP/WS 実装で差し替え
+  lib/client.ts       # Api 契約の HTTP/WebSocket 実装
+  auth/               # ログイン画面・認証ゲート・セッション
+  download/
+    DesktopDownloadPage.tsx  # デスクトップ版のダウンロードページ（/download、ログイン不要）
+  desktop/
+    DesktopUpdateNotice.tsx  # 新しい版のお知らせ（デスクトップ版のメイン画面）
+server/               # 中央サーバー（独立 Node パッケージ）
+  src/
+    index.ts          # 起動・静的配信・ルートのマウント
+    config.ts         # ポート・データ保存先・管理者・セッション設定
+    auth.ts           # bcrypt 認証・セッション・管理者シード
+    realtime.ts       # WebSocket リアルタイム同期
+    desktopRelease.ts # 配布するインストーラーの確認（latest.yml・サイズ・sha512）
+    db/               # マルチユーザー対応の SQLite アクセス層
+    routes/           # auth / data / users / desktopRelease の REST ルート
+  scripts/
+    publish-desktop.ts  # npm run publish:desktop（dist/ のインストーラーを配布フォルダへ公開）
+scripts/
+  generate-build-icons.cjs
+```
+
+## ショートカット
+
+既定値:
+
+| ショートカット | 動作 |
+| --- | --- |
+| `Ctrl+Alt+T` | アプリを前面表示 |
+| `Ctrl+Alt+N` | クイック追加を開く |
+| `Ctrl+Alt+E` | Markdown エクスポート |
+| `Ctrl+Alt+P` | チーム接続で進捗のクイック投稿を開く |
+
+設定画面から変更できます。
+
+## メモ
+
+- HTTP クライアントとして `axios` は使っていません。
+- データ操作は `window.api` に集約しています。デスクトップ版は Electron IPC、サーバー版は HTTP/WebSocket で同じ契約を実装しています。
+- 依存関係の自動調整は DB 側で処理しています（デスクトップ版・サーバー版で同じロジックを移植）。
+
+<<<yomiyasu:material src/renderer/src/components/PlanView.tsx>>>
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { AddDailyPlanItemOptions, DailyPlanItem, Todo, UpdateDailyPlanItemInput } from '../types'
+import { checklistBadgeText, hasRemainingToday, type ChecklistSummary } from '../lib/todoList'
+import { dataInk } from '../lib/theme'
+
+// 優先度の表記（ほかの画面の「低・中・高」とそろえる）
+const PRIORITY_LABELS: Record<number, string> = { 1: '最低', 2: '低', 3: '中', 4: '高', 5: '最高' }
+
+interface Props {
+  date: string
+  planItems: DailyPlanItem[]
+  todos: Todo[]
+  runningTodoId: string | null
+  onSelectTodo: (id: string) => void
+  onAddTodo: (todoId: string, options?: AddDailyPlanItemOptions) => Promise<DailyPlanItem>
+  onRemoveItem: (id: string) => Promise<void>
+  /** 知らせを出す（予定を外したときに「元に戻す」を付ける） */
+  onShowToast?: (message: string, type?: 'success' | 'error', action?: { label: string; run: () => void }) => void
+  onUpdateItem: (id: string, data: UpdateDailyPlanItemInput) => Promise<void>
+  onShiftItem: (id: string, deltaMinutes: number) => Promise<void>
+  onShiftFollowing?: (id: string, deltaMinutes: number) => Promise<void>
+  onReorder: (orderedIds: string[]) => Promise<void>
+  onDateChange?: (date: string) => void
+  onCarryOver?: () => Promise<void>
+  /** タスク一覧の絞り込みの表示（候補のタスクに効く）。日付の操作の横に出す */
+  listFilters?: React.ReactNode
+  /** ToDoリストの項目の進み具合。今日の分が残っているリストを候補に出す（ToDoリストを使う人だけ） */
+  checklistSummaries?: Map<string, ChecklistSummary>
+}
+
+interface SuggestedGroup {
+  title: string
+  items: Todo[]
+}
+
+interface TimelineBlock extends DailyPlanItem {
+  startMinutes: number
+  durationMinutes: number
+  endMinutes: number
+}
+
+interface InteractionState {
+  mode: 'move' | 'resize'
+  itemId: string
+  startMinutes: number
+  durationMinutes: number
+  lane: number
+  originClientY: number
+  previewStart: number
+  previewDuration: number
+  previewLane: number
+}
+
+interface DragPreview {
+  title: string
+  durationMinutes: number
+}
+
+interface PlacementDraft {
+  source: 'todo' | 'planItem'
+  id: string
+  title: string
+  durationMinutes: number
+}
+
+interface PlacementTarget {
+  minutes: number
+  lane: number
+}
+
+const TIMELINE_START_HOUR = 0
+const TIMELINE_END_HOUR = 24
+const TIMELINE_TOTAL_MINUTES = (TIMELINE_END_HOUR - TIMELINE_START_HOUR) * 60
+const SNAP_MINUTES = 15
+const MIN_DURATION = 15
+const DEFAULT_DURATION = 60
+const MAX_DURATION = 480
+const PIXELS_PER_MINUTE = 1.8
+const HOUR_HEIGHT = PIXELS_PER_MINUTE * 60
+const TIMELINE_HEIGHT = TIMELINE_TOTAL_MINUTES * PIXELS_PER_MINUTE
+const BLOCK_GAP = 8
+const LANE_COUNT = 1
+const MAX_LANES = 2
+const COMPACT_BLOCK_THRESHOLD = 64
+/** これより狭いブロックは、操作ボタンを「⋯」にまとめる（1行に収まらずタスク名を隠すため） */
+const NARROW_BLOCK_WIDTH = 400
+/** 補足の行まで出せるブロックの高さ（文字の大きさ 100% のとき） */
+const META_BLOCK_THRESHOLD = 84
+const EDGE_SCROLL_THRESHOLD = 72
+const EDGE_SCROLL_PIXELS = 24
+const AUTO_SCROLL_LEAD_MINUTES = 60
+/** 今日以外の計画を開いたときに見せ始める時刻（始業のころ） */
+const WORKDAY_START_HOUR = 8
+
+function getTodayKey(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+function shiftDateKey(dateKey: string, days: number): string {
+  const date = parseDateKey(dateKey)
+  date.setDate(date.getDate() + days)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function parseDateKey(dateStr: string): Date {
+  const [year, month, day] = dateStr.slice(0, 10).split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+function diffCalendarDays(dateStr: string, baseDateStr: string): number {
+  const diffMs = parseDateKey(dateStr).getTime() - parseDateKey(baseDateStr).getTime()
+  return Math.round(diffMs / 86400000)
+}
+
+function formatDueLabel(dueDate: string | null, todayKey: string): string {
+  if (!dueDate) return '期限なし'
+  const isToday = todayKey === getTodayKey()
+  const diffDays = diffCalendarDays(dueDate, todayKey)
+  if (diffDays < 0) return `${Math.abs(diffDays)}日超過`
+  if (diffDays === 0) return isToday ? '今日が期限' : 'この日が期限'
+  if (diffDays === 1) return isToday ? '明日が期限' : '翌日が期限'
+  return `あと${diffDays}日`
+}
+
+/** 「今日に入れる」のボタンの文言。今日以外の計画では「この日に入れる」 */
+function addToDayLabel(dateKey: string): string {
+  return dateKey === getTodayKey() ? '今日に入れる' : 'この日に入れる'
+}
+
+function formatMinutes(minutes: number): string {
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  if (hours === 0) return `${mins}分`
+  if (mins === 0) return `${hours}時間`
+  return `${hours}時間${mins}分`
+}
+
+function clockToMinutes(value: string): number {
+  const [hours, minutes] = value.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+function offsetToClock(offsetMinutes: number): string {
+  const totalMinutes = TIMELINE_START_HOUR * 60 + offsetMinutes
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+/** "HH:MM" を時間割の先頭からの分に。範囲外・読めないときは null */
+function clockToOffset(clock: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})/.exec(clock)
+  if (!match) return null
+  const offset = Number(match[1]) * 60 + Number(match[2]) - TIMELINE_START_HOUR * 60
+  if (offset < 0 || offset >= (TIMELINE_END_HOUR - TIMELINE_START_HOUR) * 60) return null
+  return offset
+}
+
+function nowOffsetMinutes(): number {
+  const now = new Date()
+  return now.getHours() * 60 + now.getMinutes() - TIMELINE_START_HOUR * 60
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function snapMinutes(value: number): number {
+  return Math.round(value / SNAP_MINUTES) * SNAP_MINUTES
+}
+
+function normalizeDuration(value: number | null | undefined): number {
+  return clamp(snapMinutes(value ?? DEFAULT_DURATION), MIN_DURATION, MAX_DURATION)
+}
+
+function getScheduledOffset(item: DailyPlanItem): number | null {
+  if (!item.scheduled_start) return null
+  return clamp(
+    snapMinutes(clockToMinutes(item.scheduled_start) - TIMELINE_START_HOUR * 60),
+    0,
+    TIMELINE_TOTAL_MINUTES - MIN_DURATION
+  )
+}
+
+function buildTimelineBlocks(items: DailyPlanItem[]): TimelineBlock[] {
+  return items
+    .map((item) => {
+      const startMinutes = getScheduledOffset(item)
+      if (startMinutes == null) return null
+
+      const durationMinutes = clamp(
+        normalizeDuration(item.estimated_minutes),
+        MIN_DURATION,
+        TIMELINE_TOTAL_MINUTES - startMinutes
+      )
+
+      return {
+        ...item,
+        startMinutes,
+        durationMinutes,
+        endMinutes: startMinutes + durationMinutes
+      }
+    })
+    .filter((item): item is TimelineBlock => item !== null)
+    .sort((a, b) => {
+      if (a.startMinutes !== b.startMinutes) return a.startMinutes - b.startMinutes
+      if ((a.lane ?? 0) !== (b.lane ?? 0)) return (a.lane ?? 0) - (b.lane ?? 0)
+      if (a.endMinutes !== b.endMinutes) return a.endMinutes - b.endMinutes
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    })
+}
+
+function clampLane(value: number): number {
+  return clamp(Math.round(value), 0, LANE_COUNT - 1)
+}
+
+function getLaneLayout(lane: number): { left: string; width: string } {
+  const safeLane = clampLane(lane)
+  const totalGap = BLOCK_GAP * (LANE_COUNT - 1)
+
+  return {
+    left: safeLane === 0
+      ? '0px'
+      : `calc(${safeLane} * ((100% - ${totalGap}px) / ${LANE_COUNT}) + ${safeLane * BLOCK_GAP}px)`,
+    width: `calc((100% - ${totalGap}px) / ${LANE_COUNT})`
+  }
+}
+
+interface ColumnPlacement {
+  col: number
+  cols: number
+}
+
+function getColumnLayout({ col, cols }: ColumnPlacement): { left: string; width: string } {
+  if (cols <= 1) return { left: '0px', width: '100%' }
+
+  const totalGap = BLOCK_GAP * (cols - 1)
+  return {
+    left: col === 0
+      ? '0px'
+      : `calc(${col} * ((100% - ${totalGap}px) / ${cols}) + ${col * BLOCK_GAP}px)`,
+    width: `calc((100% - ${totalGap}px) / ${cols})`
+  }
+}
+
+/**
+ * Spreads time-overlapping blocks across up to MAX_LANES side-by-side columns
+ * so they no longer stack on top of each other. Blocks within one overlap
+ * cluster share the same column count (full width when nothing overlaps).
+ */
+function packColumns(blocks: TimelineBlock[]): Map<string, ColumnPlacement> {
+  const placement = new Map<string, ColumnPlacement>()
+  let index = 0
+
+  while (index < blocks.length) {
+    let clusterEnd = blocks[index].endMinutes
+    let next = index + 1
+    while (next < blocks.length && blocks[next].startMinutes < clusterEnd) {
+      clusterEnd = Math.max(clusterEnd, blocks[next].endMinutes)
+      next += 1
+    }
+
+    const cluster = blocks.slice(index, next)
+    const columnEnds: number[] = []
+    const assignedColumns = cluster.map((block) => {
+      let col = columnEnds.findIndex((end) => end <= block.startMinutes)
+      if (col === -1) {
+        if (columnEnds.length < MAX_LANES) {
+          col = columnEnds.length
+          columnEnds.push(block.endMinutes)
+        } else {
+          col = columnEnds[0] <= columnEnds[1] ? 0 : 1
+          columnEnds[col] = block.endMinutes
+        }
+      } else {
+        columnEnds[col] = block.endMinutes
+      }
+      return col
+    })
+
+    const cols = Math.min(columnEnds.length, MAX_LANES)
+    cluster.forEach((block, offset) => {
+      placement.set(block.id, { col: assignedColumns[offset], cols })
+    })
+
+    index = next
+  }
+
+  return placement
+}
+
+function readDragPreview(event: React.DragEvent<HTMLElement>): DragPreview | null {
+  const raw = event.dataTransfer.getData('application/x-plan-drag-meta')
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as { title?: string; durationMinutes?: number }
+    if (!parsed.title) return null
+    return {
+      title: parsed.title,
+      durationMinutes: normalizeDuration(parsed.durationMinutes)
+    }
+  } catch {
+    return null
+  }
+}
+
+function reorderIdsByTime(items: DailyPlanItem[]): string[] {
+  const scheduled = items
+    .filter((item) => item.scheduled_start)
+    .sort((a, b) => {
+      const aStart = clockToMinutes(a.scheduled_start!)
+      const bStart = clockToMinutes(b.scheduled_start!)
+      if (aStart !== bStart) return aStart - bStart
+      if ((a.lane ?? 0) !== (b.lane ?? 0)) return (a.lane ?? 0) - (b.lane ?? 0)
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    })
+    .map((item) => item.id)
+
+  const unscheduled = items
+    .filter((item) => !item.scheduled_start)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map((item) => item.id)
+
+  return [...scheduled, ...unscheduled]
+}
+
+function SummaryCard({
+  label,
+  value,
+  detail,
+  tone
+}: {
+  label: string
+  value: string
+  detail: string
+  tone: string
+}): React.JSX.Element {
+  return (
+    <div title={detail} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+      <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>{label}</span>
+      <span style={{ fontSize: '0.95rem', color: tone, fontWeight: 700, whiteSpace: 'nowrap' }}>{value}</span>
+      <span style={{ fontSize: '0.7rem', color: 'var(--slate-400)' }}>{detail}</span>
+    </div>
+  )
+}
+
+function Section({
+  title,
+  subtitle,
+  children
+}: {
+  title: string
+  subtitle?: string
+  children: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <section
+      style={{
+        background: 'var(--gray-900)',
+        border: '1px solid var(--gray-800)',
+        borderRadius: 16,
+        padding: 16,
+        minWidth: 0
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: '0.95rem', color: 'var(--slate-50)', fontWeight: 700 }}>{title}</div>
+        {subtitle && <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>{subtitle}</div>}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function EmptyState({ label }: { label: string }): React.JSX.Element {
+  return <div style={{ color: 'var(--text-subtle)', fontSize: '0.82rem', padding: '4px 2px', lineHeight: 1.6 }}>{label}</div>
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '8px 10px',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-700)',
+  borderRadius: 8,
+  color: 'var(--slate-200)',
+  fontSize: '0.84rem',
+  outline: 'none',
+  boxSizing: 'border-box'
+}
+
+function actionBtn(background: string, color: string, borderColor: string): React.CSSProperties {
+  return {
+    background,
+    color,
+    border: `1px solid ${borderColor}`,
+    borderRadius: 8,
+    padding: '6px 10px',
+    cursor: 'pointer',
+    fontSize: '0.76rem',
+    fontWeight: 700,
+    whiteSpace: 'nowrap'
+  }
+}
+
+function miniActionBtn(background: string, color: string): React.CSSProperties {
+  return {
+    background,
+    color,
+    border: '1px solid transparent',
+    borderRadius: 6,
+    padding: '3px 7px',
+    cursor: 'pointer',
+    fontSize: '0.66rem',
+    lineHeight: 1.2,
+    whiteSpace: 'nowrap',
+    // 押せる範囲は 24px 以上
+    minHeight: 24,
+    minWidth: 26
+  }
+}
+
+const laneHeaderStyle: React.CSSProperties = {
+  textAlign: 'center',
+  fontSize: '0.74rem',
+  color: 'var(--slate-400)',
+  background: 'var(--slate-900)',
+  border: '1px solid var(--slate-800)',
+  borderRadius: 10,
+  padding: '6px 8px',
+  fontWeight: 700
+}
+
+function CandidateCard({
+  todo,
+  todayKey,
+  plannedCount = 0,
+  onAdd,
+  onSchedule,
+  onPrepareDrag,
+  placementActive,
+  note
+}: {
+  todo: Todo
+  todayKey: string
+  /** タスク名の下に添える一言（ToDoリストの残りなど） */
+  note?: string
+  plannedCount?: number
+  onAdd: (todoId: string) => Promise<void>
+  onSchedule: (draft: PlacementDraft) => void
+  onPrepareDrag: () => void
+  placementActive: boolean
+}): React.JSX.Element {
+  const [adding, setAdding] = useState(false)
+  const addingRef = useRef(false)
+  return (
+    <div
+      draggable
+      onDragStart={(event) => {
+        onPrepareDrag()
+        event.dataTransfer.effectAllowed = 'copyMove'
+        event.dataTransfer.setData('application/x-todo-id', todo.id)
+        event.dataTransfer.setData('application/x-plan-drag-meta', JSON.stringify({
+          title: todo.title,
+          durationMinutes: DEFAULT_DURATION
+        }))
+      }}
+      style={{
+        background: 'var(--slate-900)',
+        border: placementActive ? '1px solid var(--blue-500)' : '1px solid var(--slate-800)',
+        borderRadius: 12,
+        padding: '10px 12px',
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 10,
+        cursor: 'grab',
+        boxShadow: placementActive ? '0 0 0 1px var(--blue-700) inset' : 'none'
+      }}
+      title="ドラッグで時間割へ置けます。クリックで置くときは「時間に置く」を押してください。"
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '0.86rem', color: 'var(--slate-200)', fontWeight: 600, lineHeight: 1.4 }}>{todo.title}</div>
+        {note && <div style={{ fontSize: '0.7rem', color: 'var(--indigo-300)', marginTop: 3 }}>{note}</div>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+          {todo.category_name && (
+            <span
+              style={{
+                fontSize: '0.68rem',
+                color: dataInk(todo.category_color ?? 'var(--indigo-300)'),
+                background: `color-mix(in srgb, ${todo.category_color ?? 'var(--indigo-500)'} 12.5%, transparent)`,
+                borderRadius: 999,
+                padding: '2px 8px'
+              }}
+            >
+              {todo.category_name}
+            </span>
+          )}
+          <span style={{ fontSize: '0.72rem', color: 'var(--slate-300)' }}>{formatDueLabel(todo.due_date, todayKey)}</span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--amber-400)' }}>優先度 {PRIORITY_LABELS[todo.priority] ?? todo.priority}</span>
+          {plannedCount > 0 && (
+            <span style={{ fontSize: '0.68rem', color: 'var(--blue-300)', background: 'color-mix(in srgb, var(--blue-900) 25.1%, transparent)', borderRadius: 999, padding: '2px 8px' }}>
+              配置済み ×{plannedCount}
+            </span>
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
+        <button
+          onClick={(event) => {
+            event.stopPropagation()
+            onSchedule({
+              source: 'todo',
+              id: todo.id,
+              title: todo.title,
+              durationMinutes: DEFAULT_DURATION
+            })
+          }}
+          style={actionBtn(placementActive ? 'var(--blue-700)' : 'var(--slate-800)', 'var(--blue-100)', placementActive ? 'var(--blue-400)' : 'var(--slate-700)')}
+          aria-label={placementActive ? `「${todo.title}」を置く時刻を選んでいます` : `「${todo.title}」を時間割に置く`}
+        >
+          {placementActive ? '配置中' : '時間に置く'}
+        </button>
+        <button
+          onClick={(event) => {
+            event.stopPropagation()
+            if (addingRef.current) return
+            addingRef.current = true
+            setAdding(true)
+            void onAdd(todo.id).finally(() => { addingRef.current = false; setAdding(false) })
+          }}
+          disabled={adding}
+          style={actionBtn('var(--blue-950)', 'var(--blue-200)', 'var(--blue-600)')}
+          aria-label={`「${todo.title}」を${todayKey === getTodayKey() ? '今日' : 'この日'}の計画に入れる`}
+        >
+          {adding ? '追加中…' : addToDayLabel(todayKey)}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function UnscheduledCard({
+  item,
+  todayKey,
+  onSelect,
+  onRemove,
+  onSchedule,
+  onPrepareDrag,
+  placementActive
+}: {
+  item: DailyPlanItem
+  todayKey: string
+  onSelect: (id: string) => void
+  onRemove: (id: string) => Promise<void>
+  onSchedule: (draft: PlacementDraft) => void
+  onPrepareDrag: () => void
+  placementActive: boolean
+}): React.JSX.Element {
+  return (
+    <div
+      draggable
+      data-plan-unscheduled-id={item.id}
+      onDragStart={(event) => {
+        onPrepareDrag()
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData('application/x-plan-item-id', item.id)
+        event.dataTransfer.setData('application/x-plan-drag-meta', JSON.stringify({
+          title: item.title,
+          durationMinutes: normalizeDuration(item.estimated_minutes)
+        }))
+      }}
+      style={{
+        background: 'var(--slate-900)',
+        border: placementActive ? '1px solid var(--blue-500)' : '1px dashed var(--slate-700)',
+        borderRadius: 12,
+        padding: '10px 12px',
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 10,
+        cursor: 'grab',
+        boxShadow: placementActive ? '0 0 0 1px var(--blue-700) inset' : 'none'
+      }}
+      title="ドラッグかクリックで時間割に置けます。"
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <button
+          onClick={() => onSelect(item.todo_id)}
+          style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.86rem', fontWeight: 600, textAlign: 'left', lineHeight: 1.4 }}
+        >
+          {item.status === 'on_hold' && <span style={{ color: 'var(--purple-300)' }}>保留中 · </span>}{item.title}
+        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+          {item.category_name && (
+            <span
+              style={{
+                fontSize: '0.68rem',
+                color: dataInk(item.category_color ?? 'var(--indigo-300)'),
+                background: `color-mix(in srgb, ${item.category_color ?? 'var(--indigo-500)'} 12.5%, transparent)`,
+                borderRadius: 999,
+                padding: '2px 8px'
+              }}
+            >
+              {item.category_name}
+            </span>
+          )}
+          <span style={{ fontSize: '0.72rem', color: 'var(--slate-300)' }}>{formatDueLabel(item.due_date, todayKey)}</span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--slate-400)' }}>{formatMinutes(normalizeDuration(item.estimated_minutes))}</span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
+        <button
+          onClick={(event) => {
+            event.stopPropagation()
+            onSchedule({
+              source: 'planItem',
+              id: item.id,
+              title: item.title,
+              durationMinutes: normalizeDuration(item.estimated_minutes)
+            })
+          }}
+          style={actionBtn(placementActive ? 'var(--blue-700)' : 'var(--slate-800)', 'var(--blue-100)', placementActive ? 'var(--blue-400)' : 'var(--slate-700)')}
+          aria-label={placementActive ? `「${item.title}」を置く時刻を選んでいます` : `「${item.title}」を時間割に置く`}
+        >
+          {placementActive ? '配置中' : '時間に置く'}
+        </button>
+        <button
+          onClick={(event) => {
+            event.stopPropagation()
+            void onRemove(item.id)
+          }}
+          style={actionBtn('var(--slate-800)', 'var(--slate-300)', 'var(--slate-700)')}
+          title="今日の計画から外す（タスクは消えません）"
+          aria-label={`「${item.title}」を計画から外す（タスクは消えません）`}
+        >
+          外す
+        </button>
+      </div>
+    </div>
+  )
+}
+export function PlanView({
+  date,
+  planItems,
+  todos,
+  runningTodoId,
+  onSelectTodo,
+  onAddTodo,
+  onRemoveItem,
+  onShowToast,
+  onUpdateItem,
+  onShiftItem,
+  onShiftFollowing,
+  onReorder,
+  onDateChange,
+  onCarryOver,
+  listFilters,
+  checklistSummaries
+}: Props): React.JSX.Element {
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionPending, setActionPending] = useState(false)
+  const actionPendingRef = useRef(false)
+  const reportActionError = useCallback((error: unknown): void => {
+    setActionError(error instanceof Error ? error.message : '計画を変更できませんでした')
+  }, [])
+  const runAction = useCallback(async (action: () => Promise<unknown>): Promise<void> => {
+    if (actionPendingRef.current) return
+    actionPendingRef.current = true
+    setActionPending(true)
+    try { await action(); setActionError(null) } catch (error) { reportActionError(error) }
+    finally { actionPendingRef.current = false; setActionPending(false) }
+  }, [reportActionError])
+  useEffect(() => setActionError(null), [date])
+  // 時刻未定で追加したら、そのことを知らせ、次にすること（時刻を決める）のボタンへフォーカスを移す。
+  // 押したボタンは候補から消えることがあり、そのままだとフォーカスが迷子になる
+  const [addedNotice, setAddedNotice] = useState<string | null>(null)
+  const [focusUnscheduledId, setFocusUnscheduledId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!addedNotice) return
+    const timer = window.setTimeout(() => setAddedNotice(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [addedNotice])
+  useEffect(() => {
+    if (!focusUnscheduledId) return
+    const button = document.querySelector<HTMLElement>(`[data-plan-unscheduled-id="${CSS.escape(focusUnscheduledId)}"] button[aria-label$="を時間割に置く"]`)
+    if (button) {
+      button.focus()
+      button.scrollIntoView({ block: 'nearest' })
+      setFocusUnscheduledId(null)
+    }
+  }, [focusUnscheduledId, planItems])
+  // 時刻を決めて置いたら、置いた予定（時間割のブロック）のタスク名へフォーカスを移す
+  const [focusBlockId, setFocusBlockId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!focusBlockId) return
+    const button = document.querySelector<HTMLElement>(`[data-plan-block-id="${CSS.escape(focusBlockId)}"] button[data-plan-block-title]`)
+    if (button) {
+      button.focus({ preventScroll: true })
+      button.scrollIntoView({ block: 'nearest' })
+      setFocusBlockId(null)
+    }
+  }, [focusBlockId, planItems])
+  const addUnscheduled = useCallback(async (todoId: string): Promise<void> => {
+    await runAction(async () => {
+      const created = await onAddTodo(todoId)
+      setAddedNotice(`「${created.title ?? ''}」を時刻未定に追加しました。「時間に置く」で時刻を決められます。`)
+      setFocusUnscheduledId(created.id)
+    })
+  }, [onAddTodo, runAction])
+  const timelineRef = useRef<HTMLDivElement>(null)
+  // ブロックが狭いと、操作ボタンが2段になってタスク名が隠れる。狭いブロックでは −15・+15 以外を「⋯」にまとめる
+  const [timelineWidth, setTimelineWidth] = useState(0)
+  // 文字の大きさの設定（ルートの文字の px / 16）。ブロックの中身を詰める基準に使う
+  const [textScale, setTextScale] = useState(1)
+  const [openMenuItemId, setOpenMenuItemId] = useState<string | null>(null)
+  // メニューの外を押したら閉じる（details は外を押しても閉じないため）
+  useEffect(() => {
+    if (!openMenuItemId) return
+    const handlePointerDown = (event: PointerEvent): void => {
+      const target = event.target as Element | null
+      document.querySelectorAll<HTMLDetailsElement>('details.hakobi-plan-block-menu[open]').forEach((details) => {
+        if (!target || !details.contains(target)) details.open = false
+      })
+    }
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true)
+  }, [openMenuItemId])
+  useEffect(() => {
+    const element = timelineRef.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => {
+      setTimelineWidth(entry.contentRect.width)
+      setTextScale(Math.max(1, (Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) / 16))
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const interactionRef = useRef<InteractionState | null>(null)
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [dragOverMinutes, setDragOverMinutes] = useState<number | null>(null)
+  const [dragOverLane, setDragOverLane] = useState<number | null>(null)
+  const [dragPreview, setDragPreview] = useState<DragPreview | null>(null)
+  const [placementDraft, setPlacementDraft] = useState<PlacementDraft | null>(null)
+  // 配置中に出す時刻の欄。始めたときに、今日なら次の15分区切り、ほかの日は 9:00 を入れてフォーカスする
+  const [placementTime, setPlacementTime] = useState('09:00')
+  const placementTimeInputRef = useRef<HTMLInputElement>(null)
+  const placementKey = placementDraft ? `${placementDraft.source}:${placementDraft.id}` : null
+  // 置き終わった・やめたときに戻すフォーカスの先（「時間に置く」のボタン。消えていれば時間割）
+  const placementReturnRef = useRef<HTMLElement | null>(null)
+  const previousPlacementKeyRef = useRef<string | null>(null)
+  useEffect(() => {
+    const wasPlacing = previousPlacementKeyRef.current != null
+    previousPlacementKeyRef.current = placementKey
+    if (placementKey || !wasPlacing) return
+    const active = document.activeElement
+    if (active && active !== document.body && !active.hasAttribute('data-focus-region')) return
+    const target = placementReturnRef.current?.isConnected ? placementReturnRef.current : timelineRef.current
+    placementReturnRef.current = null
+    target?.focus({ preventScroll: true })
+  }, [placementKey])
+  useEffect(() => {
+    if (!placementKey) return
+    if (document.activeElement instanceof HTMLElement && document.activeElement !== placementTimeInputRef.current) placementReturnRef.current = document.activeElement
+    const start = date === getTodayKey()
+      ? clamp(Math.ceil(nowOffsetMinutes() / SNAP_MINUTES) * SNAP_MINUTES, 0, (TIMELINE_END_HOUR - TIMELINE_START_HOUR) * 60 - SNAP_MINUTES)
+      : clamp((9 - TIMELINE_START_HOUR) * 60, 0, (TIMELINE_END_HOUR - TIMELINE_START_HOUR) * 60 - SNAP_MINUTES)
+    setPlacementTime(offsetToClock(start))
+    placementTimeInputRef.current?.focus()
+  }, [placementKey, date])
+  const [placementTarget, setPlacementTarget] = useState<PlacementTarget | null>(null)
+  const [interaction, setInteraction] = useState<InteractionState | null>(null)
+
+  interactionRef.current = interaction
+
+  // 同じタスクを複数回置けるので、配置済みかどうかではなく「何個置いたか」を持つ
+  const plannedCountByTodoId = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const item of planItems) counts.set(item.todo_id, (counts.get(item.todo_id) ?? 0) + 1)
+    return counts
+  }, [planItems])
+
+  const availableTodos = useMemo(() => (
+    todos
+      .filter((todo) => todo.status !== 'done' && todo.status !== 'archived' && todo.status !== 'on_hold')
+      .sort((a, b) => {
+        // 未配置のタスクを先に出しつつ、配置済みも再配置できるよう一覧には残す
+        const aPlanned = (plannedCountByTodoId.get(a.id) ?? 0) > 0 ? 1 : 0
+        const bPlanned = (plannedCountByTodoId.get(b.id) ?? 0) > 0 ? 1 : 0
+        if (aPlanned !== bPlanned) return aPlanned - bPlanned
+        if (a.due_date && b.due_date && a.due_date !== b.due_date) return a.due_date.localeCompare(b.due_date)
+        if (a.due_date && !b.due_date) return -1
+        if (!a.due_date && b.due_date) return 1
+        if (b.priority !== a.priority) return b.priority - a.priority
+        return a.title.localeCompare(b.title, 'ja')
+      })
+  ), [plannedCountByTodoId, todos])
+
+  // おすすめ候補は「次に何を計画するか」の提案なので、まだ置いていないタスクだけを対象にする
+  const unplannedTodos = useMemo(
+    () => availableTodos.filter((todo) => (plannedCountByTodoId.get(todo.id) ?? 0) === 0),
+    [availableTodos, plannedCountByTodoId]
+  )
+
+  const suggestions = useMemo(() => {
+    const staleLimit = Date.now() - 7 * 86400000
+    const todayListTodos = unplannedTodos.filter((todo) => {
+      const summary = todo.list_mode ? checklistSummaries?.get(todo.id) : undefined
+      return summary != null && hasRemainingToday(summary)
+    })
+    const groups: SuggestedGroup[] = [
+      // ToDoリストは今日の計画の日だけ。ほかの日の計画では出さない
+      ...(date === getTodayKey() && todayListTodos.length > 0
+        ? [{ title: 'ToDoリスト（今日の分が残っている）', items: todayListTodos.slice(0, 4) }]
+        : []),
+      { title: '期限が今日', items: unplannedTodos.filter((todo) => todo.due_date === date).slice(0, 4) },
+      {
+        title: '期限が近い',
+        items: unplannedTodos
+          .filter((todo) => todo.due_date && todo.due_date !== date && diffCalendarDays(todo.due_date, date) > 0 && diffCalendarDays(todo.due_date, date) <= 3)
+          .slice(0, 4)
+      },
+      { title: '優先度が高い', items: unplannedTodos.filter((todo) => todo.priority >= 4).slice(0, 4) },
+      { title: 'しばらく触っていない', items: unplannedTodos.filter((todo) => new Date(todo.updated_at).getTime() <= staleLimit).slice(0, 4) }
+    ]
+
+    return groups.filter((group) => group.items.length > 0)
+  }, [checklistSummaries, date, unplannedTodos])
+
+  const filteredBacklog = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return availableTodos.slice(0, 12)
+
+    return availableTodos
+      .filter((todo) => {
+        return todo.title.toLowerCase().includes(query)
+          || todo.description.toLowerCase().includes(query)
+          || (todo.category_name?.toLowerCase().includes(query) ?? false)
+      })
+      .slice(0, 20)
+  }, [availableTodos, searchQuery])
+
+  const effectivePlanItems = useMemo(() => {
+    if (!interaction) return planItems
+
+    return planItems.map((item) => {
+      if (item.id !== interaction.itemId) return item
+      return {
+        ...item,
+        scheduled_start: offsetToClock(interaction.previewStart),
+        estimated_minutes: interaction.previewDuration,
+        lane: interaction.previewLane
+      }
+    })
+  }, [interaction, planItems])
+
+  const timelineBlocks = useMemo(() => buildTimelineBlocks(effectivePlanItems), [effectivePlanItems])
+  const columnMap = useMemo(() => packColumns(timelineBlocks), [timelineBlocks])
+  const unscheduledItems = useMemo(() => (
+    effectivePlanItems
+      .filter((item) => !item.scheduled_start)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+  ), [effectivePlanItems])
+
+  const totalPlannedMinutes = effectivePlanItems.reduce((sum, item) => sum + normalizeDuration(item.estimated_minutes), 0)
+  const timedCount = timelineBlocks.length
+  const currentOffset = nowOffsetMinutes()
+
+  const activePreview = dragPreview ?? (placementDraft ? { title: placementDraft.title, durationMinutes: placementDraft.durationMinutes } : null)
+  const previewTarget = dragOverMinutes != null && dragOverLane != null ? { minutes: dragOverMinutes, lane: dragOverLane } : placementTarget
+
+  useLayoutEffect(() => {
+    const todayKey = getTodayKey()
+
+    const scrollContainer = scrollContainerRef.current
+    if (!scrollContainer) return
+
+    const earliestScheduled = planItems
+      .filter((item) => item.scheduled_start)
+      .map((item) => clockToMinutes(item.scheduled_start!) - TIMELINE_START_HOUR * 60)
+      .sort((a, b) => a - b)[0]
+    const otherDayStart = Math.min(earliestScheduled ?? Number.POSITIVE_INFINITY, WORKDAY_START_HOUR * 60 - TIMELINE_START_HOUR * 60) - 30
+
+    const applyScroll = (): void => {
+      const startOffset = date === todayKey
+        ? clamp(nowOffsetMinutes() - AUTO_SCROLL_LEAD_MINUTES, 0, TIMELINE_TOTAL_MINUTES)
+        : clamp(otherDayStart, 0, TIMELINE_TOTAL_MINUTES)
+      const targetTop = startOffset * PIXELS_PER_MINUTE
+      const maxScrollTop = Math.max(scrollContainer.scrollHeight - scrollContainer.clientHeight, 0)
+      scrollContainer.scrollTop = clamp(targetTop, 0, maxScrollTop)
+    }
+
+    applyScroll()
+    const timer1 = window.setTimeout(applyScroll, 0)
+    const timer2 = window.setTimeout(applyScroll, 120)
+    const timer3 = window.setTimeout(applyScroll, 320)
+
+    return () => {
+      window.clearTimeout(timer1)
+      window.clearTimeout(timer2)
+      window.clearTimeout(timer3)
+    }
+  }, [date])
+
+  useEffect(() => {
+    if (!placementDraft) return undefined
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.isComposing) return
+      if (event.key !== 'Escape') return
+      setPlacementDraft(null)
+      setPlacementTarget(null)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [placementDraft])
+
+  useEffect(() => {
+    if (!interaction) return undefined
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      const scrollContainer = scrollContainerRef.current
+      if (scrollContainer) {
+        const rect = scrollContainer.getBoundingClientRect()
+        if (event.clientY < rect.top + EDGE_SCROLL_THRESHOLD) {
+          scrollContainer.scrollTop -= EDGE_SCROLL_PIXELS
+        } else if (event.clientY > rect.bottom - EDGE_SCROLL_THRESHOLD) {
+          scrollContainer.scrollTop += EDGE_SCROLL_PIXELS
+        }
+      }
+
+      setInteraction((prev) => {
+        if (!prev) return prev
+
+        const deltaMinutes = snapMinutes((event.clientY - prev.originClientY) / PIXELS_PER_MINUTE)
+        const timelineRect = timelineRef.current?.getBoundingClientRect()
+        const previewLane = timelineRect
+          ? clampLane(((event.clientX - timelineRect.left) / Math.max(timelineRect.width, 1)) * LANE_COUNT)
+          : prev.previewLane
+
+        if (prev.mode === 'move') {
+          const previewStart = clamp(prev.startMinutes + deltaMinutes, 0, TIMELINE_TOTAL_MINUTES - prev.durationMinutes)
+          return { ...prev, previewStart, previewDuration: prev.durationMinutes, previewLane }
+        }
+
+        const maxDuration = Math.min(MAX_DURATION, TIMELINE_TOTAL_MINUTES - prev.startMinutes)
+        const previewDuration = clamp(prev.durationMinutes + deltaMinutes, MIN_DURATION, maxDuration)
+        return { ...prev, previewDuration: snapMinutes(previewDuration), previewLane: prev.previewLane }
+      })
+    }
+
+    const handlePointerUp = (): void => {
+      const current = interactionRef.current
+      setInteraction(null)
+      if (!current) return
+
+      const startChanged = current.previewStart !== current.startMinutes
+      const durationChanged = current.previewDuration !== current.durationMinutes
+      const laneChanged = current.previewLane !== current.lane
+      if (!startChanged && !durationChanged && !laneChanged) return
+
+      const nextItems = planItems.map((item) => {
+        if (item.id !== current.itemId) return item
+        return {
+          ...item,
+          scheduled_start: offsetToClock(current.previewStart),
+          estimated_minutes: current.previewDuration,
+          lane: current.previewLane
+        }
+      })
+
+      void runAction(() => onUpdateItem(current.itemId, {
+        scheduled_start: offsetToClock(current.previewStart),
+        estimated_minutes: current.previewDuration,
+        lane: current.previewLane
+      }).then(() => onReorder(reorderIdsByTime(nextItems))))
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [interaction, onReorder, onUpdateItem, planItems, runAction])
+
+  const clearPlacement = (): void => {
+    setPlacementDraft(null)
+    setPlacementTarget(null)
+  }
+
+  const beginInteraction = (mode: 'move' | 'resize', item: TimelineBlock, clientY: number): void => {
+    clearPlacement()
+    setInteraction({
+      mode,
+      itemId: item.id,
+      startMinutes: item.startMinutes,
+      durationMinutes: item.durationMinutes,
+      lane: clampLane(item.lane ?? 0),
+      originClientY: clientY,
+      previewStart: item.startMinutes,
+      previewDuration: item.durationMinutes,
+      previewLane: clampLane(item.lane ?? 0)
+    })
+  }
+
+  const getDropMinutes = (clientY: number): number | null => {
+    const element = timelineRef.current
+    if (!element) return null
+
+    const rect = element.getBoundingClientRect()
+    const relativeY = clientY - rect.top
+    return clamp(snapMinutes(relativeY / PIXELS_PER_MINUTE), 0, TIMELINE_TOTAL_MINUTES - MIN_DURATION)
+  }
+
+  const getDropLane = (clientX: number): number | null => {
+    const element = timelineRef.current
+    if (!element) return null
+
+    const rect = element.getBoundingClientRect()
+    const relativeX = clientX - rect.left
+    return clampLane((relativeX / Math.max(rect.width, 1)) * LANE_COUNT)
+  }
+  const schedulePlanItem = async (planItemId: string, startMinutes: number, lane: number, durationMinutes?: number): Promise<void> => {
+    const normalizedDuration = durationMinutes == null ? undefined : normalizeDuration(durationMinutes)
+    const nextItems = planItems.map((item) => {
+      if (item.id !== planItemId) return item
+      return {
+        ...item,
+        scheduled_start: offsetToClock(startMinutes),
+        estimated_minutes: normalizedDuration ?? item.estimated_minutes,
+        lane
+      }
+    })
+
+    await onUpdateItem(planItemId, {
+      scheduled_start: offsetToClock(startMinutes),
+      estimated_minutes: normalizedDuration,
+      lane
+    })
+    await onReorder(reorderIdsByTime(nextItems))
+  }
+
+  const scheduleTodo = async (todoId: string, startMinutes: number, lane: number, durationMinutes?: number): Promise<string> => {
+    const normalizedDuration = normalizeDuration(durationMinutes)
+    // 作成と配置を1回で行う（未配置の重複行が途中で残らないようにする）
+    const created = await onAddTodo(todoId, {
+      allowDuplicate: true,
+      scheduled_start: offsetToClock(startMinutes),
+      estimated_minutes: normalizedDuration,
+      lane
+    })
+
+    await onReorder(reorderIdsByTime([...planItems, created]))
+    return created.id
+  }
+
+  const duplicateBlock = async (block: TimelineBlock): Promise<void> => {
+    // 直後の時間帯に同じ長さでコピーする（末尾を越える場合は収まる位置まで戻す）
+    const startMinutes = clamp(block.endMinutes, 0, TIMELINE_TOTAL_MINUTES - block.durationMinutes)
+    const created = await onAddTodo(block.todo_id, {
+      allowDuplicate: true,
+      scheduled_start: offsetToClock(startMinutes),
+      estimated_minutes: block.durationMinutes,
+      lane: block.lane
+    })
+
+    await onReorder(reorderIdsByTime([...planItems, created]))
+  }
+
+  const handleTimelineDragLeave = (event: React.DragEvent<HTMLDivElement>): void => {
+    const rect = timelineRef.current?.getBoundingClientRect()
+    if (
+      rect
+      && event.clientX >= rect.left
+      && event.clientX <= rect.right
+      && event.clientY >= rect.top
+      && event.clientY <= rect.bottom
+    ) {
+      return
+    }
+
+    setDragOverMinutes(null)
+    setDragOverLane(null)
+    setDragPreview(null)
+  }
+
+  const handlePlaceDraft = async (minutes: number, lane: number): Promise<void> => {
+    const currentDraft = placementDraft
+    if (!currentDraft) return
+
+    // 置けたあとで配置をやめる（失敗したときに、選んだ時刻の欄が消えてやり直しにならないように）
+    const placedLabel = `「${currentDraft.title}」を ${offsetToClock(minutes)} に置きました`
+    if (currentDraft.source === 'planItem') {
+      await schedulePlanItem(currentDraft.id, minutes, lane, currentDraft.durationMinutes)
+      clearPlacement()
+      setFocusBlockId(currentDraft.id)
+      // 置いたことと、時刻未定へ戻す「元に戻す」を知らせる
+      onShowToast?.(placedLabel, 'success', {
+        label: '元に戻す',
+        run: () => { void onUpdateItem(currentDraft.id, { scheduled_start: null }).catch((error: unknown) => onShowToast?.(error instanceof Error ? error.message : '元に戻せませんでした', 'error')) }
+      })
+      return
+    }
+
+    const createdId = await scheduleTodo(currentDraft.id, minutes, lane, currentDraft.durationMinutes)
+    clearPlacement()
+    setFocusBlockId(createdId)
+    onShowToast?.(placedLabel, 'success', {
+      label: '元に戻す',
+      run: () => { void onRemoveItem(createdId).catch((error: unknown) => onShowToast?.(error instanceof Error ? error.message : '元に戻せませんでした', 'error')) }
+    })
+  }
+
+  // 予定を外す。タスクは消えないが、時刻と長さは消えるので、知らせから同じ時刻・長さで戻せるようにする。
+  // 外したボタンは消えるので、フォーカスは時間割へ移す（区分けの先頭へ飛ばないように）
+  const removeItemWithUndo = async (item: DailyPlanItem): Promise<void> => {
+    // 時刻が未定のカードから外したときは、隣のカードの「時間に置く」へフォーカスを移す（なければ時間割へ）
+    const card = item.scheduled_start ? null : document.querySelector<HTMLElement>(`[data-plan-unscheduled-id="${CSS.escape(item.id)}"]`)
+    const neighbor = (card?.nextElementSibling ?? card?.previousElementSibling) as HTMLElement | null | undefined
+    const neighborButton = neighbor?.querySelector<HTMLElement>('button[aria-label$="を時間割に置く"]') ?? null
+    await onRemoveItem(item.id)
+    if (neighborButton?.isConnected) neighborButton.focus({ preventScroll: true })
+    else timelineRef.current?.focus({ preventScroll: true })
+    onShowToast?.(`「${item.title}」を計画から外しました（タスクは消えません）`, 'success', {
+      label: '元に戻す',
+      run: () => {
+        void onAddTodo(item.todo_id, {
+          allowDuplicate: true,
+          scheduled_start: item.scheduled_start ?? undefined,
+          estimated_minutes: item.estimated_minutes ?? undefined,
+          lane: item.lane ?? undefined
+        }).then(
+          () => onShowToast?.(`「${item.title}」を計画に戻しました`),
+          (error: unknown) => onShowToast?.(error instanceof Error ? error.message : '計画に戻せませんでした', 'error')
+        )
+      }
+    })
+  }
+
+  const handleTimelineDrop = async (event: React.DragEvent<HTMLDivElement>): Promise<void> => {
+    event.preventDefault()
+    setDragOverMinutes(null)
+    setDragOverLane(null)
+    setDragPreview(null)
+
+    const dropMinutes = getDropMinutes(event.clientY)
+    const dropLane = getDropLane(event.clientX)
+    if (dropMinutes == null || dropLane == null) return
+
+    const preview = readDragPreview(event)
+    const planItemId = event.dataTransfer.getData('application/x-plan-item-id')
+    if (planItemId) {
+      await schedulePlanItem(planItemId, dropMinutes, dropLane, preview?.durationMinutes)
+      return
+    }
+
+    const todoId = event.dataTransfer.getData('application/x-todo-id')
+    if (todoId) {
+      await scheduleTodo(todoId, dropMinutes, dropLane, preview?.durationMinutes)
+    }
+  }
+
+  return (
+    <div aria-busy={actionPending} style={{ height: '100%', overflowY: 'auto', padding: 20 }}>
+      {actionPending && <div role="status" style={{ position: 'sticky', top: 0, zIndex: 11, padding: 10, background: 'var(--slate-800)', color: 'var(--slate-100)', borderRadius: 8, marginBottom: 10 }}>計画を更新中…</div>}
+      {actionError && <div role="alert" style={{ position: 'sticky', top: 0, zIndex: 10, marginBottom: 12, padding: 12, borderRadius: 10, border: '1px solid var(--red-500)', background: 'var(--slate-900)', color: 'var(--slate-100)' }}>
+        <p>計画の操作を完了できませんでした。{actionError}</p>
+        <p style={{ marginTop: 6, fontSize: 'var(--font-control)' }}>社内LANへの接続と表示中の予定を確認し、同じ操作をもう一度お試しください。</p>
+        <button onClick={() => setActionError(null)} style={{ ...miniActionBtn('var(--slate-800)', 'var(--slate-200)'), marginTop: 8 }}>閉じる</button>
+      </div>}
+      {onDateChange && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <button onClick={() => onDateChange(shiftDateKey(date, -1))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}>← 前日</button>
+          <input type="date" aria-label="計画の日付" disabled={actionPending} value={date} onChange={(event) => { if (event.target.value) onDateChange(event.target.value) }} style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid var(--slate-700)', background: 'var(--slate-900)', color: 'var(--slate-200)' }} />
+          <button onClick={() => onDateChange(shiftDateKey(date, 1))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}>翌日 →</button>
+          <button onClick={() => onDateChange(getTodayKey())} style={miniActionBtn('var(--blue-950)', 'var(--blue-100)')}>今日</button>
+          {onCarryOver && <button onClick={() => void runAction(onCarryOver)} style={miniActionBtn('var(--green-900)', 'var(--green-100)')}>前日の未完了を繰り越す</button>}
+          {listFilters && <span style={{ marginLeft: 'auto' }}>{listFilters}</span>}
+        </div>
+      )}
+      {/* 2列（時間割と候補）。狭いときは候補を時間割の下へ回す（時間割が細くならないように） */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+        <div style={{ flex: '1.5 1 400px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+            {/* 日付と件数は1行にまとめる（時間割を上に寄せる） */}
+            <div
+              title="今日の時間割をまとめて調整できます"
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'baseline',
+                gap: '6px 18px',
+              background: 'var(--gray-900)',
+              border: '1px solid var(--gray-800)',
+              borderRadius: 12,
+              padding: '8px 14px'
+            }}
+            >
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>日付</span>
+              <span style={{ fontSize: '0.95rem', color: 'var(--slate-50)', fontWeight: 700 }}>{date}</span>
+            </div>
+            <SummaryCard label="予定" value={`${timedCount}件`} detail="時間あり" tone="var(--blue-400)" />
+            <SummaryCard label="未定" value={`${unscheduledItems.length}件`} detail="まだ時刻なし" tone="var(--amber-400)" />
+            <SummaryCard label="合計" value={formatMinutes(totalPlannedMinutes)} detail="見積もり時間" tone="var(--green-400)" />
+          </div>
+
+          <Section
+            title="時間割"
+            subtitle="ドラッグで時刻、下端のドラッグで長さを変えられます。候補や時刻が未定のタスクは、ドラッグかクリックで置けます。"
+          >
+            {placementDraft && (
+              <div
+                style={{
+                  marginBottom: 12,
+                  background: 'var(--blue-950)',
+                  border: '1px solid var(--blue-600)',
+                  borderRadius: 12,
+                  padding: '10px 12px',
+                  color: 'var(--blue-100)',
+                  fontSize: '0.8rem',
+                  lineHeight: 1.6
+                }}
+              >
+                <div><strong>{placementDraft.title}</strong> を配置中です。時間割の空いている場所をクリックするか、時刻を選んで「この時刻に置く」を押します。Esc でキャンセルできます。</div>
+                {/* キーボードでも置けるように、時刻の欄を出す（↑↓ で15分ずつ。Enter で置く） */}
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    const minutes = clockToOffset(placementTime)
+                    if (minutes == null) return
+                    void runAction(() => handlePlaceDraft(minutes, 0))
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}
+                >
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    時刻
+                    <input
+                      ref={placementTimeInputRef}
+                      type="time"
+                      step={SNAP_MINUTES * 60}
+                      required
+                      value={placementTime}
+                      onChange={(event) => setPlacementTime(event.target.value)}
+                      style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid var(--blue-600)', background: 'var(--slate-900)', color: 'var(--slate-100)', fontSize: '0.8rem' }}
+                    />
+                  </label>
+                  <button type="submit" style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid var(--blue-600)', background: 'var(--blue-700)', color: 'var(--on-fill-blue-50)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>
+                    この時刻に置く
+                  </button>
+                  <button type="button" onClick={clearPlacement} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid var(--slate-600)', background: 'transparent', color: 'var(--slate-200)', cursor: 'pointer', fontSize: '0.78rem' }}>
+                    やめる
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {LANE_COUNT > 1 && (
+              <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 12, marginBottom: 10 }}>
+                <div />
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${LANE_COUNT}, 1fr)`, gap: BLOCK_GAP }}>
+                  <div style={laneHeaderStyle}>左</div>
+                  <div style={laneHeaderStyle}>中央</div>
+                  <div style={laneHeaderStyle}>右</div>
+                </div>
+              </div>
+            )}
+
+            <div
+              ref={scrollContainerRef}
+              style={{
+                height: '70vh',
+                overflowY: 'auto',
+                borderRadius: 14,
+                border: '1px solid var(--gray-800)',
+                background: 'var(--c-0b1220)'
+              }}
+            >
+              <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 12 }}>
+                <div style={{ position: 'relative', height: TIMELINE_HEIGHT, borderRadius: 14, overflow: 'hidden' }}>
+                  {Array.from({ length: TIMELINE_END_HOUR - TIMELINE_START_HOUR + 1 }, (_, index) => {
+                    const hour = TIMELINE_START_HOUR + index
+                    return (
+                      <div
+                        key={hour}
+                        style={{
+                          position: 'absolute',
+                          top: index * HOUR_HEIGHT - 8,
+                          left: 0,
+                          right: 0,
+                          textAlign: 'right',
+                          fontSize: '0.72rem',
+                          color: 'var(--text-subtle)'
+                        }}
+                      >
+                        {String(hour).padStart(2, '0')}:00
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div
+                  ref={timelineRef}
+                  role="group"
+                  tabIndex={-1}
+                  aria-label="計画の時間割"
+                  onMouseMove={(event) => {
+                    if (!placementDraft || interaction) return
+
+                    const minutes = getDropMinutes(event.clientY)
+                    const lane = getDropLane(event.clientX)
+                    if (minutes == null || lane == null) {
+                      setPlacementTarget(null)
+                      return
+                    }
+
+                    setPlacementTarget({ minutes, lane })
+                  }}
+                  onMouseLeave={() => {
+                    if (placementDraft) {
+                      setPlacementTarget(null)
+                    }
+                  }}
+                  onClick={(event) => {
+                    if (!placementDraft) return
+                    const target = event.target as HTMLElement
+                    if (target.closest('[data-plan-block="true"]')) return
+
+                    const minutes = getDropMinutes(event.clientY)
+                    const lane = getDropLane(event.clientX)
+                    if (minutes == null || lane == null) return
+
+                    void runAction(() => handlePlaceDraft(minutes, lane))
+                  }}
+                  onDragOver={(event) => {
+                    const types = Array.from(event.dataTransfer.types)
+                    if (!types.includes('application/x-plan-item-id') && !types.includes('application/x-todo-id')) {
+                      return
+                    }
+                    event.preventDefault()
+
+                    const scrollContainer = scrollContainerRef.current
+                    if (scrollContainer) {
+                      const rect = scrollContainer.getBoundingClientRect()
+                      if (event.clientY < rect.top + EDGE_SCROLL_THRESHOLD) {
+                        scrollContainer.scrollTop -= EDGE_SCROLL_PIXELS
+                      } else if (event.clientY > rect.bottom - EDGE_SCROLL_THRESHOLD) {
+                        scrollContainer.scrollTop += EDGE_SCROLL_PIXELS
+                      }
+                    }
+
+                    setDragOverMinutes(getDropMinutes(event.clientY))
+                    setDragOverLane(getDropLane(event.clientX))
+                    setDragPreview(readDragPreview(event))
+                  }}
+                  onDragLeave={handleTimelineDragLeave}
+                  onDrop={(event) => void runAction(() => handleTimelineDrop(event))}
+                  style={{ position: 'relative', height: TIMELINE_HEIGHT, cursor: placementDraft ? 'copy' : 'default' }}
+                >
+                  {Array.from({ length: TIMELINE_END_HOUR - TIMELINE_START_HOUR }, (_, index) => (
+                    <div
+                      key={TIMELINE_START_HOUR + index}
+                      style={{
+                        position: 'absolute',
+                        top: index * HOUR_HEIGHT,
+                        left: 0,
+                        right: 0,
+                        height: HOUR_HEIGHT,
+                        borderTop: '1px solid var(--gray-800)',
+                        background: index % 2 === 0 ? 'var(--c-0b1220)' : 'var(--c-0d1525)'
+                      }}
+                    />
+                  ))}
+
+                  {Array.from({ length: (TIMELINE_END_HOUR - TIMELINE_START_HOUR) * 4 }, (_, index) => (
+                    <div
+                      key={`quarter-${index}`}
+                      style={{
+                        position: 'absolute',
+                        top: index * SNAP_MINUTES * PIXELS_PER_MINUTE,
+                        left: 0,
+                        right: 0,
+                        borderTop: index % 4 === 0 ? 'none' : '1px dashed var(--c-132033)'
+                      }}
+                    />
+                  ))}
+
+                  {date === getTodayKey() && currentOffset >= 0 && currentOffset <= TIMELINE_TOTAL_MINUTES && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: currentOffset * PIXELS_PER_MINUTE,
+                        left: 0,
+                        right: 0,
+                        borderTop: '2px solid var(--orange-500)',
+                        zIndex: 3
+                      }}
+                    >
+                      {/* 印は時刻の列（左の余白）に出す。時間割の中に出すと、予定のタスク名や時刻を隠してしまう */}
+                      <span
+                        title="現在時刻"
+                        style={{
+                          position: 'absolute',
+                          top: '-0.7em',
+                          // 時刻の列（幅72px＋間12px）の左端に置き、右寄せの「18:00」などの時刻と重ならないようにする
+                          left: -84,
+                          fontSize: '0.68rem',
+                          lineHeight: 1.2,
+                          whiteSpace: 'nowrap',
+                          color: 'var(--orange-200)',
+                          background: 'var(--orange-900)',
+                          borderRadius: 999,
+                          padding: '1px 6px'
+                        }}
+                      >
+                        今
+                      </span>
+                    </div>
+                  )}
+                  {dragOverMinutes != null && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: dragOverMinutes * PIXELS_PER_MINUTE,
+                        left: 0,
+                        right: 0,
+                        borderTop: '2px dashed var(--blue-400)',
+                        zIndex: 4
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: -10,
+                          left: 10,
+                          fontSize: '0.68rem',
+                          color: 'var(--blue-200)',
+                          background: 'var(--blue-950)',
+                          borderRadius: 999,
+                          padding: '2px 8px'
+                        }}
+                      >
+                        {offsetToClock(dragOverMinutes)}
+                      </span>
+                    </div>
+                  )}
+
+                  {dragOverLane != null && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        bottom: 0,
+                        ...getLaneLayout(dragOverLane),
+                        background: 'color-mix(in srgb, var(--blue-400) 7.1%, transparent)',
+                        borderLeft: '1px dashed color-mix(in srgb, var(--blue-400) 33.3%, transparent)',
+                        borderRight: '1px dashed color-mix(in srgb, var(--blue-400) 33.3%, transparent)',
+                        zIndex: 1
+                      }}
+                    />
+                  )}
+
+                  {activePreview && previewTarget && (
+                    (() => {
+                      const previewHeight = activePreview.durationMinutes * PIXELS_PER_MINUTE
+                      const compactPreview = previewHeight < COMPACT_BLOCK_THRESHOLD
+
+                      return (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: previewTarget.minutes * PIXELS_PER_MINUTE,
+                            height: previewHeight,
+                            minHeight: compactPreview ? 34 : 44,
+                            ...getLaneLayout(previewTarget.lane),
+                            background: 'color-mix(in srgb, var(--blue-600) 13.3%, transparent)',
+                            border: '1px dashed var(--blue-400)',
+                            borderRadius: 12,
+                            boxSizing: 'border-box',
+                            padding: compactPreview ? '7px 10px' : '10px 10px 8px',
+                            color: 'var(--blue-100)',
+                            zIndex: 4,
+                            pointerEvents: 'none',
+                            overflow: 'hidden'
+                          }}
+                        >
+                          {compactPreview ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.74rem', fontWeight: 700 }}>
+                              <span style={{ color: 'var(--blue-200)', whiteSpace: 'nowrap' }}>{offsetToClock(previewTarget.minutes)}</span>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activePreview.title}</span>
+                            </div>
+                          ) : (
+                            <>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.7rem', fontWeight: 700 }}>
+                                <span>
+                                  {offsetToClock(previewTarget.minutes)} - {offsetToClock(Math.min(previewTarget.minutes + activePreview.durationMinutes, TIMELINE_TOTAL_MINUTES))}
+                                </span>
+                                <span style={{ fontWeight: 500, color: 'var(--blue-200)' }}>{formatMinutes(activePreview.durationMinutes)}</span>
+                              </div>
+                              <div style={{ marginTop: 6, fontSize: '0.8rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {activePreview.title}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })()
+                  )}
+
+                  {timelineBlocks.map((item) => {
+                    const placement = columnMap.get(item.id) ?? { col: 0, cols: 1 }
+                    const categoryColor = item.category_color ?? 'var(--indigo-500)'
+                    const dueLabel = formatDueLabel(item.due_date, date)
+                    const blockHeight = item.durationMinutes * PIXELS_PER_MINUTE
+                    // 時間割の高さは文字の大きさによらず同じなので、文字を大きくしているときは早めに詰める
+                    const compactBlock = blockHeight < COMPACT_BLOCK_THRESHOLD * textScale
+                    const blockWidth = (timelineWidth - BLOCK_GAP * (placement.cols - 1)) / Math.max(1, placement.cols)
+                    const narrowBlocks = timelineWidth > 0 && blockWidth < NARROW_BLOCK_WIDTH * textScale
+                    // 補足の行（カテゴリ・期限・長さ）は、時刻の行とタスク名の下に収まるときだけ出す
+                    const showBlockMeta = !compactBlock && blockHeight >= META_BLOCK_THRESHOLD * textScale
+
+                    return (
+                      <div
+                        key={item.id}
+                        data-plan-block="true"
+                        data-plan-block-id={item.id}
+                        style={{
+                          position: 'absolute',
+                          top: item.startMinutes * PIXELS_PER_MINUTE,
+                          ...getColumnLayout(placement),
+                          height: blockHeight,
+                          minHeight: compactBlock ? 34 : 44,
+                          background: `color-mix(in srgb, ${categoryColor} 12.5%, transparent)`,
+                          border: `1px solid ${runningTodoId === item.todo_id ? 'var(--green-500)' : `color-mix(in srgb, ${categoryColor} 43.9%, transparent)`}`,
+                          borderRadius: 12,
+                          boxSizing: 'border-box',
+                          // 「⋯」のメニューを開いている間は、ブロックの外へはみ出して出す
+                          overflow: openMenuItemId === item.id ? 'visible' : 'hidden',
+                          zIndex: interaction?.itemId === item.id || openMenuItemId === item.id ? 5 : 2,
+                          transition: interaction?.itemId === item.id ? 'none' : 'top 120ms ease, left 120ms ease, height 120ms ease, box-shadow 120ms ease',
+                          boxShadow: interaction?.itemId === item.id ? '0 16px 32px color-mix(in srgb, var(--slate-900) 28%, transparent)' : 'none'
+                        }}
+                        onDoubleClick={() => onSelectTodo(item.todo_id)}
+                      >
+                        <div
+                          onPointerDown={(event) => {
+                            if (event.button !== 0) return
+                            beginInteraction('move', item, event.clientY)
+                          }}
+                          style={{
+                            height: 'calc(100% - 10px)',
+                            padding: compactBlock ? '7px 10px 6px' : '10px 10px 8px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: compactBlock ? 4 : 6,
+                            cursor: 'grab',
+                            userSelect: 'none'
+                          }}
+                        >
+                          {/* 時刻とボタンの行は折り返さない（折り返すと、低いブロックでタスク名が押し出されて消える）。狭いときは時刻を省略する */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexShrink: 0 }}>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--blue-100)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                              {offsetToClock(item.startMinutes)} - {offsetToClock(item.endMinutes)}
+                            </span>
+                            {!compactBlock && item.status === 'done' && (
+                              <span style={{ fontSize: '0.62rem', color: 'var(--green-300)', background: 'var(--green-950)', borderRadius: 999, padding: '1px 6px' }}>
+                                完了
+                              </span>
+                            )}
+                            {!compactBlock && runningTodoId === item.todo_id && (
+                              <span style={{ fontSize: '0.62rem', color: 'var(--green-300)', background: 'var(--green-950)', borderRadius: 999, padding: '1px 6px' }}>
+                                計測中
+                              </span>
+                            )}
+                            {!compactBlock && <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, flexShrink: 0 }}>
+                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void runAction(() => onShiftItem(item.id, -15))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分早める" aria-label={`「${item.title}」を15分早める`}>−15</button>
+                              <button onPointerDown={(event) => event.stopPropagation()} onClick={() => void runAction(() => onShiftItem(item.id, 15))} style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')} title="15分遅らせる" aria-label={`「${item.title}」を15分遅らせる`}>+15</button>
+                              {narrowBlocks ? (
+                                <details
+                                  className="hakobi-plan-block-menu"
+                                  onToggle={(event) => {
+                                    const open = event.currentTarget.open
+                                    setOpenMenuItemId((previous) => open ? item.id : previous === item.id ? null : previous)
+                                  }}
+                                  onPointerDown={(event) => event.stopPropagation()}
+                                  onKeyDown={(event) => {
+                                    if (event.key !== 'Escape') return
+                                    const details = event.currentTarget
+                                    if (!details.open) return
+                                    event.stopPropagation()
+                                    details.open = false
+                                    details.querySelector('summary')?.focus()
+                                  }}
+                                  style={{ position: 'relative' }}
+                                >
+                                  <summary aria-label={`「${item.title}」のほかの操作`} title="ほかの操作（以降+15・複製・未定・外す）" style={{ ...miniActionBtn('var(--slate-800)', 'var(--slate-300)'), listStyle: 'none' }}>⋯</summary>
+                                  <div
+                                    onClick={(event) => { const details = event.currentTarget.parentElement as HTMLDetailsElement | null; if (details && (event.target as HTMLElement).closest('button')) details.open = false }}
+                                    style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 20, display: 'flex', flexDirection: 'column', gap: 4, padding: 6, borderRadius: 8, background: 'var(--slate-900)', border: '1px solid var(--slate-700)', boxShadow: '0 8px 20px rgba(0,0,0,0.35)' }}
+                                  >
+                                    {onShiftFollowing && (
+                                <button
+                                  onPointerDown={(event) => event.stopPropagation()}
+                                  onClick={() => void runAction(() => onShiftFollowing!(item.id, 15))}
+                                  style={miniActionBtn('var(--blue-950)', 'var(--blue-200)')}
+                                  title="この予定と、これ以降の予定を15分遅らせる"
+                                  aria-label={`「${item.title}」とこれ以降の予定を15分遅らせる`}
+                                >
+                                  以降+15
+                                </button>
+                              )}
+                              <button
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={() => void runAction(() => duplicateBlock(item))}
+                                style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
+                                title="同じタスクをこの直後にもう1つ置く"
+                                aria-label={`「${item.title}」を複製して直後に置く`}
+                              >
+                                複製
+                              </button>
+                              <button
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={() => {
+                                  const nextItems = planItems.map((planItem) => {
+                                    if (planItem.id !== item.id) return planItem
+                                    return { ...planItem, scheduled_start: null }
+                                  })
+                                  void runAction(() => onUpdateItem(item.id, { scheduled_start: null }).then(() => onReorder(reorderIdsByTime(nextItems))))
+                                }}
+                                style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
+                                title="未定に戻す"
+                                aria-label={`「${item.title}」の時刻を未定に戻す`}
+                              >
+                                未定
+                              </button>
+                              <button
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={() => void runAction(() => removeItemWithUndo(item))}
+                                style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
+                                title="今日の計画から外す（タスクは消えません）"
+                                aria-label={`「${item.title}」を計画から外す（タスクは消えません）`}
+                              >
+                                外す
+                              </button>
+                                  </div>
+                                </details>
+                              ) : (
+                                <>
+                                  {onShiftFollowing && (
+                                <button
+                                  onPointerDown={(event) => event.stopPropagation()}
+                                  onClick={() => void runAction(() => onShiftFollowing!(item.id, 15))}
+                                  style={miniActionBtn('var(--blue-950)', 'var(--blue-200)')}
+                                  title="この予定と、これ以降の予定を15分遅らせる"
+                                  aria-label={`「${item.title}」とこれ以降の予定を15分遅らせる`}
+                                >
+                                  以降+15
+                                </button>
+                              )}
+                              <button
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={() => void runAction(() => duplicateBlock(item))}
+                                style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
+                                title="同じタスクをこの直後にもう1つ置く"
+                                aria-label={`「${item.title}」を複製して直後に置く`}
+                              >
+                                複製
+                              </button>
+                              <button
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={() => {
+                                  const nextItems = planItems.map((planItem) => {
+                                    if (planItem.id !== item.id) return planItem
+                                    return { ...planItem, scheduled_start: null }
+                                  })
+                                  void runAction(() => onUpdateItem(item.id, { scheduled_start: null }).then(() => onReorder(reorderIdsByTime(nextItems))))
+                                }}
+                                style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
+                                title="未定に戻す"
+                                aria-label={`「${item.title}」の時刻を未定に戻す`}
+                              >
+                                未定
+                              </button>
+                              <button
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={() => void runAction(() => removeItemWithUndo(item))}
+                                style={miniActionBtn('var(--slate-800)', 'var(--slate-300)')}
+                                title="今日の計画から外す（タスクは消えません）"
+                                aria-label={`「${item.title}」を計画から外す（タスクは消えません）`}
+                              >
+                                外す
+                              </button>
+                                </>
+                              )}
+                            </div>}
+                          </div>
+
+                          <button
+                            onPointerDown={(event) => event.stopPropagation()}
+                            data-plan-block-title=""
+                            onClick={() => onSelectTodo(item.todo_id)}
+                            title={item.title}
+                            style={{
+                              flexShrink: 0,
+                              background: 'transparent',
+                              border: 'none',
+                              padding: 0,
+                              color: 'var(--slate-50)',
+                              cursor: 'pointer',
+                              fontSize: '0.84rem',
+                              fontWeight: 700,
+                              textAlign: 'left',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {item.status === 'on_hold' && <span style={{ color: 'var(--purple-300)' }}>保留中 · </span>}{item.title}
+                          </button>
+
+                          {showBlockMeta && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.68rem', color: 'var(--slate-300)', minHeight: 0, overflow: 'hidden' }}>
+                              {item.category_name && <span>{item.category_name}</span>}
+                              <span>{dueLabel}</span>
+                              <span>{formatMinutes(item.durationMinutes)}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div
+                          onPointerDown={(event) => {
+                            if (event.button !== 0) return
+                            event.stopPropagation()
+                            beginInteraction('resize', item, event.clientY)
+                          }}
+                          style={{
+                            position: 'absolute',
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            height: 10,
+                            cursor: 'ns-resize',
+                            background: `color-mix(in srgb, ${categoryColor} 33.3%, transparent)`
+                          }}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </Section>
+        </div>
+        <div style={{ flex: '0.9 1 270px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+          <Section title="時刻が未定のタスク" subtitle="まだ時刻を決めていないタスクです。ドラッグかクリックで時間割に置けます。">
+            <div role="status" style={addedNotice ? { marginBottom: 10, padding: '6px 10px', borderRadius: 8, background: 'var(--green-950)', border: '1px solid var(--green-700)', color: 'var(--green-200)', fontSize: '0.78rem', lineHeight: 1.5 } : { position: 'fixed', top: 0, left: 0, width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+              {addedNotice}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {unscheduledItems.length === 0 ? (
+                <EmptyState label="時刻が未定のタスクはありません。候補や「タスクを探す」から追加して時刻を決めてください。" />
+              ) : (
+                unscheduledItems.map((item) => (
+                  <UnscheduledCard
+                    key={item.id}
+                    item={item}
+                    todayKey={date}
+                    onSelect={onSelectTodo}
+                    onRemove={async () => { await runAction(() => removeItemWithUndo(item)) }}
+                    onSchedule={(draft) => {
+                      setPlacementDraft(draft)
+                      setPlacementTarget(null)
+                    }}
+                    onPrepareDrag={clearPlacement}
+                    placementActive={placementDraft?.source === 'planItem' && placementDraft.id === item.id}
+                  />
+                ))
+              )}
+            </div>
+          </Section>
+
+          <Section title="候補" subtitle={`「${addToDayLabel(date)}」は時刻未定で追加。「時間に置く」は押したあと、時間割の空き時間を選びます。`}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {suggestions.length === 0 ? (
+                <EmptyState label="おすすめのタスクはありません。「タスクを探す」から計画に追加してください。" />
+              ) : (
+                suggestions.map((group) => (
+                  <div key={group.title} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--slate-400)', fontWeight: 700 }}>{group.title}</div>
+                    {group.items.map((todo) => (
+                      <CandidateCard
+                        key={`${group.title}-${todo.id}`}
+                        todo={todo}
+                        todayKey={date}
+                        note={todo.list_mode && checklistSummaries?.get(todo.id) ? `ToDoリスト: ${checklistBadgeText(checklistSummaries.get(todo.id)!)}` : undefined}
+                        onAdd={addUnscheduled}
+                        onSchedule={(draft) => {
+                          setPlacementDraft(draft)
+                          setPlacementTarget(null)
+                        }}
+                        onPrepareDrag={clearPlacement}
+                        placementActive={placementDraft?.source === 'todo' && placementDraft.id === todo.id}
+                      />
+                    ))}
+                  </div>
+                ))
+              )}
+            </div>
+          </Section>
+
+          <Section title="タスクを探す" subtitle={`未着手・進行中のタスク${availableTodos.length}件から検索できます。配置済みのタスクも、もう一度置けます。`}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="追加したいタスクを検索..."
+                style={inputStyle}
+              />
+              {filteredBacklog.length === 0 ? (
+                <EmptyState label={searchQuery ? '検索条件に合うタスクはありません。' : '未着手・進行中のタスクはありません。'} />
+              ) : (
+                filteredBacklog.map((todo) => (
+                  <CandidateCard
+                    key={todo.id}
+                    todo={todo}
+                    todayKey={date}
+                    plannedCount={plannedCountByTodoId.get(todo.id) ?? 0}
+                    onAdd={addUnscheduled}
+                    onSchedule={(draft) => {
+                      setPlacementDraft(draft)
+                      setPlacementTarget(null)
+                    }}
+                    onPrepareDrag={clearPlacement}
+                    placementActive={placementDraft?.source === 'todo' && placementDraft.id === todo.id}
+                  />
+                ))
+              )}
+            </div>
+          </Section>
+
+          <Section title="使い方">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, color: 'var(--slate-400)', fontSize: '0.8rem', lineHeight: 1.6 }}>
+              <div>候補や時刻が未定のタスクは、ドラッグして時間割へ落とすか、「時間に置く」を押してから空き時間をクリックすると配置できます。</div>
+              <div>時間割のブロックは、ドラッグで開始時刻、下端ドラッグで長さを調整できます。</div>
+              <div>同じタスクは1日に何個でも置けます。ブロックの「複製」を押すか、「タスクを探す」から同じタスクをもう一度ドラッグしてください。</div>
+              <div>クリックで置いている途中は、Esc でキャンセルできます。</div>
+            </div>
+          </Section>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+<<<yomiyasu:material src/renderer/src/components/KanbanView.tsx>>>
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Category, Todo, TodoStatus } from '../types'
+import { checklistBadgeText, checklistBadgeTitle, type ChecklistSummary } from '../lib/todoList'
+import { dataInk } from '../lib/theme'
+import { todoRecurrenceLabel } from '../lib/recurrence'
+import { dueStateSuffix, formatShortDate } from '../lib/dueDate'
+
+interface Props {
+  todos: Todo[]
+  categories: Category[]
+  runningTodoId: string | null
+  /** タスク一覧の絞り込みの表示。絞り込み中だけ上に出す */
+  listFilters?: React.ReactNode
+  onSelectTodo: (id: string) => void
+  onChangeStatus: (todo: Todo, status: TodoStatus) => void | Promise<void>
+  onCreateInColumn: (title: string, status: TodoStatus) => void | Promise<void>
+  /** ToDoリスト（中の項目をチェックして使うタスク）の項目の進み具合 */
+  checklistSummaries?: Map<string, ChecklistSummary>
+}
+
+const COLUMNS: { status: TodoStatus; label: string; accent: string }[] = [
+  { status: 'not_started', label: '未着手', accent: 'var(--slate-500)' },
+  { status: 'active', label: '進行中', accent: 'var(--blue-500)' },
+  { status: 'on_hold', label: '保留中', accent: 'var(--purple-400)' },
+  { status: 'done', label: '完了', accent: 'var(--green-500)' }
+]
+
+/** 日付のみの文字列（YYYY-MM-DD）をローカル日付の0時としてパースする */
+function parseDateOnly(dateKey: string): Date {
+  const [y, m, d] = dateKey.slice(0, 10).split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function getDueColor(dueDate: string | null): string {
+  if (!dueDate) return 'var(--text-subtle)'
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const diffDays = (parseDateOnly(dueDate).getTime() - today.getTime()) / 86400000
+  if (diffDays < 0) return 'var(--red-400)'
+  if (diffDays < 1) return 'var(--orange-500)'
+  if (diffDays <= 3) return 'var(--amber-500)'
+  return 'var(--text-subtle)'
+}
+
+function progressColor(p: number): string {
+  if (p >= 100) return 'var(--green-400)'
+  if (p >= 70) return 'var(--indigo-500)'
+  if (p >= 30) return 'var(--indigo-400)'
+  return 'var(--slate-600)'
+}
+
+// 列内の並び順: 優先度の高い順 → 期限の早い順（無期限は後ろ）→ 手動順
+function sortForColumn(a: Todo, b: Todo): number {
+  if (b.priority !== a.priority) return b.priority - a.priority
+  const ad = a.due_date ?? '￿'
+  const bd = b.due_date ?? '￿'
+  if (ad !== bd) return ad < bd ? -1 : 1
+  return (a.sort_order ?? 0) - (b.sort_order ?? 0)
+}
+
+function avatarStyle(color: string | null | undefined): React.CSSProperties {
+  return {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
+    background: color ?? 'var(--slate-500)', border: '1px solid var(--slate-900)',
+    color: 'var(--ink-on-data)', fontSize: 'var(--font-caption)', fontWeight: 800, textTransform: 'uppercase'
+  }
+}
+
+function KanbanCard({
+  todo, isRunning, isPrivate, checklist, columnLabel, autoFocus, onFocused, onSelect, onMove, onDragStart, onDragEnd
+}: {
+  todo: Todo; isRunning: boolean; isPrivate: boolean
+  checklist?: ChecklistSummary
+  columnLabel: string
+  /** 列を移した直後のカード。移った先でもフォーカスを保つ */
+  autoFocus: boolean
+  onFocused: () => void
+  onSelect: () => void
+  /** キーボードで隣の列へ移す（-1 は左、1 は右） */
+  onMove: (direction: -1 | 1) => void
+  onDragStart: () => void; onDragEnd: () => void
+}): React.JSX.Element {
+  const cardRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!autoFocus) return
+    cardRef.current?.focus()
+    onFocused()
+  }, [autoFocus, onFocused])
+  // ToDoリストは進捗率を使わない（中の項目のチェックで見る）
+  // 完了したタスクは進捗率を出さない（完了の前の 40% などが残って紛らわしいため）
+  const prog = todo.list_mode || todo.status === 'done' ? 0 : todo.progress ?? 0
+  const isDone = todo.status === 'done'
+  const coAssignees = todo.co_assignees ?? []
+  // 読み上げ用のカードの名前。見た目の記号（!・🔁・担当の頭文字）ではなく言葉で伝える
+  const cardLabel = [
+    `${todo.title}（${columnLabel}）`,
+    todo.priority >= 4 ? `優先度 ${todo.priority === 5 ? '最高' : '高'}` : null,
+    todo.category_name ? `カテゴリ ${todo.category_name}` : null,
+    todo.recurrence ? `繰り返し ${todoRecurrenceLabel(todo) ?? ''}`.trim() : null,
+    todo.due_date ? `期限 ${formatShortDate(todo.due_date)}${dueStateSuffix(todo.due_date, isDone)}` : null,
+    prog > 0 ? `進捗 ${prog}%` : null,
+    todo.assignee_name ? `担当 ${todo.assignee_name}` : null,
+    isRunning ? '計測中' : null
+  ].filter(Boolean).join('、')
+
+  return (
+    <div
+      ref={cardRef}
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onClick={onSelect}
+      // キーボードでも開ける・列を移せるようにする（ドラッグはマウスだけなので）
+      role="button"
+      tabIndex={0}
+      aria-label={cardLabel}
+      aria-keyshortcuts="Enter Alt+ArrowLeft Alt+ArrowRight"
+      title="Enter で開く・Alt+← / Alt+→ で隣の列へ移す"
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect()
+        } else if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+          event.preventDefault()
+          onMove(event.key === 'ArrowLeft' ? -1 : 1)
+        }
+      }}
+      style={{
+        background: 'var(--slate-900)',
+        // 集計外のカードは薄くせず（文字が読みにくくなる）、枠を点線にして区別する
+        border: `1px ${isPrivate ? 'dashed' : 'solid'} ${isRunning ? 'var(--green-900)' : isPrivate ? 'var(--slate-600)' : 'var(--slate-800)'}`,
+        borderLeft: `3px solid ${isRunning ? 'var(--green-400)' : 'transparent'}`,
+        borderRadius: 8,
+        padding: '8px 10px',
+        cursor: 'grab'
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, flexWrap: 'wrap' }}>
+        {todo.category_name && (
+          <span style={{
+            fontSize: 'var(--font-caption)', padding: '1px 6px', borderRadius: 99,
+            background: `color-mix(in srgb, ${todo.category_color ?? 'var(--indigo-500)'} 18.8%, transparent)`, color: dataInk(todo.category_color ?? 'var(--indigo-500)')
+          }}>
+            {todo.category_name}
+          </span>
+        )}
+        {todo.priority >= 4 && (
+          <span title={`優先度 ${todo.priority === 5 ? '最高' : '高'}`} style={{ fontSize: 'var(--font-caption)', color: todo.priority === 5 ? 'var(--red-500)' : 'var(--amber-500)' }}>
+            {'!'.repeat(todo.priority - 3)}
+          </span>
+        )}
+        {todo.recurrence && (
+          <span title={`繰り返し: ${todoRecurrenceLabel(todo) ?? todo.recurrence}`} style={{ fontSize: 'var(--font-caption)', color: 'var(--indigo-400)' }}>🔁</span>
+        )}
+        {todo.list_mode === 1 && checklist && (
+          <span title={checklistBadgeTitle(checklist)} style={{ fontSize: 'var(--font-caption)', color: 'var(--indigo-300)', border: '1px solid var(--indigo-700)', borderRadius: 99, padding: '0 5px' }}>
+            ☑ {checklistBadgeText(checklist)}
+          </span>
+        )}
+        {isPrivate && (
+          <span title="集計から外すカテゴリ（チームの集計・レポートに含めません。ほかの人にも見えます）" style={{ fontSize: 'var(--font-caption)', color: 'var(--slate-400)', border: '1px solid var(--slate-700)', borderRadius: 99, padding: '0 5px' }}>集計外</span>
+        )}
+        {isRunning && (
+          <span style={{ fontSize: 'var(--font-caption)', background: 'color-mix(in srgb, var(--green-400) 12.5%, transparent)', color: 'var(--green-400)', padding: '1px 5px', borderRadius: 99 }}>計測中</span>
+        )}
+      </div>
+
+      <div style={{
+        fontSize: '0.84rem',
+        color: isDone ? 'var(--text-subtle)' : 'var(--slate-200)',
+        textDecoration: isDone ? 'line-through' : 'none',
+        lineHeight: 1.4, wordBreak: 'break-word'
+      }}>
+        {todo.title}
+      </div>
+
+      {prog > 0 && (
+        <div style={{ height: 3, background: 'var(--slate-800)', borderRadius: 99, marginTop: 7, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${prog}%`, background: progressColor(prog) }} />
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
+        {todo.due_date && (
+          <span title={`期限 ${todo.due_date.slice(0, 10)}`} style={{ fontSize: 'var(--font-caption)', color: isDone ? 'var(--text-subtle)' : getDueColor(todo.due_date) }}>
+            期限 {formatShortDate(todo.due_date)}{dueStateSuffix(todo.due_date, isDone)}
+          </span>
+        )}
+        {prog > 0 && (
+          <span style={{ fontSize: 'var(--font-caption)', color: progressColor(prog) }}>{prog}%</span>
+        )}
+        {(todo.assignee_name || coAssignees.length > 0) && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 'auto' }}>
+            {todo.assignee_name && (
+              <span title={`主担当: ${todo.assignee_name}`} style={avatarStyle(todo.assignee_color)}>
+                {todo.assignee_name.slice(0, 1)}
+              </span>
+            )}
+            {coAssignees.slice(0, 3).map((ca) => (
+              <span key={ca.user_id} title={`サブ担当: ${ca.display_name}`} style={{ ...avatarStyle(ca.color), marginLeft: todo.assignee_name ? -4 : 0 }}>
+                {ca.display_name.slice(0, 1)}
+              </span>
+            ))}
+            {coAssignees.length > 3 && (
+              <span style={{ ...avatarStyle('var(--slate-600)'), marginLeft: -4 }}>+{coAssignees.length - 3}</span>
+            )}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function KanbanView({
+  todos, categories, runningTodoId, listFilters, onSelectTodo, onChangeStatus, onCreateInColumn, checklistSummaries
+}: Props): React.JSX.Element {
+  const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dragOverStatus, setDragOverStatus] = useState<TodoStatus | null>(null)
+  const [addingStatus, setAddingStatus] = useState<TodoStatus | null>(null)
+  const [addTitle, setAddTitle] = useState('')
+  const [addError, setAddError] = useState('')
+  const [adding, setAdding] = useState(false)
+  const addingRef = useRef(false)
+  const addButtonsRef = useRef(new Map<TodoStatus, HTMLButtonElement>())
+
+  const privateCategoryIds = useMemo(
+    () => new Set(categories.filter((c) => c.is_private).map((c) => c.id)),
+    [categories]
+  )
+
+  const byStatus = useMemo(() => {
+    const map: Record<TodoStatus, Todo[]> = { not_started: [], active: [], on_hold: [], done: [], archived: [] }
+    for (const todo of todos) {
+      if (todo.status === 'archived') continue
+      map[todo.status].push(todo)
+    }
+    for (const status of Object.keys(map) as TodoStatus[]) map[status].sort(sortForColumn)
+    return map
+  }, [todos])
+
+  const handleDrop = (status: TodoStatus): void => {
+    const todo = todos.find((t) => t.id === draggedId)
+    setDraggedId(null)
+    setDragOverStatus(null)
+    if (todo && todo.status !== status) void onChangeStatus(todo, status)
+  }
+
+  // キーボードで列を移したカードは、移った先で再びフォーカスする
+  const [focusAfterMoveId, setFocusAfterMoveId] = useState<string | null>(null)
+  const clearFocusAfterMove = useCallback(() => setFocusAfterMoveId(null), [])
+  const moveByKeyboard = (todo: Todo, direction: -1 | 1): void => {
+    const index = COLUMNS.findIndex((column) => column.status === todo.status)
+    const next = COLUMNS[index + direction]
+    if (index < 0 || !next) return
+    // 移した先の列に描き直されてから、そのカードへフォーカスを戻す
+    void Promise.resolve(onChangeStatus(todo, next.status)).then(() => setFocusAfterMoveId(todo.id))
+  }
+
+  const submitAdd = async (status: TodoStatus): Promise<void> => {
+    const title = addTitle.trim()
+    if (!title || addingRef.current) return
+    addingRef.current = true
+    setAdding(true)
+    setAddError('')
+    try {
+      await onCreateInColumn(title, status)
+      setAddTitle('')
+      setAddingStatus(null)
+      window.requestAnimationFrame(() => addButtonsRef.current.get(status)?.focus())
+    } catch (error) {
+      setAddError(error instanceof Error ? error.message : '追加できませんでした。入力を残しています。もう一度お試しください。')
+    } finally {
+      addingRef.current = false
+      setAdding(false)
+    }
+  }
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+      {listFilters && <div style={{ flexShrink: 0, padding: '8px 12px 0' }}>{listFilters}</div>}
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 10, padding: 12, overflowX: 'auto', boxSizing: 'border-box' }}>
+      {COLUMNS.map((col) => {
+        const items = byStatus[col.status]
+        const isOver = dragOverStatus === col.status
+        return (
+          <div
+            key={col.status}
+            onDragOver={(e) => { e.preventDefault(); if (draggedId) setDragOverStatus(col.status) }}
+            onDragLeave={() => setDragOverStatus((prev) => (prev === col.status ? null : prev))}
+            onDrop={(e) => { e.preventDefault(); handleDrop(col.status) }}
+            style={{
+              flex: '1 1 0', minWidth: 200, display: 'flex', flexDirection: 'column',
+              background: isOver ? 'var(--c-13203b)' : 'var(--c-0b1220)',
+              border: `1px solid ${isOver ? 'var(--blue-500)' : 'var(--slate-800)'}`,
+              borderRadius: 12, overflow: 'hidden'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--slate-800)' }}>
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: col.accent, flexShrink: 0 }} />
+              <h2 style={{ margin: 0, fontSize: '0.84rem', fontWeight: 700, color: 'var(--slate-200)' }}>{col.label}</h2>
+              <span style={{ fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', background: 'var(--slate-900)', border: '1px solid var(--slate-800)', borderRadius: 99, padding: '1px 7px' }}>
+                {items.length}
+              </span>
+              <button
+                ref={(element) => { if (element) addButtonsRef.current.set(col.status, element); else addButtonsRef.current.delete(col.status) }}
+                disabled={adding}
+                onClick={() => { setAddingStatus(col.status); setAddTitle(''); setAddError('') }}
+                title={`「${col.label}」の列にタスクを追加`}
+                aria-label={`${col.label}にタスクを追加`}
+                style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid var(--slate-700)', borderRadius: 6, color: 'var(--slate-400)', cursor: 'pointer', fontSize: 'var(--font-control)', lineHeight: 1, padding: '3px 7px' }}
+              >
+                ＋
+              </button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {addingStatus === col.status && (
+                <form aria-label={`${col.label}にタスクを追加`} onSubmit={(event) => { event.preventDefault(); void submitAdd(col.status) }} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <input
+                  autoFocus
+                  aria-label="タスク名"
+                  aria-describedby={addError ? 'kanban-add-error' : undefined}
+                  aria-invalid={Boolean(addError)}
+                  disabled={adding}
+                  value={addTitle}
+                  onChange={(e) => setAddTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    // 日本語変換の確定の Enter では追加しない
+                    if (e.nativeEvent.isComposing) { if (e.key === 'Enter') e.preventDefault(); return }
+                    if (e.key === 'Escape' && !addingRef.current) { e.preventDefault(); setAddingStatus(null); setAddTitle(''); addButtonsRef.current.get(col.status)?.focus() }
+                  }}
+                  placeholder="タスク名を入力して Enter"
+                  style={{ width: '100%', padding: '7px 9px', background: 'var(--slate-900)', border: '1px solid var(--blue-500)', borderRadius: 8, color: 'var(--slate-200)', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}
+                />
+                {addError && <p id="kanban-add-error" role="alert" style={{ color: 'var(--red-400)', fontSize: 'var(--font-control)', overflowWrap: 'anywhere' }}>{addError} 入力内容は残っています。</p>}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button type="submit" disabled={adding || !addTitle.trim()} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--blue-500)', background: 'var(--blue-900)', color: 'var(--blue-100)', cursor: adding ? 'wait' : 'pointer' }}>{adding ? '追加中…' : '追加'}</button>
+                  <button type="button" disabled={adding} onClick={() => { setAddingStatus(null); setAddTitle(''); addButtonsRef.current.get(col.status)?.focus() }} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--slate-700)', background: 'transparent', color: 'var(--slate-300)', cursor: 'pointer' }}>キャンセル</button>
+                </div>
+                </form>
+              )}
+
+              {items.map((todo) => (
+                <KanbanCard
+                  key={todo.id}
+                  todo={todo}
+                  isRunning={runningTodoId === todo.id}
+                  checklist={checklistSummaries?.get(todo.id)}
+                  isPrivate={todo.category_id != null && privateCategoryIds.has(todo.category_id)}
+                  columnLabel={col.label}
+                  autoFocus={focusAfterMoveId === todo.id}
+                  onFocused={clearFocusAfterMove}
+                  onMove={(direction) => moveByKeyboard(todo, direction)}
+                  onSelect={() => onSelectTodo(todo.id)}
+                  onDragStart={() => setDraggedId(todo.id)}
+                  onDragEnd={() => { setDraggedId(null); setDragOverStatus(null) }}
+                />
+              ))}
+
+              {items.length === 0 && addingStatus !== col.status && (
+                <div style={{ padding: '16px 8px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: 'var(--font-control)' }}>
+                  カードをここにドラッグ（キーボードは Alt+← / Alt+→）
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+    </div>
+  )
+}
+
+<<<yomiyasu:material src/renderer/src/components/WorkLogSummary.tsx>>>
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import type { WorkLogSummaryRow } from '../types'
+import { dataInk } from '../lib/theme'
+
+interface Props {
+  hiddenTodoIds?: Set<string>
+}
+
+interface TaskGroup {
+  todo_id: string
+  title: string
+  category_name: string | null
+  category_color: string | null
+  total_seconds: number
+  entries: WorkLogSummaryRow[]
+}
+
+const DAY_OPTIONS = [
+  { label: '3日', value: 3 },
+  { label: '7日', value: 7 },
+  { label: '14日', value: 14 },
+  { label: '30日', value: 30 }
+]
+
+const WEEK_DAYS = ['日', '月', '火', '水', '木', '金', '土']
+const NO_HIDDEN_TODOS = new Set<string>()
+
+function formatDate(isoStr: string): string {
+  const d = new Date(isoStr)
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+
+  if (target.getTime() === today.getTime()) return '今日'
+  if (target.getTime() === yesterday.getTime()) return '昨日'
+  return `${d.getMonth() + 1}/${d.getDate()} (${WEEK_DAYS[d.getDay()]})`
+}
+
+function formatTime(isoStr: string): string {
+  const d = new Date(isoStr)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds > 0 && seconds < 60) return '1分未満'
+  const minutes = Math.round(seconds / 60)
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h > 0) return `${h}時間${m > 0 ? `${m}分` : ''}`
+  return `${m}分`
+}
+
+function groupByTask(rows: WorkLogSummaryRow[]): TaskGroup[] {
+  const map = new Map<string, TaskGroup>()
+  for (const row of rows) {
+    if (!map.has(row.todo_id)) {
+      map.set(row.todo_id, {
+        todo_id: row.todo_id,
+        title: row.title,
+        category_name: row.category_name,
+        category_color: row.category_color,
+        total_seconds: 0,
+        entries: []
+      })
+    }
+    const g = map.get(row.todo_id)!
+    g.total_seconds += row.duration_seconds
+    g.entries.push(row)
+  }
+  return [...map.values()].sort((a, b) => b.total_seconds - a.total_seconds)
+}
+
+export function WorkLogSummary({ hiddenTodoIds = NO_HIDDEN_TODOS }: Props): React.JSX.Element {
+  const [days, setDays] = useState(7)
+  const [groups, setGroups] = useState<TaskGroup[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const requestRef = useRef(0)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+
+  const load = useCallback(async (d: number) => {
+    const request = ++requestRef.current
+    setLoading(true)
+    setError(null)
+    try {
+      const rows = await window.api.worklogGetSummary(d)
+      if (request === requestRef.current) setGroups(groupByTask(rows.filter((row) => !hiddenTodoIds.has(row.todo_id))))
+    } catch (failure) {
+      if (request === requestRef.current) setError(failure instanceof Error ? failure.message : '作業ログを読み込めませんでした')
+    } finally {
+      if (request === requestRef.current) setLoading(false)
+    }
+  }, [hiddenTodoIds])
+
+  useEffect(() => { void load(days); return () => { requestRef.current++ } }, [days, load])
+
+  const toggleExpand = (id: string): void => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const totalSeconds = groups.reduce((s, g) => s + g.total_seconds, 0)
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* ヘッダー */}
+      <div style={{
+        padding: '14px 20px 10px', borderBottom: '1px solid var(--slate-800)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, flexWrap: 'wrap', gap: 10
+      }}>
+        <div>
+          <div style={{ fontSize: '1rem', color: 'var(--slate-200)', fontWeight: 'bold' }}>記録</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: 4 }}>タイマーで計測した作業時間</div>
+          {!loading && !error && totalSeconds > 0 && (
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: 2 }}>
+              合計 <span style={{ color: 'var(--green-400)', fontWeight: 'bold' }}>{formatDuration(totalSeconds)}</span>
+              {' / '}{groups.length}タスク
+            </div>
+          )}
+        </div>
+        {/* 期間切替 */}
+        <div role="group" aria-label="集計期間" style={{ display: 'flex', gap: 4 }}>
+          {DAY_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setDays(opt.value)}
+              aria-pressed={days === opt.value}
+              style={{
+                padding: '4px 10px', borderRadius: 6, fontSize: '0.8rem', cursor: 'pointer',
+                background: days === opt.value ? 'var(--indigo-500)' : 'var(--slate-800)',
+                border: `1px solid ${days === opt.value ? 'var(--indigo-500)' : 'var(--slate-700)'}`,
+                color: days === opt.value ? 'var(--on-fill-white)' : 'var(--slate-400)',
+                fontWeight: days === opt.value ? 'bold' : 'normal'
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* コンテンツ */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+        {error && <div role="alert" style={{ padding: 24, border: '1px solid var(--red-500)', borderRadius: 10, color: 'var(--slate-200)' }}>
+          <p>作業ログを読み込めませんでした。</p><p style={{ marginTop: 6, fontSize: '0.85rem' }}>{error}</p>
+          <button onClick={() => void load(days)} style={{ marginTop: 12, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--slate-600)', background: 'var(--slate-800)', color: 'var(--slate-100)', cursor: 'pointer' }}>再試行</button>
+        </div>}
+        {loading && (
+          <div style={{ color: 'var(--text-subtle)', textAlign: 'center', padding: 24, fontSize: '0.9rem' }}>
+            読み込み中…
+          </div>
+        )}
+
+        {!loading && !error && groups.length === 0 && (
+          <div style={{ color: 'var(--text-subtle)', textAlign: 'center', padding: 32, fontSize: '0.9rem' }}>
+            この期間の作業ログはありません
+            <p style={{ marginTop: 10, lineHeight: 1.7, fontSize: '0.82rem' }}>タスクの詳細で「計測開始」を押し、作業後に「停止」すると記録されます。<br />過去の記録は上の期間を切り替えて確認できます。</p>
+          </div>
+        )}
+
+        {!loading && !error && groups.map((group) => {
+          const expanded = expandedIds.has(group.todo_id)
+
+          // エントリを日付ごとにグループ化（表示用）
+          const byDate = new Map<string, WorkLogSummaryRow[]>()
+          for (const entry of group.entries) {
+            const dateKey = formatDate(entry.start_time)
+            if (!byDate.has(dateKey)) byDate.set(dateKey, [])
+            byDate.get(dateKey)!.push(entry)
+          }
+
+          return (
+            <div
+              key={group.todo_id}
+              style={{
+                background: 'var(--slate-800)', borderRadius: 10, marginBottom: 10,
+                border: '1px solid var(--slate-700)', overflow: 'hidden'
+              }}
+            >
+              {/* タスクヘッダー */}
+              <button
+                onClick={() => toggleExpand(group.todo_id)}
+                aria-expanded={expanded}
+                style={{
+                  width: '100%', padding: '12px 14px', background: 'none', border: 'none',
+                  cursor: 'pointer', textAlign: 'left', display: 'flex',
+                  alignItems: 'center', gap: 10
+                }}
+              >
+                <span style={{ color: 'var(--text-subtle)', fontSize: '0.8rem', flexShrink: 0 }}>
+                  {expanded ? '▼' : '▶'}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.92rem', color: 'var(--slate-200)', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {group.title}
+                  </div>
+                  {group.category_name && (
+                    <span style={{
+                      fontSize: '0.7rem', padding: '1px 6px', borderRadius: 99, marginTop: 3, display: 'inline-block',
+                      background: `color-mix(in srgb, ${group.category_color ?? 'var(--indigo-500)'} 18.8%, transparent)`,
+                      color: dataInk(group.category_color ?? 'var(--indigo-500)')
+                    }}>
+                      {group.category_name}
+                    </span>
+                  )}
+                </div>
+                {/* 合計時間バー */}
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontSize: '1rem', color: 'var(--green-400)', fontWeight: 'bold' }}>
+                    {formatDuration(group.total_seconds)}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
+                    {group.entries.length}件
+                  </div>
+                </div>
+              </button>
+
+              {/* 展開: 日付ごとのエントリ */}
+              {expanded && (
+                <div style={{ borderTop: '1px solid var(--slate-900)' }}>
+                  {[...byDate.entries()].map(([dateLabel, entries]) => {
+                    const dayTotal = entries.reduce((s, e) => s + e.duration_seconds, 0)
+                    return (
+                      <div key={dateLabel} style={{ padding: '8px 14px 6px' }}>
+                        {/* 日付ヘッダー */}
+                        <div style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          marginBottom: 4
+                        }}>
+                          <span style={{
+                            fontSize: '0.72rem', color: 'var(--indigo-500)', fontWeight: 'bold',
+                            background: 'color-mix(in srgb, var(--indigo-500) 8.2%, transparent)', padding: '2px 8px', borderRadius: 99
+                          }}>
+                            {dateLabel}
+                          </span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+                            {formatDuration(dayTotal)}
+                          </span>
+                        </div>
+                        {/* ログエントリ */}
+                        {entries.map((entry) => (
+                          <div
+                            key={entry.id}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              padding: '4px 6px', borderRadius: 5, marginBottom: 2,
+                              background: 'var(--slate-900)'
+                            }}
+                          >
+                            <span style={{ fontSize: '0.8rem', color: 'var(--slate-400)', fontFamily: 'monospace', flexShrink: 0 }}>
+                              {formatTime(entry.start_time)}–{formatTime(entry.end_time)}
+                            </span>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--green-400)', flexShrink: 0 }}>
+                              {formatDuration(entry.duration_seconds)}
+                            </span>
+                            {entry.note && (
+                              <span style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                — {entry.note}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+<<<yomiyasu:material server/src/db/timer.ts>>>
+import crypto from 'crypto'
+import { getDb } from './connection'
+import type { RunningState, WorkLog } from './types'
+
+export function startTimer(userId: string, todoId: string): RunningState {
+  const db = getDb()
+  return db.transaction(() => {
+    // 切替先を先に検証し、旧タイマーの停止だけが確定する部分更新を防ぐ。
+    const target = db.prepare('SELECT id, status FROM Todos WHERE id = ?').get(todoId) as { id: string; status: string } | undefined
+    if (!target) throw new Error('開始するタスクが見つかりません')
+    if (target.status === 'on_hold') throw new Error('保留中のタスクは、進行中に戻してから計測を開始してください')
+
+    // 実行中のタイマーがあれば自動停止（WorkLog 記録）してから開始する。
+    // 同じタスクを再度開始した場合は計測中のものを維持する（リセットしない）。
+    const existing = db.prepare('SELECT * FROM RunningState WHERE user_id = ?').get(userId) as RunningState | undefined
+    if (existing) {
+      if (existing.todo_id === todoId) return existing
+      stopTimer(userId)
+    }
+    const now = new Date().toISOString()
+    db.prepare('INSERT INTO RunningState (user_id, todo_id, start_time) VALUES (?, ?, ?)').run(userId, todoId, now)
+    return { user_id: userId, todo_id: todoId, start_time: now }
+  })()
+}
+
+export function stopTimer(userId: string, note?: string): WorkLog {
+  const db = getDb()
+  return db.transaction(() => {
+    const running = db.prepare('SELECT * FROM RunningState WHERE user_id = ?').get(userId) as RunningState | undefined
+    if (!running) {
+      throw new Error('実行中のタイマーがありません')
+    }
+    const endTime = new Date().toISOString()
+    const startMs = new Date(running.start_time).getTime()
+    const endMs = new Date(endTime).getTime()
+    const durationSeconds = Math.floor((endMs - startMs) / 1000)
+
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    db.prepare(
+      `INSERT INTO WorkLogs (id, todo_id, user_id, start_time, end_time, duration_seconds, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, running.todo_id, userId, running.start_time, endTime, durationSeconds, note ?? '', now)
+
+    db.prepare('DELETE FROM RunningState WHERE user_id = ?').run(userId)
+
+    return db.prepare('SELECT * FROM WorkLogs WHERE id = ?').get(id) as WorkLog
+  })()
+}
+
+export function getRunningState(userId: string): RunningState | undefined {
+  return getDb().prepare('SELECT * FROM RunningState WHERE user_id = ?').get(userId) as RunningState | undefined
+}
