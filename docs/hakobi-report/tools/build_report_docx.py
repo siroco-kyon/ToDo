@@ -55,6 +55,15 @@ COVER_TITLE_BREAKS = ("見える化する", "業務管理ツール")
 # Every figure the Markdown can place with [[FIGURE:key]]. Diagrams come from
 # report_diagrams.py (SVG + PNG); screens are PNGs made by prepare_screens.py.
 FIGURES = {
+    "personal-launcher": {"image": "../../hakobi-showcase/assets/personal-launcher-focus.png", "width": 5.5, "alt": "接続画面の下部。チームへの接続ボタンの下に、このPCで個人用として使う入口がある"},
+    "personal-start": {"image": "../../hakobi-showcase/assets/personal-gantt-focus.png", "alt": "個人用の月次集計の見直し。10月22日から30日までの予定と進捗25パーセントをガントで確認する"},
+    "team-example": {"image": "../../hakobi-showcase/assets/team-focus.png", "alt": "架空の3人の未完了、保留中、期限超過、報告なしなどの件数を並べたチーム画面"},
+    "consultation-example": {"image": "../../hakobi-showcase/assets/discussion.png", "alt": "佐藤が集計項目について要相談の進捗ログを投稿し、高橋が定例で確認しようと返信した画面"},
+    "meeting-example": {"image": "../../hakobi-showcase/assets/meeting-focus.png", "alt": "定例で佐藤の仕事として部署別に残す項目を確認するタスクを期限10月23日で登録した例。担当、保存済みタスク、追加欄、メモを同じ実画面から抜き出している"},
+    "report-example": {"image": "../../hakobi-showcase/assets/report-focus.png", "alt": "報告の期間、担当、Markdownをコピー、CSV、定例モードのボタン"},
+    "plan-example": {"image": "../../hakobi-start-guide/assets/tour-plan.png", "width": 4.3, "alt": "説明会の配布資料と確認の仕事を午前と午後の時間帯に置いた今日の計画"},
+    "timer-example": {"image": "../../hakobi-start-guide/assets/tour-timer.png", "alt": "タスク詳細のタイマー。撮影用に用意した作業例として35分を表示している"},
+    "dependency-example": {"image": "../../hakobi-start-guide/assets/tour-dependencies.png", "alt": "資料を整える仕事の後続として資料を参加者へ送るタスクを設定し、待機日数を指定する欄"},
     "timeline": {"alt": "2026年3〜4月の個人用デスクトップアプリから、5月30日のチーム用サーバー、6〜9月の進捗共有と報告タブ、10月のチーム接続のデスクトップ版と定例モードまでの開発の流れ"},
     "architecture": {"alt": "個人用はデスクトップ版の画面がIPCでPC内のSQLiteを使い、チーム用はブラウザとデスクトップ版の同じ画面がHTTPとWebSocketで社内LANのサーバーを使う構成図"},
     "sync-flow": {"alt": "画面で保存、サーバーで確認、DBを更新、WebSocketで変更を知らせる、各画面が取り直す、の5段階の流れ"},
@@ -241,7 +250,7 @@ def add_hyperlink(paragraph, label: str, url: str, font_size: float | None = Non
     rfonts = OxmlElement("w:rFonts")
     rfonts.set(qn("w:ascii"), "Calibri")
     rfonts.set(qn("w:hAnsi"), "Calibri")
-    rfonts.set(qn("w:eastAsia"), "Yu Mincho")
+    rfonts.set(qn("w:eastAsia"), "Yu Gothic")
     color = OxmlElement("w:color")
     color.set(qn("w:val"), LINK)
     underline = OxmlElement("w:u")
@@ -260,13 +269,13 @@ def add_hyperlink(paragraph, label: str, url: str, font_size: float | None = Non
     paragraph._p.append(hyperlink)
 
 
-TOKEN_RE = re.compile(r"(\[[^\]]+\]\(https?://[^)]+\)|\*\*[^*]+\*\*|`[^`]+`)")
+TOKEN_RE = re.compile(r"(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|`[^`]+`)")
 
 
 def add_inline(paragraph, text: str, font_size: float | None = None) -> None:
     def plain(value: str) -> None:
         run = paragraph.add_run(value)
-        set_east_asia(run, "Yu Mincho")
+        set_east_asia(run, "Yu Gothic")
         if font_size:
             run.font.size = Pt(font_size)
 
@@ -275,7 +284,7 @@ def add_inline(paragraph, text: str, font_size: float | None = None) -> None:
         if match.start() > pos:
             plain(text[pos:match.start()])
         token = match.group(0)
-        if token.startswith("[") and "](http" in token:
+        if token.startswith("[") and "](" in token:
             label, url = token[1:].split("](", 1)
             add_hyperlink(paragraph, label, url[:-1], font_size)
         elif token.startswith("**"):
@@ -322,15 +331,15 @@ def configure_styles(doc: Document) -> None:
     normal.font.name = "Calibri"
     normal.font.size = Pt(10.5)
     normal.font.color.rgb = RGBColor.from_string(BODY)
-    normal._element.rPr.rFonts.set(qn("w:eastAsia"), "Yu Mincho")
-    normal.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    normal._element.rPr.rFonts.set(qn("w:eastAsia"), "Yu Gothic")
+    normal.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
     normal.paragraph_format.line_spacing = 1.4
     normal.paragraph_format.space_after = Pt(7)
     normal.paragraph_format.widow_control = True
 
     for name, size, color, before, after in (
-        ("Title", 26, "FFFFFF", 0, 10),
-        ("Subtitle", 13, "FFFFFF", 0, 6),
+        ("Title", 24, "000000", 0, 10),
+        ("Subtitle", 13, "263238", 0, 6),
         ("Heading 1", 16, NAVY, 20, 10),
         ("Heading 2", 12.5, NAVY, 12, 5),
         ("Heading 3", 11.5, NAVY, 8, 4),
@@ -734,83 +743,27 @@ def read_front_matter(lines: list[str]) -> dict[str, str]:
 
 
 def add_cover(doc: Document, meta: dict[str, str]) -> None:
-    # A navy band with the app icon carries the title, as on the app's own screens.
-    band = doc.add_table(rows=1, cols=1)
-    band.alignment = WD_TABLE_ALIGNMENT.CENTER
-    band.autofit = False
-    set_table_geometry(band, [TABLE_WIDTH + 120])
-    cell = band.cell(0, 0)
-    set_cell_shading(cell, NAVY)
-    set_cell_borders(cell, None)
-    set_cell_margins(cell, 560, 520, 620, 520)
-
-    p = cell.paragraphs[0]
-    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    p.paragraph_format.space_after = Pt(14)
-    p.add_run().add_picture(str(ICON), width=Inches(0.62))
-
-    p = cell.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    p.paragraph_format.space_after = Pt(10)
-    r = p.add_run("TECHNICAL REPORT" + (f"　／　{meta['区分']}" if meta.get("区分") else ""))
-    r.font.size = Pt(10)
-    r.font.bold = True
-    r.font.color.rgb = RGBColor.from_string(MINT)
-    set_east_asia(r, "Yu Gothic")
-
-    p = cell.add_paragraph(style="Title")
-    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    p.paragraph_format.line_spacing = 1.15
-    title = meta["title"]
-    for marker in COVER_TITLE_BREAKS:
-        title = title.replace(marker, marker + "\n", 1)
-    for index, part in enumerate(title.strip().split("\n")):
-        if index:
-            p.add_run().add_break()
-        run = p.add_run(part)
-        run.bold = True
-        run.font.size = Pt(25)
-        run.font.color.rgb = RGBColor.from_string("FFFFFF")
-        set_east_asia(run, "Yu Gothic")
-
-    p = cell.add_paragraph(style="Subtitle")
-    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    p.paragraph_format.space_before = Pt(6)
-    run = p.add_run(meta["subtitle"])
-    run.font.size = Pt(13)
-    run.font.color.rgb = RGBColor.from_string("E6FFFB")
-    set_east_asia(run, "Yu Gothic")
-
-    spacer = doc.add_paragraph()
-    spacer.paragraph_format.space_after = Pt(18)
-
-    box = doc.add_table(rows=1, cols=1)
-    box.alignment = WD_TABLE_ALIGNMENT.CENTER
-    box.autofit = False
-    set_table_geometry(box, [9000])
-    cell = box.cell(0, 0)
-    set_cell_shading(cell, TEAL_LIGHT)
-    set_cell_borders(cell, None, left=(36, TEAL))
-    set_cell_margins(cell, 160, 260, 160, 260)
-    p = cell.paragraphs[0]
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    add_inline(p, "個人用：1人で使うデスクトップ版　／　チーム用：社内LANのサーバーで共有", 11)
-    for run in p.runs:
-        run.bold = True
-        run.font.color.rgb = RGBColor.from_string(TEAL_DARK)
-        set_east_asia(run, "Yu Gothic")
-
-    for index, key in enumerate(("作成日", "対象")):
-        if key not in meta:
-            continue
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.paragraph_format.space_after = Pt(4)
-        if index == 0:
-            p.paragraph_format.space_before = Pt(150)
-        add_inline(p, f"{key}　{meta[key]}", 11 if key == "作成日" else 10)
-        for run in p.runs:
-            set_east_asia(run, "Yu Gothic")
+    p=doc.add_paragraph()
+    p.paragraph_format.space_after=Pt(16)
+    p.add_run().add_picture(str(ICON),width=Inches(0.52))
+    p=doc.add_paragraph(style="Title")
+    for index,part in enumerate(meta["title"].replace("HAKOBIで","HAKOBIで\n",1).split("\n")):
+        if index:p.add_run().add_break()
+        run=p.add_run(part);run.font.size=Pt(25);run.font.color.rgb=RGBColor(0,0,0);set_east_asia(run,"Yu Gothic")
+    p=doc.add_paragraph(style="Subtitle");add_inline(p,meta["subtitle"],13)
+    p=doc.add_paragraph();p.paragraph_format.space_before=Pt(10)
+    add_inline(p,"仕事の日程と進捗を見渡し、困ったことはその仕事で相談する。日々の記録を定例と週報にも使えるツールを作成した。",11)
+    image=Path(__file__).resolve().parents[2]/"hakobi-showcase/assets/gantt-wide.png"
+    add_picture_with_alt(doc,image,FULL_WIDTH,"架空のチームの仕事を、担当と進捗付きの横棒で並べたガント画面")
+    add_caption(doc,"画面例　チームで日程・担当・進捗を確かめるガント")
+    for title,text in [("自分のPCから始める","個人用で仕事を登録し、予定と記録を使う。"),("チームで相談する","担当と期限を共有し、相談への返信と次の対応を残す。"),("日々の記録を報告に使う","定例で決めたことをタスクにし、週報の材料を取り出す。")]:
+        p=doc.add_paragraph();p.paragraph_format.space_after=Pt(4);r=p.add_run(title);r.bold=True;r.font.size=Pt(12);set_east_asia(r,"Yu Gothic")
+        p=doc.add_paragraph();add_inline(p,text,10.5)
+    p=doc.add_paragraph();p.paragraph_format.space_before=Pt(8)
+    add_inline(p,"詳しい操作は同封のはじめ方ガイドへ。画面は架空の業務を使った操作例。",9)
+    for key in ("作成日","対象"):
+        if key in meta:
+            p=doc.add_paragraph();p.paragraph_format.space_after=Pt(3);add_inline(p,f"{key}　{meta[key]}",9)
 
 
 def toc_headings(body_lines: list[str]) -> list[tuple[int, str]]:

@@ -1,0 +1,44 @@
+{
+  "reports": {
+    "HAKOBI_技術レポート": {
+      "pages": 15,
+      "allSourceTextPresent": true,
+      "tocMatches": true,
+      "language": "ja-JP",
+      "tagged": true,
+      "guideLinks": [
+        "./HAKOBI_はじめ方ガイド.html#features",
+        "./HAKOBI_はじめ方ガイド.html#solo",
+        "./HAKOBI_はじめ方ガイド.html#move",
+        "./HAKOBI_はじめ方ガイド.html#team",
+        "./HAKOBI_はじめ方ガイド.html#setup",
+        "./HAKOBI_はじめ方ガイド.html#care"
+      ]
+    },
+    "HAKOBI_技術レポート_推敲版": {
+      "pages": 15,
+      "allSourceTextPresent": true,
+      "tocMatches": true,
+      "language": "ja-JP",
+      "tagged": true,
+      "guideLinks": [
+        "./HAKOBI_はじめ方ガイド.html#features",
+        "./HAKOBI_はじめ方ガイド.html#solo",
+        "./HAKOBI_はじめ方ガイド.html#move",
+        "./HAKOBI_はじめ方ガイド.html#team",
+        "./HAKOBI_はじめ方ガイド.html#setup",
+        "./HAKOBI_はじめ方ガイド.html#care"
+      ]
+    }
+  },
+  "bothPdfTextsMatch": true,
+  "zipContentsMatch": true,
+  "sha256": {
+    "HAKOBI_TECHNICAL_REPORT.md": "c013c41631b373bb918f3e710a0f8350dacaecce9e6cedab44e74769c707348b",
+    "output\\HAKOBI_技術レポート.pdf": "3cfd8febbbddc85280ccf248fb2c595e738d1dcacb0bf755dc90b664fdcc172d",
+    "output\\HAKOBI_技術レポート.docx": "a7a167e014afe2276c2b9cf6dff351ad95e92fafef534fd78aadb2c62cb04a63",
+    "HAKOBI_TECHNICAL_REPORT_推敲版.md": "c013c41631b373bb918f3e710a0f8350dacaecce9e6cedab44e74769c707348b",
+    "output\\HAKOBI_技術レポート_推敲版.pdf": "6b501ea1955224d1d0a15f79f3c5cc081fb24f59cb2608cd39fda9d0c801399f",
+    "output\\HAKOBI_技術レポート_推敲版.docx": "857868eb47f8fbc4868c85fd3bf2601c899fdac9a8311083bf9e47220e68bd2a"
+  }
+}
