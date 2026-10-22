@@ -19,7 +19,9 @@ def replace_image(match):
               'tour-timer':'タスク詳細の計測時間と進捗', 'tour-record':'計測した作業時間の記録',
               'tour-checklist':'中の項目をチェックするToDoリスト',
               'tour-dependencies':'先行・後続のタスクをつなぐ依存関係',
-              'report-focus':'期間と担当を選び、文章をコピーする報告画面'}
+              'report-focus':'期間と担当を選び、文章をコピーする報告画面',
+              'personal-launcher':'個人用を選ぶ接続画面',
+              'personal-gantt-focus':'個人用で登録した仕事の日程と進捗'}
     data = base64.b64encode(path.read_bytes()).decode('ascii')
     return f'<img src="data:image/png;base64,{data}" alt="{labels[name]}" width="1000">'
 source = re.sub(r'@IMAGE:([a-z-]+)@', replace_image, source)
@@ -27,6 +29,7 @@ traffic = (ROOT / 'team-traffic.svg').read_text(encoding='utf-8')
 traffic = traffic.replace('<svg ', '<svg id="traffic-diagram" class="flow" ', 1)
 source = source.replace('@TRAFFIC@', traffic)
 (ROOT / 'index.html').write_text(source, encoding='utf-8')
+(REPO / 'docs/hakobi-showcase/HAKOBI_はじめ方ガイド.html').write_text(source, encoding='utf-8')
 
 class Text(HTMLParser):
     def __init__(self):
@@ -46,6 +49,6 @@ with zipfile.ZipFile(ROOT/'HAKOBI_紹介資料と導入ガイド.zip','w',zipfil
     z.write(ROOT/'index.html','HAKOBI_はじめ方ガイド.html')
     z.write(ROOT/'team-traffic.svg','team-traffic.svg')
     if (ROOT/'team-traffic.gif').exists(): z.write(ROOT/'team-traffic.gif','team-traffic.gif')
-    for file,name in [('docs/hakobi-showcase/HAKOBI_紹介資料.pdf','HAKOBI_紹介資料.pdf'),('docs/web-setup-guide.md','Web版の立ち上げガイド.md'),('docs/HAKOBI.md','HAKOBIのチーム接続と運用.md')]:
+    for file,name in [('docs/hakobi-showcase/HAKOBI_紹介資料.pdf','HAKOBI_紹介資料.pdf'),('docs/hakobi-showcase/HAKOBI_紹介資料.docx','HAKOBI_紹介資料.docx'),('docs/web-setup-guide.md','Web版の立ち上げガイド.md'),('docs/HAKOBI.md','HAKOBIのチーム接続と運用.md')]:
         z.write(REPO/file,name)
 print('Built HTML, text for writing checks, and attachment ZIP')

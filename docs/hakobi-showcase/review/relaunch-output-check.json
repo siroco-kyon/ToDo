@@ -1,0 +1,32 @@
+{
+  "pages": 6,
+  "allManuscriptParagraphsInPdf": true,
+  "pdfGuideLinks": [
+    "./HAKOBI_はじめ方ガイド.html",
+    "./HAKOBI_はじめ方ガイド.html#features",
+    "./HAKOBI_はじめ方ガイド.html#solo",
+    "./HAKOBI_はじめ方ガイド.html#team",
+    "./HAKOBI_はじめ方ガイド.html#move",
+    "./HAKOBI_はじめ方ガイド.html#team",
+    "./HAKOBI_はじめ方ガイド.html#check",
+    "./HAKOBI_はじめ方ガイド.html#setup",
+    "./HAKOBI_はじめ方ガイド.html#team",
+    "./HAKOBI_はじめ方ガイド.html#solo"
+  ],
+  "zipChecks": {
+    "HAKOBI_紹介セット.zip": {
+      "files": 9,
+      "currentArtifactsMatch": true
+    },
+    "HAKOBI_紹介資料と導入ガイド.zip": {
+      "files": 8,
+      "currentArtifactsMatch": true
+    }
+  },
+  "sha256": {
+    "introduction.md": "6909fe5053433ab6cab160f138787f296091ae04b3ffe20f570ccb0d1bb488d1",
+    "HAKOBI_紹介資料.pdf": "dd7c9df558a9df3bca79c93e33b9641dce0e84249d1a88e5afe0c85d6368da69",
+    "HAKOBI_紹介資料.docx": "45b65ddaf3aeb4b40ee6ab4c86befed16d46fc2961e7fcb4e30e47f070a54dc5",
+    "HAKOBI_はじめ方ガイド.html": "a5bab21f4fd7dd149b08af73c51e1bff56ff032ade53cd90923f5f7bfd93e8ae"
+  }
+}
