@@ -25,6 +25,12 @@ export interface DesktopContext {
   preferences: DesktopPreferences
   /** Installed app version (app.getVersion()). Apps before 1.0.5 omit it, which the server-hosted UI treats as 1.0.4 or older. */
   appVersion?: string
+  /** Optional so server-hosted screens also work with older exe installations. */
+  distribution?: 'clickonce'
+  /** ClickOnce publish version, including its fourth (revision) component. */
+  clickOnceVersion?: string
+  /** Signed deployment source; independent of the currently connected team server. */
+  clickOnceInstallUrl?: string
 }
 
 export interface DesktopState {

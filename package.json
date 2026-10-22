@@ -32,6 +32,9 @@
     "service:uninstall": "npm --prefix server run service:uninstall",
     "generate:icons": "node scripts/generate-build-icons.cjs",
     "dist": "npm run generate:icons && npm run build && electron-builder",
+    "dist:clickonce": "powershell -NoProfile -File scripts/build-clickonce.ps1",
+    "publish:clickonce": "powershell -NoProfile -File scripts/publish-clickonce.ps1",
+    "test:clickonce": "node tests/clickonce.cjs && npm --prefix server run test:clickonce && dotnet run --project desktop/clickonce/tests/Launcher.Tests.csproj -c Release",
     "publish:desktop": "cd server && node node_modules/tsx/dist/cli.mjs scripts/publish-desktop.ts",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },

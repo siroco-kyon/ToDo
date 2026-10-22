@@ -1,0 +1,8 @@
+bin/
+obj/
+**/bin/
+**/obj/
+*.pfx
+*.p12
+*.pubxml.user
+icon.ico

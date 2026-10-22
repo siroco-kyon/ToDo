@@ -3,7 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import express from 'express'
 import cookieParser from 'cookie-parser'
-import { DESKTOP_DIST_DIR, PORT, WEB_DIST_DIR } from './config'
+import { CLICKONCE_DIST_DIR, DESKTOP_DIST_DIR, PORT, WEB_DIST_DIR } from './config'
 import { initDb } from './db/connection'
 import { attachUser, cleanupExpiredSessions, seedAdminUser } from './auth'
 import { broadcastDataChanged, initRealtime, sendNotificationChanged } from './realtime'
@@ -14,6 +14,7 @@ import { toLocalDateKey } from './shared/recurring-period'
 import { authRouter } from './routes/auth'
 import { dataRouter } from './routes/data'
 import { createDesktopReleaseRouter } from './routes/desktopRelease'
+import { createClickOnceReleaseRouter, createClickOnceRouter } from './routes/clickonce'
 import { usersRouter } from './routes/users'
 
 initDb()
@@ -32,6 +33,8 @@ app.get('/api/health', (_req, res) => {
 
 // デスクトップ版インストーラーの配布はログイン不要。認証が必要な dataRouter（/api 以下すべて）より前に置く。
 app.use('/api/desktop-release', createDesktopReleaseRouter(DESKTOP_DIST_DIR))
+app.use('/api/clickonce-release', createClickOnceReleaseRouter(CLICKONCE_DIST_DIR))
+app.use('/clickonce', createClickOnceRouter(CLICKONCE_DIST_DIR))
 
 app.use('/api/auth', authRouter)
 app.use('/api/users', usersRouter)

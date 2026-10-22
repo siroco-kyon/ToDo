@@ -20,6 +20,7 @@
     "start": "tsx src/index.ts",
     "test:overview": "tsx --test tests/overview.test.ts",
     "test:desktop-release": "tsx --test tests/desktop-release.test.ts tests/desktop-download-counts.test.ts",
+    "test:clickonce": "tsx --test tests/clickonce.test.ts",
     "import:db": "tsx src/import/cli.ts",
     "publish:desktop": "tsx scripts/publish-desktop.ts",
     "service:install": "node service/install.cjs",

@@ -179,6 +179,10 @@ npm run publish:desktop
 
 `dist/` のインストーラーが `latest.yml` と `package.json` のバージョンに一致するかを確かめてから、サーバーの配布フォルダ（`TODO_DESKTOP_DIST`、既定 `dist-desktop/`）へコピーします。`latest.yml` は最後に置き換えます。開発 PC でビルドした場合は、サーバーの配布フォルダを共有フォルダにして、開発 PC の `server/.env` の `TODO_DESKTOP_DIST` に `\\<サーバー名>\<共有名>` を書けば、開発 PC から直接公開できます。メンバーは `http://<サーバーのIP>:4577/download` からダウンロードします。手順は [HAKOBI 運用ガイド](docs/HAKOBI.md#デスクトップ版の配布と更新のお知らせ) を参照してください。
 
+### ClickOnce 版の試験配布
+
+通常の exe 版と別に、Electron 本体を .NET 起動アプリに同梱する ClickOnce 配布を試せます。起動時に更新を確認します。発行には .NET 10 SDK・Visual Studio の ClickOnce ツール・署名証明書が必要です。作成・公開・既存版からの移行確認は [ClickOnce 試験配布の手順](docs/CLICKONCE.md) を参照してください。社内 PC のポリシーで許可されることは別途確認が必要です。
+
 ## 個人用のデータ保存先
 
 - 開発時
@@ -257,6 +261,7 @@ npm run dev:web
 | `TODO_DATA_DIR` | `server/data` | SQLite データベースの保存先ディレクトリ |
 | `TODO_WEB_DIST` | `dist-web`（リポジトリ直下） | 配信する Web ビルドの場所 |
 | `TODO_DESKTOP_DIST` | `dist-desktop`（リポジトリ直下） | 配布するデスクトップ版インストーラーの置き場所。`npm run publish:desktop` の公開先にもなります。全グループで共有できます |
+| `TODO_CLICKONCE_DIST` | `dist-clickonce`（リポジトリ直下） | 試験用 ClickOnce 版の配布フォルダー。公開は `scripts/publish-clickonce.ps1` の `-Destination` で指定します |
 | `ADMIN_USERNAME` | `admin` | 初回起動時に作る管理者のユーザー名 |
 | `ADMIN_PASSWORD` | （空） | 管理者の初期パスワード。未設定ならランダム生成し、起動ログに 1 回だけ表示します |
 | `SESSION_TTL_DAYS` | `30` | セッションの有効日数 |

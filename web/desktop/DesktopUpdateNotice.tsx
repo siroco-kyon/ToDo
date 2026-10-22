@@ -8,8 +8,10 @@ import {
 } from '@renderer/lib/desktopRelease'
 import { subscribeConnection } from '../lib/client'
 import type { DesktopContext } from '../../src/shared/desktop'
+import { canCheckClickOnceRelease, fetchClickOnceRelease, isNewerClickOnceVersion, type ClickOnceRelease } from '@renderer/lib/clickOnceRelease'
 
 const DISMISSED_KEY = 'hakobi-desktop-update-dismissed'
+const CLICKONCE_DISMISSED_KEY = 'hakobi-clickonce-update-dismissed'
 const RECHECK_MS = 6 * 60 * 60 * 1000
 const REQUEST_TIMEOUT_MS = 15000
 
@@ -25,7 +27,11 @@ function writeDismissed(version: string): void {
 export function DesktopUpdateNotice(): React.JSX.Element | null {
   const [context, setContext] = useState<DesktopContext | null>(null)
   const [release, setRelease] = useState<DesktopReleaseInfo | null>(null)
+  const [clickOnceRelease, setClickOnceRelease] = useState<ClickOnceRelease | null>(null)
   const [dismissed, setDismissed] = useState(readDismissed)
+  const [clickOnceDismissed, setClickOnceDismissed] = useState<string | null>(() => {
+    try { return window.localStorage.getItem(CLICKONCE_DISMISSED_KEY) } catch { return null }
+  })
 
   useEffect(() => {
     let disposed = false
@@ -35,6 +41,8 @@ export function DesktopUpdateNotice(): React.JSX.Element | null {
   }, [])
 
   useEffect(() => {
+    if (!context) return
+    if (context.distribution === 'clickonce' && !canCheckClickOnceRelease(context.clickOnceInstallUrl, window.location.origin)) return
     let disposed = false
     let controller: AbortController | null = null
     const check = (): void => {
@@ -42,10 +50,15 @@ export function DesktopUpdateNotice(): React.JSX.Element | null {
       const current = new AbortController()
       controller = current
       const timeout = setTimeout(() => current.abort(), REQUEST_TIMEOUT_MS)
-      void fetchDesktopRelease(current.signal).then((status) => {
-        // Without an answer (offline, older server), keep what the last answer said.
-        if (!disposed && !current.signal.aborted && status) setRelease(status.release)
-      }).finally(() => {
+      const request = context.distribution === 'clickonce'
+        ? fetchClickOnceRelease(current.signal).then((value) => {
+          if (!disposed && !current.signal.aborted && value) setClickOnceRelease(value)
+        })
+        : fetchDesktopRelease(current.signal).then((status) => {
+          // Without an answer (offline, older server), keep what the last answer said.
+          if (!disposed && !current.signal.aborted && status) setRelease(status.release)
+        })
+      void request.finally(() => {
         clearTimeout(timeout)
         if (controller === current) controller = null
       })
@@ -64,7 +77,16 @@ export function DesktopUpdateNotice(): React.JSX.Element | null {
       unsubscribe()
       clearInterval(interval)
     }
-  }, [])
+  }, [context])
+
+  if (context?.distribution === 'clickonce') {
+    if (!clickOnceRelease || !isNewerClickOnceVersion(clickOnceRelease.version, context.clickOnceVersion) ||
+      (clickOnceDismissed && !isNewerClickOnceVersion(clickOnceRelease.version, clickOnceDismissed))) return null
+    return <ClickOnceUpdateCard version={clickOnceRelease.version} onDismiss={() => {
+      try { window.localStorage.setItem(CLICKONCE_DISMISSED_KEY, clickOnceRelease.version) } catch { /* Retry next launch. */ }
+      setClickOnceDismissed(clickOnceRelease.version)
+    }} />
+  }
 
   if (!context || !release || !isNewerDesktopRelease(release, context) || isDismissedDesktopRelease(release, dismissed)) return null
   return (
@@ -77,6 +99,20 @@ export function DesktopUpdateNotice(): React.JSX.Element | null {
       }}
     />
   )
+}
+
+export function ClickOnceUpdateCard({ version, onDismiss }: {
+  version: string
+  onDismiss: () => void
+}): React.JSX.Element {
+  return <div role="status" aria-live="polite" style={styles.card}>
+    <div style={styles.title}>HAKOBI の新しいバージョン {version} があります</div>
+    <div style={styles.detail}>
+      タスクトレイの「HAKOBIを終了」で終了し、デスクトップまたはスタートメニューの
+      「HAKOBI（ClickOnce 試験版）」から起動すると更新を確認します。
+    </div>
+    <button type="button" onClick={onDismiss} style={styles.secondary}>後で</button>
+  </div>
 }
 
 export function DesktopUpdateCard({ version, installed, onDismiss }: {
