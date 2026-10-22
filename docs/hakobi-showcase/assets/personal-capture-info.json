@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-22",
+  "commit": "5505c2f3ef93fe45fa772b245fa256e2ff2245f1",
+  "temporaryDirectory": "C:\\Users\\ku_em\\AppData\\Local\\Temp\\hakobi-personal-capture-2Ts0ud",
+  "mode": "personal",
+  "size": [
+    1440,
+    960
+  ],
+  "launcherSize": [
+    1050,
+    760
+  ],
+  "data": "Fictional task; actual renderer, preload, IPC and local SQLite; launcher state supplied by isolated harness; no installed app or live data opened"
+}

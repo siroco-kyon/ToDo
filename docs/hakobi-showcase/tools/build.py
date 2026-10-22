@@ -18,6 +18,7 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.shared import Mm, Pt, RGBColor
 from pypdf import PdfReader
 
@@ -34,6 +35,8 @@ CROPS = {
     'meeting-task': ('gantt-after-meeting', (0, 60, 1440, 470), 174),
     'report-focus': ('report-settings', (514, 76, 1410, 282), 174),
     'quickadd-focus': ('quickadd', None, 140),
+    'personal-launcher-focus': ('personal-launcher', (510, 490, 985, 615), 140),
+    'personal-gantt-focus': ('personal-gantt', (0, 65, 1440, 255), 174),
 }
 
 def font(run, size=11, bold=False, color='233544'):
@@ -53,7 +56,19 @@ def font(run, size=11, bold=False, color='233544'):
 def add_text(doc, text, *, style=None):
     p = doc.add_paragraph(style=style)
     # Keep actual body text editable, including numbered steps.
-    font(p.add_run(text), 11)
+    cursor=0
+    for match in re.finditer(r'\[([^\]]+)\]\(([^)]+)\)',text):
+        if match.start()>cursor:font(p.add_run(text[cursor:match.start()]),11)
+        label,target=match.groups()
+        link=OxmlElement('w:hyperlink')
+        link.set(qn('r:id'),p.part.relate_to(target,RT.HYPERLINK,is_external=True))
+        run=OxmlElement('w:r'); props=OxmlElement('w:rPr')
+        color=OxmlElement('w:color');color.set(qn('w:val'),'0B6666');props.append(color)
+        size=OxmlElement('w:sz');size.set(qn('w:val'),'22');props.append(size)
+        underline=OxmlElement('w:u');underline.set(qn('w:val'),'single');props.append(underline)
+        run.append(props);node=OxmlElement('w:t');node.text=label;run.append(node);link.append(run);p._p.append(link)
+        cursor=match.end()
+    if cursor<len(text):font(p.add_run(text[cursor:]),11)
     return p
 
 def prepare():
@@ -87,12 +102,12 @@ def prepare():
     lang.set(qn('w:val'),'ja-JP');lang.set(qn('w:eastAsia'),'ja-JP')
     doc.core_properties.language='ja-JP'
     header=sec.header.paragraphs[0]
-    font(header.add_run('HAKOBI  /  チームで進捗と相談を共有する'),8,color='526271')
+    font(header.add_run('HAKOBI  /  ひとりで始めてチームで相談する'),8,color='526271')
     footer=sec.footer.paragraphs[0];footer.alignment=WD_ALIGN_PARAGRAPH.RIGHT
     font(footer.add_run('2026年10月  |  '),8,color='526271')
     field=OxmlElement('w:fldSimple');field.set(qn('w:instr'),'PAGE');footer._p.append(field)
     doc.core_properties.author=''
-    doc.core_properties.title='HAKOBI チームで進捗と相談を共有する'
+    doc.core_properties.title='HAKOBIで予定と進捗を共有する'
     return doc
 
 def build(source, stem):
@@ -125,8 +140,7 @@ def build(source, stem):
             sections+=1
             if sections>1:doc.add_page_break()
             if sections==1:
-                p=doc.add_paragraph(style='Title');font(p.add_run('HAKOBI'),30,True,'000000')
-                p=doc.add_paragraph();font(p.add_run('チームで進捗と相談を共有する'),11,color='526271')
+                p=doc.add_paragraph(style='Title');font(p.add_run('HAKOBIで予定と進捗を共有する'),17,True,'000000')
             p=doc.add_paragraph(style='Heading 1');font(p.add_run(line[3:]),20,True,'000000')
             continue
         if line.startswith('### '):
@@ -158,7 +172,7 @@ def export(docx):
     # Use the repository's established renderer and explicit Japanese PDF settings.
     sys.path.insert(0,str(REPO/'docs/hakobi-report/tools'))
     from update_toc_pages import soffice, soffice_env
-    options={'UseTaggedPDF':{'type':'boolean','value':'true'},'ExportBookmarks':{'type':'boolean','value':'true'},'EmbedStandardFonts':{'type':'boolean','value':'true'}}
+    options={'UseTaggedPDF':{'type':'boolean','value':'true'},'ExportBookmarks':{'type':'boolean','value':'true'},'EmbedStandardFonts':{'type':'boolean','value':'true'},'ExportLinksRelativeFsys':{'type':'boolean','value':'true'}}
     with tempfile.TemporaryDirectory() as tmp:
         directory=Path(tmp)
         subprocess.run([soffice(),'-env:UserInstallation='+(directory/'profile').as_uri(),'--headless','--norestore','--convert-to','pdf:writer_pdf_Export:'+json.dumps(options),'--outdir',tmp,str(docx)],check=True,capture_output=True,env=soffice_env(),timeout=180)
