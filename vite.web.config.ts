@@ -22,6 +22,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': { target: `http://localhost:${SERVER_PORT}`, changeOrigin: false },
+      '/clickonce': { target: `http://localhost:${SERVER_PORT}`, changeOrigin: false },
       '/ws': { target: `ws://localhost:${SERVER_PORT}`, ws: true }
     }
   },

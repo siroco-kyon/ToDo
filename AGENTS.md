@@ -18,6 +18,8 @@ npm run dev:web               # Web フロント（ポート 5273、/api と /ws
 npm run build:web             # Web ビルド → dist-web/
 npm run start:server          # dist-web/ を配信しつつサーバー起動
 npm run publish:desktop       # npm run dist の後、dist/ のインストーラーをサーバーの配布フォルダへ公開
+npm run test:clickonce        # ClickOnce 試験配布の UI・配信・起動ポリシー
+# ClickOnce 発行・公開は docs/CLICKONCE.md を参照（Windows / .NET 10 / VS MSBuild / mage.exe）
 ```
 
 Web 版の型チェックは `npx tsc --noEmit -p web/tsconfig.json`。ルートに `typecheck` スクリプトは無い。
@@ -102,6 +104,7 @@ server/scripts/publish-desktop.ts npm run publish:desktop の本体（dist/ を�
 - デスクトップ版の配布（`/api/desktop-release`）はログイン不要。`server/src/index.ts` で `/api/health` の直後、`/api/auth`・`/api/users`・`dataRouter`（`/api` 以下はすべて認証必須）と SPA のフォールバックより前にマウントする。配布できない理由（配布フォルダのパスを含む）は管理者にだけ返す
 - 配信するのは、検証済みの `latest.yml` に書かれた exe 1つだけ（ファイル名のパターン・サイズ・sha512 を確認）。リクエストのパスからファイル名を作らない。`latest.yml` やインストーラーが差し替わると、サーバーを再起動せずに読み直す
 - 公開は `npm run publish:desktop`（`server/scripts/publish-desktop.ts`）だけで行う。インストーラーを先に置き、`latest.yml` を最後に差し替える。古いインストーラーは消さない。`electron-builder.yml` の `publish:` は `dist/latest.yml` を出力させるために残す（自動更新はしない）
+- ClickOnce 版は別の試験配布。`scripts/build-clickonce.ps1` で署名済み一式を発行し、`scripts/publish-clickonce.ps1` で `TODO_CLICKONCE_DIST`（既定 `dist-clickonce/`。公開スクリプトには `-Destination` で渡す）へ公開する。`/clickonce/` と `/api/clickonce-release` は認証ルート・SPA より前に置く。署名証明書・秘密鍵は配布しない。`resources/hakobi-distribution.json` をハッシュ生成前に書き、`DesktopContext.distribution` / `clickOnceVersion`（任意）で exe 用の更新案内と区別する。起動アプリのコードは `desktop/clickonce/`、手順は `docs/CLICKONCE.md`。
 - `DesktopContext.appVersion`（`src/shared/desktop.ts`）は任意。1.0.4 以前のアプリは送らないので、無いときは 1.0.4 以前として扱う（`LAST_VERSION_WITHOUT_APP_VERSION`）
 - `/download` はログイン不要のページ。`web/main.tsx` で `AuthGate` より前に分岐して描画する
 - 更新のお知らせ（`DesktopUpdateNotice`）はデスクトップ版のメイン画面（`isDesktopMain`）だけで出し、`App.tsx` には入れない。「後で」で閉じた版は localStorage の `hakobi-desktop-update-dismissed` に保存する

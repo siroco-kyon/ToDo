@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { ClickOnceDownloadOption } from './ClickOnceDownloadOption'
 import {
   DESKTOP_DOWNLOAD_FILE_URL,
   fetchDesktopRelease,
@@ -80,7 +81,9 @@ export function DesktopDownloadView({ phase, origin, onRetry }: {
           </div>
         </div>
 
-        {phase.kind === 'loading' && <div style={styles.message} role="status">確認しています…</div>}
+        <ClickOnceDownloadOption />
+
+        {phase.kind === 'loading' && <div style={styles.message} role="status">通常の exe 版を確認しています…</div>}
 
         {phase.kind === 'error' && <>
           <div style={styles.error} role="alert">サーバーからバージョン情報を取得できませんでした。</div>

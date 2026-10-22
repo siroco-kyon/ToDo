@@ -8,6 +8,7 @@ import { applyWindowsJumpList, applyWindowsTaskbarBranding } from './windows-bra
 import type { LaunchAction, LaunchRequest } from './windows-branding'
 import { thumbarImage, unreadBadgeImage, unreadTrayImage } from './desktop-glyphs'
 import { MAX_TIMER_SIZE, normalizeTimerSize, timerGeometry } from './timer-sizing'
+import { readDesktopDistribution } from './desktop-distribution'
 import { DESKTOP_RECENT_TASK_LIMIT } from '../shared/desktop'
 import type { DesktopCommand, DesktopContext, DesktopNotification, DesktopPreferences, DesktopState, DesktopTaskShortcut, LauncherState } from '../shared/desktop'
 
@@ -696,7 +697,7 @@ export class DesktopController {
     }
     remote('hakobi:context', (): DesktopContext => ({ version: 1, serverVersion: this.serverVersion,
       groupName: this.config.profile!.name, serverUrl: this.config.profile!.url, preferences: this.config.preferences,
-      appVersion: app.getVersion() }))
+      appVersion: app.getVersion(), ...readDesktopDistribution(process.resourcesPath) }))
     remote('hakobi:preferences', (_event, patch) => this.updatePreferences(patch))
     remote('hakobi:main', (_event, todoId) => { if (todoId !== undefined && !this.validId(todoId)) throw new Error('タスクが不正です。'); this.openMain(todoId) })
     remote('hakobi:timer', () => { if (this.serverVersion >= 1 && this.state.userId) this.updatePreferences({ showTimer: true }) })

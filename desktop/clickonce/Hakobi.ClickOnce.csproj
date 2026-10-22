@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <UseAppHost>true</UseAppHost>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>HAKOBI.ClickOnce</AssemblyName>
+    <TargetDeployManifestFileName>HAKOBI.application</TargetDeployManifestFileName>
+    <RootNamespace>Hakobi.ClickOnce</RootNamespace>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+    <Version Condition="'$(ClickOnceVersion)' != ''">$(ClickOnceVersion)</Version>
+    <AssemblyVersion Condition="'$(ClickOnceVersion)' != ''">$(ClickOnceVersion)</AssemblyVersion>
+    <FileVersion Condition="'$(ClickOnceVersion)' != ''">$(ClickOnceVersion)</FileVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="icon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- ClickOnce は ApplicationIcon の値を配置名にも使う。外部への相対パスを残さない。 -->
+  <Target Name="PrepareClickOnceIcon" BeforeTargets="PrepareForBuild">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\build\icon.ico" DestinationFiles="$(MSBuildProjectDirectory)\icon.ico" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Electron の dll/exe は .NET 参照として解釈せず、配置されるファイルとして扱う。 -->
+  <ItemGroup Condition="'$(PayloadDirectory)' != ''">
+    <Content Include="$(PayloadDirectory)\**\*">
+      <Link>payload\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <TargetPath>payload\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <Target Name="ValidateClickOnceInputs" BeforeTargets="PrepareForBuild" Condition="'$(PublishProtocol)' == 'ClickOnce'">
+    <Error Condition="'$(PayloadDirectory)' == '' Or !Exists('$(PayloadDirectory)\HAKOBI.exe')" Text="PayloadDirectory に HAKOBI.exe を含む Electron の展開フォルダーを指定してください。" />
+    <Error Condition="'$(ClickOnceInstallUrl)' == ''" Text="ClickOnceInstallUrl に配布先の絶対 URL を指定してください。" />
+    <Error Condition="'$(ClickOnceVersion)' == ''" Text="ClickOnceVersion に 4 桁の発行バージョンを指定してください。" />
+    <Error Condition="'$(ManifestCertificateThumbprint)' == ''" Text="ManifestCertificateThumbprint に署名証明書のサムプリントを指定してください。証明書と秘密鍵はコミットしません。" />
+  </Target>
+</Project>

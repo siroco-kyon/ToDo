@@ -76,6 +76,11 @@ export const DESKTOP_DIST_DIR = process.env.TODO_DESKTOP_DIST
   ? path.resolve(process.env.TODO_DESKTOP_DIST)
   : path.resolve(__dirname, '..', '..', 'dist-desktop')
 
+/** ClickOnce の配布ファイル一式。従来の exe 配布とは別のフォルダで公開する。 */
+export const CLICKONCE_DIST_DIR = process.env.TODO_CLICKONCE_DIST
+  ? path.resolve(process.env.TODO_CLICKONCE_DIST)
+  : path.resolve(__dirname, '..', '..', 'dist-clickonce')
+
 /** Bootstrap admin account, created on first launch when no users exist. */
 export const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin'
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
