@@ -27,6 +27,7 @@ PDF_OPTIONS = {
     "ExportBookmarks": {"type": "boolean", "value": "true"},
     "EmbedStandardFonts": {"type": "boolean", "value": "true"},
     "UseLosslessCompression": {"type": "boolean", "value": "true"},
+    "ExportLinksRelativeFsys": {"type": "boolean", "value": "true"},
 }
 
 

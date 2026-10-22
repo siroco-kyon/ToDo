@@ -1,67 +1,36 @@
-# HAKOBI 技術レポートの生成手順
+# HAKOBI レポート
 
-ERチェックシートに沿って書いたHAKOBIの技術レポートである。提出するのはPDF（`output/HAKOBI_技術レポート.pdf`）で、`HAKOBI_TECHNICAL_REPORT.md` を原稿とする。`tools/build_report_docx.py` でWord（`output/HAKOBI_技術レポート.docx`）を生成してから、`tools/export_pdf.py` でPDFに書き出す。生成の仕組みはWatashiの技術レポートの手順を移したものである。
+HAKOBIを初めて見る人に、作成したツールの機能と仕事での使い方を紹介する資料です。2026年10月22日に、個人での開始、チームでの状況確認と相談、定例・週報、日々の段取り、構成、使い始める案内へ組み直しました。
 
-紹介用の社内レポート（`docs/hakobi-introduction/HAKOBI_社内レポート.pdf`）とは別の資料である。チェックシートに照らした自己判定は [HAKOBI_REPORT_CHECKLIST.md](HAKOBI_REPORT_CHECKLIST.md)、品質確認の記録は [evidence/VALIDATION_20261017.md](evidence/VALIDATION_20261017.md) にある。
+- [レポートPDF](output/HAKOBI_技術レポート.pdf)
+- [編集用Word](output/HAKOBI_技術レポート.docx)
+- [レポートと導入ガイドの配布ZIP](output/HAKOBI_レポートと導入ガイド.zip)
+- [同封HTMLガイド](output/HAKOBI_はじめ方ガイド.html)
+- [本文原稿](HAKOBI_TECHNICAL_REPORT.md)
 
-## 2026年10月21日の更新
+従来のリンクを保つため、PDF・Wordのファイル名には「技術レポート」を残しています。内容は機能と利用場面を中心にした紹介レポートです。原稿版と推敲版は同じ最新版にそろえています。
 
-原稿と推敲版をコミット`a823ba5`の仕様に合わせて更新した。定例の途中経過の保存、年次繰り返し、報告なし・遅れ・延期の条件、一覧と報告の担当範囲、操作と失敗時の案内を反映した。Word・PDFも同じ原稿から再生成した。提出用PDFは両方とも33ページである。
+配布する際はZIPをすべて展開し、PDF・Word・HTMLを同じフォルダに置きます。PDF内のリンクからガイド01〜05と機能紹介へ進めます。PDFリーダーからHTMLを開けない場合は、同封HTMLをブラウザで直接開いてください。
 
-10月17日のテスト結果は当時の結果として残した。追加確認の結果と未解決のガント表示位置テストは [evidence/VALIDATION_20261021.md](evidence/VALIDATION_20261021.md)、照合に用いた実装の抜き書きは [evidence/SPEC_MATERIAL_20261021.txt](evidence/SPEC_MATERIAL_20261021.txt) にある。図の元となるデモ画面は10月17日のものを保持している。
+## 読みやすさの見直し
 
-## 必要環境
+表紙にガントの実画面と使い道を置き、概要に読者別の読む順番を示しました。本文では個人用の起動と登録から始め、仕事をチームへ引き継ぎ、相談・定例・報告へ進む流れを紹介します。各画面に見る所と読み取れることを添えました。仕組みの説明は、個人用とチーム用を支える構成に絞っています。
 
-- Windows 11（図の文字に Yu Gothic を使う）
-- Python 3.11以降と `requirements.txt` の部品（`python-docx`、Pillow、lxml、pypdf）
-- LibreOffice（目次のページ番号の確認とPDFの書き出しに使う）。インストールしていない場合は、環境変数 `HAKOBI_SOFFICE` に `soffice` の場所を指定する。指定がなければ、`docs/hakobi-introduction/.build/runtime/` のLibreOffice Portableも探す
+画面は既存の紹介資料と導入ガイドで撮影した実アプリの操作例です。架空の人名・業務を使い、個人用は2026年10月22日、チーム用と共通機能は10月21日に撮影しています。UIの数値や文字は画像編集で描き直していません。
+
+執筆者とは別の評価者が、[固定基準](evidence/READER_CRITERIA_20261022.md)で[改稿前](evidence/BASELINE_REVIEW_20261022.md)と[改稿後](evidence/READER_REVIEW_20261022.md)を確認しました。7つの基準による評価は77点から95点／100点となり、配布可の判定です。配布本文と、作成者向けの評価・出力確認記録は分けています。
+
+## 編集と再生成
+
+本文は `HAKOBI_TECHNICAL_REPORT.md` を編集します。下のコマンドで推敲版も同期し、両方のWord・PDF、HTML、配布ZIPを作ります。
 
 ```powershell
-python -m pip install -r docs/hakobi-report/requirements.txt
+python docs/hakobi-report/tools/build_reader_release.py
+python docs/hakobi-report/tools/check_reader_release.py
 ```
 
-## 生成の流れ
+必要なPythonパッケージは `requirements.txt` を参照してください。図の描画にはPillow、Wordにはpython-docx、PDF確認にはpypdfを使います。PDF書き出しにはLibreOfficeが必要です。見つからない場合は環境変数 `HAKOBI_SOFFICE` にsofficeの場所を指定します。
 
-1. **画面の図（必要なときだけ）**：`docs/hakobi-introduction/assets-current/` のデモの画面（架空のメンバーとタスク）から、各図で説明する部分を切り出す。
+目次のページ番号は、WordをPDFへ変換した結果から確定します。本文や図を直した後は全ページを画像で確認し、目次、図表、リンクも検査してください。説明図は `tools/report_diagrams.py`、採用する画面と代替テキストは `tools/build_report_docx.py` の `FIGURES` で管理します。画像の元は `docs/hakobi-showcase/assets/` と `docs/hakobi-start-guide/assets/` です。
 
-   ```powershell
-   python docs/hakobi-report/tools/prepare_screens.py
-   ```
-
-2. **Wordの生成**：説明図（SVGとPNG）を `tools/report_diagrams.py` の定義から作り直し、Wordを組み立てる。
-
-   ```powershell
-   python docs/hakobi-report/tools/build_report_docx.py docs/hakobi-report/HAKOBI_TECHNICAL_REPORT.md docs/hakobi-report/output/HAKOBI_技術レポート.docx
-   ```
-
-3. **目次のページ番号**：LibreOfficeでPDFにして、目次に載せる各見出し（章と節）の開始ページを `tools/toc_pages.json` に書く。もう一度2を実行し、もう一度3を実行してもページ番号が変わらないことを確かめる。
-
-   ```powershell
-   python docs/hakobi-report/tools/update_toc_pages.py docs/hakobi-report/HAKOBI_TECHNICAL_REPORT.md docs/hakobi-report/output/HAKOBI_技術レポート.docx
-   ```
-
-4. **提出用PDFの書き出し**：タグ付きPDF（図の代替テキスト付き、文書の言語は日本語）に書き出す。章と節はPDFのしおりになる。見出しのページが `toc_pages.json` と一致しない場合や、文書の言語が日本語でない場合は、書き出さずに止まる。
-
-   ```powershell
-   python docs/hakobi-report/tools/export_pdf.py docs/hakobi-report/HAKOBI_TECHNICAL_REPORT.md docs/hakobi-report/output/HAKOBI_技術レポート.docx docs/hakobi-report/output/HAKOBI_技術レポート.pdf
-   ```
-
-Wordの目次はフィールドなので、Wordで開いて「フィールドの更新」を行えば、Word上のページ位置に合わせて更新される。提出するPDFは、Wordではなく4で書き出す。
-
-## 図と表の書き方
-
-- 図は本文に `[[FIGURE:キー]]` と書き、次の行に `図N 題名` を書く（題名は図の下に付く）。キーと代替テキスト・幅は `tools/build_report_docx.py` の `FIGURES` に登録する。
-- 説明図は `tools/report_diagrams.py` に描画を足す。SVGだけを直接編集しない。`assets/*.png` は再生成物なので版管理しない。
-- 画面の図は `tools/prepare_screens.py` で `assets/screens/` に作る。
-- 表は `表N 題名` の行（表の上に付く）、必要なら `[[TABLE-WIDTHS:幅,幅,…]]`（twip、合計9360）、Markdownの表の順に書く。
-- 改ページは `[[PAGE-BREAK]]` で入れる。
-
-## 書き方の決まり
-
-- 常体で書き、略語は概要と本文のそれぞれで初出時に正式名称を添える（付録Aにも一覧がある）。
-- 件数や実施日のある事実（テストの結果など）は、実行した結果を `evidence/` に記録してから本文に書く。
-- 導入の効果や利用者数など、記録のない事実は書かない。
-
-## 推敲版
-
-`HAKOBI_TECHNICAL_REPORT_推敲版.md` は、元の原稿の主張と数値を保ったまま、読みやすさを整えた原稿である（主述のかみ合わせ、分かりにくい言い回し、見出しの読点など）。Word とPDFは `output/HAKOBI_技術レポート_推敲版.docx`・`.pdf` で、上と同じ手順で原稿と出力の名前を替えて作る。目次のページ番号は `tools/toc_pages_HAKOBI_TECHNICAL_REPORT_推敲版.json` に記録する。10月17日の推敲で補った語句の出典は `HAKOBI_TECHNICAL_REPORT_推敲版.md.material.txt` にある。
+以前の原稿とチェックシートは `evidence/BEFORE_READER_*` と `evidence/CHECKLIST_BEFORE_READER_20261022.md` に保存しています。過去の検証記録も作成者向け資料として残しています。
