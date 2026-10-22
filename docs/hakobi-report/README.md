@@ -7,6 +7,7 @@ HAKOBIを初めて見る人に、作成したツールの機能と仕事での�
 - [レポートと導入ガイドの配布ZIP](output/HAKOBI_レポートと導入ガイド.zip)
 - [同封HTMLガイド](output/HAKOBI_はじめ方ガイド.html)
 - [本文原稿](HAKOBI_TECHNICAL_REPORT.md)
+- [紹介用サムネイル（800×600px・PNG）](output/HAKOBI_thumbnail_800x600_v2.png)
 
 従来のリンクを保つため、PDF・Wordのファイル名には「技術レポート」を残しています。内容は機能と利用場面を中心にした紹介レポートです。原稿版と推敲版は同じ最新版にそろえています。
 
