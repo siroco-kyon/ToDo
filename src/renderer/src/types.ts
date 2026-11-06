@@ -157,7 +157,7 @@ export interface SubTask {
   sort_order: number
   created_at: string
   /** ToDoリストの繰り返しの項目。周期が変わると未チェックに戻る（毎週は月曜、毎月は1日） */
-  recurrence: 'daily' | 'weekly' | 'monthly' | null
+  recurrence: 'daily' | 'weekly' | 'monthly' | 'yearly' | null
   /** 1 のとき、毎日の項目を平日だけにする（土日・祝日は前の平日の分が続く） */
   recurrence_workdays: number
   /** 戻る曜日（毎週: 0=日〜6=土）・日付（毎月: 1〜31、ない月は末日）。null は既定（月曜・1日） */
@@ -178,7 +178,7 @@ export interface CreateSubTaskInput {
   start_date?: string | null
   due_date?: string | null
   progress?: number
-  recurrence?: 'daily' | 'weekly' | 'monthly' | null
+  recurrence?: 'daily' | 'weekly' | 'monthly' | 'yearly' | null
   recurrence_workdays?: number
   recurrence_day?: number | null
 }
@@ -191,7 +191,7 @@ export interface UpdateSubTaskInput {
   start_date?: string | null
   due_date?: string | null
   progress?: number
-  recurrence?: 'daily' | 'weekly' | 'monthly' | null
+  recurrence?: 'daily' | 'weekly' | 'monthly' | 'yearly' | null
   recurrence_workdays?: number
   recurrence_day?: number | null
   done?: boolean

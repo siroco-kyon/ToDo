@@ -1,28 +1,43 @@
 // ToDoリストの「繰り返しの項目」の周期の計算。サーバー版とデスクトップ版の両方で使う。
 // 周期は「始まりの日付」（YYYY-MM-DD）で表す。毎日はその日（平日だけなら直前の平日）、
-// 毎週は指定した曜日（既定は月曜）、毎月は指定した日（既定は1日。その月にない日は末日）。
+// 毎週は指定した曜日（既定は月曜）、毎月は指定した日（既定は1日。その月にない日は末日）、
+// 毎年は指定した月日（既定は1月1日。2/29 は平年なら 2/28）。
 // 完了した日付がいまの周期の始まりより前なら、その項目は未チェックに戻す。
 
-export type ItemRecurrence = 'daily' | 'weekly' | 'monthly'
+export type ItemRecurrence = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
-export const ITEM_RECURRENCES: readonly ItemRecurrence[] = ['daily', 'weekly', 'monthly']
+export const ITEM_RECURRENCES: readonly ItemRecurrence[] = ['daily', 'weekly', 'monthly', 'yearly']
 
-/** 毎週の既定は月曜（Date#getDay の 1）、毎月の既定は1日 */
+/** 毎週の既定は月曜（Date#getDay の 1）、毎月の既定は1日、毎年の既定は1月1日 */
 export const DEFAULT_WEEKLY_DAY = 1
 export const DEFAULT_MONTHLY_DAY = 1
+export const DEFAULT_YEARLY_DAY = 101
+
+/** 毎年の月日は「月×100＋日」の1つの数で持つ（10月18日 → 1018） */
+export function yearlyDayValue(month: number, day: number): number {
+  return month * 100 + day
+}
+
+export function splitYearlyDay(value: number): { month: number; day: number } {
+  return { month: Math.floor(value / 100), day: value % 100 }
+}
 
 export function isItemRecurrence(value: unknown): value is ItemRecurrence {
   return typeof value === 'string' && (ITEM_RECURRENCES as readonly string[]).includes(value)
 }
 
 /**
- * 戻る曜日・日付を周期に合わせて整える。毎週は 0（日）〜6（土）、毎月は 1〜31（31 はその月の末日）。
- * 毎日や範囲外の値は null（＝既定）にする。
+ * 戻る曜日・日付を周期に合わせて整える。毎週は 0（日）〜6（土）、毎月は 1〜31（31 はその月の末日）、
+ * 毎年は 101〜1231（月×100＋日。その月にない日は末日）。毎日や範囲外の値は null（＝既定）にする。
  */
 export function normalizeRecurrenceDay(recurrence: ItemRecurrence | null, value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isInteger(value)) return null
   if (recurrence === 'weekly') return value >= 0 && value <= 6 ? value : null
   if (recurrence === 'monthly') return value >= 1 && value <= 31 ? value : null
+  if (recurrence === 'yearly') {
+    const { month, day } = splitYearlyDay(value)
+    return month >= 1 && month <= 12 && day >= 1 && day <= 31 ? value : null
+  }
   return null
 }
 
@@ -56,7 +71,7 @@ function monthDayKey(year: number, monthIndex: number, day: number): string {
 /**
  * dateKey を含む周期の始まりの日付。
  * 平日だけの毎日は、土日・祝日なら直前の平日の周期に含める（金曜にチェックしたものは月曜まで残る）。
- * day は戻る曜日（毎週）・日付（毎月）。null なら既定（月曜・1日）。
+ * day は戻る曜日（毎週）・日付（毎月）・月日（毎年）。null なら既定（月曜・1日・1月1日）。
  */
 export function periodStartOf(
   recurrence: ItemRecurrence,
@@ -75,6 +90,12 @@ export function periodStartOf(
     const date = parseKey(key)
     const thisMonth = monthDayKey(date.getFullYear(), date.getMonth(), target)
     return key >= thisMonth ? thisMonth : monthDayKey(date.getFullYear(), date.getMonth() - 1, target)
+  }
+  if (recurrence === 'yearly') {
+    const { month, day: monthDay } = splitYearlyDay(normalizeRecurrenceDay('yearly', day) ?? DEFAULT_YEARLY_DAY)
+    const year = parseKey(key).getFullYear()
+    const thisYear = monthDayKey(year, month - 1, monthDay)
+    return key >= thisYear ? thisYear : monthDayKey(year - 1, month - 1, monthDay)
   }
   if (!workdaysOnly) return key
   let candidate = key

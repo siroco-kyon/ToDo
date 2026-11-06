@@ -2247,7 +2247,7 @@ function rateTone(checked: number, periods: number): string {
   return checked / periods >= 0.8 ? 'var(--amber-200)' : 'var(--red-300)'
 }
 
-/** 周期（毎日・毎週・毎月）ごとの1行。終わった回の実施と、今の回の進み具合を分けて出す */
+/** 周期（毎日・毎週・毎月・毎年）ごとの1行。終わった回の実施と、今の回の進み具合を分けて出す */
 function RepeatGroupLine({ group }: { group: RepeatGroupDigest }): React.JSX.Element {
   const muted: React.CSSProperties = { fontSize: 'var(--font-caption)', color: 'var(--text-subtle)' }
   const currentDone = group.current != null && group.current.checked >= group.current.total

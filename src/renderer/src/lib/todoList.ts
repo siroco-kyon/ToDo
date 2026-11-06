@@ -4,10 +4,10 @@ import { toDateKey } from './dueDate'
 // 「ToDoリスト」（中の項目をチェックして使うタスク。期限はなしでもよい）の項目まわりの共通処理。
 // 項目＝サブタスク。繰り返しの項目は周期が変わると未チェックに戻る（戻すのはサーバー／デスクトップ版の本体）。
 
-export type ItemRecurrence = 'daily' | 'weekly' | 'monthly'
+export type ItemRecurrence = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
 /** 項目の繰り返しの選択肢。平日だけの毎日は recurrence='daily' + recurrence_workdays=1 */
-export type ItemRepeatChoice = '' | 'daily' | 'workdays' | 'weekly' | 'monthly'
+export type ItemRepeatChoice = '' | 'daily' | 'workdays' | 'weekly' | 'monthly' | 'yearly'
 
 type RepeatFields = Pick<SubTask, 'recurrence' | 'recurrence_workdays' | 'recurrence_day'>
 
@@ -16,7 +16,8 @@ export const ITEM_REPEAT_OPTIONS: Array<{ value: ItemRepeatChoice; label: string
   { value: 'daily', label: '毎日', title: '毎日、未チェックに戻ります' },
   { value: 'workdays', label: '平日', title: '平日ごとに未チェックに戻ります（土日・祝日は前の平日の分が続きます）' },
   { value: 'weekly', label: '毎週', title: '毎週、選んだ曜日に未チェックに戻ります' },
-  { value: 'monthly', label: '毎月', title: '毎月、選んだ日に未チェックに戻ります' }
+  { value: 'monthly', label: '毎月', title: '毎月、選んだ日に未チェックに戻ります' },
+  { value: 'yearly', label: '毎年', title: '毎年、選んだ月日に未チェックに戻ります' }
 ]
 
 /** 毎週の曜日（Date#getDay の値）。月曜始まりで並べる */
@@ -31,8 +32,31 @@ export const MONTH_DAY_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 31, label: '末日' }
 ]
 
+/** 毎年の月（1〜12月） */
+export const MONTH_OPTIONS: Array<{ value: number; label: string }> = Array.from({ length: 12 }, (_, index) => ({ value: index + 1, label: `${index + 1}月` }))
+
 const DEFAULT_WEEKLY_DAY = 1
 const DEFAULT_MONTHLY_DAY = 1
+/** 毎年の月日は「月×100＋日」の1つの数で持つ（10月18日 → 1018。サーバーの recurring-period.ts と同じ） */
+const DEFAULT_YEARLY_DAY = 101
+
+export function yearlyDayValue(month: number, day: number): number {
+  return month * 100 + day
+}
+
+export function splitYearlyDay(value: number): { month: number; day: number } {
+  return { month: Math.floor(value / 100), day: value % 100 }
+}
+
+function isYearlyDay(value: number): boolean {
+  const { month, day } = splitYearlyDay(value)
+  return Number.isInteger(value) && month >= 1 && month <= 12 && day >= 1 && day <= 31
+}
+
+/** 毎年を選んだときの初めの月日（今日） */
+export function yearlyDayOfDate(date: Date = new Date()): number {
+  return yearlyDayValue(date.getMonth() + 1, date.getDate())
+}
 
 export function isListTodo(todo: Pick<Todo, 'list_mode'> | null | undefined): boolean {
   return Boolean(todo?.list_mode)
@@ -44,11 +68,17 @@ export function repeatChoiceOf(subTask: Pick<SubTask, 'recurrence' | 'recurrence
   return subTask.recurrence
 }
 
-/** 繰り返しの選択に合わせた戻る曜日・日付。未設定なら既定（月曜・1日） */
+/** 繰り返しの選択に合わせた戻る曜日・日付・月日。未設定なら既定（月曜・1日・1月1日） */
 export function repeatDayOf(choice: ItemRepeatChoice, day: number | null | undefined): number | null {
   if (choice === 'weekly') return day != null && day >= 0 && day <= 6 ? day : DEFAULT_WEEKLY_DAY
   if (choice === 'monthly') return day != null && day >= 1 && day <= 31 ? day : DEFAULT_MONTHLY_DAY
+  if (choice === 'yearly') return day != null && isYearlyDay(day) ? day : DEFAULT_YEARLY_DAY
   return null
+}
+
+function yearlyText(value: number): string {
+  const { month, day } = splitYearlyDay(value)
+  return `${month}/${day}`
 }
 
 export function repeatFields(choice: ItemRepeatChoice, day: number | null = null): { recurrence: ItemRecurrence | null; recurrence_workdays: number; recurrence_day: number | null } {
@@ -62,7 +92,7 @@ function weekdayLabel(day: number): string {
   return WEEKDAY_OPTIONS.find((option) => option.value === day)?.label ?? '月'
 }
 
-/** 短い表記（例: 毎日・平日・毎週水・毎月25日・毎月末）。繰り返さない項目は null */
+/** 短い表記（例: 毎日・平日・毎週水・毎月25日・毎月末・毎年10/18）。繰り返さない項目は null */
 export function repeatLabel(subTask: RepeatFields): string | null {
   const choice = repeatChoiceOf(subTask)
   if (choice === '') return null
@@ -70,6 +100,7 @@ export function repeatLabel(subTask: RepeatFields): string | null {
   if (choice === 'workdays') return '平日'
   const day = repeatDayOf(choice, subTask.recurrence_day)!
   if (choice === 'weekly') return `毎週${weekdayLabel(day)}`
+  if (choice === 'yearly') return `毎年${yearlyText(day)}`
   return day === 31 ? '毎月末' : `毎月${day}日`
 }
 
@@ -81,6 +112,7 @@ export function repeatTitle(subTask: RepeatFields): string {
   if (choice === 'workdays') return '平日ごとに未チェックに戻ります（土日・祝日は前の平日の分が続きます）'
   const day = repeatDayOf(choice, subTask.recurrence_day)!
   if (choice === 'weekly') return `毎週${weekdayLabel(day)}曜に未チェックに戻ります`
+  if (choice === 'yearly') return `毎年${yearlyText(day)}に未チェックに戻ります（その日がない年は月末）`
   return day === 31 ? '毎月の末日に未チェックに戻ります' : `毎月${day}日に未チェックに戻ります（その日がない月は末日）`
 }
 
@@ -260,18 +292,22 @@ export function countRemaining(groups: TodayListGroup[]): number {
   return groups.reduce((sum, group) => sum + group.items.filter((item) => !item.done).length, 0)
 }
 
-/** 今日やることの区分け。毎日の項目・やることは「今日やる」、毎週は「今週の分」、毎月は「今月の分」 */
-export type TodaySection = 'today' | 'week' | 'month'
+/** 今日やることの区分け。毎日の項目・やることは「今日やる」、毎週は「今週の分」、毎月は「今月の分」、毎年は「今年の分」 */
+export type TodaySection = 'today' | 'week' | 'month' | 'year'
 
 export const TODAY_SECTION_LABEL: Record<TodaySection, { label: string; title: string }> = {
   today: { label: '今日やる', title: '毎日・平日の項目と、開始日が来たやること・期限が今日までのやること' },
   week: { label: '今週の分', title: '毎週の項目。戻る曜日の前日までにチェックすれば間に合います' },
-  month: { label: '今月の分', title: '毎月の項目。戻る日の前日までにチェックすれば間に合います' }
+  month: { label: '今月の分', title: '毎月の項目。戻る日の前日までにチェックすれば間に合います' },
+  year: { label: '今年の分', title: '毎年の項目。戻る月日の前日までにチェックすれば間に合います' }
 }
+
+export const TODAY_SECTIONS: readonly TodaySection[] = ['today', 'week', 'month', 'year']
 
 export function sectionOf(item: Pick<SubTask, 'recurrence'>): TodaySection {
   if (item.recurrence === 'weekly') return 'week'
   if (item.recurrence === 'monthly') return 'month'
+  if (item.recurrence === 'yearly') return 'year'
   return 'today'
 }
 
@@ -293,8 +329,7 @@ export function groupEntriesByList(entries: TodayEntry[]): Array<{ todo: Todo; i
 
 /** リストごとの今日やることを、区分けごとに並べ直す（リストの順・項目の順はそのまま） */
 export function buildTodaySections(groups: TodayListGroup[]): Array<{ section: TodaySection; entries: TodayEntry[] }> {
-  const sections: TodaySection[] = ['today', 'week', 'month']
-  return sections
+  return TODAY_SECTIONS
     .map((section) => ({
       section,
       entries: groups.flatMap((group) => group.items.filter((item) => sectionOf(item) === section).map((item) => ({ item, todo: group.todo })))

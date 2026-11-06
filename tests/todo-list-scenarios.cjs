@@ -201,4 +201,27 @@ module.exports = function checkTodoList(api) {
   api.updateSubTask(moved.id, { recurrence: 'weekly' })
   assert.deepEqual(keysOf(moved.id, '2026-09-28', '2026-10-11').checked, ['2026-09-28', '2026-10-05'])
   assert.equal(countChecks(moved.id), 2, '10/5 と 10/6 のチェックは同じ週の1件になる')
+
+  // 毎年。月日は「月×100＋日」（10月18日 → 1018）。未設定は1月1日、2/29 は平年なら 2/28 に戻る
+  const yearlyList = api.createTodo({ title: '毎年の項目', status: 'active', list_mode: 1 })
+  const renewal = api.createSubTask(yearlyList.id, { title: '保険の更新', recurrence: 'yearly', recurrence_day: 1018 })
+  assert.equal(renewal.recurrence, 'yearly')
+  assert.equal(renewal.recurrence_day, 1018)
+  assert.equal(api.createSubTask(yearlyList.id, { title: '範囲外の月日', recurrence: 'yearly', recurrence_day: 1340 }).recurrence_day, null, '範囲外は既定にする')
+  setCompleted(renewal.id, local(2026, 10, 18))
+  api.resetRecurringSubTasks(local(2027, 10, 17, 20))
+  assert.equal(doneOf(renewal.id), 1, '次の年の前日までは戻さない')
+  api.resetRecurringSubTasks(local(2027, 10, 18))
+  assert.equal(doneOf(renewal.id), 0, '次の年の同じ月日に戻る')
+  const leap = api.createSubTask(yearlyList.id, { title: 'うるう日', recurrence: 'yearly', recurrence_day: 229 })
+  setCompleted(leap.id, local(2028, 2, 29))
+  api.resetRecurringSubTasks(local(2029, 2, 27))
+  assert.equal(doneOf(leap.id), 1)
+  api.resetRecurringSubTasks(local(2029, 2, 28))
+  assert.equal(doneOf(leap.id), 0, '平年は 2/28 に戻る')
+  const yearlyReport = api.createSubTask(yearlyList.id, { title: '毎年の集計', recurrence: 'yearly', recurrence_day: 401 })
+  db.prepare("UPDATE SubTasks SET created_at = '2024-01-01T00:00:00.000Z' WHERE id = ?").run(yearlyReport.id)
+  insertCheck.run('check-year', yearlyReport.id, yearlyList.id, '2025-04-01', local(2025, 4, 3).toISOString())
+  assert.deepEqual(keysOf(yearlyReport.id, '2025-01-01', '2026-06-30'), { periods: ['2024-04-01', '2025-04-01', '2026-04-01'], checked: ['2025-04-01'] },
+    '毎年は4/1始まりの年で数える')
 }
