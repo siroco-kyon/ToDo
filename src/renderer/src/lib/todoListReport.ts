@@ -7,7 +7,7 @@ import { isoToDateKey, parseDateOnly, toDateKey } from './dueDate'
 // - 今日・今週・今月のような途中の回（サーバーが返す current_key）は、チェックしてもしなくても率に入れず、
 //   「今日 1/5」のように別に出す。
 //   途中の回をチェック済みのときだけ数えると、作ったばかりのリストは1件チェックしただけで 1/1回（100%）になるため。
-// - 毎日・毎週・毎月は回の長さが違うので、1つの率に混ぜない。
+// - 毎日・毎週・毎月・毎年は回の長さが違うので、1つの率に混ぜない。
 
 export interface ReportPeriod {
   from: string
@@ -17,9 +17,9 @@ export interface ReportPeriod {
 /** 終わった回がこれより少ないうちは率（%）を出さず、回数だけにする */
 export const MIN_PERIODS_FOR_RATE = 5
 
-export type RepeatKind = 'daily' | 'weekly' | 'monthly'
+export type RepeatKind = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
-const REPEAT_KINDS: RepeatKind[] = ['daily', 'weekly', 'monthly']
+const REPEAT_KINDS: RepeatKind[] = ['daily', 'weekly', 'monthly', 'yearly']
 
 const WEEKDAY_SHORT = ['日', '月', '火', '水', '木', '金', '土']
 
@@ -32,16 +32,16 @@ export interface ItemCheckStatus {
   current: { label: string; checked: boolean } | null
 }
 
-/** 同じ周期（毎日・平日／毎週／毎月）の項目をまとめた実施状況 */
+/** 同じ周期（毎日・平日／毎週／毎月／毎年）の項目をまとめた実施状況 */
 export interface RepeatGroupDigest {
   kind: RepeatKind
-  /** 毎日・平日・毎日／平日・毎週・毎月 */
+  /** 毎日・平日・毎日／平日・毎週・毎月・毎年 */
   label: string
   itemCount: number
   /** 終わった回の数の合計と、そのうちチェックした数 */
   checked: number
   periods: number
-  /** 終わった回の呼び方（昨日まで・先週まで・先月まで。今日を含まない期間なら「期間中」） */
+  /** 終わった回の呼び方（昨日まで・先週まで・先月まで・去年まで。今日を含まない期間なら「期間中」） */
   doneLabel: string
   /** 今の回。total は今の回がある項目の数 */
   current: { label: string; checked: number; total: number } | null
@@ -67,7 +67,7 @@ function isInPeriod(dateKey: string, period: ReportPeriod): boolean {
 }
 
 function kindOf(item: Pick<SubTask, 'recurrence'>): RepeatKind | null {
-  return item.recurrence === 'daily' || item.recurrence === 'weekly' || item.recurrence === 'monthly' ? item.recurrence : null
+  return item.recurrence != null && (REPEAT_KINDS as string[]).includes(item.recurrence) ? item.recurrence as RepeatKind : null
 }
 
 /** ToDoリストの項目を、繰り返しの項目・まだのやること・期間中に済んだやることに分ける */
@@ -84,6 +84,7 @@ export function splitListItems(items: SubTask[], period: ReportPeriod): { repeat
 function currentLabelOf(kind: RepeatKind, periodKey: string, todayKey: string): string {
   if (kind === 'weekly') return '今週の分'
   if (kind === 'monthly') return '今月の分'
+  if (kind === 'yearly') return '今年の分'
   return periodKey === todayKey ? '今日' : `${WEEKDAY_SHORT[parseDateOnly(periodKey).getDay()]}曜の分`
 }
 
@@ -95,7 +96,7 @@ export function itemCheckStatus(
 ): ItemCheckStatus | null {
   const kind = kindOf(item)
   if (!kind || !summary || summary.period_keys.length === 0) return null
-  // 今日を含む回はまだ途中（今日・今週・今月の分）。先週を選んでも、今月の分のように続いている回はここに入る
+  // 今日を含む回はまだ途中（今日・今週・今月・今年の分）。先週を選んでも、今月の分のように続いている回はここに入る
   const currentKey = summary.current_key
   const doneKeys = summary.period_keys.filter((key) => key !== currentKey)
   const checkedKeys = new Set(summary.checked_keys)
@@ -109,6 +110,7 @@ export function itemCheckStatus(
 function groupLabel(kind: RepeatKind, items: SubTask[]): string {
   if (kind === 'weekly') return '毎週'
   if (kind === 'monthly') return '毎月'
+  if (kind === 'yearly') return '毎年'
   const workdays = items.filter((item) => item.recurrence_workdays).length
   if (workdays === 0) return '毎日'
   return workdays === items.length ? '平日' : '毎日・平日'
@@ -118,12 +120,14 @@ function doneLabelOf(kind: RepeatKind, includesToday: boolean): string {
   if (!includesToday) return '期間中'
   if (kind === 'weekly') return '先週まで'
   if (kind === 'monthly') return '先月まで'
+  if (kind === 'yearly') return '去年まで'
   return '昨日まで'
 }
 
 function startsLabelOf(kind: RepeatKind, label: string): string {
   if (kind === 'weekly') return '来週から集計'
   if (kind === 'monthly') return '来月から集計'
+  if (kind === 'yearly') return '来年から集計'
   return label === '平日' ? '次の平日から集計' : '明日から集計'
 }
 

@@ -9,7 +9,8 @@ import {
   isMyList,
   sectionOf,
   summarizeChecklist,
-  TODAY_SECTION_LABEL
+  TODAY_SECTION_LABEL,
+  TODAY_SECTIONS
 } from '../lib/todoList'
 import { TodoChecklist } from './TodoChecklist'
 import { TodayTodoItems } from './TodayTodo'
@@ -67,7 +68,7 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
   )
   const remaining = countRemaining(todayGroups)
   // 「残り」には今週・今月の分も入る。「今日やる」が全部済んでいても残りが出て食い違って見えるので、内訳を添える
-  const remainingBySection = (['today', 'week', 'month'] as const).map((section) => ({
+  const remainingBySection = TODAY_SECTIONS.map((section) => ({
     section,
     count: todayGroups.reduce((sum, group) => sum + group.items.filter((item) => !item.done && sectionOf(item) === section).length, 0)
   })).filter((entry) => entry.count > 0)
@@ -146,7 +147,7 @@ export function TodoListsView({ todos, itemsByTodo, users, currentUser, pendingI
             <div style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--indigo-100)' }}>ToDoリストを使ってみる</div>
             <div style={{ fontSize: '0.82rem', color: 'var(--slate-300)', lineHeight: 1.7 }}>
               ToDoリストは、毎日・毎週のチェックや細かいやることをまとめるリストです。期限を決めなくても使えるので、延長し続けなくてもかまいません（期限を決めたいときは「詳しく設定して作る」か、作ったあとの詳細で入れられます）。
-              <br />・毎日のメール確認や週1回の集計など、決まった作業は「毎日／平日／毎週〇曜／毎月〇日」を付けると、その日に未チェックに戻ります。
+              <br />・毎日のメール確認や週1回の集計など、決まった作業は「毎日／平日／毎週〇曜／毎月〇日／毎年〇月〇日」を付けると、その日に未チェックに戻ります。
               <br />・思いついたやることは、繰り返さずに追加すると、チェックしたときに「済み」へ移ります。開始日を付けるとその日から、期限だけを付けると期限の日から、ここの「今日やること」に出ます。
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--slate-400)' }}>

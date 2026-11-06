@@ -6,6 +6,7 @@ import {
   ITEM_REPEAT_OPTIONS,
   MONTH_DAY_OPTIONS,
   WEEKDAY_OPTIONS,
+  MONTH_OPTIONS,
   checklistBadgeText,
   duePresets,
   isDueByToday,
@@ -15,7 +16,10 @@ import {
   repeatFields,
   repeatLabel,
   repeatTitle,
+  splitYearlyDay,
   summarizeChecklist,
+  yearlyDayOfDate,
+  yearlyDayValue,
   type ItemRepeatChoice
 } from '../lib/todoList'
 import { dataInk, textOnFill } from '../lib/theme'
@@ -415,7 +419,7 @@ export function TodoChecklist({ todo, items, users, disabled = false, compact = 
   )
 }
 
-/** 繰り返しの選択と、毎週の曜日・毎月の日付 */
+/** 繰り返しの選択と、毎週の曜日・毎月の日付・毎年の月日 */
 function RepeatPicker({ choice, day, onChange, labelPrefix }: {
   choice: ItemRepeatChoice
   day: number | null
@@ -431,7 +435,8 @@ function RepeatPicker({ choice, day, onChange, labelPrefix }: {
           value={choice}
           onChange={(event) => {
             const next = event.target.value as ItemRepeatChoice
-            onChange(next, repeatDayOf(next, null))
+            // 毎年は今日の月日から始める（1月1日だと、選んだあと月日を探して直す手間が増える）
+            onChange(next, next === 'yearly' ? yearlyDayOfDate() : repeatDayOf(next, null))
           }}
           aria-label={`${labelPrefix}繰り返し`}
           style={smallInputStyle}
@@ -460,6 +465,28 @@ function RepeatPicker({ choice, day, onChange, labelPrefix }: {
         >
           {MONTH_DAY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
+      )}
+      {choice === 'yearly' && effectiveDay != null && (
+        <>
+          <select
+            value={splitYearlyDay(effectiveDay).month}
+            onChange={(event) => onChange(choice, yearlyDayValue(Number(event.target.value), splitYearlyDay(effectiveDay).day))}
+            aria-label={`${labelPrefix}戻る月`}
+            title="この月日に未チェックに戻ります"
+            style={smallInputStyle}
+          >
+            {MONTH_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          <select
+            value={splitYearlyDay(effectiveDay).day}
+            onChange={(event) => onChange(choice, yearlyDayValue(splitYearlyDay(effectiveDay).month, Number(event.target.value)))}
+            aria-label={`${labelPrefix}戻る日`}
+            title="この月日に未チェックに戻ります（その日がない年は月末）"
+            style={smallInputStyle}
+          >
+            {Array.from({ length: 31 }, (_, index) => index + 1).map((value) => <option key={value} value={value}>{value}日</option>)}
+          </select>
+        </>
       )}
     </span>
   )

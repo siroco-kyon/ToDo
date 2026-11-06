@@ -20,6 +20,11 @@ assert.equal(lib.repeatLabel({ recurrence: 'weekly', recurrence_workdays: 0, rec
 assert.equal(lib.repeatLabel({ recurrence: 'monthly', recurrence_workdays: 0, recurrence_day: 25 }), '毎月25日')
 assert.equal(lib.repeatLabel({ recurrence: 'monthly', recurrence_workdays: 0, recurrence_day: 31 }), '毎月末')
 assert.equal(lib.repeatLabel({ recurrence: null, recurrence_workdays: 0, recurrence_day: null }), null)
+assert.equal(lib.repeatLabel({ recurrence: 'yearly', recurrence_workdays: 0, recurrence_day: 1018 }), '毎年10/18')
+assert.equal(lib.repeatLabel({ recurrence: 'yearly', recurrence_workdays: 0, recurrence_day: null }), '毎年1/1', '未設定は1月1日')
+assert.deepEqual({ ...lib.repeatFields('yearly', 229) }, { recurrence: 'yearly', recurrence_workdays: 0, recurrence_day: 229 })
+assert.equal(lib.yearlyDayOfDate(new Date(2026, 10, 6)), 1106)
+assert.equal(lib.sectionOf({ recurrence: 'yearly' }), 'year')
 assert.deepEqual({ ...lib.repeatFields('weekly', 3) }, { recurrence: 'weekly', recurrence_workdays: 0, recurrence_day: 3 })
 assert.deepEqual({ ...lib.repeatFields('daily', 3) }, { recurrence: 'daily', recurrence_workdays: 0, recurrence_day: null }, '毎日には曜日を付けない')
 
@@ -197,6 +202,8 @@ assert.equal(report.rateText(4, 5), '4/5回（80%）')
   // 先週を選んでも、今月の分はまだ続いているので取りこぼしにしない
   const monthly = report.digestListReport([item('m', { recurrence: 'monthly' })], checks([['m', ['2026-10-01'], [], '2026-10-01']]), lastWeek, todayKey)
   assert.equal(report.groupSummaryText(monthly.groups[0]), '今月の分 0/1（来月から集計）')
+  const yearly = report.digestListReport([item('y', { recurrence: 'yearly', recurrence_day: 401 })], checks([['y', ['2025-04-01', '2026-04-01'], ['2025-04-01'], '2026-04-01']]), week, todayKey)
+  assert.equal(`${yearly.groups[0].label}: ${report.groupSummaryText(yearly.groups[0])}`, '毎年: 去年まで 1/1回・今年の分 0/1', '毎年は「去年まで」と「今年の分」に分ける')
   assert.equal(monthly.missed.length, 0)
   // 先週の終わりの金曜の回（平日だけの項目）は、土曜に見るとまだ続いている
   const friday = report.digestListReport([item('w', { recurrence: 'daily', recurrence_workdays: 1 })],

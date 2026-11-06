@@ -83,11 +83,11 @@ export function QuickAddModal({
   const templates = useMemo(() => {
     try {
       const parsed = JSON.parse(window.localStorage.getItem('todo-templates') ?? '[]') as unknown
-      return Array.isArray(parsed) ? parsed as Array<{ name: string; todo: CreateTodoInput; subTasks?: Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | null; recurrence_workdays?: number; recurrence_day?: number | null }> }> : []
+      return Array.isArray(parsed) ? parsed as Array<{ name: string; todo: CreateTodoInput; subTasks?: Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | 'yearly' | null; recurrence_workdays?: number; recurrence_day?: number | null }> }> : []
     } catch { return [] }
   }, [])
   const [selectedTemplateName, setSelectedTemplateName] = useState('')
-  const [templateSubTasks, setTemplateSubTasks] = useState<Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | null; recurrence_workdays?: number; recurrence_day?: number | null }>>([])
+  const [templateSubTasks, setTemplateSubTasks] = useState<Array<{ title: string; description?: string; start_date?: string | null; due_date?: string | null; recurrence?: 'daily' | 'weekly' | 'monthly' | 'yearly' | null; recurrence_workdays?: number; recurrence_day?: number | null }>>([])
   const savedDraft = useMemo(() => {
     try {
       const parsed = JSON.parse(window.localStorage.getItem('quick-add-draft') ?? '{}') as unknown
@@ -378,7 +378,7 @@ export function QuickAddModal({
             {!listMode && <p style={{ marginTop: 6, fontSize: 'var(--font-caption)', color: 'var(--text-subtle)', lineHeight: 1.6 }}>タスクは、開始日・期限・進捗で管理する仕事です。毎日の確認事項をまとめたいときは「ToDoリスト」を選びます。</p>}
             {listMode && (
               <div style={{ marginTop: 4, fontSize: '0.7rem', color: 'var(--indigo-300)', lineHeight: 1.5 }}>
-                毎日・毎週のチェックや細かいやることをまとめるリストです。期限は「なし」のままでも、決めても使えます。作ったあと、詳細か ToDo タブで項目を追加します。項目ごとに「毎日・平日・毎週・毎月」を選ぶと、決めた日が来るたびに未チェックに戻ります。
+                毎日・毎週のチェックや細かいやることをまとめるリストです。期限は「なし」のままでも、決めても使えます。作ったあと、詳細か ToDo タブで項目を追加します。項目ごとに「毎日・平日・毎週・毎月・毎年」を選ぶと、決めた日が来るたびに未チェックに戻ります。
               </div>
             )}
           </div>
